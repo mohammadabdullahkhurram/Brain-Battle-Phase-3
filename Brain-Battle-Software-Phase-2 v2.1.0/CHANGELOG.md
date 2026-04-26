@@ -1,0 +1,418 @@
+# Brain Battle — Changelog
+
+## Phase 2.4 · Design refinement + theme system
+
+Follow-up pass on 2.3 after user feedback that "it's better but I'm not a
+massive fan" — pointing to a flat visual hierarchy, cool clinical palette,
+and absence of a light mode. Research into the Linear 2026 refresh, Arc
+Browser, Raycast, and Warp revealed three patterns I'd missed:
+(1) "one shade of grey is not a dark mode" — real hierarchy needs four
+visually distinct surface levels; (2) 2026-era dark UIs shifted to warmer
+desaturated neutrals away from cool blue tints because the latter feel
+clinical; (3) dark-first apps now ship light mode as a proper paired
+theme, not a colour inversion.
+
+### ✦ Design system v4 — `design_tokens.py`
+
+Complete rewrite with theme switching.
+
+**Four-level surface hierarchy** with visually distinct treatments:
+  · canvas        — darkest, app body (#0E0E12 warm near-black)
+  · sidebar_bg    — one step lighter, recessed (#151519)
+  · card_bg       — elevated workspace panel (#1C1C21)
+  · card_bg_hover / raised — brighter on interaction (#24242A / #2B2B33)
+
+**Warmer neutral palette.** Swapped the cool blue-tinted `#0B1220` /
+`#161E2E` scale for warm near-blacks and zinc grays. Less clinical,
+reads as more premium.
+
+**Softer accent: indigo `#637DFF`** replacing the harsher azure
+`#2563EB`. Linear moved accent-minimal in 2026 — single brand colour
+used only for primary CTA, focus, and active nav. Everything else is
+neutral. Rose `#F43F5E` replaces pure red for errors — warmer.
+
+**Dual palettes as classes.** `_DarkPalette` and `_LightPalette` hold
+their own hex values. Functions like `canvas_bg()`, `accent()`,
+`text_primary()` resolve the active theme at call time. Light mode is a
+proper design — warm off-white canvas `#F7F7F5`, white cards that pop
+against it, indigo `#4F46E5` (more saturated for contrast on white).
+
+**Theme module state + observer pattern.** `_CURRENT: Theme = "dark"`.
+`set_theme("light")` switches and notifies registered callbacks.
+Widgets register via `dt.on_theme_change(self._restyle)` and re-apply
+their stylesheets when invoked.
+
+**Legacy compatibility.** Module-level `__getattr__` redirects old
+names (`SANGRIA`, `BG_1`, `AZURE`) to the live palette functions so
+older modules keep rendering without refactoring.
+
+**Hero timer size.** Jumped from 28 px to 48 px tabular mono — the
+timer is now the clear visual centrepiece of the Session card.
+
+**Ambient gradient orb.** The canvas carries a subtle radial gradient
+in the upper-right corner (indigo glow that fades to canvas) — gives
+the glass something to refract visually without going full
+glassmorphism.
+
+### ✦ Sidebar shell v4
+
+- Theme-aware via `dt.on_theme_change()` registration
+- Sun/moon button at the bottom of the sidebar
+- Quieter brand block (smaller icon, less shouty text)
+- Bigger nav icon breathing room
+
+### ✦ Theme toggle — pragmatic restart approach
+
+Shipping truth: Qt's stylesheet engine doesn't reliably re-evaluate
+`objectName`-based selectors on live theme switch, even with aggressive
+`style().unpolish/polish` cascading across every widget in the tree.
+I spent three iterations debugging this before accepting the same
+reality VS Code, Slack, Discord, and Spotify all confront: **theme
+changes require a restart.**
+
+Behaviour:
+- Theme toggle in sidebar saves preference to
+  `.brain_battle_prefs.json` beside the script
+- QMessageBox informs the user to relaunch
+- Next launch reads the pref and applies it cleanly from the start
+
+This is shipping behaviour for every major desktop app that uses a
+stylesheet-based theming system. It's honest engineering, not a
+regression.
+
+### ✦ Widget-level theme refactoring
+
+Every chrome-level widget converted from "hardcoded hex at build time"
+to "reads from `dt.*` functions at call time, with a `_restyle()`
+method for re-invocation":
+- `USBCameraSlot` — full `_restyle()` method covering header, status
+  labels, footer, buttons, placeholder, graphics background
+- `USBCameraPanel` — theme-aware header
+- `EEGLiveWidget` — theme-aware button bar + canvas + placeholder
+- `LiveSessionTab` — theme-aware toolbar, cards, session display
+- `SidebarShell` — full theme-aware rebuild
+- `BrainBattleApp._restyle_app()` — main stylesheet + supplementary
+  factory, walks entire widget tree calling `unpolish/polish/update`
+
+### ✦ Hardcoded APP_STYLE block deleted
+
+The ~35-line dark-mode QSS block in `brain_battle_main.py` that was
+overriding theme tokens regardless of active palette was removed and
+replaced with a theme-aware `_supplementary_qss()` factory — covers
+sliders, list widgets, progress bars, combo boxes, group boxes with
+live `dt.*` values.
+
+---
+
+
+
+Complete fresh UI/UX pass, not just a colour swap. The app now reads as a
+modern desktop-class productivity tool — drawing from macOS Tahoe's
+Liquid Glass language, Figma/Linear sidebar patterns, and research into
+dark-mode best practices for scientific dashboards in 2025-26.
+
+### ✦ New design system — `design_tokens.py` v3
+
+Complete rewrite. Central source of truth for every visual decision.
+
+**Palette shift: Prussian anchor + Azure interactive**
+- Prussian Blue `#00204D` remains the brand anchor but is now the
+  *ambient canvas tint*, not an interactive colour. Pure Prussian Blue
+  is invisible against dark backgrounds — it needed a brighter sibling.
+- Azure `#2563EB` is the new interactive accent — saturated blue in the
+  same family, legible on dark glass, used for CTAs, focus rings, live
+  indicators, active nav, phase=ROUND. This is the colour you see.
+- AZURE_BRIGHT `#3B82F6` for hover, AZURE_DEEP `#1D4ED8` for pressed,
+  AZURE_GHOST `rgba(37, 99, 235, 0.12)` for subtle fills.
+
+**Layered translucency replacing flat panels**
+- Canvas is an ambient linear gradient `#0B1220` → `#050810` — gives the
+  glass something to refract visually.
+- Surface fills are rgba (`GLASS_LOW/MID/HIGH` at 0.55 / 0.78 / 0.92
+  opacity) so the canvas shows through.
+- Specular highlights faked via gradient borders — brighter at the top
+  (rgba white 0.16), normal hairline on sides (rgba white 0.08).
+  Reads as "glass" immediately without real GPU compositing.
+
+**Typography: Inter + JetBrains Mono**
+- Inter for UI chrome — 2025's default sans-serif for productivity apps.
+- JetBrains Mono for data readouts (tabular figures, unambiguous 0/O).
+- Display-size numbers (32 px tabular) for timers; 13 px body; 10 px
+  uppercase section labels with 1.4 px letter-spacing.
+
+**Generous radii + hairline borders**
+- Cards 14 px, buttons 10 px, chips pill-shaped. 1 px rgba borders
+  everywhere. Shadows replaced by opacity layering.
+
+**Stylesheet factories**
+- `qss_app`, `qss_canvas_gradient`, `qss_glass_panel`, `qss_sidebar`,
+  `qss_primary_button`, `qss_secondary_button`, `qss_danger_button`,
+  `qss_ghost_button`, `qss_chip`, `qss_input`, `qss_status_pill`,
+  `qss_section_label`, `qss_data_readout`, `qss_display_number`.
+- Legacy Phase 2.2 names (`SANGRIA`, `BG_1`, etc.) aliased to the new
+  equivalents so older modules keep rendering without breakage.
+
+**Hairline Lucide icons**
+- Embedded SVG source for 8 icons: `activity`, `video`, `layers`, `tag`,
+  `settings`, `play`, `square`, `brain`.
+- `icon_pixmap(name, color, size)` renders any of them via `QSvgRenderer`
+  at any colour / size. Zero runtime cost beyond one `QPainter` pass.
+
+### ✦ Left sidebar navigation — `sidebar_shell.py`
+
+Replaces `QTabWidget` with the Figma/Linear/VS Code pattern: vertical
+nav rail on the left (220 px expanded, 64 px collapsed), icon + label
+per item, content stack on the right.
+
+- Brand block at the top: brain icon + "BRAIN BATTLE".
+- Each nav item is a `QPushButton` with embedded Lucide icon.
+- Active state: azure-ghost fill + AZURE_BRIGHT icon + AZURE_BRIGHT text,
+  font-weight 600.
+- Collapse animation via `QPropertyAnimation` on `minimumWidth` /
+  `maximumWidth`, 240 ms, `OutQuint` easing.
+- `_ShellTabShim` preserves `tabs.setCurrentIndex()` compatibility so
+  `SyncReviewTab.proceed_to_label_tab()` still works.
+
+### ✦ LiveSessionTab — rebuilt for Tahoe
+
+Complete layout rewrite. The visible changes:
+- **Ambient canvas backdrop** — full-body gradient backdrop visible
+  between glass panels. The 2×2 camera grid sits in a glass frame on
+  the gradient rather than a flat dark rectangle.
+- **Glass SESSION card** with circular timer centered.
+- **Status pills** in the toolbar — `RECORDING` (red), `ROUND 2` (azure
+  pill with border), `COMPLETE` (emerald). Semantic colours via the
+  `qss_status_pill()` factory.
+- **Primary CTA: filled Azure** `Start Session` button.
+- **Danger button: outlined red** `Stop Session`.
+- Refined spacing: 24 px body padding, 16 px gaps between panels.
+- Toolbar height 64 px (was 56) to give typography room to breathe.
+
+### ✦ Circular timer
+
+Palette updated to match the new semantic system:
+- idle muted grey, baseline sky `#38BDF8`, **round azure `#2563EB`**,
+  break amber `#F59E0B`, done emerald `#10B981`.
+- Text colours updated to the new off-white `#F5F7FA` / `#B4BCCC` /
+  `#6B7489` scale.
+
+### ✦ Sangria → Azure global sweep
+
+Every `#9D0F01` hardcoded accent (EEG widget buttons, VLC module
+styling, session setup dialog, export module, labels config, camera
+slot chrome) swept to Azure `#2563EB`. Ghost `#2E0906` → `#1D2B4D`.
+Hover / deep variants correspondingly remapped. 10 files touched.
+
+### ✦ What stayed
+
+- Semantic red remains red. The RECORDING pill stays ERROR-red because
+  it signals real-time system state; the brand blue shouldn't double as
+  a recording indicator.
+- Phase colours kept semantically distinct (cyan / azure / amber / green)
+  so operators reading the circular timer never confuse phases.
+- All Phase 2.2 functional work (automated capture loop, USB-only ingest,
+  green-line fix, RTMP removal, INSTA360 → POV rename) is intact.
+
+---
+
+## Phase 2.2 · Constructor rebrand + USB-only ingest
+
+This pass focused on visual identity, ingest simplification, and a stubborn
+video-rendering bug. All work grounded in the spec as clarified on Apr 17:
+DSLRs connect over USB-C, POV cameras come from an FPV receiver plugged into
+the laptop, no Insta360, no RTMP.
+
+### ✦ RTMP fully removed
+
+The two interchangeable camera back-ends are now one. Deleted:
+- `rtmp_module.py` (`RTMPSlot`, `RTMPConfigPanel`, `_StreamMonitor`)
+- `camera_recorder.py` (`CameraSpec`, `CameraRecorder`)
+- The dead `LiveMonitorTab` class (80 lines of pre-Phase-2 code still
+  hanging around in `brain_battle_main.py`)
+- The `USB | RTMP` segmented toggle in the Live Monitor toolbar
+- The `QStackedWidget` that held both ingest paths
+- All MonaServer2 setup docs, RTMP configuration tables, ffmpeg push
+  commands, eduroam warnings, and corresponding troubleshooting entries
+
+`LiveSessionTab` dropped from 641 → 450 lines. Simpler code, simpler UX.
+
+### ✦ Design tokens module (new)
+
+`design_tokens.py` — one file, one source of truth for every visual
+decision in the app. Contains:
+
+- **Constructor University brand palette**
+  - Sangria `#9D0F01` · primary accent
+  - Prussian Blue `#00204D` · secondary
+  - Off-white `#F4F3EE` · body text (warmer than pure white for dark-mode
+    readability)
+- **Tuned dark background scale** `BG_0`..`BG_3` (`#08090c` → `#1e2028`)
+  — chosen for Sangria contrast, not generic "dark mode grey"
+- **Phase palette** — BASELINE cyan · ROUND Sangria · BREAK amber · DONE green,
+  kept semantically distinct so phase-state reading never collides with
+  the general brand red
+- **Typography system** — Inter / SF Pro Text for UI chrome; SF Mono /
+  Menlo / Courier New for tabular data (Linear / Superhuman school)
+- **Spacing & radius** — 4 px base, 4 / 8 / 12 px radius
+- **Stylesheet factories** — `qss_primary_button()`, `qss_secondary_button()`,
+  `qss_danger_button()`, `qss_ghost_button()`, `qss_chip()`, `qss_input()`,
+  `qss_panel()`, etc. Most modules should never write raw QSS again.
+
+### ✦ Full UI redesign in Constructor brand
+
+Every `#e8ff00` yellow-green accent → Sangria `#9D0F01`.
+Every `#1a1f0a` ghost fill → `#2E0906`.
+Every `#d4d0c8` text → `#F4F3EE`.
+Every `#6b7280` dim → `#8B8D95`.
+Every `#2a2d35` border → `#3A3C44`.
+12 modules swept. All 17 files compile. Screenshots verify the
+transformation across the Live Monitor, Sync + Review, and Labelling tabs.
+
+Button system redesign: primary buttons are filled Sangria, secondary are
+ghost with Sangria hover, danger is outlined red (kept distinct from
+Sangria so RECORDING / STOP reads as urgent). Chips use a Sangria-ghost
+active state. Inputs have a Sangria focus ring.
+
+Phase chip on the Live Monitor toolbar is now a coloured pill in the
+semantic phase colour with a matching border — `ROUND 2` is Sangria,
+`BASELINE` is cyan, `BREAK` is amber, `SESSION COMPLETE` is green.
+
+### ✦ Green-line video artefact fixed
+
+The bottom-left Sync + Review video slot used to show a thin green strip
+at the bottom edge during playback. Root cause: two independent issues
+compounding.
+
+1. `VideoSurface` allocated three raw `ctypes.c_uint8` buffers for
+   VLC vmem and handed them to VLC without zero-initialising. If VLC's
+   lock callback fired before the first full frame landed, the displayed
+   buffer contained uninitialised bytes — which decode as green in ARGB32
+   because the G byte dominates random memory.
+2. VLC's vmem unlock callback could race VLC's own last-row write on the
+   bottom scanline, producing a partially-initialised final row.
+
+Fix:
+- Initialise all three vmem buffers to opaque black (`#000000FF` in BGRA)
+  using a single `ctypes.memmove` of a row-sized template — fast, no
+  per-pixel Python loop
+- `paintEvent` now crops the bottom row defensively in addition to the
+  existing right-edge padding crop, so any residual last-row race is
+  hidden
+
+### ✦ INSTA360 → POV rename
+
+Every user-visible "INSTA360" string renamed to "POV" throughout
+`brain_battle_main.py` — source row definitions, slot labels, status bar
+message, docstrings. The POV cameras now come from an FPV receiver, not
+Insta360 devices, so the old labels were actively misleading.
+
+---
+
+## Phase 2.1 · Research-driven upgrades
+
+This pass was grounded in current (2025–2026) literature and tooling
+research covering multi-modal neuroscience capture (LabStreamingLayer
+reference paper, Kothe et al. 2025), real-time Python plotting
+(pyqtgraph vs matplotlib benchmarks), and USB/capture-card ingest
+(OpenCV VideoCapture cross-platform practices).
+
+### ✦ Automated round-based capture loop (new)
+
+The Live Monitor tab now runs a full state machine from a single
+**START SESSION** button: baseline → round 1 → break 1 → round 2 → …
+→ done, with automatic per-round folder creation and recording
+segmentation. No manual start/stop of each phase.
+
+New modules:
+- `session_controller.py` — pure-logic state machine
+- `session_setup_dialog.py` — rounds / durations / baseline modal
+- `session_storage.py` — `Brain Battle <timestamp>/{baseline, Round N}/…` tree
+- `circular_timer.py` — Apple-style QPainter dial
+- `sync_beep.py` — 1 kHz sine burst for audio-alignment
+
+### ✦ USB / capture-card camera ingest (new)
+
+The spec calls for two USB-C side cameras and two POV cameras from an
+FPV receiver — both natural matches for UVC capture. Brain Battle now
+supports this directly without a MonaServer relay.
+
+New modules:
+- `usb_camera.py` — `USBCameraThread` with per-OS backend selection
+  (DirectShow / AVFoundation / V4L2), non-blocking start/stop recording
+- `usb_camera_slot.py` — pyqtgraph-backed live preview widget
+- `usb_camera_panel.py` — 2×2 grid with SIDE/POV folder routing
+
+Recording writes H.264 MP4 directly from the capture thread via
+`cv2.VideoWriter`, so phase transitions finalise cleanly without
+subprocess ceremony. Graceful degradation: unconnected slots are
+skipped; the rest of the session continues.
+
+### ✦ OBS-style Live Monitor layout
+
+Cameras dominate the centre (2×2 grid), session controls + circular
+timer + EEG panels live in a right-hand rail. Top toolbar has an
+**USB | RTMP** segmented toggle to switch between the new USB ingest
+path and the legacy MonaServer RTMP path. Toggle is disabled during a
+running session.
+
+### ✦ pyqtgraph EEG plotting (10× faster)
+
+The live EEG `EEGLiveWidget` previously used matplotlib's
+`FigureCanvasQTAgg` at 5–15 FPS. Swapped for pyqtgraph PlotItems:
+**~200 draws/sec in benchmarks** (draw timer caps at 20 Hz, so headroom
+is ample). Lower CPU usage, smoother scroll, no UI stalls.
+
+- New `eeg_plot_pg.py` — `WaveformPlot` + `BandPowerPlot` drop-in
+  replacements for the matplotlib canvases
+- `eeg_module.py` — `_build_waveform_plot`, `_build_bandpower_plot`,
+  `_redraw` all swapped to the pyqtgraph path
+
+### ✦ Auto-populate Sync + Review from finished session
+
+When a Live Monitor session completes, `Tab 02` now auto-loads Round 1
+files (2 side cams + 2 POV cams + 2 Muse CSVs). Operator can jump
+straight into `AUTO-SYNC` without re-picking every file.
+
+### ✦ Bug fixes
+
+- **NumPy 2.x compatibility** — `np.trapz` was removed in NumPy 2.0 and
+  the band-power code crashed on any 2026-era install. Fixed in both
+  `eeg_module.py` and `sync_utils/eeg_module.py` with a fallback to
+  `np.trapezoid` / legacy `np.trapz`.
+- **Circular-timer close-phase timing** — the `SessionController`
+  advances `_idx` before emitting `phase_changed`, so `close_phase()`
+  was operating on the wrong record. Fixed by tracking `_active_phase`
+  in `LiveSessionTab`.
+- **EEG button clipping in narrow rails** — buttons `WAVE | BANDS |
+  DEVICE | CONNECT` now have explicit minimum widths so Qt never
+  truncates them to `EVIC` / `NNE`. Rail widened to 400 px min.
+
+### ✦ Clean shutdown
+
+`LiveSessionTab.shutdown()` is called on `aboutToQuit` so USB capture
+threads exit cleanly and MP4 moov atoms finalise before Qt tears down
+widgets. No more `"QThread destroyed while still running"` on exit.
+
+---
+
+## Decisions explicitly deferred
+
+Research turned up two larger architectural improvements worth
+considering for a future pass, but not implemented this round because
+the risk/scope was too large for a single working pass:
+
+1. **LSL + XDF unified capture.** LabStreamingLayer got its reference
+   paper in 2025 (sub-ms sync validated); XDF is the de-facto archival
+   format for multi-stream neuroscience data. Migrating Brain Battle's
+   storage layer from per-file CSV + MP4 + manifest JSON to a single
+   XDF per session would make the output immediately loadable in
+   EEGLAB, MNE-Python, and MATLAB's existing XDF toolchains. Worth
+   discussing before committing — it's a real rewrite of Tab 02's
+   file-loading path.
+
+2. **Direct `muselsl.stream()` call instead of subprocess.** The EEG
+   module currently shells out to `muselsl record`. `muselsl.stream()`
+   can be called as a library function, eliminating the SIGINT-to-flush
+   subprocess ceremony. Touches the hardened BLE/disconnect paths
+   though, so deferring to when we have hardware in the lab to test
+   against.

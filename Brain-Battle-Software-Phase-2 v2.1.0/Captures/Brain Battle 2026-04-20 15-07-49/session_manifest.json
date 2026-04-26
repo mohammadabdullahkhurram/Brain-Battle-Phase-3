@@ -1,0 +1,47 @@
+{
+  "app": "Brain Battle",
+  "version": "Phase 2",
+  "started_at": "2026-04-20T15:07:49",
+  "started_unix": 1776690469.537906,
+  "config": {
+    "num_rounds": 3,
+    "round_sec": 6,
+    "break_sec": 3,
+    "baseline_sec": 5
+  },
+  "phases": [
+    {
+      "phase": "baseline",
+      "label": "BASELINE",
+      "round_num": 0,
+      "folder": "baseline",
+      "planned_duration": 5,
+      "start_unix": 1776690469.549784,
+      "start_monotonic": 115768.306774833,
+      "end_unix": 1776690474.601275,
+      "end_monotonic": 115773.358268458
+    },
+    {
+      "phase": "round",
+      "label": "ROUND 1",
+      "round_num": 1,
+      "folder": "Round 1",
+      "planned_duration": 6,
+      "start_unix": 1776690474.604053,
+      "start_monotonic": 115773.361038875,
+      "end_unix": 1776690480.600944,
+      "end_monotonic": 115779.357927625
+    },
+    {
+      "phase": "round",
+      "label": "ROUND 2",
+      "round_num": 2,
+      "folder": "Round 2",
+      "planned_duration": 6,
+      "start_unix": 1776690483.6028988,
+      "start_monotonic": 115782.359877833,
+      "end_unix": 1776690488.580584,
+      "end_monotonic": 115787.337559916
+    }
+  ]
+}
