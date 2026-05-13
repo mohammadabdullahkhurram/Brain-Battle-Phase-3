@@ -1050,11 +1050,19 @@ class LabelChip(QWidget):
 
 class LabelMarker(QWidget):
     removed = pyqtSignal()
-    def __init__(self, label_name, color, timestamp_str, parent=None):
+    def __init__(self, label_name, color, timestamp_str, parent=None, is_phase=False):
         super().__init__(parent); self.label_name = label_name; self.timestamp_str = timestamp_str; self._color = color
-        self.setStyleSheet("background-color: #0E0E12;")
+        self.is_phase = is_phase
+        # Phase markers (auto-loaded from session) get a dashed left border
+        # so they're visibly distinct from the user's manual labels.
+        if is_phase:
+            self.setStyleSheet(f"background-color: #0E0E12; border-left: 2px dashed {color};")
+        else:
+            self.setStyleSheet("background-color: #0E0E12;")
         layout = QHBoxLayout(self); layout.setContentsMargins(8,5,8,5); layout.setSpacing(10)
-        dot = QLabel("▶"); dot.setFixedWidth(12); dot.setStyleSheet(f"color: {color}; font-size: 9px; border: none;")
+        # Triangle for manual, double-bar for phase markers (visual cue)
+        dot_glyph = "║" if is_phase else "▶"
+        dot = QLabel(dot_glyph); dot.setFixedWidth(12); dot.setStyleSheet(f"color: {color}; font-size: 9px; border: none;")
         ts = QLabel(timestamp_str); ts.setFixedWidth(88); ts.setStyleSheet("color: #A1A1AA; font-size: 10px; font-family: 'Inter'; border: none;")
         name = QLabel(label_name); name.setStyleSheet(f"color: {color}; font-size: 10px; font-family: 'Inter'; letter-spacing: 1px; border: none;")
         name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -1117,6 +1125,10 @@ class LabellingTab(QWidget):
         toolbar.setStyleSheet("background-color: #0E0E12; border-bottom: 1px solid #2A2A30;")
         tb = QHBoxLayout(toolbar); tb.setContentsMargins(16,0,16,0); tb.setSpacing(8)
         tb.addWidget(make_panel_title("EVENT LABELLING")); tb.addStretch()
+        self.open_session_btn = QPushButton("OPEN SESSION FOLDER"); self.open_session_btn.setFixedHeight(28)
+        self.open_session_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
+        self.open_session_btn.clicked.connect(self._open_session_folder)
+        tb.addWidget(self.open_session_btn)
         self.export_csv_btn = QPushButton("EXPORT LABELS CSV"); self.export_csv_btn.setFixedHeight(28)
         self.export_csv_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
         tb.addWidget(self.export_csv_btn); root.addWidget(toolbar)
@@ -1308,7 +1320,8 @@ class LabellingTab(QWidget):
 
     def _on_label_source_loaded(self, source_id: int, path: str):
         """Route uploaded file to the correct video slot or EEG widget.
-        source_ids 0-3 are DSLR/POV videos, 4-5 are Muse-S CSVs."""
+        source_ids 0-3 are DSLR/POV videos, 4-5 are Muse-S CSVs.
+        Also tries to find a sibling phase_markers.csv and auto-load it."""
         if source_id < 4:
             slot = self.label_slots[source_id]
             try:
@@ -1320,6 +1333,163 @@ class LabellingTab(QWidget):
             self._load_label_eeg_async(path, self.eeg_label_1)
         elif source_id == 5:
             self._load_label_eeg_async(path, self.eeg_label_2)
+
+        # Phase marker auto-discovery: walk upward from the uploaded file
+        # to find a phase_markers.csv. Idempotent — if markers with the
+        # same timestamps are already placed, this call is a no-op.
+        try:
+            self._try_auto_load_markers_for(path)
+        except Exception as e:
+            print(f"[markers auto-load] {e}")
+
+    def _try_auto_load_markers_for(self, file_path: str) -> None:
+        """Walk up to 4 directory levels looking for phase_markers.csv.
+        Session folder structure puts it at <session_root>/phase_markers.csv
+        and uploaded files live at <session_root>/continuous/{Side|POV}
+        Cams/*.mp4 — so 2-3 levels up usually finds it."""
+        from pathlib import Path
+        p = Path(file_path).resolve().parent
+        for _ in range(4):
+            candidate = p / "phase_markers.csv"
+            if candidate.exists():
+                self._load_phase_markers_csv(str(candidate))
+                return
+            if p.parent == p: break  # filesystem root
+            p = p.parent
+
+    def _load_phase_markers_csv(self, csv_path: str) -> None:
+        """Read phase_markers.csv and place a phase-style label for each
+        row. De-duplicates against already-placed phase markers by
+        (timestamp_str, label_name) so calling this multiple times during
+        a multi-file upload is safe."""
+        import csv as _csv
+        # Phase color palette — distinct from user labels
+        phase_colors = {
+            "baseline": "#22c55e",   # green
+            "round":    "#637DFF",   # indigo (app accent)
+            "break":    "#f59e0b",   # amber
+            "done":     "#A1A1AA",   # gray
+        }
+        # Collect existing phase-marker keys for dedup
+        existing = set()
+        for i in range(self.placed_layout.count()):
+            item = self.placed_layout.itemAt(i)
+            w = item.widget() if item else None
+            if isinstance(w, LabelMarker) and getattr(w, "is_phase", False):
+                existing.add((w.timestamp_str, w.label_name))
+
+        try:
+            with open(csv_path, "r", encoding="utf-8") as f:
+                reader = _csv.DictReader(f)
+                added = 0
+                for row in reader:
+                    try:
+                        t = float(row.get("t_session_seconds", 0.0))
+                    except ValueError:
+                        continue
+                    label = row.get("label", "PHASE").strip()
+                    phase_id = row.get("phase_id", "").strip().lower()
+                    color = phase_colors.get(phase_id, "#637DFF")
+                    h = int(t // 3600); m = int((t % 3600) // 60); s = t % 60
+                    ts_str = f"{h:02d}:{m:02d}:{s:06.3f}"
+                    if (ts_str, label) in existing:
+                        continue  # already placed, skip
+                    marker = LabelMarker(label, color, ts_str, is_phase=True)
+                    marker.removed.connect(self._update_label_count)
+                    # Insert phase markers in sorted order by timestamp at
+                    # the top of the list, before any user-placed markers.
+                    self.placed_layout.insertWidget(self.placed_layout.count() - 1, marker)
+                    existing.add((ts_str, label))
+                    added += 1
+                if added > 0:
+                    self._update_label_count()
+                    print(f"[markers] auto-loaded {added} phase markers from {csv_path}")
+        except Exception as e:
+            print(f"[markers] failed to read {csv_path}: {e}")
+
+    def _open_session_folder(self) -> None:
+        """One-click loader: pick a session root folder and load every
+        recording inside it (4 videos + 2 EEG CSVs + phase markers).
+        Expects the v2.5 continuous-recording layout:
+            <session_root>/continuous/Side Cams/*.mp4
+            <session_root>/continuous/POV Cams/*.mp4
+            <session_root>/continuous/Muse data/*.csv
+            <session_root>/phase_markers.csv  (optional)
+        """
+        from pathlib import Path
+        folder = QFileDialog.getExistingDirectory(self, "Open session folder", "")
+        if not folder: return
+        root = Path(folder)
+        cont = root / "continuous"
+        if not cont.exists():
+            # Maybe the user picked the continuous folder itself, or a
+            # parent of the session folder. Try both fallbacks.
+            if (root / "Side Cams").exists() and (root / "POV Cams").exists():
+                cont = root; root = root.parent
+            else:
+                # Look one level deep in case they picked the parent dir
+                for child in root.iterdir():
+                    if child.is_dir() and (child / "continuous").exists():
+                        root = child; cont = child / "continuous"; break
+                else:
+                    QMessageBox.information(
+                        self, "No session found",
+                        "Couldn't find a 'continuous/' folder under the selected path.\n\n"
+                        "Pick the session root (e.g. 'Brain Battle 2026-04-29 18-30-05/').",
+                    )
+                    return
+
+        # Find videos in known subfolders + load into slots in this order:
+        # Side Cams → slots 0,1 ; POV Cams → slots 2,3
+        loaded_video = False
+        side_dir = cont / "Side Cams"
+        pov_dir  = cont / "POV Cams"
+        muse_dir = cont / "Muse data"
+        side_videos = sorted(side_dir.glob("*.mp4")) if side_dir.exists() else []
+        pov_videos  = sorted(pov_dir.glob("*.mp4")) if pov_dir.exists() else []
+        for i, vp in enumerate(side_videos[:2]):
+            try:
+                self.label_slots[i].load(str(vp), offset_sec=0.0)
+                self.label_sources[i].set_path(str(vp))
+                loaded_video = True
+            except Exception as e:
+                print(f"[session open] side {i} load failed: {e}")
+        for i, vp in enumerate(pov_videos[:2]):
+            slot_idx = 2 + i
+            try:
+                self.label_slots[slot_idx].load(str(vp), offset_sec=0.0)
+                self.label_sources[slot_idx].set_path(str(vp))
+                loaded_video = True
+            except Exception as e:
+                print(f"[session open] pov {i} load failed: {e}")
+
+        # EEG CSVs
+        muse_csvs = sorted(muse_dir.glob("*.csv")) if muse_dir.exists() else []
+        for i, mp in enumerate(muse_csvs[:2]):
+            try:
+                widget = self.eeg_label_1 if i == 0 else self.eeg_label_2
+                self._load_label_eeg_async(str(mp), widget)
+                self.label_sources[4 + i].set_path(str(mp))
+            except Exception as e:
+                print(f"[session open] muse {i} load failed: {e}")
+
+        # Phase markers
+        markers_csv = root / "phase_markers.csv"
+        if markers_csv.exists():
+            self._load_phase_markers_csv(str(markers_csv))
+
+        if loaded_video:
+            self._play_btn_lbl.setEnabled(True)
+
+        # Status feedback
+        n_videos = len(side_videos[:2]) + len(pov_videos[:2])
+        n_muse   = len(muse_csvs[:2])
+        n_marks  = sum(1 for _ in open(markers_csv, encoding="utf-8")) - 1 if markers_csv.exists() else 0
+        QMessageBox.information(
+            self, "Session loaded",
+            f"Loaded {n_videos} video(s), {n_muse} EEG CSV(s), "
+            f"{max(0, n_marks)} phase marker(s) from\n{root.name}",
+        )
 
     def _load_label_eeg_async(self, path: str, widget):
         """Load EEG CSV for label tab — mirrors SyncReviewTab._load_eeg_async."""

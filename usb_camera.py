@@ -182,8 +182,12 @@ class USBCameraThread(QThread):
             self.state_changed.emit(f"error: could not open camera {self._dev.index}")
             return
 
-        # Best-effort resolution / FPS configuration. Some cameras ignore these
-        # and return whatever they feel like; we carry on regardless.
+        # Lock to a uniform requested FPS across all cameras. Cross-camera
+        # FPS mismatch is the dominant source of long-session drift (a
+        # 30.0 fps camera and a 29.97 camera diverge by ~0.6 frames over
+        # 11 minutes). We REQUEST self._want_fps; if the camera honours
+        # something materially different, we log a warning so the operator
+        # knows there's potential for drift in this session.
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self._want_w)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._want_h)
         cap.set(cv2.CAP_PROP_FPS,          self._want_fps)
@@ -191,24 +195,45 @@ class USBCameraThread(QThread):
         actual_w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))  or self._want_w
         actual_h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self._want_h
         actual_fps = cap.get(cv2.CAP_PROP_FPS) or float(self._want_fps)
+        if abs(actual_fps - self._want_fps) > 0.5:
+            print(
+                f"[usb_camera] WARN cam idx={self._dev.index} requested "
+                f"{self._want_fps} fps but reports {actual_fps:.2f} fps — "
+                f"may drift across long sessions vs other cameras."
+            )
 
         self.state_changed.emit("live")
         total_frames = 0
         stats_window: list[float] = []
         last_stats_emit = time.monotonic()
+        # The first frame is the source of truth for VideoWriter dimensions.
+        # cap.get() values can be 0/NaN on macOS AVFoundation before warmup,
+        # which causes VideoWriter to "open" but silently reject frames →
+        # 257-byte MP4 files with header but no data. We capture the first
+        # frame's shape and use that for all writer init from this point on.
+        first_frame_shape: tuple[int, int] | None = None  # (h, w)
 
         try:
             while not self._stop_flag:
-                # Handle recording-start request.
-                if self._rec_req_path is not None and not self._recording:
+                # Handle recording-start request — DEFERRED until we have a
+                # valid first frame, so the writer always gets correct dims.
+                if self._rec_req_path is not None and not self._recording \
+                        and first_frame_shape is not None:
                     path = self._rec_req_path; self._rec_req_path = None
                     path.parent.mkdir(parents=True, exist_ok=True)
+                    fh, fw = first_frame_shape
+                    # Sanity-check FPS: cap.get() returns NaN/0 on some
+                    # backends. Default to 30 when invalid.
+                    safe_fps = float(actual_fps) if actual_fps and actual_fps > 5 else 30.0
+                    if safe_fps > 120: safe_fps = 30.0  # bogus-high reading
                     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                     self._writer = cv2.VideoWriter(
-                        str(path), fourcc, actual_fps, (actual_w, actual_h),
+                        str(path), fourcc, safe_fps, (fw, fh),
                     )
                     if self._writer.isOpened():
                         self._rec_path = path; self._recording = True
+                        self._rec_fps = safe_fps  # for downstream use
+                        self._rec_size = (fw, fh)
                     else:
                         self._writer = None
                         self.state_changed.emit("error: could not open video writer")
@@ -231,6 +256,10 @@ class USBCameraThread(QThread):
                     self.msleep(30)
                     continue
 
+                # Lock in first-frame shape on first successful read.
+                if first_frame_shape is None:
+                    first_frame_shape = (frame.shape[0], frame.shape[1])
+
                 total_frames += 1
                 now = time.monotonic()
                 stats_window.append(now)
@@ -242,9 +271,16 @@ class USBCameraThread(QThread):
 
                 # Write before emitting — prefer to lose a preview frame
                 # over losing a recorded one in the pathological case.
+                # Defensive: ensure frame matches writer dims.
                 if self._recording and self._writer is not None:
                     try:
-                        self._writer.write(frame)
+                        if frame.shape[:2] == first_frame_shape:
+                            self._writer.write(frame)
+                        else:
+                            # Resize on the fly if the camera surprises us
+                            # mid-stream. Rare but possible on hot-plug.
+                            resized = cv2.resize(frame, (first_frame_shape[1], first_frame_shape[0]))
+                            self._writer.write(resized)
                     except Exception:
                         pass
 

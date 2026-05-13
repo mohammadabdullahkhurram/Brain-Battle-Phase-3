@@ -713,8 +713,8 @@ class EEGLiveWidget(QFrame):
         ]
         self._record_proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,   # capture so we can detect errors
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         self._rec_indicator_active = True
 

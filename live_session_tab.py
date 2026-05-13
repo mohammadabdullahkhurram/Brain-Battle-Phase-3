@@ -362,10 +362,39 @@ class LiveSessionTab(QWidget):
         self._close_current_phase_recordings()
         self._controller.stop()
 
-    def _on_session_started(self) -> None: pass
+    def _on_session_started(self) -> None:
+        """Start one continuous recording across all cameras + EEGs.
+        Phases just mark timestamps in phase_markers.csv; recordings
+        themselves don't restart between baseline → rounds → breaks."""
+        if self._layout is None: return
+        self._session_t0 = time.monotonic()  # session-relative time origin
+        # Continuous folder is built by create_session
+        cont_root = self._layout.continuous_dir()
+        # Cameras: one MP4 per slot for the entire session
+        try:
+            self.usb_panel.start_recording(cont_root, "session")
+        except Exception as e:
+            print(f"[session start] camera record error: {e}")
+        # EEGs: one CSV per Muse for the entire session
+        muse_dir = cont_root / "Muse data"
+        muse_dir.mkdir(parents=True, exist_ok=True)
+        self._continuous_eeg_active = False
+
+        def _path_for(widget, idx):
+            dev = getattr(widget, "_connected_device", None)
+            raw = dev["name"] if dev else f"Muse-{idx}"
+            fn = f"session_{_muse_friendly(raw)}.csv"
+            return str(muse_dir / re.sub(r'[<>:"/\\|?*]', '-', fn))
+        if getattr(self.eeg_widget_1, "_connected_device", None):
+            self.eeg_widget_1.start_recording(save_path=_path_for(self.eeg_widget_1, 1))
+            self._continuous_eeg_active = True
+        if getattr(self.eeg_widget_2, "_connected_device", None):
+            self.eeg_widget_2.start_recording(save_path=_path_for(self.eeg_widget_2, 2))
+            self._continuous_eeg_active = True
 
     def _on_phase_changed(self, phase_id, label, duration, round_num) -> None:
-        self._close_current_phase_recordings()
+        """In continuous mode, phase changes just emit a marker — they do
+        NOT start/stop recordings. Cameras + EEG roll the entire session."""
         total_rounds = self._controller.config.num_rounds
         self._dial.set_phase(phase_id, label, round_num, total_rounds)
         self._dial.set_time(duration, duration)
@@ -374,27 +403,52 @@ class LiveSessionTab(QWidget):
         self._phase_pill.setVisible(True)
         self._update_next_label()
 
+        # Append a marker row to phase_markers.csv. The labelling tab will
+        # auto-load this file so the operator sees BASELINE_START, ROUND_1,
+        # BREAK_1, ROUND_2, etc. in the timeline.
+        if self._layout is not None and hasattr(self, "_session_t0"):
+            try:
+                t_session = time.monotonic() - self._session_t0
+                marker_label = f"{label.upper()}_START" if phase_id != "done" else label.upper()
+                self._layout.append_marker(t_session, phase_id, marker_label, round_num)
+            except Exception as e:
+                print(f"[marker] {e}")
+
+        # Maintain a phase-record entry in the manifest for analytics. Note
+        # this is metadata only — folders won't have separate recordings.
         if self._layout is None: return
         phase = Phase(phase_id)
-        if phase not in (Phase.BASELINE, Phase.ROUND): return
-        phase_folder = self._layout.phase_dir(phase, round_num)
-        if phase_folder is None: return
-        self._layout.add_phase(PhaseRecord(
-            phase=phase.value, label=label, round_num=round_num,
-            folder=phase_folder.name, planned_duration=duration,
-            start_unix=time.time(), start_monotonic=time.monotonic(),
-        ))
-        self._active_phase = (phase, round_num)
-        muse_dir = self._layout.muse_dir(phase, round_num)
-        if muse_dir is not None:
-            self._start_eeg_recording(muse_dir, label)
-        self.usb_panel.start_recording(phase_folder, label)
+        if phase in (Phase.BASELINE, Phase.ROUND, Phase.BREAK):
+            self._layout.add_phase(PhaseRecord(
+                phase=phase.value, label=label, round_num=round_num,
+                folder="continuous", planned_duration=duration,
+                start_unix=time.time(), start_monotonic=time.monotonic(),
+            ))
+            # Close the previous phase's record (timestamp end on it).
+            if self._active_phase is not None:
+                prev_phase, prev_round = self._active_phase
+                try: self._layout.close_phase(prev_phase, prev_round)
+                except Exception: pass
+            self._active_phase = (phase, round_num)
 
     def _on_tick(self, remaining, elapsed, total) -> None:
         self._dial.set_time(remaining, total)
 
     def _on_session_finished(self) -> None:
-        self._close_current_phase_recordings()
+        # Write final session_end marker before stopping recordings.
+        if self._layout is not None and hasattr(self, "_session_t0"):
+            try:
+                t_session = time.monotonic() - self._session_t0
+                self._layout.append_marker(t_session, "done", "SESSION_END", 0)
+            except Exception: pass
+        # Close out the last phase entry in the manifest.
+        if self._active_phase is not None and self._layout is not None:
+            phase, round_num = self._active_phase
+            try: self._layout.close_phase(phase, round_num)
+            except Exception: pass
+            self._active_phase = None
+        # Stop the continuous recordings (cameras + EEGs).
+        self._stop_continuous_recordings()
         self._dial.set_phase("done", "COMPLETE", 0, 0)
         self._dial.set_time(0, 1)
         self._phase_pill.setText("SESSION COMPLETE")
@@ -414,34 +468,22 @@ class LiveSessionTab(QWidget):
         self._phase_pill.setVisible(False)
         self._dial.reset()
 
-    def _start_eeg_recording(self, muse_dir, phase_label) -> None:
-        muse_dir.mkdir(parents=True, exist_ok=True)
-        safe_label = phase_label.replace(" ", "_")
-        def _path_for(widget, idx):
-            dev = getattr(widget, "_connected_device", None)
-            raw = dev["name"] if dev else f"Muse-{idx}"
-            fn = f"{safe_label}_{_muse_friendly(raw)}.csv"
-            return str(muse_dir / re.sub(r'[<>:"/\\|?*]', '-', fn))
-        any_started = False
-        if getattr(self.eeg_widget_1, "_connected_device", None):
-            self.eeg_widget_1.start_recording(save_path=_path_for(self.eeg_widget_1, 1)); any_started = True
-        if getattr(self.eeg_widget_2, "_connected_device", None):
-            self.eeg_widget_2.start_recording(save_path=_path_for(self.eeg_widget_2, 2)); any_started = True
-        self._eeg_recording_active = any_started
-
-    def _close_current_phase_recordings(self) -> None:
-        if self._eeg_recording_active:
+    def _stop_continuous_recordings(self) -> None:
+        """Stop the single per-session recordings on cameras + EEGs."""
+        if getattr(self, "_continuous_eeg_active", False):
             try: self.eeg_widget_1.stop_recording()
             except Exception: pass
             try: self.eeg_widget_2.stop_recording()
             except Exception: pass
-            self._eeg_recording_active = False
-        if self.usb_panel.any_live():
-            self.usb_panel.stop_recording()
-        if self._active_phase is not None and self._layout is not None:
-            phase, round_num = self._active_phase
-            self._layout.close_phase(phase, round_num)
-            self._active_phase = None
+            self._continuous_eeg_active = False
+        try:
+            if self.usb_panel.any_live():
+                self.usb_panel.stop_recording()
+        except Exception: pass
+
+    # Legacy name kept so the Stop button click handler still works
+    def _close_current_phase_recordings(self) -> None:
+        self._stop_continuous_recordings()
 
     def shutdown(self) -> None:
         # Stop EEG threads FIRST so their LSL reader threads quit cleanly

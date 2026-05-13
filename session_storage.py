@@ -121,6 +121,34 @@ class SessionLayout:
     def manifest_path(self) -> Path:
         return self.root / "session_manifest.json"
 
+    def markers_path(self) -> Path:
+        """CSV of phase transition markers for the continuous recording.
+        Columns: t_session_seconds, phase_id, label, round_num, unix_time."""
+        return self.root / "phase_markers.csv"
+
+    def continuous_dir(self) -> Path:
+        """Folder where the single continuous recording per camera lives."""
+        return self.root / "continuous"
+
+    # ---- continuous-recording helpers ---------------------------------------
+
+    def append_marker(self, t_session_sec: float, phase_id: str,
+                      label: str, round_num: int) -> None:
+        """Append a phase-marker row to phase_markers.csv. Creates the
+        file with a header on first call. Used by the continuous-recording
+        pipeline to mark where in the single session video each phase
+        starts/ends."""
+        import csv as _csv
+        path = self.markers_path()
+        new_file = not path.exists()
+        with path.open("a", newline="", encoding="utf-8") as f:
+            w = _csv.writer(f)
+            if new_file:
+                w.writerow(["t_session_seconds", "phase_id", "label",
+                           "round_num", "unix_time"])
+            w.writerow([f"{t_session_sec:.3f}", phase_id, label,
+                       round_num, f"{time.time():.3f}"])
+
     # ---- manifest bookkeeping -----------------------------------------------
 
     def add_phase(self, rec: PhaseRecord) -> None:
@@ -168,12 +196,19 @@ def create_session(base_dir: str | os.PathLike,
 
     layout = SessionLayout(root=root, started_at=started_at, config=config)
 
-    # Baseline folder (if configured).
+    # Continuous recording folder — one MP4 per camera + one CSV per Muse-S
+    # for the entire session, from baseline through final round end.
+    for sub in ("Side Cams", "POV Cams", "Muse data"):
+        (root / "continuous" / sub).mkdir(parents=True, exist_ok=True)
+
+    # Legacy phase folders kept for backwards compat with downstream tools
+    # that walk per-phase directories. These will be empty when continuous
+    # mode is the recording path; they exist so the manifest schema doesn't
+    # break consumers.
     if config.baseline_sec > 0:
         for sub in ("Side Cams", "POV Cams", "Muse data"):
             (root / "baseline" / sub).mkdir(parents=True, exist_ok=True)
 
-    # Round folders.
     for n in range(1, config.num_rounds + 1):
         for sub in ("Side Cams", "POV Cams", "Muse data"):
             (root / f"Round {n}" / sub).mkdir(parents=True, exist_ok=True)
