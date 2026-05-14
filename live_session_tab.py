@@ -123,7 +123,20 @@ class LiveSessionTab(QWidget):
     # -- toolbar --------------------------------------------------------------
 
     def _build_toolbar(self) -> QWidget:
-        bar = QWidget(); bar.setFixedHeight(64)
+        # QFrame (not bare QWidget) so the palette-driven background
+        # actually fills. WA_StyledBackground + autoFillBackground +
+        # explicit palette make the toolbar opaque even when sibling
+        # widgets use native surfaces (QVideoWidget on macOS, USB
+        # camera GraphicsLayoutWidgets, etc) that would otherwise
+        # paint over the toolbar text.
+        from PyQt6.QtGui import QPalette, QColor
+        bar = QFrame(); bar.setFixedHeight(64)
+        bar.setObjectName("liveToolbar")
+        bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        bar.setAutoFillBackground(True)
+        pal = bar.palette()
+        pal.setColor(QPalette.ColorRole.Window, QColor(dt.canvas_bg()))
+        bar.setPalette(pal)
         self._toolbar_bar = bar
 
         h = QHBoxLayout(bar); h.setContentsMargins(28, 0, 28, 0); h.setSpacing(dt.SPACE_3)
@@ -151,12 +164,27 @@ class LiveSessionTab(QWidget):
         h.addWidget(self._btn_stop)
 
         self._restyle_toolbar()
+        # Defer the raise until the parent layout commits so the toolbar
+        # ends up above any native-surface siblings added afterward.
+        QTimer.singleShot(0, bar.raise_)
         return bar
 
     def _restyle_toolbar(self) -> None:
+        from PyQt6.QtGui import QPalette, QColor
+        # Update both the QSS (for the border-bottom rule) and the
+        # palette (which is what guarantees opaque painting). The
+        # QSS-only background can fail to fill on the first paint
+        # if the stylesheet engine hasn't polished yet, which is the
+        # cause of the "ghosted header" bug on macOS.
         self._toolbar_bar.setStyleSheet(
-            f"background: {dt.canvas_bg()}; border-bottom: 1px solid {dt.border()};"
+            "QFrame#liveToolbar { "
+            f"background: {dt.canvas_bg()}; "
+            f"border-bottom: 1px solid {dt.border()}; "
+            "}"
         )
+        pal = self._toolbar_bar.palette()
+        pal.setColor(QPalette.ColorRole.Window, QColor(dt.canvas_bg()))
+        self._toolbar_bar.setPalette(pal)
         self._title.setStyleSheet(
             f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
             f"font-size: {dt.SIZE_LG}px; font-weight: 700; letter-spacing: {dt.LS_TIGHT};"
@@ -317,15 +345,38 @@ class LiveSessionTab(QWidget):
 
     def _on_start_clicked(self) -> None:
         if self._controller.is_running: return
-        connected = sum(1 for w in (self.eeg_widget_1, self.eeg_widget_2)
+        # Pre-flight EEG check.
+        eeg_connected = sum(1 for w in (self.eeg_widget_1, self.eeg_widget_2)
                         if getattr(w, "_connected_device", None))
-        if connected == 0:
+        if eeg_connected == 0:
             reply = QMessageBox.question(
                 self, "No EEG connected",
                 "No Muse-S headbands are connected. Start the session anyway?\n\n"
                 "Cameras will still record, but no EEG data will be captured.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes: return
+
+        # Pre-flight camera check. The user has often been surprised in
+        # testing when only one slot was wired up — the session "looks
+        # broken" because three of four folders end up empty.
+        cam_connected = sum(1 for s in self.usb_panel.get_slots() if s.is_live)
+        cam_total = len(self.usb_panel.get_slots())
+        if cam_connected == 0:
+            QMessageBox.warning(
+                self, "No cameras connected",
+                "No cameras are live. Connect at least one camera before starting.",
+            )
+            return
+        if cam_connected < cam_total:
+            reply = QMessageBox.question(
+                self, "Some cameras not connected",
+                f"Only {cam_connected} of {cam_total} camera slots are live.\n\n"
+                f"Recordings will only be saved for the connected camera(s). "
+                f"Empty slots produce no output. Start anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
             )
             if reply != QMessageBox.StandardButton.Yes: return
 
@@ -339,6 +390,7 @@ class LiveSessionTab(QWidget):
             base_dir = _default_capture_root()
             os.makedirs(base_dir, exist_ok=True)
             self._layout = create_session(base_dir, cfg)
+            print(f"[session] created at {self._layout.root}")
         except Exception as e:
             QMessageBox.critical(self, "Cannot create session folder", f"{e}"); return
 

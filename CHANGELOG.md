@@ -1,5 +1,344 @@
 # Brain Battle — Changelog
 
+## Phase 2.11 · Fix marker-remove not clearing timeline tick
+
+User reported that clicking the × on a label in PLACED LABELS removed
+the row but its tick stayed on the timeline strip.
+
+Root cause: `LabelMarker._remove()` called `removed.emit()` then
+`deleteLater()`. The `_rebuild_timeline_markers` handler connected
+to that signal ran synchronously, walking `placed_layout` to
+re-derive the ticks — but at that exact moment the just-removed
+marker was still parented to the layout because `deleteLater()` is
+async (it schedules destruction for the next event-loop tick). So
+the walker re-found the marker and re-added its tick.
+
+My first attempt at fixing it (defer the rebuild via
+`QTimer.singleShot(0)`) didn't work either: the deleteLater and the
+singleShot both queue onto the same event loop, and singleShot(0)
+ran first, so the walker still saw the un-deleted marker. The PLACED
+counter had the same bug.
+
+### ✦ The actual fix
+
+Make `LabelMarker._remove()` synchronously detach from the parent
+layout BEFORE emitting `removed`:
+
+```python
+def _remove(self):
+    parent = self.parentWidget()
+    if parent and parent.layout():
+        parent.layout().removeWidget(self)
+    self.setParent(None)
+    self.removed.emit()
+    self.deleteLater()
+```
+
+`removeWidget` + `setParent(None)` unparent the marker
+synchronously. By the time `removed` fires, any handler that walks
+the layout sees the post-removal state. `deleteLater` still runs to
+free the C++ object on the next event-loop tick.
+
+Result: PLACED count and timeline ticks both update on the same
+frame the × button is clicked. Verified with a smoke test that
+places 3 markers, removes 1, then removes all — counts agree at
+every step.
+
+---
+
+## Phase 2.10 · Toolbar opaque-paint fix
+
+User reported that after uploading a video to the Labelling tab, the
+top toolbar text appeared "ghosted" or doubled — title text smearing
+against the underlying canvas.
+
+Root cause: each tab's toolbar was a bare `QWidget` with a
+background-color set via stylesheet only. Qt's stylesheet engine
+draws `QWidget` backgrounds only when `WA_StyledBackground` is
+explicitly enabled. Without it, the toolbar's background can fail
+to fill on the first paint after a sibling native-surface widget
+(notably `QVideoWidget` on macOS, which bypasses Qt's compositor)
+finishes loading. The result: text from the toolbar layered against
+the unfilled toolbar background, against whatever the video widget
+is painting underneath.
+
+### ✦ `make_opaque_toolbar()` helper
+
+New utility in `brain_battle_main.py` that builds a `QFrame`
+(not bare `QWidget`) with three layered guarantees:
+
+1. `WA_StyledBackground=True` so the QSS selector paints
+2. `autoFillBackground=True` + an explicit `QPalette` window color
+   so even if the QSS misses on first paint, the palette fills
+3. An `objectName` so the QSS selector is reliable across theme
+   switches (the bare `QWidget` selector was getting overridden
+   by descendant style rules)
+
+Used by SyncReviewTab + LabellingTab toolbars.
+
+### ✦ Same treatment for LiveSessionTab toolbar
+
+`live_session_tab._build_toolbar()` switched from `QWidget` to
+`QFrame` with the same opaque-paint attributes. The toolbar now
+also sets its palette window color directly from `dt.canvas_bg()`
+on every restyle, so theme switching can't leave it transparent
+between QSS reapply and the next paint cycle.
+
+### ✦ `raise_()` after layout commits
+
+All three toolbars defer a `.raise_()` via `QTimer.singleShot(0, …)`
+so they end up on top of the widget z-stack after the parent layout
+finishes adding sibling widgets. This is belt-and-braces against
+native video surfaces that ignore Qt's normal stacking — even if
+they paint over their bounding rect, they paint below the toolbar.
+
+This is the fix for: toolbar text doubling/smearing after video
+upload; toolbar appearing transparent on first Labelling-tab visit;
+intermittent ghost text on tab switch.
+
+---
+
+## Phase 2.9 · Professional timeline marker design
+
+The previous strip showed colored chips but they were small (6 px),
+the colors weren't deliberately chosen (gray for session-end, app
+indigo for rounds), and there was no way to know what each chip
+represented without hovering. After user feedback, redesigned the
+strip to read like a proper video-editor timeline.
+
+### ✦ Deliberate 4-color phase palette
+
+Each phase category gets a distinct semantic color. No gray. No
+duplicates between categories (rounds all share their color
+intentionally — they are the same kind of event).
+
+- **`#10b981` emerald** for `BASELINE_START` — "calm, before the
+  work begins"
+- **`#3b82f6` electric blue** for `ROUND_N_START` — "active phase"
+- **`#f59e0b` amber** for `BREAK_N_START` — "rest / pause"
+- **`#dc2626` crimson** for `SESSION_END` — "terminal, stop"
+
+User manual labels stay on their separate auto-assigned palette
+(purple / cyan / green / etc., colors that never overlap with the
+phase 4). When you see emerald on the timeline, it's always baseline.
+When you see crimson, it's always session end. The palette is
+mnemonic.
+
+### ✦ Label badges above every chip
+
+Each chip now has a small colored badge above it showing an
+abbreviated identifier:
+
+- `BL` — BASELINE_START
+- `R1`, `R2`, … — ROUND_N_START
+- `B1`, `B2`, … — BREAK_N_START
+- `END` — SESSION_END
+- Custom labels: first letter of each underscore-separated word
+  (`PUNCH_LEFT` → `PL`, `BLOCK` → `BL`)
+
+You can scan the entire timeline and identify every event without
+hovering. A 5-round session looks like:
+
+`BL    R1    B1    R2    B2    R3    B3    R4    B4    R5    END`
+
+with R chips electric-blue, B chips amber, BL emerald, END crimson.
+
+### ✦ Bigger chips, taller strip, more contrast
+
+- Strip height up from 22 → 32 px to fit the badges
+- Chip width up from 6 → 10 px so they're easy to hit
+- Strip background `#0A0A0E` (was `#15151A`) — higher contrast against
+  canvas so the strip reads as a discrete clickable lane
+- Chips have a soft colored halo + solid body + lighter top accent
+  for 3-D effect instead of flat rectangles
+- Thin connector line between each badge and its chip
+
+### ✦ Same interactions, more discoverable
+
+Click chip → seek there. Hover → tooltip with full label + timestamp.
+Click empty space → scrub proportionally. Same hit tolerance (10 px)
+so the chips are forgiving even on dense long-session timelines.
+
+---
+
+## Phase 2.8 · Black-video bug fix + interactive timeline markers
+
+### ✦ Video now renders on upload (was: black after load)
+
+`VLCVideoSlot.load()` was calling `QMediaPlayer.setSource()` but never
+following with `.play()` or `.pause()`. The media was successfully
+loaded but the video sink stayed unrendered until something else
+triggered playback. In the Labelling tab nothing calls `play()`
+automatically, so the slot showed a black canvas with the right
+filename in the header.
+
+Fix: call `.pause()` immediately after `setSource()`. QMediaPlayer
+then decodes and displays the first frame, which acts as a
+freeze-frame preview until the user hits PLAY. Same behaviour as
+every other modern video editor.
+
+This was the cause of the "uploaded file but video doesn't show"
+report from hardware testing.
+
+### ✦ Interactive timeline marker strip
+
+The `_MarkerStrip` rewrite gives the Labelling tab a proper video-
+editor-style timeline below the scrub slider. Improvements:
+
+- **Taller and more visible** (22 px, was 14 px). Background tint
+  distinct from canvas so the strip is discoverable even with no
+  markers placed.
+- **Time-tick scale** — every 30 seconds (or every 10% of duration
+  if shorter), a faint gray tick along the baseline so you can
+  read positions at a glance.
+- **Chip glow** — each marker is rendered with a faint colored halo
+  + solid chip + lighter top cap. Phase markers and user labels
+  share the rendering but are coloured per their type (green for
+  baseline, indigo for rounds, amber for breaks, gray for
+  session end, user-label colors for manual entries).
+- **Click to seek** — clicking within 8 px of a marker chip emits a
+  `markerSeek(t_sec)` signal which scrubs the playhead, all video
+  slots, and both EEG widgets to that exact timestamp. Clicking
+  empty space scrubs proportionally (works like a second mini
+  slider).
+- **Hover tooltips** — hovering a chip after a short delay shows a
+  bubble with the label name + timestamp.
+
+Implementation note: hit testing uses pixel distance so it's
+forgiving on dense timelines (multiple markers within a few seconds
+on a 10-minute session would otherwise be unclickable at typical
+window sizes).
+
+### ✦ Marker labels travel with the ticks
+
+`TimelineWithMarkers.add_marker(t_sec, color, label)` now accepts a
+label string in addition to color. The label appears in the hover
+tooltip. Existing call sites updated to pass the label name.
+
+---
+
+## Phase 2.8 · Timeline markers + fix labelling tab video playback
+
+Two follow-ups from the Walksnail hardware test pass.
+
+### ✦ Fix: uploaded videos in Labelling tab stayed black
+
+Root cause: when I split the labelling tab off from the sync tab,
+I removed the `SyncPlaybackController.attach()` call because I
+mistakenly thought VLCVideoSlot didn't expose a player handle. It
+does — slots have `play()`, `pause()`, `seek()` methods that the
+controller drives directly. Without the attach, clicking PLAY had no
+players to control and the video stayed paused on its first black
+frame even after loading.
+
+Fix: every video upload now re-runs `_label_sync_ctrl.attach()` with
+the full slot list. Same fix applied to the OPEN SESSION FOLDER path.
+
+### ✦ Timeline marker strip
+
+The labelling tab's timeline used to be a bare slider with no
+indication of where labels lived. Now a `TimelineWithMarkers` widget
+replaces it: same slider on top, plus a thin 14px tick strip below
+that paints a coloured vertical bar at every placed label's
+timestamp position.
+
+Markers register automatically:
+- Phase markers (BASELINE_START, ROUND_1_START, …) get their phase
+  colour (green for baseline, indigo for rounds, amber for breaks,
+  gray for session end) and appear at the right position the moment
+  the markers CSV loads.
+- Manual labels you place with PLACE LABEL AT PLAYHEAD or the 1–9
+  shortcut keys get their chip's colour and appear at the playhead's
+  current position.
+- Deleting a marker from the PLACED LABELS list also removes its
+  timeline tick — handled by `_rebuild_timeline_markers` re-syncing
+  the strip from the live list whenever a marker emits its `removed`
+  signal.
+
+Visually it looks like the chapter strip in a video editor —
+scattered coloured bars under the scrubber that let you eyeball where
+in the recording each event sits.
+
+The strip needs to know the video duration to compute tick positions.
+Since VLC reports duration as 0 immediately after `setSource()`
+(metadata hasn't been parsed yet), the tab queries the duration once
+on load and re-queries 600ms later via `QTimer.singleShot` if the
+first query was 0. That avoids markers all collapsing to the left
+edge on the first frame.
+
+---
+
+## Phase 2.7 · Cleanup empty folders + connect-state UX
+
+After hardware testing with a Walksnail Avatar Mini, two confusions
+surfaced. (1) The session folder was creating empty per-round
+directories (`baseline/`, `Round 1/`, …) as carryover from the v1.x
+per-phase recording model. They were never written to in v2.x because
+recording is continuous — but they made it look like "Round 1 didn't
+record." (2) When only one camera slot was wired up, the other three
+empty slots silently produced nothing and there was no UI indication
+that this was intentional.
+
+### ✦ Stop creating phantom per-round folders
+
+`session_storage.create_session()` no longer makes empty
+`baseline/`, `Round 1/`, `Round 2/`, … directories. The session root
+now contains:
+
+```
+Brain Battle 2026-05-14 18-30-05/
+├── continuous/
+│   ├── Muse data/
+│   ├── Side Cams/         ← only if a side camera recorded
+│   └── POV Cams/          ← only if a POV camera recorded
+├── phase_markers.csv
+└── session_manifest.json
+```
+
+If only one camera kind is connected, only that subfolder exists.
+Absent subfolder = "no camera of that kind connected", unambiguously.
+Downstream tools should read `phase_markers.csv` + the manifest to
+find where each phase starts in the continuous recording, not look
+for separate round folders.
+
+### ✦ Lazy subfolder creation in the camera panel
+
+`usb_camera_panel.start_recording()` now creates `Side Cams/` or
+`POV Cams/` only when a slot of that kind actually starts recording.
+Empty slot kinds produce zero filesystem artifacts.
+
+### ✦ Verbose recording-state logging
+
+The same method now prints to console at session start:
+
+```
+[session start] 1 of 4 camera slots live
+[session start]   skip slot 1 (SIDE 01) — not connected
+[session start]   skip slot 2 (SIDE 02) — not connected
+[session start]   recording slot 3 (POV 01) → .../continuous/POV Cams/session_POV_01.mp4
+[session start]   skip slot 4 (POV 02) — not connected
+```
+
+So you can confirm what's recording without inspecting the filesystem
+afterward.
+
+### ✦ Pre-flight camera check
+
+Pressing Start Session now does the same connection check the EEG
+path does. If 0 cameras are live, the dialog blocks the session. If
+some-but-not-all are live, a confirm dialog warns:
+
+> Only 1 of 4 camera slots are live.
+>
+> Recordings will only be saved for the connected camera(s). Empty
+> slots produce no output. Start anyway?
+
+The user can proceed (default yes) or fix wiring first. Combined with
+the verbose logging, accidental "ran a session with the wrong slot
+plugged in" should be much harder to do silently.
+
+---
+
 ## Phase 2.6 · Session bundle workflow
 
 The continuous-recording change in 2.5 wrote `phase_markers.csv` but

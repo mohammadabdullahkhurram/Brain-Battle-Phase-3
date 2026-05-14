@@ -172,6 +172,14 @@ class VLCVideoSlot(QFrame):
 
         self._placeholder.hide()
         self._player.setSource(QUrl.fromLocalFile(path))
+        # Call pause() immediately after setSource() so QMediaPlayer
+        # decodes and displays the first frame instead of showing black
+        # until the user hits PLAY. Without this the video widget stays
+        # blank even though the media is loaded — confused users into
+        # thinking the upload didn't work. This is a known Qt6
+        # QMediaPlayer quirk: the video sink doesn't render until the
+        # player enters a playing or paused state at least once.
+        self._player.pause()
 
         name = path.replace("\\", "/").split("/")[-1][:32]
         self._file_lbl.setText(name)

@@ -146,6 +146,36 @@ def make_source_label(text):
     return lbl
 
 
+def make_opaque_toolbar(height: int = 44) -> QFrame:
+    """
+    Build a toolbar widget guaranteed to render opaquely above its
+    siblings. The default QWidget with just a stylesheet background
+    can be painted-over by sibling widgets that use native surfaces
+    (notably QVideoWidget on macOS, which bypasses Qt's compositor).
+    The combination of WA_StyledBackground + a QPalette fill + a
+    QFrame subclass (which respects palette-driven backgrounds) makes
+    the toolbar opaque, and the caller is expected to `.raise_()` it
+    after the parent layout is assembled.
+    """
+    tb = QFrame()
+    tb.setObjectName("tabToolbar")
+    tb.setFixedHeight(height)
+    tb.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    tb.setAutoFillBackground(True)
+    # Set a QPalette fill so even when the stylesheet selector misses
+    # (which can happen on first paint after a video widget warms up)
+    # the toolbar still draws over whatever's underneath.
+    from PyQt6.QtGui import QPalette, QColor
+    pal = tb.palette()
+    pal.setColor(QPalette.ColorRole.Window, QColor("#0E0E12"))
+    tb.setPalette(pal)
+    tb.setStyleSheet(
+        "QFrame#tabToolbar { background-color: #0E0E12; "
+        "border-bottom: 1px solid #2A2A30; }"
+    )
+    return tb
+
+
 class VideoSlot(QFrame):
     upload_requested = pyqtSignal(int)
     def __init__(self, slot_index, label="CAM", parent=None):
@@ -370,8 +400,7 @@ class SyncReviewTab(QWidget):
 
     def _build(self):
         root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
-        toolbar = QWidget(); toolbar.setFixedHeight(44)
-        toolbar.setStyleSheet("background-color: #0E0E12; border-bottom: 1px solid #2A2A30;")
+        toolbar = make_opaque_toolbar(44)
         tb = QHBoxLayout(toolbar); tb.setContentsMargins(16,0,16,0); tb.setSpacing(8)
         tb.addWidget(make_panel_title("SYNC + REVIEW")); tb.addStretch()
         self.sync_btn = QPushButton("AUTO-SYNC"); self.sync_btn.setFixedHeight(28)
@@ -380,6 +409,10 @@ class SyncReviewTab(QWidget):
         self.export_btn.setStyleSheet("background-color: transparent; border: 1px solid #4a9eff; color: #4a9eff; font-family: 'Inter'; font-size: 10px; letter-spacing: 1px; padding: 0 14px;")
         self.export_btn.clicked.connect(self._export_synced_data)
         tb.addWidget(self.sync_btn); tb.addWidget(self.export_btn); root.addWidget(toolbar)
+        # Defer until the layout commits so the toolbar ends up above
+        # native QVideoWidget surfaces that would otherwise paint over it.
+        QTimer.singleShot(0, toolbar.raise_)
+        self._toolbar = toolbar
 
         splitter = QSplitter(Qt.Orientation.Horizontal); splitter.setHandleWidth(1)
         upload_widget = QWidget(); upload_widget.setFixedWidth(400)
@@ -1070,7 +1103,251 @@ class LabelMarker(QWidget):
         remove.setStyleSheet("background: transparent; border: none; color: #A1A1AA; font-size: 14px; padding: 0;")
         remove.clicked.connect(self._remove)
         layout.addWidget(dot); layout.addWidget(ts); layout.addWidget(name); layout.addWidget(remove)
-    def _remove(self): self.removed.emit(); self.deleteLater()
+    def _remove(self):
+        """Properly detach from the parent layout BEFORE notifying listeners,
+        so any handler that walks the layout sees the post-removal state
+        immediately. deleteLater alone is async — it leaves the widget
+        parented until Qt's event loop processes it, which means listeners
+        like _rebuild_timeline_markers would see this widget still in the
+        layout and re-add its tick. Explicit removeWidget + setParent(None)
+        unparents synchronously."""
+        parent = self.parentWidget()
+        if parent is not None:
+            layout = parent.layout()
+            if layout is not None:
+                layout.removeWidget(self)
+        self.setParent(None)
+        self.removed.emit()
+        self.deleteLater()
+
+
+class TimelineWithMarkers(QWidget):
+    """Composite widget: a horizontal QSlider stacked above a thin marker
+    strip that paints colored ticks at each label's timestamp position.
+
+    Public surface mirrors QSlider so the LabellingTab can drive it the
+    same way it drove the bare slider: setValue, valueChanged signal,
+    setRange. Add/remove markers via add_marker(t_sec, color, label) and
+    clear_markers(). Clicking a tick seeks to that timestamp.
+
+    Why a custom widget rather than custom-painting on the slider itself:
+    painting on QSlider via stylesheet doesn't allow point-positioned
+    marks, and overriding paintEvent on a QSlider subclass interferes
+    with the handle/groove rendering on macOS. A separate strip below
+    is cleaner and looks more like a real video editor timeline.
+    """
+    valueChanged = pyqtSignal(int)
+    markerSeek = pyqtSignal(float)  # fires when user clicks a marker; arg = t_sec
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._duration_sec = 0.0
+        self._markers: list[tuple[float, str, str]] = []   # (t_sec, color, label)
+        v = QVBoxLayout(self); v.setContentsMargins(0,0,0,0); v.setSpacing(3)
+        self._slider = QSlider(Qt.Orientation.Horizontal)
+        self._slider.setRange(0, 10000); self._slider.setValue(0)
+        self._slider.valueChanged.connect(self.valueChanged.emit)
+        v.addWidget(self._slider)
+        self._strip = _MarkerStrip(self)
+        v.addWidget(self._strip)
+
+    # ── QSlider-compatible API ───────────────────────────────────────────────
+    def setValue(self, v: int): self._slider.setValue(v)
+    def value(self) -> int: return self._slider.value()
+    def setRange(self, lo: int, hi: int): self._slider.setRange(lo, hi)
+    def blockSignals(self, b: bool):
+        super().blockSignals(b); return self._slider.blockSignals(b)
+
+    # ── Marker management ────────────────────────────────────────────────────
+    def set_duration_sec(self, dur: float):
+        """Set the duration the slider/markers map to. Required for
+        marker positions to render correctly — the strip needs to know
+        how many seconds the slider width represents."""
+        self._duration_sec = max(0.0, float(dur))
+        self._strip.update()
+
+    def add_marker(self, t_sec: float, color: str, label: str = ""):
+        """Add a vertical tick at the given timestamp."""
+        self._markers.append((float(t_sec), str(color), str(label)))
+        self._strip.update()
+
+    def clear_markers(self):
+        self._markers.clear(); self._strip.update()
+
+    def markers(self) -> list[tuple[float, str, str]]:
+        return list(self._markers)
+
+    def remove_marker_near(self, t_sec: float, tol_sec: float = 0.05):
+        """Remove the marker closest to t_sec within tolerance, if any."""
+        if not self._markers: return
+        idx = min(range(len(self._markers)),
+                  key=lambda i: abs(self._markers[i][0] - t_sec))
+        if abs(self._markers[idx][0] - t_sec) <= tol_sec:
+            self._markers.pop(idx); self._strip.update()
+
+
+class _MarkerStrip(QWidget):
+    """The marker strip below the slider. Paints chunky colored chips at
+    each label's proportional position, with a tiny label badge above
+    each one showing an abbreviated identifier (e.g. "BL", "R1", "B2",
+    "END"). Click a chip to seek; hover for a full tooltip with the
+    label text and timestamp.
+
+    Strip layout (top → bottom):
+       6 px  label badge band
+       4 px  spacer
+      16 px  chip band (colored vertical chips)
+       4 px  spacer
+       2 px  baseline rule + time tick scale
+    Total height: 32 px.
+    """
+
+    HEIGHT       = 32
+    LABEL_BAND   = 9    # height of the abbreviation badge band
+    CHIP_TOP     = 13   # y where colored chips start
+    CHIP_BOT     = 28   # y where colored chips end
+    BASELINE_Y   = 30   # the thin horizontal rule
+    PAD          = 7    # mirror QSlider handle padding so ticks align
+    CHIP_HALF_W  = 5    # half-width of a chip (10 px wide total)
+    HIT_TOL_PX   = 10   # click within this many px to count as a hit
+
+    def __init__(self, parent: "TimelineWithMarkers"):
+        super().__init__(parent)
+        self._tl = parent
+        self.setFixedHeight(self.HEIGHT)
+        self.setMinimumWidth(100)
+        self.setMouseTracking(True)
+        self._hover_idx: int | None = None
+
+    @staticmethod
+    def _abbrev(label: str) -> str:
+        """Return a 1-3 character abbreviation for the badge above a chip.
+        Patterns recognised:
+          BASELINE_START   → BL
+          ROUND_1_START    → R1
+          BREAK_2_START    → B2
+          SESSION_END      → END
+          custom labels    → first 2 letters uppercase (e.g. PUNCH_LEFT → PL)
+        """
+        s = label.upper().replace(" ", "_")
+        if s.startswith("BASELINE"): return "BL"
+        if s.startswith("SESSION_END") or s == "END": return "END"
+        if s.startswith("ROUND_"):
+            n = s.split("_")[1]
+            return f"R{n}" if n.isdigit() else "R"
+        if s.startswith("BREAK_"):
+            n = s.split("_")[1]
+            return f"B{n}" if n.isdigit() else "B"
+        # User custom label — try to grab capital letters in order, fall
+        # back to first two non-underscore chars.
+        caps = [c for c in s if c.isalpha()][:3]
+        if "_" in s:
+            parts = [p for p in s.split("_") if p]
+            return "".join(p[0] for p in parts[:3]) if parts else (s[:2] or "?")
+        return "".join(caps[:2]) if caps else "?"
+
+    def _marker_x(self, t_sec: float) -> int:
+        dur = self._tl._duration_sec
+        if dur <= 0: return -100
+        usable_w = max(1, self.width() - 2 * self.PAD)
+        return self.PAD + int((t_sec / dur) * usable_w)
+
+    def _hit_test(self, x: int) -> int | None:
+        """Return the index of the marker closest to x within HIT_TOL_PX,
+        or None if no marker is close enough."""
+        if not self._tl._markers: return None
+        best_i, best_d = None, self.HIT_TOL_PX + 1
+        for i, (t, _c, _l) in enumerate(self._tl._markers):
+            d = abs(self._marker_x(t) - x)
+            if d < best_d:
+                best_d, best_i = d, i
+        return best_i
+
+    def mouseMoveEvent(self, event):
+        idx = self._hit_test(int(event.position().x()))
+        if idx != self._hover_idx:
+            self._hover_idx = idx
+            self.update()
+            if idx is not None:
+                t, _c, label = self._tl._markers[idx]
+                h = int(t//3600); m = int((t%3600)//60); s = t%60
+                ts = f"{h:02d}:{m:02d}:{s:06.3f}"
+                self.setToolTip(f"{label}\n{ts}")
+            else:
+                self.setToolTip("")
+        super().mouseMoveEvent(event)
+
+    def mousePressEvent(self, event):
+        x = int(event.position().x())
+        idx = self._hit_test(x)
+        if idx is not None:
+            t_sec, _c, _l = self._tl._markers[idx]
+            self._tl.markerSeek.emit(t_sec)
+        else:
+            dur = self._tl._duration_sec
+            if dur > 0:
+                usable_w = max(1, self.width() - 2 * self.PAD)
+                frac = max(0.0, min(1.0, (x - self.PAD) / usable_w))
+                self._tl.markerSeek.emit(frac * dur)
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        from PyQt6.QtGui import QPainter, QPen, QColor, QFont
+        p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        # Strip background — clearly distinct from the canvas so the
+        # strip reads as a discrete "lane" you can click into.
+        p.fillRect(self.rect(), QColor("#0A0A0E"))
+        # Subtle frame top + bottom so the strip is bounded visually
+        p.setPen(QPen(QColor("#2A2A30"), 1))
+        p.drawLine(0, 0, w, 0); p.drawLine(0, h-1, w, h-1)
+        # Baseline rule for time ticks
+        p.drawLine(self.PAD, self.BASELINE_Y, w - self.PAD, self.BASELINE_Y)
+        dur = self._tl._duration_sec
+        if dur <= 0: p.end(); return
+        # Time-tick scale every 30s on long sessions, every 10% on short
+        tick_interval = 30.0 if dur >= 60 else max(5.0, dur / 10)
+        t = 0.0
+        p.setPen(QPen(QColor("#3A3A42"), 1))
+        while t <= dur:
+            x = self._marker_x(t)
+            p.drawLine(x, self.BASELINE_Y - 2, x, self.BASELINE_Y + 1)
+            t += tick_interval
+        # Label-badge font
+        badge_font = QFont("Inter", 7); badge_font.setWeight(QFont.Weight.Bold)
+        p.setFont(badge_font)
+        # Markers
+        for i, (t_sec, color, label) in enumerate(self._tl._markers):
+            x = self._marker_x(t_sec)
+            c = QColor(color)
+            is_hover = (i == self._hover_idx)
+            # Soft halo glow around the chip
+            halo = QColor(c); halo.setAlpha(120 if is_hover else 70)
+            p.fillRect(x - self.CHIP_HALF_W - 2, self.CHIP_TOP - 1,
+                       2 * self.CHIP_HALF_W + 4, (self.CHIP_BOT - self.CHIP_TOP) + 2, halo)
+            # Solid chip body
+            p.fillRect(x - self.CHIP_HALF_W, self.CHIP_TOP,
+                       2 * self.CHIP_HALF_W, self.CHIP_BOT - self.CHIP_TOP, c)
+            # Top accent — lighter line so chips read as 3-D and aren't flat
+            cap = QColor(c).lighter(150)
+            p.fillRect(x - self.CHIP_HALF_W, self.CHIP_TOP,
+                       2 * self.CHIP_HALF_W, 2, cap)
+            # Label badge above the chip
+            abbrev = self._abbrev(label)
+            badge_w = max(18, len(abbrev) * 7 + 4)
+            badge_x = x - badge_w // 2
+            badge_y = 1
+            # Badge background — same color but desaturated/lighter
+            badge_bg = QColor(c).lighter(110); badge_bg.setAlpha(220)
+            p.fillRect(badge_x, badge_y, badge_w, self.LABEL_BAND, badge_bg)
+            # Badge text — high-contrast (white on saturated colors)
+            p.setPen(QPen(QColor("#FFFFFF")))
+            p.drawText(badge_x, badge_y, badge_w, self.LABEL_BAND,
+                       Qt.AlignmentFlag.AlignCenter, abbrev)
+            # Thin connector line from badge down to chip top
+            p.setPen(QPen(c, 1))
+            p.drawLine(x, self.LABEL_BAND, x, self.CHIP_TOP)
+        p.end()
 
 
 class LabellingTab(QWidget):
@@ -1121,8 +1398,7 @@ class LabellingTab(QWidget):
 
     def _build(self):
         root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
-        toolbar = QWidget(); toolbar.setFixedHeight(44)
-        toolbar.setStyleSheet("background-color: #0E0E12; border-bottom: 1px solid #2A2A30;")
+        toolbar = make_opaque_toolbar(44)
         tb = QHBoxLayout(toolbar); tb.setContentsMargins(16,0,16,0); tb.setSpacing(8)
         tb.addWidget(make_panel_title("EVENT LABELLING")); tb.addStretch()
         self.open_session_btn = QPushButton("OPEN SESSION FOLDER"); self.open_session_btn.setFixedHeight(28)
@@ -1132,6 +1408,8 @@ class LabellingTab(QWidget):
         self.export_csv_btn = QPushButton("EXPORT LABELS CSV"); self.export_csv_btn.setFixedHeight(28)
         self.export_csv_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
         tb.addWidget(self.export_csv_btn); root.addWidget(toolbar)
+        QTimer.singleShot(0, toolbar.raise_)
+        self._toolbar = toolbar
         body = QHBoxLayout(); body.setContentsMargins(0,0,0,0); body.setSpacing(0)
 
         # LEFT RAIL — 400px wide, mirrors Sync + Review structure:
@@ -1289,8 +1567,12 @@ class LabellingTab(QWidget):
         tl_header = QHBoxLayout(); tl_header.addWidget(make_source_label("TIMELINE")); tl_header.addStretch()
         self.tl_tc = QLabel("00:00:00.000"); self.tl_tc.setObjectName("timecode"); tl_header.addWidget(self.tl_tc)
         tl_layout.addLayout(tl_header)
-        self.tl_slider = QSlider(Qt.Orientation.Horizontal); self.tl_slider.setRange(0,10000); self.tl_slider.setValue(0)
-        self.tl_slider.valueChanged.connect(self._on_timeline_scrub); tl_layout.addWidget(self.tl_slider)
+        self.tl_slider = TimelineWithMarkers()
+        self.tl_slider.setRange(0,10000); self.tl_slider.setValue(0)
+        self.tl_slider.valueChanged.connect(self._on_timeline_scrub)
+        # Clicking a marker tick on the strip seeks to that exact timestamp
+        self.tl_slider.markerSeek.connect(self._seek_to_time_sec)
+        tl_layout.addWidget(self.tl_slider)
         play_row = QHBoxLayout(); play_row.setSpacing(8)
         rewind_btn = QPushButton("⏮"); rewind_btn.setFixedSize(32,28)
         rewind_btn.setStyleSheet("background-color: #1C1C21; border: 1px solid #2A2A30; color: #ECEDEE; font-size: 12px; padding: 0;")
@@ -1328,6 +1610,25 @@ class LabellingTab(QWidget):
                 slot.load(path, offset_sec=0.0)
             except Exception as e:
                 print(f"[label load] video {source_id}: {e}")
+            # Re-attach every loaded slot to the sync controller. Without
+            # this, the PLAY button has no players to control and the
+            # video stays black even though it loaded successfully.
+            try:
+                self._label_sync_ctrl.attach(self.label_slots, offsets_sec=None)
+            except Exception as e:
+                print(f"[label sync attach] {e}")
+            # Tell the timeline strip how long the video is so existing
+            # markers re-position correctly.
+            try:
+                loaded = [sl for sl in self.label_slots if sl.is_loaded()]
+                dur = loaded[0].get_duration_sec() if loaded else 0.0
+                # Duration is sometimes 0 immediately after load — VLC
+                # hasn't read the metadata yet. Re-query after 600ms.
+                if dur > 0:
+                    self.tl_slider.set_duration_sec(dur)
+                else:
+                    QTimer.singleShot(600, self._refresh_timeline_duration)
+            except Exception: pass
             self._play_btn_lbl.setEnabled(True)
         elif source_id == 4:
             self._load_label_eeg_async(path, self.eeg_label_1)
@@ -1363,12 +1664,15 @@ class LabellingTab(QWidget):
         (timestamp_str, label_name) so calling this multiple times during
         a multi-file upload is safe."""
         import csv as _csv
-        # Phase color palette — distinct from user labels
+        # Phase color palette — distinct, semantic, no gray, no duplicates
+        # across categories. All ROUND_*_START events share blue (they're
+        # the same kind of event — you should be able to scan the timeline
+        # and immediately see "5 blue chips = 5 rounds"). Same for breaks.
         phase_colors = {
-            "baseline": "#22c55e",   # green
-            "round":    "#637DFF",   # indigo (app accent)
-            "break":    "#f59e0b",   # amber
-            "done":     "#A1A1AA",   # gray
+            "baseline": "#10b981",   # emerald — calm, "before the work"
+            "round":    "#3b82f6",   # electric blue — active phase
+            "break":    "#f59e0b",   # amber — rest/pause
+            "done":     "#dc2626",   # crimson — terminal, stop
         }
         # Collect existing phase-marker keys for dedup
         existing = set()
@@ -1396,9 +1700,13 @@ class LabellingTab(QWidget):
                         continue  # already placed, skip
                     marker = LabelMarker(label, color, ts_str, is_phase=True)
                     marker.removed.connect(self._update_label_count)
+                    marker.removed.connect(self._rebuild_timeline_markers)
                     # Insert phase markers in sorted order by timestamp at
                     # the top of the list, before any user-placed markers.
                     self.placed_layout.insertWidget(self.placed_layout.count() - 1, marker)
+                    # Mirror onto the timeline strip
+                    try: self.tl_slider.add_marker(t, color, label)
+                    except Exception: pass
                     existing.add((ts_str, label))
                     added += 1
                 if added > 0:
@@ -1479,6 +1787,12 @@ class LabellingTab(QWidget):
             self._load_phase_markers_csv(str(markers_csv))
 
         if loaded_video:
+            # Re-attach all slots to the sync controller so PLAY works.
+            try:
+                self._label_sync_ctrl.attach(self.label_slots, offsets_sec=None)
+            except Exception as e:
+                print(f"[label sync attach] {e}")
+            QTimer.singleShot(600, self._refresh_timeline_duration)
             self._play_btn_lbl.setEnabled(True)
 
         # Status feedback
@@ -1624,12 +1938,39 @@ class LabellingTab(QWidget):
         self.tl_slider.blockSignals(True); self.tl_slider.setValue(int((global_t/dur)*10000)); self.tl_slider.blockSignals(False)
         self.eeg_label_1.set_playhead(global_t); self.eeg_label_2.set_playhead(global_t)
 
+    def _refresh_timeline_duration(self):
+        """Re-read video duration and push it to the timeline strip.
+        Called once after upload because VLC's get_duration() returns 0
+        until metadata is parsed; a small delay fixes it."""
+        try:
+            loaded = [sl for sl in self.label_slots if sl.is_loaded()]
+            if not loaded: return
+            dur = loaded[0].get_duration_sec()
+            if dur > 0:
+                self.tl_slider.set_duration_sec(dur)
+                # also update the end-time display
+                h = int(dur//3600); m = int((dur%3600)//60); s = dur%60
+                self._end_lbl.setText(f"{h:02d}:{m:02d}:{s:06.3f}")
+        except Exception: pass
+
     def _on_timeline_scrub(self, value):
         loaded = [sl for sl in self.label_slots if sl.is_loaded()]
         dur = (loaded[0].get_duration_sec() if loaded else 1.0) or 1.0
         total_secs = (value/10000)*dur; h = int(total_secs//3600); m = int((total_secs%3600)//60); s = total_secs%60
         self.tl_tc.setText(f"{h:02d}:{m:02d}:{s:06.3f}"); self._fake_ts = total_secs
         self._label_sync_ctrl.seek(total_secs); self.eeg_label_1.set_playhead(total_secs); self.eeg_label_2.set_playhead(total_secs)
+
+    def _seek_to_time_sec(self, t_sec: float):
+        """Seek the timeline to a specific timestamp in seconds. Used when
+        the user clicks a marker chip on the timeline strip — snaps the
+        playhead, video, and EEG playheads to that exact moment."""
+        loaded = [sl for sl in self.label_slots if sl.is_loaded()]
+        dur = (loaded[0].get_duration_sec() if loaded else 1.0) or 1.0
+        # Compute slider value matching that timestamp
+        frac = max(0.0, min(1.0, t_sec / dur))
+        slider_val = int(frac * 10000)
+        # setValue triggers _on_timeline_scrub which does the actual seeking
+        self.tl_slider.setValue(slider_val)
 
     def load_session_data(self, video_slots_data, eeg_data, sync_result):
         for i, (path, offset) in enumerate(video_slots_data):
@@ -1654,7 +1995,36 @@ class LabellingTab(QWidget):
         ts_str = f"{h:02d}:{m:02d}:{s:06.3f}"
         marker = LabelMarker(self.active_label, self.active_color, ts_str)
         marker.removed.connect(self._update_label_count)
+        marker.removed.connect(self._rebuild_timeline_markers)
         self.placed_layout.insertWidget(self.placed_layout.count()-1, marker); self._update_label_count()
+        # Mirror the label onto the timeline strip as a coloured tick
+        try:
+            self.tl_slider.add_marker(ts, self.active_color, self.active_label)
+        except Exception: pass
+
+    def _rebuild_timeline_markers(self):
+        """Re-derive ticks from the current PLACED LABELS list. Called
+        when a marker is removed so its tick disappears too. Safe to
+        run synchronously because LabelMarker._remove() now unparents
+        itself from the layout BEFORE emitting `removed`, so this walk
+        sees the post-removal state."""
+        try:
+            self.tl_slider.clear_markers()
+            for i in range(self.placed_layout.count()):
+                item = self.placed_layout.itemAt(i)
+                w = item.widget() if item else None
+                if not isinstance(w, LabelMarker):
+                    continue
+                try:
+                    parts = w.timestamp_str.split(":")
+                    t = float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
+                    self.tl_slider.add_marker(t, w._color, w.label_name)
+                except (RuntimeError, AttributeError):
+                    continue
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
     def _update_label_count(self): QTimer.singleShot(0, self._do_recount)
 

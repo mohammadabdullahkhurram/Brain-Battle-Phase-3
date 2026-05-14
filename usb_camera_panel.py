@@ -118,19 +118,27 @@ class USBCameraPanel(QWidget):
         Kick off recording on every live slot. Returns the list of paths
         each live camera is writing to. Slots that aren't connected are
         silently skipped — matches the RTMPConfigPanel graceful-degradation
-        behaviour.
+        behaviour. Side Cams/ and POV Cams/ subfolders are created lazily,
+        only when a slot of that kind actually records, so an absent
+        subfolder unambiguously means "no camera connected to that side"
+        rather than "feature broken".
         """
         started: list[Path] = []
         safe_label = phase_label.replace(" ", "_")
+        live_slots = [s for s in self._slots if s.is_live]
+        print(f"[session start] {len(live_slots)} of {len(self._slots)} camera slots live")
         for slot in self._slots:
             if not slot.is_live:
+                print(f"[session start]   skip slot {slot.slot_index} ({slot.label}) — not connected")
                 continue
             sub = "Side Cams" if self.slot_kind(slot.slot_index) == "side" else "POV Cams"
             safe_name = slot.label.replace(" ", "_")
             out_dir = phase_folder / sub
+            out_dir.mkdir(parents=True, exist_ok=True)
             out_path = out_dir / f"{safe_label}_{safe_name}.mp4"
             slot.start_recording(out_path)
             started.append(out_path)
+            print(f"[session start]   recording slot {slot.slot_index} ({slot.label}) → {out_path}")
         return started
 
     def stop_recording(self) -> None:
