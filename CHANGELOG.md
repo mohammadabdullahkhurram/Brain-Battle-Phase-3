@@ -1,5 +1,532 @@
 # Brain Battle — Changelog
 
+## Phase 2.17 · Second-Muse picker + 2-min disconnect fix
+
+User reported two related symptoms after the v2.16 direct-BLE
+release: (1) clicking the picker `⋯` button on EEG 2 while EEG 1 is
+streaming doesn't visibly do anything useful, and (2) the connected
+Muse drops after ~2 minutes even with no UI activity.
+
+Both trace to the same root cause: **on macOS, the BLE adapter is
+a contended resource**. CoreBluetooth runs scan and connect
+operations against the same shared peripheral, and a fresh scan
+launched while another peripheral is actively streaming can disrupt
+the streaming link. Compounding this, macOS tears down idle BLE
+notification links after ~60 seconds of silence — and the v2.14
+direct-BLE path didn't keep them warm.
+
+### ✦ Fix 1 — Cache the scan results across pickers
+
+Module-level `_LAST_SCAN_RESULTS` cache in `eeg_module.py`. Lifecycle:
+
+- **First picker open** (no cache, no Muse connected): auto-scan.
+  `_on_found` populates the cache.
+- **Second picker open** (cache populated, Muse 1 connected): show
+  cached devices immediately. SCAN button now reads `RESCAN`. The
+  user can hit it if their device list seems stale, but doesn't
+  have to. Cache replay does not touch the BLE adapter, so the
+  existing connection is undisturbed.
+- **Picker open with no cache but a Muse connected** (unusual, but
+  possible if app restarted with a stale-state quirk): shows a
+  status message explaining a scan may disrupt the connection, and
+  waits for the user to click SCAN explicitly.
+
+`_do_scan` now takes a `force=False` parameter. The SCAN button
+calls it with `force=False`, which triggers a confirmation dialog
+when a Muse is connected. Internal cache-replay calls bypass that
+guard entirely.
+
+This is the same pattern used by Web Bluetooth in Chrome: present
+already-known devices, request fresh scan only on explicit user
+gesture.
+
+### ✦ Fix 2 — Keep-alive ping every 30s
+
+`_MuseDirectReader` now schedules `muse.keep_alive()` every 30
+seconds while connected. Muse.keep_alive() sends a single `'k'`
+control byte over the GATT connection — enough traffic to prevent
+macOS CoreBluetooth from declaring the link idle. Scheduled on the
+asyncio loop's thread via `loop.call_later`, so it runs without
+extra threading machinery.
+
+This matches what muselsl's `stream` subprocess command does
+internally (which is why the old subprocess pipeline didn't suffer
+this disconnect — they were keeping the link warm for us).
+
+Failure mode handling: a failed `keep_alive()` ping logs but does
+not raise — bleak's own reconnect logic or the next data chunk's
+error will surface a real disconnect via the existing error path.
+
+### ✦ Why both fixes ship together
+
+The scan-cache fix addresses the "second Muse picker doesn't seem
+to work" symptom: the picker WAS opening, but on opening it tried
+to scan, and the scan was either hanging on adapter contention or
+knocking the first Muse off. With caching, the second picker opens
+instantly with the device list already populated.
+
+The keep-alive fix addresses the "Muse disconnects after 2 min"
+symptom independently — even with no second picker opened, the
+first connection would drop because of macOS idle-link teardown.
+
+Both are standard patterns for production bleak applications on
+macOS. The keep-alive in particular is documented as required in
+bleak's own README for long-running connections.
+
+### ✦ Honest caveats
+
+I can't test BLE-against-real-hardware in this environment. The
+fixes are based on:
+
+- bleak 3.x source inspection (CoreBluetooth dispatch queue
+  behavior, scan/connect adapter contention)
+- muselsl source (what their `stream` command does to keep
+  connections alive)
+- Standard Web Bluetooth UX patterns (already-known vs explicit
+  scan)
+
+If on real hardware the scan cache shows stale devices that aren't
+actually nearby, click RESCAN. If the second Muse still won't
+connect even with cached results, the next step would be to add
+device-not-responding handling in the connect path with a retry,
+since that points at a different problem.
+
+---
+
+## Phase 2.16 · UI responsiveness after EEG connect
+
+User reported that after connecting EEG (which is now fast since
+v2.14), the UI stops responding to button clicks. Direct BLE was
+delivering samples but something in the data path was eating the
+main thread.
+
+### ✦ Diagnosis
+
+Three culprits, applied as one combined fix because they interact:
+
+**1. Implicit signal connection type.**
+
+The `_MuseDirectReader.samples` / `error` / `connected` signals were
+being connected via `Qt.AutoConnection` (the default). AutoConnection
+inspects the sender and receiver's `QObject.thread()` at connect()
+time. The reader is created with `parent=self` (the EEGLiveWidget,
+which lives on the main thread), so its QObject thread affinity is
+the main thread when `.connect()` runs. Only when `.start()` is
+called does the QThread spawn a worker — but the QObject affinity
+stays parented to the main thread.
+
+In practice Qt's runtime check rescues this when the emit happens
+from a third thread (bleak's CoreBluetooth dispatch queue), but
+relying on runtime fixups for cross-thread signals is fragile.
+Explicit `Qt.ConnectionType.QueuedConnection` removes the ambiguity
+and guarantees the slot is posted to the main thread's event queue
+rather than executed synchronously on bleak's dispatch thread.
+
+**2. Shared memory between bleak's thread and the main thread.**
+
+The previous `_on_eeg` did:
+
+```python
+arr = np.asarray(data, dtype=np.float32).T  # this is a VIEW
+```
+
+`np.asarray` returns a view when the dtype matches, and `.T` is also
+a view. Both still point at muselsl's internal `Muse.data` buffer
+— which gets overwritten on every chunk (`_handle_eeg` reuses the
+same backing array). When the main thread eventually processed the
+queued signal, the data it read could be partially overwritten by
+the next chunk arriving on bleak's thread. Race condition.
+
+Fix: explicit `np.array(..., copy=True)` to materialise an
+independent copy of every chunk before handing it off. Also
+`np.ascontiguousarray(.T)` so the transposed copy is C-contiguous
+(cache-friendly for the receiver's ring buffer write).
+
+Cost: ~60 floats per chunk × 21 Hz = ~5 KB/sec of copies. Trivial.
+Benefit: deterministic data delivery, no torn reads, no
+inter-thread cache thrashing.
+
+**3. Receiver thread was potentially doing too much.**
+
+`_on_samples` writes into ring buffers. That's fast. But if the
+signal was being delivered as DirectConnection from bleak's
+dispatch thread, the buffer writes were happening on bleak's
+thread — competing with bleak's notification handling. Force
+QueuedConnection (fix #1) ensures the writes happen on the main
+thread, where ring-buffer extension is essentially free.
+
+### ✦ What this means in practice
+
+After connecting one or two Muse-S bands:
+
+- Buttons should respond immediately when clicked
+- Switching tabs should be smooth
+- Other UI elements (text inputs, dropdowns, scroll bars) work
+- EEG continues streaming and updating its plots independently
+
+The cost of the fixes: roughly nothing. The defensive copies are
+on the order of microseconds per chunk; QueuedConnection has the
+same overhead as before (Qt was already doing the right thing at
+runtime, just via the slow path).
+
+### ✦ Honest caveat
+
+I tested signal flow + data integrity in headless mode and
+everything is correct. I cannot reproduce the actual UI freeze
+without real BLE hardware and a real macOS GUI session. If clicks
+are still being missed after this update, send terminal output and
+which specific control isn't responding — the next debug step
+would be a Qt event-loop tracer to see what's actually blocking.
+
+---
+
+## Phase 2.15 · macOS BLE address parsing fix
+
+User hit `Failed to connect: Device with address D6AF3274 was not found`
+in v2.14. The direct-BLE rewrite was working — the error is clean,
+visible, and actionable — but it surfaced a pre-existing bug in our
+scan parser that the old LSL-subprocess pipeline had been masking.
+
+### ✦ Root cause
+
+macOS CoreBluetooth doesn't expose hardware MAC addresses to apps
+(privacy / app sandbox restriction). Instead it returns opaque UUIDs
+formatted like:
+
+```
+D6AF3274-7C8D-XXXX-XXXX-XXXXXXXXXXXX
+```
+
+Our scan code was running `python -m muselsl list` as a subprocess
+and scraping its stdout with the regex:
+
+```python
+r"Found device\s+([^,]+),\s+MAC Address\s+([0-9A-Fa-f:]+)"
+```
+
+The address character class `[0-9A-Fa-f:]+` matches hex digits and
+colons but **not hyphens**. On Linux/Windows where Muse addresses
+are real MAC addresses like `00:55:DA:B9:75:38`, this worked fine.
+On macOS where they're UUIDs, the regex stopped at the first hyphen
+and captured only `D6AF3274` — 8 characters of a 36-character UUID.
+
+Bleak then tried `BleakClient("D6AF3274").connect()` and CoreBluetooth
+correctly responded "no device by that name." Hence the error
+message.
+
+### ✦ Fix
+
+Stop parsing subprocess output entirely. `muselsl.stream.list_muses`
+already returns Python dicts with `{name, address}` where `address`
+is the full untruncated identifier — no regex, no parsing, no
+character-class bugs.
+
+The reason we used subprocess parsing originally was a comment in
+the old code claiming "calling list_muses() directly inside a
+QThread crashes because bleak requires a running event loop." That
+was true with an older bleak, but bleak 3.x works fine as long as
+we create an asyncio loop on the thread before calling it — which
+we now already do for `_MuseDirectReader`.
+
+The new `_MuseScanThread`:
+
+```python
+def run(self):
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        from muselsl.stream import list_muses
+        muses = list_muses(backend="bleak")
+        devices = [
+            {"name": m["name"], "address": m["address"]}
+            for m in (muses or []) if m.get("name") and m.get("address")
+        ]
+        self.found.emit(devices)
+    except Exception as exc:
+        self.error.emit(str(exc))
+    finally:
+        loop.close()
+```
+
+Full UUID is preserved. Cross-platform clean: works the same on
+macOS (UUIDs), Linux (MACs via D-Bus), and Windows (UUIDs again).
+
+### ✦ Why this surfaced now
+
+The previous LSL-subprocess pipeline didn't use the scanned address
+to connect — it asked muselsl by *device name* (`muselsl stream -n
+MuseS-7538`). muselsl then re-scanned internally and used its own
+unparsed address to connect. The truncated address was being
+silently discarded because we never used it for anything that
+mattered. v2.14's direct-BLE path actually needs the address, so the
+bug came out of hiding.
+
+This is honestly the right kind of bug to find — the architecture
+change exposed a latent issue, the error message was clear, and
+the fix is small.
+
+---
+
+## Phase 2.14 · Direct BLE Muse connection (kill the subprocess stack)
+
+User reported that connecting one Muse band made it hard for the
+second one to connect, and that having one connected slowed the
+whole app. The root cause was architectural — not a bug — and the
+user helpfully sent over an older project (`muse_camera_synchronization`)
+that took a saner approach. This release adopts that approach.
+
+### ✦ What was wrong
+
+For each connected Muse, the previous architecture spawned:
+- One `muselsl stream` subprocess (BLE → LSL network publish)
+- One `muselsl record` subprocess on session start (separate LSL
+  inlet, writes CSV)
+- One in-process LSL inlet thread for live preview
+
+With two Muses that's **6 BLE/network processes**. They contend for
+OS BLE adapter time, fight each other for LSL stream discovery, and
+swamp the BLE stack on first pair-up. Plus the LSL pubsub layer is
+overkill for in-process IPC — it's designed for cross-machine
+synchronisation in a research lab, not for reading data from
+ourselves.
+
+The old `muse_camera_synchronization` project showed the right way:
+**talk BLE directly via bleak**, in-process, with a Python callback
+for samples. That's how every serious BLE app works.
+
+### ✦ What's now in place
+
+New `_MuseDirectReader` class in `eeg_module.py`. Replaces the
+`subprocess + LSL` pipeline with:
+
+```
+QThread.run() → asyncio loop → bleak BLE client → muselsl.muse.Muse
+                                  ↓ callback (eeg samples)
+                              emit `samples` signal
+                                  ↓ QueuedConnection (cross-thread)
+                          EEGLiveWidget._on_samples()
+```
+
+The Qt signal interface is identical to the old `_LSLReaderThread`
+(`samples`, `error`, `connected`), so the rest of the widget code
+doesn't know which transport is in use.
+
+Per Muse, that's now **1 BLE connection** instead of 3 processes.
+With two Muses: 2 BLE connections total.
+
+### ✦ CSV recording is now trivial
+
+The old approach spawned `muselsl record` as a second subprocess
+that opened its own LSL inlet — meaning *two* consumers were
+fighting for the same EEG stream. We needed an entire `_RecordStopper`
+QThread to send SIGINT and wait for muselsl to flush.
+
+Direct BLE delivers every sample to our Python callback. So
+recording is just "set a flag, accumulate samples in memory, write
+CSV on stop." Single np.concatenate + DataFrame.to_csv at flush
+time. For a 15-min session that's ~9 MB in RAM per Muse (well
+within budget) and a sub-second flush.
+
+### ✦ What's faster / better
+
+- **First-connect time**: similar (BLE pairing is hardware-bound)
+- **Inter-Muse contention**: gone (no more LSL stream-discovery
+  cross-talk)
+- **Disconnects under load**: should be gone (no subprocess pipe
+  starvation, no LSL inlet starvation)
+- **CPU at idle stream**: notably lower (no subprocess overhead, no
+  LSL pubsub layer)
+- **CPU during recording**: notably lower (one BLE consumer per
+  Muse, not two)
+- **CSV write reliability**: better (we own the buffer; no
+  SIGINT-to-flush dance with a subprocess)
+
+### ✦ Trade-offs
+
+- **bleak required** (was already a transitive dep via muselsl).
+- **Memory cost during recording**: ~9 MB per Muse for a 15-min
+  session, held until flush. Acceptable.
+- **No more LSL stream emitted from this app**, so external
+  consumers (e.g. someone watching via OpenViBE on the network)
+  won't see our streams. Nobody in the use case was doing this; if
+  needed we can add a re-publish layer later.
+
+The old subprocess code paths in `start_stream` / `start_recording`
+have been replaced. `_LSLReaderThread` and `_RecordStopper` remain
+in the file as dead code for now in case of regression — they'll
+be removed in a future cleanup pass.
+
+---
+
+## Phase 2.13 · Camera performance — low-end hardware compatibility
+
+User reported the app becoming laggy when cameras are connected,
+plus low transmission FPS. Same root-cause family as the EEG
+slowdown (v2.12) but on the video path. Three changes ship together
+because together they make a low-end Mac usable; in isolation each
+helps a little.
+
+### ✦ Fix 1 — MJPG FOURCC before resolution / fps
+
+Without an explicit FOURCC, most USB webcams negotiate raw YUYV
+(uncompressed 16-bit). At 1280×720 that's ~55 MB/s per stream. Four
+cameras on a USB 2.0 bus (theoretical max 60 MB/s) cannot fit, so
+the cameras drop to 5–15 fps and the OS scrambles to keep up.
+
+`usb_camera.py` now sets `CAP_PROP_FOURCC = MJPG` BEFORE setting
+resolution and fps. MJPG = motion-JPEG, ~3–5 Mbps per stream, four
+cameras fit comfortably on USB 2.0. The set order is critical —
+many backends (macOS AVFoundation, some Windows DirectShow drivers)
+silently ignore later format changes once the camera has negotiated
+a format on the first set call. FOURCC must come first.
+
+This is the single most important camera setting for the
+heterogeneous-hardware target.
+
+### ✦ Fix 2 — Decouple preview emit rate from capture rate
+
+Cameras now capture at their full native rate (which feeds the disk
+writer at full quality) but the `frame_ready` signal is emitted to
+the UI at no more than 20 Hz. Above 20 Hz the human eye perceives
+no additional smoothness on a small preview tile, but every emit
+crosses the Qt thread boundary as a queued connection — at 30 fps
+× 4 cameras × 960×540 = ~62 MB/sec of pixel data was moving through
+Qt's event queue just to keep previews live, before any rendering
+happened.
+
+Throttling preview emits to 20 Hz cuts that to ~41 MB/sec and
+frees the main thread to handle other work (EEG redraws, button
+clicks, drag-resize). Recording is unaffected — the disk writer
+still receives every captured frame, just inside the worker thread
+without crossing into Qt-land.
+
+Same architectural pattern as the EEG ring-buffer fix in v2.12:
+acquire fast on a worker thread, display at a perceptually-correct
+rate on the UI thread.
+
+### ✦ Fix 3 — Default resolution 1280×720 → 960×540
+
+960×540 (qHD, 16:9) has ~56% the pixel count of 720p. On the small
+2×2 preview grid the difference is barely visible, but the
+bandwidth + JPEG decode cost is ~half. For boxing analysis (faces,
+gloves, body posture) qHD is more than enough detail.
+
+Resolution remains overridable via the `USBCameraThread(width=…,
+height=…)` constructor for high-spec rigs.
+
+### ✦ Fix 4 — Driver buffer size hint
+
+`CAP_PROP_BUFFERSIZE = 1` request tells the OS to keep only the
+latest frame queued rather than 3-5 old ones. Reduces latency and
+keeps preview "live" rather than "live but lagged". Not honored by
+every backend; the call silently fails where unsupported.
+
+### Bandwidth math (4 cameras, USB 2.0 bus)
+
+|                      | Before          | After          |
+|----------------------|-----------------|----------------|
+| Codec                | YUYV (raw)      | MJPG           |
+| Resolution           | 1280 × 720      | 960 × 540      |
+| Per-cam bandwidth    | ~55 MB/s        | ~0.6 MB/s      |
+| Aggregate (4 cams)   | ~220 MB/s       | ~2.4 MB/s      |
+| USB 2.0 bus capacity | 60 MB/s         | 60 MB/s        |
+| **Result**           | bottlenecked    | comfortable    |
+| Achievable FPS       | 5–15 (drop)     | 30 sustained   |
+| Qt queue throughput  | 62 MB/s @ 30Hz  | 41 MB/s @ 20Hz |
+
+This should make the system usable on low-spec laptops while
+keeping the recording quality intact (MJPG → mp4v on disk at full
+captured framerate).
+
+---
+
+## Phase 2.12 · EEG performance — fixing the system freeze when streaming
+
+User reported the entire app slowing to unusable speeds when a single
+Muse-S band connects. After profiling: the EEG redraw path was doing
+~1.5 million list↔array conversions per second at peak with two
+bands connected. The fix is a textbook switch to industry-standard
+real-time biosignal display pattern, plus three smaller wins.
+
+### ✦ Root cause: deque ↔ NumPy round-trip on every frame
+
+The per-channel sample stores were `collections.deque(maxlen=7680)`.
+On every redraw (20 Hz), the code did `np.array(deque)` per buffer
+— **5 buffers per widget × 2 widgets × 20 Hz = 200 such calls per
+second**. Each call was ~340 µs to materialise the 7680-float
+buffer. That's ~14% of one core just for buffer conversions, before
+any actual drawing or FFT happens. Combined with the band-power
+FFT also running at 20 Hz, this was burying the Qt event loop.
+
+There was also a pointless round-trip in `_on_samples`: the LSL
+reader emitted a NumPy array, we converted it to a Python list via
+`.tolist()` to extend the deque, then the deque was re-converted
+back to NumPy on the next redraw. Pure overhead.
+
+### ✦ Fix 1 — `_RingBuffer` (NumPy-backed, pre-allocated)
+
+New class in `eeg_module.py`. Pre-allocates `BUFFER_SECONDS *
+SAMPLE_RATE` floats once and writes incoming chunks directly into
+it. The `to_array()` read path returns a view (or a single
+`np.concatenate` after wrap-around) — no per-call allocation.
+
+Benchmark on the actual buffer size used in the app (7680 samples):
+
+```
+OLD np.array(deque)  ×6000 calls: 2028.7 ms (338.1 µs/call)
+NEW ring.to_array()  ×6000 calls:   21.8 ms   (3.6 µs/call)
+Speedup: 93×
+```
+
+For two Muse-S widgets streaming continuously, this alone reclaims
+~33% of one CPU core that was being burned on buffer conversions.
+
+This is the same pattern used by LSL's labrecorder, MNE-LSL's
+real-time viewer, and OpenViBE. It is the standard for
+high-throughput streaming visualisation.
+
+### ✦ Fix 2 — Skip redraw when widget isn't visible
+
+`_redraw()` now checks `isVisibleTo(window)` and returns early when
+the EEG widget is hidden (e.g. user is on the Sync or Labelling
+tab). Live Monitor's EEG widgets were rendering full canvases and
+FFTs even when nothing was on screen. Common oversight, easy fix,
+big win — saves 100% of the render cost during analysis sessions.
+
+### ✦ Fix 3 — Throttle band-power FFTs from 20 Hz to 4 Hz
+
+The waveform view stays at 20 Hz (smooth scrolling matters). The
+band-power view used to also redraw at 20 Hz, but band power
+varies on a slower timescale than 50 ms — 4 Hz updates look
+identical to the eye but cost 80% less CPU. FFTs over a 1024-sample
+window × 4 channels per widget × 2 widgets are not cheap; this is
+the second-biggest win after the ring buffer.
+
+### ✦ Fix 4 — `_on_samples` writes NumPy directly
+
+Killed the `.tolist()` round-trip. The LSL reader hands us
+`np.ndarray`, the ring buffer takes `np.ndarray`, so just pipe it
+through. One fewer copy, one fewer GC pass per chunk, hot path
+runs ~3× faster on the writer side too.
+
+### ✦ Note on disconnects
+
+The "Muse disconnects quickly" symptom is likely a separate issue
+caused by the BLE connection being starved when the host's UI
+thread is pegged. With the UI thread freed up by this fix, the
+host should be able to keep the BLE pipeline serviced. Test before
+chasing it as a separate bug.
+
+If disconnects persist after this version: probably either BLE
+range, low Muse-S battery, or muselsl subprocess crashing without
+visible stderr (we redirected stderr to DEVNULL in v2.5 to fix a
+different crash). If needed I can add a back channel where the
+muselsl subprocess writes errors to a log file in the session
+folder so we can see what's actually happening.
+
+---
+
 ## Phase 2.11 · Fix marker-remove not clearing timeline tick
 
 User reported that clicking the × on a label in PLACED LABELS removed

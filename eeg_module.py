@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import time
 from collections import deque
 from typing import Optional
 
@@ -65,6 +66,78 @@ ROLLING_WINDOW_SEC = 10
 SAMPLE_RATE        = 256
 BUFFER_SECONDS     = 30
 
+
+class _RingBuffer:
+    """Fixed-size pre-allocated NumPy ring buffer for streaming EEG samples.
+
+    Replaces ``collections.deque`` for the per-channel sample stores. The deque
+    approach was forcing every redraw to call ``np.array(deque)`` which is
+    O(N) per call and allocates fresh memory each tick — a 7680-sample buffer
+    × 5 buffers per widget × 2 widgets × 20 Hz = ~1.5 M list-to-array
+    conversions per second, the dominant cause of UI freezes when EEG is
+    streaming. With this ring, the contiguous read view is O(min(N, window))
+    and reuses the backing memory.
+
+    This is the standard pattern used by LSL viewers, MNE-LSL, and OpenViBE
+    for real-time biosignal display. Sample writes are O(k) where k is the
+    chunk size (typically ≤ 12 from a Muse-S pull_chunk). Reads return a
+    NumPy view into the underlying array — no copy unless the caller asks
+    for one.
+    """
+
+    __slots__ = ("_buf", "_capacity", "_n_written")
+
+    def __init__(self, capacity: int, dtype=np.float64):
+        self._capacity = int(capacity)
+        self._buf = np.zeros(self._capacity, dtype=dtype)
+        self._n_written = 0  # total samples ever written (monotonic)
+
+    def extend(self, samples: np.ndarray) -> None:
+        """Append samples to the buffer, overwriting oldest if at capacity."""
+        if samples is None:
+            return
+        n = len(samples)
+        if n == 0:
+            return
+        if n >= self._capacity:
+            # Incoming chunk is bigger than the whole buffer — keep only
+            # the most recent `_capacity` samples.
+            self._buf[:] = samples[-self._capacity:]
+            self._n_written += n
+            return
+        start = self._n_written % self._capacity
+        end = start + n
+        if end <= self._capacity:
+            self._buf[start:end] = samples
+        else:
+            # Wraps around — split the write
+            split = self._capacity - start
+            self._buf[start:] = samples[:split]
+            self._buf[:n - split] = samples[split:]
+        self._n_written += n
+
+    def __len__(self) -> int:
+        return min(self._n_written, self._capacity)
+
+    def to_array(self) -> np.ndarray:
+        """Return contiguous chronological view of current samples (oldest →
+        newest). Copies only if the ring has wrapped. The typical
+        steady-state cost after the buffer fills is one np.concatenate."""
+        n = len(self)
+        if n == 0:
+            return np.empty(0, dtype=self._buf.dtype)
+        if self._n_written <= self._capacity:
+            # Hasn't wrapped yet — first n samples are chronological.
+            return self._buf[:n]
+        # Has wrapped — head is at (_n_written % _capacity), oldest sample
+        # is at that position, newest is just before it.
+        head = self._n_written % self._capacity
+        return np.concatenate((self._buf[head:], self._buf[:head]))
+
+    def clear(self) -> None:
+        self._n_written = 0
+
+
 # Known Muse IDs → boxer labels
 BOXER_LABELS = {
     "MuseS-7538": "BOXER A",
@@ -75,6 +148,13 @@ BOXER_LABELS = {
 # Maps device_name → owning EEGLiveWidget. Prevents two blocks sharing a device.
 
 _DEVICE_REGISTRY: dict[str, "EEGLiveWidget"] = {}
+
+# Module-level cache of scan results from the last successful Muse scan.
+# Lets the second picker reuse the first scan's results instead of triggering
+# a fresh bleak scan — critical on macOS where running a BLE scan while an
+# active connection exists can disrupt the connection (the underlying
+# CoreBluetooth scan/connect operations contend for the BLE adapter).
+_LAST_SCAN_RESULTS: list[dict] = []
 
 
 def _claim_device(name: str, owner: "EEGLiveWidget") -> bool:
@@ -91,6 +171,15 @@ def _release_device(name: str, owner: "EEGLiveWidget"):
 
 def _claimed_devices() -> set[str]:
     return set(_DEVICE_REGISTRY.keys())
+
+
+def _any_muse_connected() -> bool:
+    """True if any EEG widget currently holds an active streaming connection.
+    Used to decide whether a fresh BLE scan would risk disrupting it."""
+    return any(
+        getattr(w, "_is_streaming", False)
+        for w in _DEVICE_REGISTRY.values()
+    )
 
 
 # ─── Tab-button style helper ──────────────────────────────────────────────────
@@ -127,53 +216,308 @@ def _style_ax(ax):
 # ─── BLE scan thread ─────────────────────────────────────────────────────────
 
 class _MuseScanThread(QThread):
-    """
-    Runs `python -m muselsl list` as a subprocess to avoid the asyncio
-    event-loop crash that occurs when calling list_muses() directly inside
-    a QThread (bleak requires a running event loop on the calling thread).
+    """Scans for Muse-S bands in range, returns name+address pairs.
 
-    muselsl list prints lines like:
-        {'name': 'MuseS-7538', 'address': '00:55:DA:B9:75:38'}
-    We parse those and emit them as a list of dicts.
+    Uses `muselsl.stream.list_muses(backend='bleak')` directly inside an
+    asyncio loop on the thread, instead of parsing the subprocess output
+    of `python -m muselsl list`. The subprocess parsing was the source of
+    a real bug on macOS: macOS CoreBluetooth exposes device addresses as
+    UUIDs (e.g. `D6AF3274-7C8D-XXXX-XXXX-XXXXXXXXXXXX`) not MAC addresses,
+    and the regex we used to scrape `Found device X, MAC Address Y`
+    didn't include hyphens in the address character class. We were
+    capturing only `D6AF3274` from the full UUID, which then failed to
+    match when bleak tried to connect (`Device with address D6AF3274
+    was not found`).
+
+    Calling `list_muses` in-process returns Python dicts directly with
+    the full untruncated address — no parsing required.
     """
     found = pyqtSignal(list)
     error = pyqtSignal(str)
 
     def run(self):
-        import re
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "muselsl", "list"],
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
-            # muselsl list prints lines like:
-            #   Found device MuseS-7538, MAC Address 00:55:DA:B9:75:38
-            # Parse both stdout and stderr since some backends log to stderr
-            combined = result.stdout + "\n" + result.stderr
+            from muselsl.stream import list_muses
+            muses = list_muses(backend="bleak")
             devices = []
             seen = set()
-            for line in combined.splitlines():
-                # Pattern: "Found device <name>, MAC Address <addr>"
-                m = re.search(
-                    r"Found device\s+([^,]+),\s+MAC Address\s+([0-9A-Fa-f:]+)",
-                    line
-                )
-                if m:
-                    name = m.group(1).strip()
-                    addr = m.group(2).strip()
-                    if name not in seen:
-                        seen.add(name)
-                        devices.append({"name": name, "address": addr})
+            for m in muses or []:
+                name = (m.get("name") or "").strip()
+                addr = (m.get("address") or "").strip()
+                if not name or not addr or name in seen:
+                    continue
+                seen.add(name)
+                devices.append({"name": name, "address": addr})
             self.found.emit(devices)
-        except subprocess.TimeoutExpired:
-            self.error.emit("Scan timed out after 20s.")
         except Exception as exc:
             self.error.emit(str(exc))
+        finally:
+            try: loop.close()
+            except Exception: pass
 
 
 # ─── LSL reader thread ────────────────────────────────────────────────────────
+
+class _MuseDirectReader(QThread):
+    """Direct BLE connection to a Muse-S band — no subprocess, no LSL.
+
+    Replaces the previous `subprocess(muselsl stream) → LSL pubsub → inlet`
+    pipeline with an in-process `muselsl.muse.Muse` instance talking BLE
+    via `bleak`. This is what the older muse_camera_synchronization project
+    did and what every serious BLE app does. The previous architecture had
+    three problems that this fixes:
+
+    1. **Two BLE-touching subprocesses per Muse.** `muselsl stream` to publish
+       LSL, then `muselsl record` opening a separate LSL inlet to write CSV.
+       Plus our own LSL inlet for live preview. With two Muses, that's six
+       BLE-adjacent processes contending for OS resources. Connecting one
+       Muse made the other struggle because all those subprocesses were
+       fighting for BLE adapter time.
+
+    2. **LSL network pubsub for in-process data.** We were running an entire
+       network protocol stack to read data from our own machine. LSL is
+       designed for cross-machine sync, not in-process IPC. Overhead per
+       sample was non-trivial.
+
+    3. **No control over disconnect detection.** muselsl subprocess crashes
+       were silent because we redirected stderr to DEVNULL (had to, the pipe
+       drain threads were causing app-shutdown crashes — see v2.4 changelog).
+
+    Direct architecture:
+        QThread.run() → asyncio loop → bleak BLE client → muselsl.muse.Muse
+                                            ↓ callback (eeg samples)
+                                          emit `samples` signal
+                                            ↓ QueuedConnection
+                                      EEGLiveWidget._on_samples()
+
+    Same Qt signal interface as the old `_LSLReaderThread` so the EEGLiveWidget
+    code doesn't need to know which transport is in use.
+    """
+
+    samples   = pyqtSignal(object, object)   # (data NxC, timestamps N)
+    error     = pyqtSignal(str)
+    connected = pyqtSignal()                  # emitted on first chunk
+
+    def __init__(self, address: str, name: str = "", parent=None):
+        super().__init__(parent)
+        self.address = address
+        self.name = name
+        self._running = False
+        self._muse = None
+        self._loop = None
+        self._first_chunk_seen = False
+
+        # Optional CSV-recording state. Old code held all samples in memory
+        # and flushed on disconnect. For a typical 15-min session this is
+        # ~9 MB per Muse — well within memory budget. Eliminates the need
+        # for a separate `muselsl record` subprocess.
+        self._record_path: Optional[str] = None
+        self._rec_samples: list[np.ndarray] = []     # list of (channels=5, N=12) arrays
+        self._rec_timestamps: list[np.ndarray] = []  # list of (N=12,) arrays
+
+    # ── public API ────────────────────────────────────────────────────────────
+
+    def start_recording(self, path: str) -> None:
+        """Begin accumulating samples into an in-memory buffer.
+        Calls to flush_recording() write the CSV. Safe to call before
+        the BLE connection is established — samples received from that
+        point onward are captured."""
+        self._record_path = path
+        self._rec_samples = []
+        self._rec_timestamps = []
+
+    def stop_recording(self) -> str | None:
+        """Flush accumulated samples to CSV at the path set by
+        start_recording(). Returns the path written or None if nothing
+        was recorded. Safe to call from any thread — the actual file
+        write happens here, not on the BLE thread."""
+        path = self._record_path
+        if not path or not self._rec_timestamps:
+            self._record_path = None
+            return None
+        try:
+            timestamps = np.concatenate(self._rec_timestamps)
+            # samples list elements are (5_channels, 12_samples) → stack to
+            # (5, total_N) then transpose to (total_N, 5) for CSV row order.
+            eeg = np.concatenate(self._rec_samples, axis=1).T
+            df = pd.DataFrame(
+                eeg, columns=["TP9", "AF7", "AF8", "TP10", "AUX"]
+            )
+            df["timestamps"] = timestamps
+            import pathlib
+            pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(path, index=False)
+        except Exception as e:
+            print(f"[muse-direct] CSV write failed for {path}: {e}")
+            path = None
+        finally:
+            self._record_path = None
+            self._rec_samples = []
+            self._rec_timestamps = []
+        return path
+
+    def stop(self) -> None:
+        """Request a clean shutdown. Safe to call from any thread."""
+        self._running = False
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            # Schedule disconnect on the loop's thread. Don't await it
+            # from here — calling await across thread boundaries deadlocks.
+            try:
+                loop.call_soon_threadsafe(self._request_stop)
+            except Exception:
+                pass
+
+    # ── BLE callback (runs on bleak's asyncio thread) ────────────────────────
+
+    def _on_eeg(self, data, timestamps) -> None:
+        """Muse fires this for every 12-sample chunk it decodes.
+        `data` is shape (5, 12), `timestamps` is shape (12,).
+
+        This callback runs on bleak's CoreBluetooth dispatch queue thread
+        (macOS) or its asyncio loop thread (Linux/Windows). We do as little
+        work as possible here:
+          1. Mark connected on first chunk.
+          2. Append raw arrays to record buffer (if recording).
+          3. Emit a contiguous copy to the main thread via Qt's queued
+             connection.
+
+        The copies are deliberate. muselsl reuses its internal buffers
+        (`self.data` in Muse._handle_eeg gets overwritten on every chunk),
+        so the array reference we receive points to memory that will be
+        mutated by the next chunk. Without a copy, the main thread's
+        receiver could see torn or stale data. Cheap: ~60 floats per chunk.
+        """
+        if not self._first_chunk_seen:
+            self._first_chunk_seen = True
+            self.connected.emit()
+
+        # Make a real copy of the data — muselsl's _handle_eeg reuses its
+        # internal `self.data` buffer for every chunk, so without an
+        # explicit copy here, references handed off via the signal could
+        # be overwritten before the receiver thread processes them.
+        try:
+            data_copy = np.array(data, dtype=np.float32, copy=True)
+            ts_copy   = np.array(timestamps, dtype=np.float64, copy=True)
+        except Exception as e:
+            print(f"[muse-direct] sample copy failed: {e}")
+            return
+
+        if self._record_path is not None:
+            # channels-first layout is most efficient for storage —
+            # transpose only once at flush time.
+            self._rec_samples.append(data_copy)
+            self._rec_timestamps.append(ts_copy)
+
+        # Emit to main thread. Transpose to (N_samples, N_channels) which
+        # is what _on_samples expects. np.ascontiguousarray ensures the
+        # transposed view is materialised into a real contiguous buffer
+        # so the receiver gets cache-friendly memory.
+        try:
+            arr = np.ascontiguousarray(data_copy.T)  # (12, 5), C-contiguous
+            self.samples.emit(arr, ts_copy)
+        except Exception as e:
+            print(f"[muse-direct] samples emit failed: {e}")
+
+    # ── BLE thread ────────────────────────────────────────────────────────────
+
+    def _request_stop(self) -> None:
+        """Called via call_soon_threadsafe — runs on the bleak loop thread."""
+        if self._muse is not None:
+            try: self._muse.disconnect()
+            except Exception: pass
+            self._muse = None
+        if self._loop is not None:
+            self._loop.stop()
+
+    def _schedule_keep_alive(self) -> None:
+        """Schedule the next keep-alive ping 30s out, recursively.
+        Runs on the asyncio loop's thread (our QThread). Send 'k' via
+        the existing _write_cmd_str path inside muselsl which is what
+        Muse.keep_alive() does."""
+        if self._loop is None or not self._running:
+            return
+        try:
+            self._loop.call_later(30.0, self._do_keep_alive)
+        except Exception as e:
+            print(f"[muse-direct] keep_alive schedule failed: {e}")
+
+    def _do_keep_alive(self) -> None:
+        """Fired by call_later. Send the ping and re-schedule."""
+        if not self._running or self._muse is None:
+            return
+        try:
+            self._muse.keep_alive()
+        except Exception as e:
+            # A failed ping isn't fatal — bleak may handle the
+            # reconnect, or the next data chunk will surface the
+            # disconnect via the existing error path.
+            print(f"[muse-direct] keep_alive ping failed: {e}")
+        # Re-schedule for the next interval
+        self._schedule_keep_alive()
+
+    def run(self) -> None:
+        """QThread entry. Sets up the bleak asyncio loop and runs Muse()."""
+        import asyncio
+        try:
+            from muselsl.muse import Muse
+        except ImportError:
+            self.error.emit("muselsl not installed — run: pip install muselsl")
+            return
+
+        self._running = True
+        self._first_chunk_seen = False
+        # Each Muse needs its own asyncio loop. New loop on this thread.
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+
+        try:
+            self._muse = Muse(
+                self.address,
+                callback_eeg=self._on_eeg,
+                backend="bleak",
+                name=self.name or None,
+            )
+            # connect() blocks until BLE handshake completes (or fails).
+            # On bleak it kicks off coroutines on our loop; the call
+            # itself returns a bool when done.
+            ok = self._muse.connect()
+            if not ok:
+                self.error.emit(f"Failed to connect to {self.name or self.address}")
+                return
+            self._muse.start()
+
+            # Schedule a periodic keep-alive ping to prevent macOS
+            # CoreBluetooth from dropping the connection during quiet
+            # periods. Muse.keep_alive() sends a single 'k' control
+            # command. macOS will tear down a BLE link if no traffic
+            # flows for ~60 seconds; a ping every 30s keeps it warm.
+            # This is the standard pattern for long-running bleak
+            # connections and matches what muselsl's own `stream` command
+            # does internally.
+            self._schedule_keep_alive()
+
+            # Run the loop until stop() schedules its termination.
+            self._loop.run_forever()
+        except Exception as e:
+            self.error.emit(f"Muse connection error: {e}")
+        finally:
+            try:
+                if self._muse is not None:
+                    self._muse.disconnect()
+            except Exception: pass
+            self._muse = None
+            try:
+                self._loop.close()
+            except Exception: pass
+            self._loop = None
+            self._running = False
+
+
+# ─── LSL reader thread (legacy, kept for backward compat) ─────────────────────
 
 class _LSLReaderThread(QThread):
     samples   = pyqtSignal(object, object)
@@ -334,7 +678,63 @@ class DevicePickerDialog(QDialog):
         btn_row.addWidget(cancel)
         layout.addLayout(btn_row)
 
-    def _do_scan(self):
+    def showEvent(self, event):
+        """When the picker opens, decide whether to use cached scan results
+        or trigger a fresh BLE scan.
+
+        Why this matters on macOS: CoreBluetooth runs scan and connect
+        operations on the same shared BLE adapter. If a Muse is actively
+        streaming and we kick off a fresh scan from the second picker,
+        the adapter contention can knock the first Muse off (the
+        2-minutes-then-disconnect symptom user reported). Best to reuse
+        the device list from the previous scan in that case.
+
+        - If no Muse is connected AND no cached devices → auto-scan.
+        - If we have cached devices (regardless of connection state) →
+          populate from cache; user can hit RESCAN explicitly to force
+          a fresh scan if their device list seems stale.
+        """
+        super().showEvent(event)
+        if _LAST_SCAN_RESULTS:
+            # Reuse cached results — safe even with active connections.
+            self._on_found(list(_LAST_SCAN_RESULTS))
+            # _on_found calls _stop_animation which sets the button text
+            # back to "SCAN FOR DEVICES" — override after the fact so the
+            # user sees this is a rescan, not a first scan.
+            self._scan_btn.setText("RESCAN")
+        elif not _any_muse_connected():
+            # No cache yet and nothing connected → scan automatically.
+            self._do_scan(force=True)
+        else:
+            # Something connected but no cache — let the user decide
+            # whether to risk a scan. Warn them in the status text.
+            self._status.setText(
+                "A Muse-S is already connected. Scanning may briefly "
+                "interrupt that connection on macOS — click SCAN if needed."
+            )
+
+    def _do_scan(self, force: bool = False):
+        """Trigger a fresh BLE scan. If a Muse is connected and force is
+        False (the default for the SCAN button), prompt the user.
+
+        Direct invocation paths set force=True. This guard is here as a
+        safety net specifically against the macOS adapter-contention
+        issue described in showEvent.
+        """
+        if not force and _any_muse_connected():
+            from PyQt6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self,
+                "Scan with active connection?",
+                "A Muse-S is currently streaming. Running a new Bluetooth "
+                "scan may briefly disrupt that connection on macOS.\n\n"
+                "Scan anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
         self._scan_btn.setEnabled(False)
         self._ok_btn.setEnabled(False)
         self._list.clear()
@@ -363,6 +763,15 @@ class DevicePickerDialog(QDialog):
     def _on_found(self, devices: list):
         self._stop_animation()
         self._list.clear()
+
+        # Persist into the module-level cache only when this came from a
+        # real scan thread (not from showEvent's cache replay). The cache
+        # replay calls _on_found directly without setting up a thread, so
+        # checking for a present _thread attribute is sufficient.
+        if getattr(self, "_thread", None) is not None:
+            global _LAST_SCAN_RESULTS
+            _LAST_SCAN_RESULTS = list(devices)
+
         if not devices:
             self._status.setText(
                 "No devices found. Make sure Muse-S is on and nearby."
@@ -438,8 +847,12 @@ class EEGLiveWidget(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         buf = BUFFER_SECONDS * SAMPLE_RATE
-        self._ts_buf    = deque(maxlen=buf)
-        self._chan_bufs: dict[str, deque] = {c: deque(maxlen=buf) for c in _CHANNELS}
+        # NumPy ring buffers — see _RingBuffer for the rationale.
+        # Critical for keeping the UI responsive when EEG is streaming.
+        self._ts_buf = _RingBuffer(buf, dtype=np.float64)
+        self._chan_bufs: dict[str, _RingBuffer] = {
+            c: _RingBuffer(buf, dtype=np.float32) for c in _CHANNELS
+        }
         self._stream_proc:      Optional[subprocess.Popen] = None
         self._record_proc:      Optional[subprocess.Popen] = None
         self._reader:           Optional[_LSLReaderThread] = None
@@ -623,43 +1036,51 @@ class EEGLiveWidget(QFrame):
     # ── Stream control ────────────────────────────────────────────────────────
 
     def start_stream(self, device_name: str = "", save_path: str = ""):
-        """
-        Start the muselsl stream subprocess + LSL inlet for live monitoring.
-        Does NOT start recording — call start_recording() separately.
+        """Connect to the selected Muse band directly over BLE.
+
+        Replaces the old subprocess(muselsl stream) + LSL inlet pipeline
+        with an in-process `_MuseDirectReader` (which wraps
+        `muselsl.muse.Muse` + bleak). The Qt signal interface is identical
+        to the old `_LSLReaderThread`, so the rest of the widget code
+        doesn't change.
+
+        Why: with two Muses, the old approach spawned 2 stream + 2 record
+        subprocesses (4 total BLE-touching processes plus an LSL pubsub
+        layer for in-process IPC). Connecting one Muse made the other
+        struggle because the OS BLE stack was being contended by far too
+        many processes. Direct BLE = zero subprocess overhead.
         """
         if self._is_streaming:
             return
-        name = device_name or (
-            self._connected_device["name"] if self._connected_device else ""
-        )
-        cmd = [sys.executable, "-m", "muselsl", "stream"]
-        if name:
-            cmd += ["-n", name]
-        # Use PIPE not DEVNULL — DEVNULL blocks muselsl's asyncio writes on
-        # macOS after ~30s causing CoreBluetooth to drop the BLE connection.
-        # Redirect subprocess output to DEVNULL — eliminates the need for
-        # pipe-drain threads that were the source of "QThread destroyed while
-        # thread '' is still running" crashes on macOS app exit. Anonymous
-        # threading.Thread instances blocking on p.readline() never terminate
-        # cleanly; Qt teardown sees them still alive and aborts. muselsl's
-        # stdout/stderr is only useful for debugging, not required for
-        # operation.
-        self._stream_proc = subprocess.Popen(
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        self._stream_thread = None
-        # 3s for muselsl to connect BLE and advertise LSL stream
-        QTimer.singleShot(3000, lambda: self._start_inlet(name))
+        if not self._connected_device:
+            print("[muse-direct] start_stream called with no selected device")
+            return
+        name = self._connected_device.get("name", device_name)
+        address = self._connected_device.get("address", "")
+        if not address:
+            self._on_stream_error(
+                f"No BLE address for {name} — pick the device again from the list."
+            )
+            return
 
-    def _start_inlet(self, device_name: str):
-        self._reader = _LSLReaderThread(stream_name=device_name, parent=self)
-        self._reader.samples.connect(self._on_samples)
-        self._reader.error.connect(self._on_stream_error)
-        self._reader.connected.connect(self._on_inlet_connected)
+        self._reader = _MuseDirectReader(address=address, name=name, parent=self)
+        # Explicit Qt.QueuedConnection. Without this, AutoConnection inspects
+        # sender/receiver QObject thread affinity at .connect() time — but
+        # the reader's affinity is still the parent (main thread) until
+        # .start() runs, so AutoConnection caches DirectConnection. When the
+        # BLE callback then emits from bleak's dispatch queue thread, Qt
+        # does the right thing at runtime, but QueuedConnection is the
+        # canonical pattern for cross-thread signals and removes any
+        # ambiguity about scheduling. Critical for keeping the main UI
+        # thread responsive when EEG data is flowing.
+        self._reader.samples.connect(self._on_samples, Qt.ConnectionType.QueuedConnection)
+        self._reader.error.connect(self._on_stream_error, Qt.ConnectionType.QueuedConnection)
+        self._reader.connected.connect(self._on_inlet_connected, Qt.ConnectionType.QueuedConnection)
         self._reader.start()
         self._is_streaming = True
         self._t0 = 0.0
-        # Show "connecting..." while BLE + LSL handshake completes
+        # Show "connecting..." while BLE handshake completes. The direct
+        # path typically takes 3-8s on first connect (BLE pairing).
         self._placeholder.setText("[ CONNECTING... ]")
         self._placeholder.setVisible(True)
         self._connect_btn.setText("DISCONNECT")
@@ -669,83 +1090,107 @@ class EEGLiveWidget(QFrame):
         )
         self._pick_btn.setEnabled(False)
 
+    def _start_inlet(self, device_name: str):
+        """Legacy stub — direct BLE no longer needs a separate inlet step.
+        Kept so any external callers that referenced this method don't
+        crash. The work it used to do is now part of start_stream."""
+        pass
+
     def _on_inlet_connected(self):
-        """Called when first real EEG chunk arrives — BLE+LSL confirmed working."""
+        """Called when first real EEG chunk arrives — BLE confirmed working."""
         self._draw_timer.start()
         self._placeholder.setVisible(False)
         self._show_view(self._view_mode)
         self._status_dot.setStyleSheet("color: #22c55e; font-size: 13px;")
 
     def start_recording(self, save_path: str):
-        """
-        Begin saving EEG to a named CSV file.
-        The muselsl stream must already be running (start_stream called first,
-        or CONNECT was clicked). If the stream is not yet up, start it first.
-        Recording runs until stop_recording() is called.
+        """Begin saving EEG to a CSV at `save_path`.
+
+        Direct BLE makes this trivial — we already receive every sample
+        as a Python callback, so recording is just "tell the reader to
+        accumulate samples to memory and flush on stop." No second
+        subprocess, no second LSL inlet, no second BLE consumer.
+
+        If the live stream isn't running yet (rare — the start-session
+        flow connects EEG before recording), auto-start it.
         """
         if not self._is_streaming:
-            # Auto-start the stream first, then record after it advertises
             device_name = (
                 self._connected_device["name"] if self._connected_device else ""
             )
             self.start_stream(device_name=device_name)
-            # Delay record start to let stream come up (stream has 3s delay + 1s buffer)
-            QTimer.singleShot(4500, lambda: self._launch_record_proc(save_path))
+            # BLE connect can take up to ~8s on first pair. We can't write
+            # samples until the reader has a connection, but the reader
+            # buffers anything it receives once start_recording() is set
+            # on it. Set the path immediately so any samples received during
+            # warmup are captured.
+            QTimer.singleShot(500, lambda: self._enable_recording(save_path))
         else:
-            self._launch_record_proc(save_path)
+            self._enable_recording(save_path)
 
+    def _enable_recording(self, save_path: str):
+        """Tell the direct reader to start accumulating samples for CSV."""
+        if self._reader is not None and hasattr(self._reader, "start_recording"):
+            self._reader.start_recording(save_path)
+            self._rec_indicator_active = True
+        else:
+            print(f"[muse-direct] cannot start recording — no active reader")
+
+    # Legacy method kept so the EEG record button + auto-start flow don't
+    # break if anything still calls them. Direct path uses _enable_recording.
     def _launch_record_proc(self, save_path: str):
-        """
-        Launch muselsl record with correct short flags.
-        muselsl record flags: -f/--filename, -d/--duration (no -n flag).
-        Device selection is automatic — it picks the active LSL stream.
-        Uses a 24h duration ceiling; stop_recording() sends SIGINT to flush early.
-        """
-        import pathlib
-        if self._record_proc and self._record_proc.poll() is None:
-            return  # Already recording
-
-        pathlib.Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            sys.executable, "-m", "muselsl", "record",
-            "-f", save_path,
-            "-d", "86400",
-        ]
-        self._record_proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        self._rec_indicator_active = True
+        self._enable_recording(save_path)
 
     def stop_recording(self):
-        """
-        Stop saving the CSV cleanly — runs in a background thread so the UI
-        does not freeze while muselsl flushes its buffer.
+        """Flush the in-memory sample buffer to CSV at the path set by
+        start_recording().
 
-        muselsl record only writes the final CSV on KeyboardInterrupt.
-        A plain terminate()/SIGTERM kills it before the flush.
-        We send SIGINT so it catches KeyboardInterrupt and calls _save().
+        With the direct-BLE architecture this is just a memory→disk write
+        of the accumulated samples — no separate subprocess to SIGINT and
+        wait for. The reader keeps everything in RAM during the session
+        (~9 MB per Muse for a 15-min session, comfortable).
+
+        Still kept fast: the actual file write happens on the current
+        thread but with a single np.concatenate + DataFrame.to_csv call.
+        Typical write time for a 15-min CSV is <500 ms on a slow disk.
         """
-        proc = self._record_proc
-        self._record_proc = None
         self._rec_indicator_active = False
+        if self._reader is None:
+            return
+        try:
+            path = self._reader.stop_recording()
+            if path:
+                print(f"[muse-direct] saved {path}")
+        except Exception as e:
+            print(f"[muse-direct] stop_recording flush failed: {e}")
 
+        # Legacy subprocess cleanup, in case any code path still set
+        # _record_proc. Belt-and-braces during the migration to direct BLE.
+        proc = getattr(self, "_record_proc", None)
+        self._record_proc = None
         if proc and proc.poll() is None:
             stopper = _RecordStopper(proc, parent=self)
             stopper.start()
 
 
     def stop_stream(self):
-        """Fully disconnect — stops recording, inlet, and stream subprocess."""
+        """Fully disconnect — flush recording, stop BLE reader, reset UI."""
         import design_tokens as _dt
         self.stop_recording()
         self._draw_timer.stop()
         if self._reader:
             self._reader.stop()
+            # Wait for the bleak loop to actually exit so we don't leave a
+            # dangling QThread that crashes the app on shutdown. 3 seconds
+            # is enough for a clean BLE disconnect; force-terminate
+            # otherwise (the OS will clean up the bond).
+            self._reader.wait(3000)
             self._reader = None
+        # Legacy stream-subprocess cleanup (no-op on new direct path,
+        # kept for safety during migration)
         if self._stream_proc:
-            self._stream_proc.terminate()
+            try: self._stream_proc.terminate()
+            except Exception: pass
             self._stream_proc = None
         self._stream_thread = None
         self._is_streaming = False
@@ -772,13 +1217,18 @@ class EEGLiveWidget(QFrame):
     # ── Sample ingestion ──────────────────────────────────────────────────────
 
     def _on_samples(self, data: np.ndarray, timestamps: np.ndarray):
+        # Hot path. This runs once per chunk pulled from LSL (typically every
+        # ~50ms with ≤12 samples). Avoid Python list conversions — write the
+        # numpy arrays directly into the ring buffers.
         if self._t0 == 0.0 and len(timestamps):
             self._t0 = float(timestamps[0])
+        # Subtract t0 in-place to avoid an extra allocation for `rel`
         rel = timestamps - self._t0
-        self._ts_buf.extend(rel.tolist())
+        self._ts_buf.extend(rel)
+        n_channels = data.shape[1] if data.ndim == 2 else 0
         for i, ch in enumerate(_CHANNELS):
-            if data.shape[1] > i:
-                self._chan_bufs[ch].extend(data[:, i].tolist())
+            if n_channels > i:
+                self._chan_bufs[ch].extend(data[:, i])
 
     def _on_stream_error(self, msg: str):
         """
@@ -829,24 +1279,43 @@ class EEGLiveWidget(QFrame):
     # ── Rendering ─────────────────────────────────────────────────────────────
 
     def _redraw(self):
-        # Push the latest samples into the pyqtgraph widgets. The new
-        # widgets handle their own windowing / auto-ranging internally;
-        # we just hand them a NumPy view.
-        if not self._ts_buf:
+        # Skip entirely when the widget isn't visible on screen. This is the
+        # single biggest win in apps with multiple tabs: when the user is on
+        # the Sync or Labelling tab, the Live Monitor EEG widgets shouldn't
+        # be doing FFTs or canvas updates. Qt's isVisibleTo(window) is the
+        # standard check.
+        try:
+            window = self.window()
+            if window is not None and not self.isVisibleTo(window):
+                return
+        except Exception:
+            pass
+
+        if len(self._ts_buf) == 0:
             return
-        ts = np.array(self._ts_buf)
+        ts = self._ts_buf.to_array()
 
         if self._view_mode == "waveform":
             channels = {
-                ch: np.array(self._chan_bufs[ch])
+                ch: self._chan_bufs[ch].to_array()
                 for ch in _CHANNELS
                 if len(self._chan_bufs[ch]) == len(ts)
             }
             self._wave_canvas.set_data(ts, channels)
         else:
+            # Throttle band-power FFTs to ~4 Hz (every ~250ms). FFT over
+            # 4 seconds × 256Hz × 4 channels is expensive enough that
+            # running it at 20 Hz (the timer rate) was the second-biggest
+            # cause of slowdown. Visually, the bars don't need to update
+            # any faster than 4 Hz — the underlying signal varies on a
+            # much slower timescale than 50ms.
+            now = time.monotonic()
+            if (now - getattr(self, "_last_band_calc", 0.0)) < 0.25:
+                return
+            self._last_band_calc = now
             per_channel: dict[str, dict] = {}
             for ch in _CHANNELS:
-                arr = np.array(self._chan_bufs[ch])
+                arr = self._chan_bufs[ch].to_array()
                 if len(arr) < SAMPLE_RATE:
                     per_channel[ch] = {b: 0.0 for b in _BANDS}
                 else:

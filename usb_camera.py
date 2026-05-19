@@ -47,6 +47,18 @@ import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 
 
+# ─── Constants ────────────────────────────────────────────────────────────────
+
+# Preview frames per second to emit toward the UI. Capture continues at the
+# camera's native rate (which feeds the disk writer at full quality); only
+# the preview signal is throttled. 20 Hz is below the threshold where the
+# human eye perceives stutter for a small preview tile, well above any
+# meaningful sampling rate for situational awareness, and reduces the
+# main-thread queued-signal load by roughly 33-66% versus 30/60 fps cameras.
+PREVIEW_FPS_CAP      = 20
+PREVIEW_INTERVAL_SEC = 1.0 / PREVIEW_FPS_CAP
+
+
 # ─── Backend selection ────────────────────────────────────────────────────────
 
 def _preferred_backend() -> int:
@@ -139,8 +151,17 @@ class USBCameraThread(QThread):
     stats         = pyqtSignal(float, int)  # fps, total_frames
 
     def __init__(self, device: CameraDevice,
-                 width: int = 1280, height: int = 720, fps: int = 30,
+                 width: int = 960, height: int = 540, fps: int = 30,
                  parent: QObject | None = None):
+        # Default 960×540 (qHD, 16:9). This is ~56% the pixel count of 720p
+        # but visually nearly indistinguishable on the small preview tiles
+        # we render. The pixel cost adds up across 4 cameras: at 720p each
+        # frame is ~1.4 MB; at 540 it's ~780 KB. Four cameras at 30 fps
+        # means ~94 MB/sec vs ~166 MB/sec of pixel data moving through
+        # Qt's signal queue + JPEG decode. The chosen res still captures
+        # enough detail for boxing analysis (faces, gloves, body posture)
+        # while keeping low-end laptops responsive. Callers can override
+        # with explicit width/height when needed.
         super().__init__(parent)
         self._dev       = device
         self._want_w    = width
@@ -182,15 +203,38 @@ class USBCameraThread(QThread):
             self.state_changed.emit(f"error: could not open camera {self._dev.index}")
             return
 
-        # Lock to a uniform requested FPS across all cameras. Cross-camera
-        # FPS mismatch is the dominant source of long-session drift (a
-        # 30.0 fps camera and a 29.97 camera diverge by ~0.6 frames over
-        # 11 minutes). We REQUEST self._want_fps; if the camera honours
-        # something materially different, we log a warning so the operator
-        # knows there's potential for drift in this session.
+        # ── Camera format negotiation ──────────────────────────────────────
+        # MUST set FOURCC=MJPG BEFORE resolution/fps. Without this, most USB
+        # webcams default to raw YUYV (16-bit uncompressed). At 1280×720 YUYV
+        # that's ~55 MB/sec per camera over USB — with 4 cameras on a USB 2.0
+        # bus (480 Mbps theoretical = 60 MB/sec total) you simply cannot fit,
+        # and the cameras drop to 5-15 fps. With MJPG (motion-JPEG), each
+        # camera consumes ~3-5 Mbps and 4 cameras fit comfortably even on
+        # USB 2.0. This is the single most important camera setting for
+        # achieving the target framerate across heterogeneous hardware.
+        #
+        # The set order is critical: FOURCC first, THEN resolution/fps.
+        # Setting them in the other order silently fails on macOS
+        # AVFoundation and many Windows DirectShow drivers — the camera
+        # negotiates a format with the first call and ignores later changes.
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+            cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+        except Exception:
+            pass  # Not every backend exposes FOURCC; carry on with default.
+
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self._want_w)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._want_h)
         cap.set(cv2.CAP_PROP_FPS,          self._want_fps)
+
+        # Reduce the driver's internal frame buffer to 1 so we always pull
+        # the latest frame, not an old one queued by the OS. Saves latency
+        # and reduces memory pressure with 4 cameras. Not supported by
+        # every backend; the call silently fails where it doesn't apply.
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
 
         actual_w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))  or self._want_w
         actual_h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self._want_h
@@ -206,6 +250,7 @@ class USBCameraThread(QThread):
         total_frames = 0
         stats_window: list[float] = []
         last_stats_emit = time.monotonic()
+        last_preview_emit = 0.0  # forces first frame to emit immediately
         # The first frame is the source of truth for VideoWriter dimensions.
         # cap.get() values can be 0/NaN on macOS AVFoundation before warmup,
         # which causes VideoWriter to "open" but silently reject frames →
@@ -269,9 +314,10 @@ class USBCameraThread(QThread):
                     last_stats_emit = now
                     self.stats.emit(float(len(stats_window)), total_frames)
 
-                # Write before emitting — prefer to lose a preview frame
-                # over losing a recorded one in the pathological case.
-                # Defensive: ensure frame matches writer dims.
+                # Write to disk before emitting — prefer to lose a preview
+                # frame over losing a recorded one in the pathological case.
+                # Recording stays at full capture rate; only the preview is
+                # throttled below.
                 if self._recording and self._writer is not None:
                     try:
                         if frame.shape[:2] == first_frame_shape:
@@ -284,7 +330,21 @@ class USBCameraThread(QThread):
                     except Exception:
                         pass
 
-                self.frame_ready.emit(frame)
+                # ── Preview emit throttling ───────────────────────────────
+                # Cap preview emits at ~20 Hz (50 ms). Even if the camera
+                # delivers 30/60 fps, the eye cannot perceive a difference
+                # above ~20 fps on a small preview tile, and every emit
+                # carries the full frame across the Qt thread boundary →
+                # a queued-connection copy of ~1 MB at 720p × 4 cameras.
+                # At native 30 fps × 4 cameras the system was moving
+                # ~120 MB/sec through Qt's event queue just to keep
+                # previews live. Throttling to 20 Hz cuts that to ~80 MB/sec
+                # and frees the main thread to handle other work (EEG
+                # plots, button clicks). Recording above is unaffected —
+                # the disk writer still gets every captured frame.
+                if (now - last_preview_emit) >= PREVIEW_INTERVAL_SEC:
+                    last_preview_emit = now
+                    self.frame_ready.emit(frame)
         finally:
             # Always release the writer and the device, even on exception.
             try:
