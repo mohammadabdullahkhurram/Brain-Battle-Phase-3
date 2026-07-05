@@ -388,13 +388,18 @@ class MainEditorSyncWorker(QThread):
             print(f"Normalised delays: {[round(d,3) for d in norm_delays]}  (max={max_norm_delay:.3f}s)")
 
             self.progress.emit(90, "Computing VLC seek offsets...")
-            # Each clip seeks forward by its own normalised delay so all clips
-            # reach the same real-world moment at playhead t=0.
-            # The reference clip (delay=0) seeks to 0 ms — it is already at the
-            # right start point.  Every other clip skips its "early" head footage.
-            # (Previous formula was max_norm_delay - d, which was inverted:
-            #  the reference got the largest seek and early clips got 0.)
-            seek_ms = [_clamp_ms(d * 1000) for d in norm_delays]
+            # Convention (per _xcorr_delay's docstring, verified empirically):
+            # norm_delays[i] is how much LATER clip i started recording than
+            # the earliest-starting clip. A late starter is MISSING head
+            # footage; an early starter has EXTRA head footage to skip.
+            # Playhead t=0 is the latest start (the first moment every clip
+            # has), so the latest-starting clip (d = max) seeks 0 and every
+            # earlier clip seeks forward past its extra head:
+            #     seek_i = max_norm_delay - norm_delays[i]
+            # This line has flip-flopped twice — do NOT change it without
+            # running tests/test_seek_alignment.py, which checks a known
+            # transient lands at the same playhead time in every clip.
+            seek_ms = [_clamp_ms((max_norm_delay - d) * 1000) for d in norm_delays]
             for i, (path, s) in enumerate(zip(original_video_paths, seek_ms)):
                 print(f"  clip {i} ({os.path.basename(path)}): delay={norm_delays[i]:.3f}s  seek={s}ms")
 
