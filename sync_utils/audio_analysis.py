@@ -126,21 +126,60 @@ def _norm(x: np.ndarray) -> np.ndarray:
 
 # --- Cross-correlation delay -------------------------------------------------
 
+def _peak_confidence(search_corr: np.ndarray, peak_idx: int, sr: int,
+                     guard_s: float = 0.25) -> float:
+    """
+    Confidence in [0, 1] for a correlation peak: baseline-corrected
+    peak-to-second-peak prominence.
+
+        conf = 1 - (second_peak - baseline) / (peak - baseline)
+
+    where `second_peak` is the highest correlation value outside a
+    +/-guard_s window around the peak (excluding the peak's own shoulder —
+    the 50 ms envelope smoothing gives the true peak ~100 ms of width) and
+    `baseline` is the median of the search window. The baseline correction
+    matters because envelopes are non-negative, so raw correlations ride a
+    large DC floor that would otherwise mask the peak's real prominence.
+
+    A shared signal produces one peak towering over the corrected floor
+    (conf near 1); unrelated signals produce many comparable fluctuations,
+    so the runner-up nearly matches the peak (conf near 0). Deliberately a
+    RATIO, not raw peak height — raw height scales with signal energy and
+    is not comparable across clips.
+    """
+    peak = float(search_corr[peak_idx])
+    baseline = float(np.median(search_corr))
+    denom = peak - baseline
+    if denom <= 0.0:                      # flat correlation — no information
+        return 0.0
+    guard = max(1, int(guard_s * sr))
+    outside = np.ones(len(search_corr), dtype=bool)
+    outside[max(0, peak_idx - guard):peak_idx + guard + 1] = False
+    if not outside.any():                 # window smaller than the guard
+        return 1.0
+    second = float(np.max(search_corr[outside]))
+    conf = 1.0 - max(0.0, second - baseline) / denom
+    return float(min(max(conf, 0.0), 1.0))
+
+
 def _xcorr_delay(ref: np.ndarray, other: np.ndarray,
-                 sr: int, max_offset_s: float = MAX_OFFSET_S) -> float:
+                 sr: int, max_offset_s: float = MAX_OFFSET_S) -> tuple[float, float]:
     """
     Compute time delay of `other` relative to `ref` via FFT cross-correlation.
 
     Uses mode="full" so the peak can be anywhere in [-len, +len] lags.
     Restricts search to +/-max_offset_s to avoid wrap-around noise.
 
-    Returns delay in seconds.  Positive = other starts LATER than ref.
+    Returns (delay_seconds, confidence).
+    Delay: positive = other starts LATER than ref.
+    Confidence: [0, 1] peak prominence (see _peak_confidence); 0.0 when no
+    delay could be measured at all.
     """
     # A clip with no audio stream extracts to an empty buffer; correlating
     # it is meaningless (and np.convolve/scipy.correlate raise on empty
     # arrays), so treat it as "no measurable offset".
     if len(ref) == 0 or len(other) == 0:
-        return 0.0
+        return 0.0, 0.0
 
     a = _envelope(_norm(ref.astype(np.float64)))
     b = _envelope(_norm(other.astype(np.float64)))
@@ -152,88 +191,94 @@ def _xcorr_delay(ref: np.ndarray, other: np.ndarray,
     max_lag = int(max_offset_s * sr)
     mask = np.abs(lags) <= max_lag
     if not np.any(mask):
-        return 0.0
+        return 0.0, 0.0
 
     search_corr = np.abs(corr[mask])
     search_lags = lags[mask]
     peak_idx = int(np.argmax(search_corr))
     delay = float(search_lags[peak_idx]) / sr
-    return delay if np.isfinite(delay) else 0.0
+    if not np.isfinite(delay):
+        return 0.0, 0.0
+    return delay, _peak_confidence(search_corr, peak_idx, sr)
 
 
 # --- Public API --------------------------------------------------------------
 
 def find_all_delays(video_paths: List[str],
-                    max_offset_s: float = MAX_OFFSET_S) -> List[float]:
+                    max_offset_s: float = MAX_OFFSET_S,
+                    pivot_index: int | None = None,
+                    ) -> tuple[List[float], List[float]]:
     """
-    Compute per-video delay relative to the longest video.
+    Compute per-video delay relative to the longest video (or to
+    `pivot_index` if given).
 
-    Returns list of floats (seconds). Positive = that clip starts later
-    than the reference. Reference clip always has delay 0.0.
+    Returns (delays, confidences), one entry per input path:
+      delays      — seconds; positive = that clip starts later than the
+                    reference. Reference clip always has delay 0.0.
+      confidences — [0, 1] peak-prominence per pairing (_peak_confidence).
+                    The reference's offset is 0 by construction, not
+                    measured, so its confidence is the max of its pairings —
+                    the anchor is only as corroborated as its best match.
     """
     if len(video_paths) < 2:
         raise ValueError("At least two video paths are required for autosync.")
 
     delays = [0.0] * len(video_paths)
-    longest_index = find_longest_vid(video_paths)
+    confidences = [0.0] * len(video_paths)
+    ref_index = pivot_index if pivot_index is not None else find_longest_vid(video_paths)
     results = [process_audio(p) for p in video_paths]
     audios = [r[0] for r in results]
     srs    = [r[1] for r in results]
 
-    ref = audios[longest_index]
-    sr  = srs[longest_index]
+    ref = audios[ref_index]
+    sr  = srs[ref_index]
 
     for i in range(len(video_paths)):
-        if i == longest_index:
+        if i == ref_index:
             continue
-        delays[i] = _xcorr_delay(ref, audios[i], sr, max_offset_s)
+        delays[i], confidences[i] = _xcorr_delay(ref, audios[i], sr, max_offset_s)
         print(f"  clip {i} ({get_file_name(video_paths[i])}): "
-              f"delay={delays[i]:.4f}s")
+              f"delay={delays[i]:.4f}s  confidence={confidences[i]:.3f}")
 
-    return delays
+    confidences[ref_index] = max(
+        c for i, c in enumerate(confidences) if i != ref_index)
+    return delays, confidences
 
 
 def find_all_delays_with_pivot(video_paths: List[str],
                                pivot_index: int,
-                               max_offset_s: float = MAX_OFFSET_S) -> List[float]:
+                               max_offset_s: float = MAX_OFFSET_S,
+                               ) -> tuple[List[float], List[float]]:
     """
     Same as find_all_delays but uses a caller-specified pivot index.
+    Returns (delays, confidences).
     """
-    if len(video_paths) < 2:
-        raise ValueError("At least two video paths are required for autosync.")
-
-    delays = [0.0] * len(video_paths)
-    results = [process_audio(p) for p in video_paths]
-    audios = [r[0] for r in results]
-    srs    = [r[1] for r in results]
-
-    ref = audios[pivot_index]
-    sr  = srs[pivot_index]
-
-    for i in range(len(video_paths)):
-        if i == pivot_index:
-            continue
-        delays[i] = _xcorr_delay(ref, audios[i], sr, max_offset_s)
-
-    return delays
+    return find_all_delays(video_paths, max_offset_s, pivot_index=pivot_index)
 
 
 def find_all_durations(video_paths: List[str]) -> List[float]:
     return [_probe_duration(p) for p in video_paths]
 
 
-def compute_delays(video_paths: List[str]) -> List[float]:
+def compute_delays_with_confidence(
+        video_paths: List[str]) -> tuple[List[float], List[float]]:
     """
-    Public alias used by MainEditorSyncWorker in brain_battle_main.py.
-    Returns raw delays (not normalised); normalisation is done in the worker.
+    Used by MainEditorSyncWorker in brain_battle_main.py.
+    Returns (raw delays, confidences); normalisation is done in the worker
+    and does not affect confidences.
     """
     return find_all_delays(video_paths)
+
+
+def compute_delays(video_paths: List[str]) -> List[float]:
+    """Back-compat alias — delays only, confidences discarded."""
+    return find_all_delays(video_paths)[0]
 
 
 def autosync(video_paths: List[str]) -> List[float]:
     """Legacy entry point — compute and return delays."""
     if not all(os.path.exists(p) for p in video_paths):
         raise FileNotFoundError("One or more video paths are invalid.")
-    delays = find_all_delays(video_paths)
+    delays, _confs = find_all_delays(video_paths)
     print(f"Delays: {delays}")
     return delays

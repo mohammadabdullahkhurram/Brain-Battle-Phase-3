@@ -23,7 +23,7 @@ from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap, QPainter
 
 from sync_engine import SyncWorker, SyncResult
-from sync_utils.audio_analysis import compute_delays, find_all_durations, has_audio_stream
+from sync_utils.audio_analysis import compute_delays_with_confidence, find_all_durations, has_audio_stream
 from sync_utils.video_sync import generate_single_preview, get_first_frame_pts, run_ffmpeg_subprocess
 from sync_utils.eeg_video_sync import compare_video_eeg, cut_video_from_start_end
 from eeg_module import EEGLiveWidget, EEGReviewWidget
@@ -345,6 +345,10 @@ class MainEditorSyncWorker(QThread):
         # per-source method labels.
         self.sync_mode = "simultaneous_start"   # or "audio_xcorr"
         self.audio_flags: list[bool] = []
+        # Per video path: [0,1] xcorr peak-prominence, or None when never
+        # measured (audio-less clip / simultaneous-start mode). None is
+        # deliberate — an unmeasured confidence must not look like a score.
+        self.confidences: list[float | None] = []
 
     def run(self):
         try:
@@ -372,15 +376,18 @@ class MainEditorSyncWorker(QThread):
                     self.progress.emit(15, f"EEG offset skipped: {e}"); print(f"[EEG sync warning] {e}")
 
             norm_delays = [0.0] * len(original_video_paths)
+            self.confidences = [None] * len(original_video_paths)
             if self.sync_mode == "audio_xcorr":
                 self.progress.emit(20, f"Computing delays via audio xcorr ({len(audio_idx)} clips with audio)...")
                 audio_paths = [original_video_paths[i] for i in audio_idx]
-                sub_delays = compute_delays(audio_paths)
+                sub_delays, sub_confs = compute_delays_with_confidence(audio_paths)
                 # Normalise within the audio-bearing subset; audio-less clips
-                # keep offset 0 (simultaneous-start assumption).
+                # keep offset 0 (simultaneous-start assumption). Confidence
+                # is per-pairing and unaffected by normalisation.
                 sub_min = min(sub_delays)
                 for j, i in enumerate(audio_idx):
                     norm_delays[i] = sub_delays[j] - sub_min
+                    self.confidences[i] = float(sub_confs[j])
             else:
                 self.progress.emit(
                     20, "No audio tracks on 2+ clips — aligning by simultaneous start (all offsets 0)...")
@@ -1008,16 +1015,22 @@ class SyncReviewTab(QWidget):
         from sync_engine import SourceOffset, SyncResult as _SR
         sync_mode   = getattr(self._worker, "sync_mode", "audio_xcorr")
         audio_flags = list(getattr(self._worker, "audio_flags", []))
+        confidences = list(getattr(self._worker, "confidences", []))
         video_sources = [s for s in self.sources[:4] if s.file_path]
-        # audio_flags aligns with video_paths, which was built from the same
-        # filtered source list — index i maps 1:1.
+        # audio_flags/confidences align with video_paths, which was built
+        # from the same filtered source list — index i maps 1:1.
         def _method(i):
             if sync_mode == "audio_xcorr" and i < len(audio_flags) and audio_flags[i]:
                 return "xcorr"
             return "simultaneous_start"
-        video_offsets = [SourceOffset(source_id=f"VIDEO_{i+1:02d}", path=src.file_path, offset_sec=delays[i] if i < len(delays) else 0.0, is_reference=(delays[i] == 0.0 if i < len(delays) else True), method=_method(i), confidence=1.0) for i, src in enumerate(video_sources)]
+        def _conf(i):
+            # None = never measured (audio-less / simultaneous start) — kept
+            # as None all the way to the CSV so it can't pose as a score.
+            return confidences[i] if i < len(confidences) else None
+        video_offsets = [SourceOffset(source_id=f"VIDEO_{i+1:02d}", path=src.file_path, offset_sec=delays[i] if i < len(delays) else 0.0, is_reference=(delays[i] == 0.0 if i < len(delays) else True), method=_method(i), confidence=_conf(i)) for i, src in enumerate(video_sources)]
         eeg_sources = [s for s in self.sources[4:] if s.file_path]
-        eeg_offsets = [SourceOffset(source_id=f"EEG_{i+1:02d}", path=s.file_path, offset_sec=0.0, method="creation_time", confidence=0.95) for i, s in enumerate(eeg_sources)]
+        # EEG offsets are assumed (0.0), not measured — confidence None.
+        eeg_offsets = [SourceOffset(source_id=f"EEG_{i+1:02d}", path=s.file_path, offset_sec=0.0, method="creation_time", confidence=None) for i, s in enumerate(eeg_sources)]
         global_duration = 0.0
         for i, path in enumerate(video_paths):
             if path and os.path.exists(path):
@@ -1069,6 +1082,12 @@ class SyncReviewTab(QWidget):
         self.time_slider.setRange(0, 0); self.time_slider.setValue(0)
         self.play_btn.setText("▶  PLAY"); self.play_btn.setEnabled(True); self._post_sync_offsets_ms = [0]*4
         for i, (src_row, delay) in enumerate(zip(self.sources[:4], delays)): src_row.set_offset(delay)
+        # Confidence badge (✓ / ~ / ?) on each measured row. set_confidence
+        # only renders for method "xcorr", so unmeasured rows stay bare.
+        for i, src_row in enumerate(video_sources):
+            c = _conf(i)
+            if c is not None:
+                src_row.set_confidence(c, "xcorr")
         eeg_sources = [s for s in self.sources[4:] if s.file_path]
         for i, widget in enumerate([self.eeg_review_1, self.eeg_review_2]):
             if i < len(eeg_sources):
@@ -1092,6 +1111,22 @@ class SyncReviewTab(QWidget):
         self.sync_status.setText(text)
         self.sync_status.setStyleSheet(f"color: {color}; font-size: 10px; font-family: 'Inter'; letter-spacing: 2px; padding: 8px 0;")
 
+    def _sync_offsets_rows(self) -> list:
+        """Rows for sync_offsets.csv. Confidence is the measured xcorr peak
+        prominence when it exists; when alignment was assumed rather than
+        measured (simultaneous_start videos, creation_time EEG) the cell
+        says so explicitly instead of carrying a fake number."""
+        if not self.sync_result:
+            return []
+        return [{
+            "source": o.source_id,
+            "offset_sec": o.offset_sec,
+            "method": o.method,
+            "confidence": (round(o.confidence, 3) if o.confidence is not None
+                           else f"n/a ({o.method})"),
+            "is_reference": o.is_reference,
+        } for o in self.sync_result.all_offsets()]
+
     def _export_synced_data(self):
         from PyQt6.QtWidgets import QInputDialog
         if not self.sync_result: QMessageBox.warning(self, "No sync data", "Run AUTO-SYNC before exporting."); return
@@ -1104,7 +1139,7 @@ class SyncReviewTab(QWidget):
         video_paths = [s.file_path or "" for s in self.sources[:4]]
         offset_secs = [self.sync_result.video_offsets[i].offset_sec if i < len(self.sync_result.video_offsets) else 0.0 for i in range(4)]
         eeg_paths = [s.file_path or "" for s in self.sources[4:]]
-        sync_rows = [{"source": o.source_id, "offset_sec": o.offset_sec, "method": o.method, "confidence": round(o.confidence,3), "is_reference": o.is_reference} for o in self.sync_result.all_offsets()]
+        sync_rows = self._sync_offsets_rows()
         worker = FullSessionExportWorker(zip_path=save_path, zip_name=zip_name, video_paths=video_paths, offset_secs=offset_secs, eeg_paths=eeg_paths, labels=[], sync_offsets_rows=sync_rows, global_duration=self.sync_result.global_duration, merge_video=True, parent=self)
         ExportProgressDialog(worker, parent=self).exec()
 
