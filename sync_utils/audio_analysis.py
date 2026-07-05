@@ -48,6 +48,23 @@ def _probe_duration(video_path: str) -> float:
         return 0.0
 
 
+def has_audio_stream(video_path: str) -> bool:
+    """
+    True if the file contains at least one audio stream (via ffprobe).
+
+    In-app captures are written by cv2.VideoWriter and never have audio, so
+    callers use this to decide between audio-xcorr sync (external footage)
+    and simultaneous-start alignment (in-app continuous sessions).
+    Unreadable/missing files count as no-audio.
+    """
+    try:
+        probe = _ffmpeg.probe(video_path)
+        return any(s.get("codec_type") == "audio"
+                   for s in probe.get("streams", []))
+    except Exception:
+        return False
+
+
 def find_longest_vid(video_paths: List[str]) -> int:
     return_val = 0
     max_duration = -1.0
@@ -119,6 +136,12 @@ def _xcorr_delay(ref: np.ndarray, other: np.ndarray,
 
     Returns delay in seconds.  Positive = other starts LATER than ref.
     """
+    # A clip with no audio stream extracts to an empty buffer; correlating
+    # it is meaningless (and np.convolve/scipy.correlate raise on empty
+    # arrays), so treat it as "no measurable offset".
+    if len(ref) == 0 or len(other) == 0:
+        return 0.0
+
     a = _envelope(_norm(ref.astype(np.float64)))
     b = _envelope(_norm(other.astype(np.float64)))
 
@@ -134,7 +157,8 @@ def _xcorr_delay(ref: np.ndarray, other: np.ndarray,
     search_corr = np.abs(corr[mask])
     search_lags = lags[mask]
     peak_idx = int(np.argmax(search_corr))
-    return float(search_lags[peak_idx]) / sr
+    delay = float(search_lags[peak_idx]) / sr
+    return delay if np.isfinite(delay) else 0.0
 
 
 # --- Public API --------------------------------------------------------------

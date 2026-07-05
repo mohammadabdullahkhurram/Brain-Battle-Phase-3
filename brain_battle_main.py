@@ -23,7 +23,7 @@ from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap, QPainter
 
 from sync_engine import SyncWorker, SyncResult
-from sync_utils.audio_analysis import compute_delays, find_all_durations
+from sync_utils.audio_analysis import compute_delays, find_all_durations, has_audio_stream
 from sync_utils.video_sync import generate_single_preview, get_first_frame_pts, run_ffmpeg_subprocess
 from sync_utils.eeg_video_sync import compare_video_eeg, cut_video_from_start_end
 from eeg_module import EEGLiveWidget, EEGReviewWidget
@@ -35,7 +35,13 @@ from labels_config import LABELS as PREDEFINED_LABELS, next_colour, save as save
 _INT32_MAX = 2_147_483_647
 
 def _clamp_ms(ms) -> int:
-    return int(max(0, min(int(ms), _INT32_MAX)))
+    try:
+        ms = float(ms)
+    except (TypeError, ValueError):
+        return 0
+    if ms != ms:  # NaN — int(nan) raises; a NaN offset means "no offset"
+        return 0
+    return int(max(0.0, min(ms, float(_INT32_MAX))))
 
 
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -294,6 +300,38 @@ class SourceRow(QWidget):
 import pandas as pd
 
 
+# Phase-marker colour palette — shared by the Sync + Review timeline strip and
+# the Labelling tab. All ROUND_*_START events share blue (same kind of event —
+# scanning the timeline should read "5 blue chips = 5 rounds"); same for breaks.
+PHASE_MARKER_COLORS = {
+    "baseline": "#10b981",   # emerald — calm, "before the work"
+    "round":    "#3b82f6",   # electric blue — active phase
+    "break":    "#f59e0b",   # amber — rest/pause
+    "done":     "#dc2626",   # crimson — terminal, stop
+}
+
+
+def _read_phase_markers(csv_path: str) -> list[tuple[float, str, str]]:
+    """Parse a v2.x phase_markers.csv into (t_sec, color, label) tuples.
+    Rows with an unparsable t_session_seconds are skipped; a missing or
+    unreadable file yields an empty list."""
+    import csv as _csv
+    rows: list[tuple[float, str, str]] = []
+    try:
+        with open(csv_path, "r", encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                try:
+                    t = float(row.get("t_session_seconds", ""))
+                except (TypeError, ValueError):
+                    continue
+                label = (row.get("label") or "PHASE").strip()
+                phase_id = (row.get("phase_id") or "").strip().lower()
+                rows.append((t, PHASE_MARKER_COLORS.get(phase_id, "#637DFF"), label))
+    except Exception as e:
+        print(f"[markers] failed to read {csv_path}: {e}")
+    return rows
+
+
 class MainEditorSyncWorker(QThread):
     progress = pyqtSignal(int, str)
     finished = pyqtSignal(list, list)
@@ -303,12 +341,25 @@ class MainEditorSyncWorker(QThread):
         super().__init__(parent)
         self.video_paths = video_paths; self.eeg_paths = eeg_paths or []
         self.pivot_index = pivot_index; self._temp_dir = tempfile.TemporaryDirectory()
+        # Set by run(); read by _on_sync_finished for the status line and
+        # per-source method labels.
+        self.sync_mode = "simultaneous_start"   # or "audio_xcorr"
+        self.audio_flags: list[bool] = []
 
     def run(self):
         try:
             original_video_paths = list(self.video_paths)
             self.progress.emit(5, "Analyzing durations...")
             durations = find_all_durations(original_video_paths)
+
+            # In-app captures (cv2.VideoWriter) have no audio stream, so audio
+            # xcorr is impossible — and unnecessary, since all in-app sources
+            # start simultaneously. Only clips that actually carry audio
+            # participate in xcorr; if fewer than 2 do, skip it entirely.
+            self.progress.emit(8, "Probing audio streams...")
+            self.audio_flags = [has_audio_stream(p) for p in original_video_paths]
+            audio_idx = [i for i, f in enumerate(self.audio_flags) if f]
+            self.sync_mode = "audio_xcorr" if len(audio_idx) >= 2 else "simultaneous_start"
 
             if self.eeg_paths:
                 self.progress.emit(10, "EEG data detected — computing EEG window offset...")
@@ -320,10 +371,19 @@ class MainEditorSyncWorker(QThread):
                 except Exception as e:
                     self.progress.emit(15, f"EEG offset skipped: {e}"); print(f"[EEG sync warning] {e}")
 
-            self.progress.emit(20, "Computing inter-camera delays via audio xcorr...")
-            raw_delays = compute_delays(original_video_paths)
-            min_delay = min(raw_delays)
-            norm_delays = [d - min_delay for d in raw_delays]
+            norm_delays = [0.0] * len(original_video_paths)
+            if self.sync_mode == "audio_xcorr":
+                self.progress.emit(20, f"Computing delays via audio xcorr ({len(audio_idx)} clips with audio)...")
+                audio_paths = [original_video_paths[i] for i in audio_idx]
+                sub_delays = compute_delays(audio_paths)
+                # Normalise within the audio-bearing subset; audio-less clips
+                # keep offset 0 (simultaneous-start assumption).
+                sub_min = min(sub_delays)
+                for j, i in enumerate(audio_idx):
+                    norm_delays[i] = sub_delays[j] - sub_min
+            else:
+                self.progress.emit(
+                    20, "No audio tracks on 2+ clips — aligning by simultaneous start (all offsets 0)...")
             max_norm_delay = max(norm_delays)
             print(f"Normalised delays: {[round(d,3) for d in norm_delays]}  (max={max_norm_delay:.3f}s)")
 
@@ -355,6 +415,7 @@ class SyncReviewTab(QWidget):
         self.eeg_file_name_1 = None; self.eeg_file_name_2 = None
         self.sync_result = None; self._worker = None
         self._temp_paths = []; self._delays = []; self._residuals_ms = []
+        self._phase_markers: list[tuple[float, str, str]] = []
         self._post_sync_offsets_ms = [0, 0, 0, 0]
         self._pos_timer = QTimer(self); self._pos_timer.setInterval(100)
         self._pos_timer.timeout.connect(self._poll_position)
@@ -403,6 +464,10 @@ class SyncReviewTab(QWidget):
         toolbar = make_opaque_toolbar(44)
         tb = QHBoxLayout(toolbar); tb.setContentsMargins(16,0,16,0); tb.setSpacing(8)
         tb.addWidget(make_panel_title("SYNC + REVIEW")); tb.addStretch()
+        self.open_session_btn = QPushButton("OPEN SESSION FOLDER"); self.open_session_btn.setFixedHeight(28)
+        self.open_session_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
+        self.open_session_btn.clicked.connect(self._open_session_dialog)
+        tb.addWidget(self.open_session_btn)
         self.sync_btn = QPushButton("AUTO-SYNC"); self.sync_btn.setFixedHeight(28)
         self.sync_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 16px;")
         self.export_btn = QPushButton("EXPORT SYNCED DATA"); self.export_btn.setFixedHeight(28)
@@ -513,7 +578,9 @@ class SyncReviewTab(QWidget):
         eeg_row_layout.addWidget(eeg_cols_widget, 1); right_vbox.addWidget(eeg_row_widget)
         right_scroll.setWidget(right_content); preview_layout.addWidget(right_scroll, stretch=1)
 
-        controls = QWidget(); controls.setFixedHeight(52)
+        # 84px (not 52) — TimelineWithMarkers adds a 32px marker strip
+        # below the slider for phase_markers.csv chips.
+        controls = QWidget(); controls.setFixedHeight(84)
         controls.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         controls.setStyleSheet("background-color: #0E0E12; border-top: 2px solid #2A2A30;")
         ctrl_layout = QHBoxLayout(controls); ctrl_layout.setContentsMargins(16,0,16,0); ctrl_layout.setSpacing(10)
@@ -522,8 +589,9 @@ class SyncReviewTab(QWidget):
         self.play_btn.setStyleSheet("background-color: #1C1C21; border: 1px solid #71717A; color: #ECEDEE; font-family: 'Inter'; font-size: 11px; letter-spacing: 1px; padding: 6px;")
         self.play_btn.clicked.connect(self._toggle_play)
         self.tc_label = QLabel("00:00:00.000"); self.tc_label.setObjectName("timecode"); self.tc_label.setFixedWidth(110)
-        self.time_slider = QSlider(Qt.Orientation.Horizontal); self.time_slider.setRange(0,0); self.time_slider.setValue(0)
+        self.time_slider = TimelineWithMarkers(); self.time_slider.setRange(0,0); self.time_slider.setValue(0)
         self.time_slider.sliderMoved.connect(self._set_position)
+        self.time_slider.markerSeek.connect(self._on_marker_seek)
         self.duration_label = QLabel("--:--:--.---")
         self.duration_label.setStyleSheet("color: #A1A1AA; font-size: 11px; font-family: 'Inter'; letter-spacing: 1px;")
         self.duration_label.setFixedWidth(90)
@@ -873,8 +941,18 @@ class SyncReviewTab(QWidget):
         if self.sync_result is not None: return
         if ms > 0:
             self.time_slider.setRange(0, _clamp_ms(ms))
+            self.time_slider.set_duration_sec(ms / 1000.0)
             secs = ms / 1000.0; h = int(secs//3600); m = int((secs%3600)//60); s = secs%60
             self.duration_label.setText(f"{h:02d}:{m:02d}:{s:06.3f}")
+
+    def _on_marker_seek(self, t_sec: float):
+        """User clicked a phase-marker chip on the timeline strip — snap the
+        playhead (all players + EEG overlays) to that timestamp."""
+        ms = _clamp_ms(t_sec * 1000.0)
+        self.time_slider.blockSignals(True)
+        self.time_slider.setValue(ms)
+        self.time_slider.blockSignals(False)
+        self._set_position(ms)
 
     def _poll_position(self):
         # Read global_t from the reference player (seek=0 or smallest seek).
@@ -923,8 +1001,16 @@ class SyncReviewTab(QWidget):
         self._temp_paths = video_paths; self._delays = delays; self._residuals_ms = seek_ms_list
 
         from sync_engine import SourceOffset, SyncResult as _SR
+        sync_mode   = getattr(self._worker, "sync_mode", "audio_xcorr")
+        audio_flags = list(getattr(self._worker, "audio_flags", []))
         video_sources = [s for s in self.sources[:4] if s.file_path]
-        video_offsets = [SourceOffset(source_id=f"VIDEO_{i+1:02d}", path=src.file_path, offset_sec=delays[i] if i < len(delays) else 0.0, is_reference=(delays[i] == 0.0 if i < len(delays) else True), method="xcorr", confidence=1.0) for i, src in enumerate(video_sources)]
+        # audio_flags aligns with video_paths, which was built from the same
+        # filtered source list — index i maps 1:1.
+        def _method(i):
+            if sync_mode == "audio_xcorr" and i < len(audio_flags) and audio_flags[i]:
+                return "xcorr"
+            return "simultaneous_start"
+        video_offsets = [SourceOffset(source_id=f"VIDEO_{i+1:02d}", path=src.file_path, offset_sec=delays[i] if i < len(delays) else 0.0, is_reference=(delays[i] == 0.0 if i < len(delays) else True), method=_method(i), confidence=1.0) for i, src in enumerate(video_sources)]
         eeg_sources = [s for s in self.sources[4:] if s.file_path]
         eeg_offsets = [SourceOffset(source_id=f"EEG_{i+1:02d}", path=s.file_path, offset_sec=0.0, method="creation_time", confidence=0.95) for i, s in enumerate(eeg_sources)]
         global_duration = 0.0
@@ -967,6 +1053,7 @@ class SyncReviewTab(QWidget):
                         min_usable_ms = usable if min_usable_ms == 0 else min(min_usable_ms, usable)
             if min_usable_ms > 0:
                 self.time_slider.setRange(0, _clamp_ms(min_usable_ms))
+                self.time_slider.set_duration_sec(min_usable_ms / 1000.0)
                 self.time_slider.setValue(0)
                 secs = min_usable_ms / 1000.0; h = int(secs//3600); m = int((secs%3600)//60); s = secs%60
                 self.duration_label.setText(f"{h:02d}:{m:02d}:{s:05.2f}")
@@ -982,8 +1069,15 @@ class SyncReviewTab(QWidget):
             if i < len(eeg_sources):
                 try: df = pd.read_csv(eeg_sources[i].file_path); widget.load(df, offset_sec=0.0)
                 except Exception as e: print(f"EEG {i+1} error: {e}")
-        self._set_sync_status("SYNC COMPLETE  ✓", "#22c55e"); self.sync_btn.setEnabled(True); self.goto_label_btn.setEnabled(True)
-        print(f"\nSync offsets (seek per player): {seek_ms_list} ms")
+        if sync_mode == "simultaneous_start":
+            msg = "IN-APP SESSION — ALIGNED BY SIMULTANEOUS START"
+            if self._phase_markers:
+                msg += f"  ·  {len(self._phase_markers)} MARKERS LOADED"
+        else:
+            n_audio = sum(1 for f in audio_flags if f)
+            msg = f"SYNCED {n_audio} CLIPS BY AUDIO  ✓"
+        self._set_sync_status(msg, "#22c55e"); self.sync_btn.setEnabled(True); self.goto_label_btn.setEnabled(True)
+        print(f"\nSync mode: {sync_mode}  ·  offsets (seek per player): {seek_ms_list} ms")
 
     def _on_sync_error(self, msg):
         self.sync_progress.setValue(0); self._set_sync_status(f"ERROR: {msg[:60]}", "#ef4444")
@@ -1024,32 +1118,67 @@ class SyncReviewTab(QWidget):
             else: eeg_data.append((None, 0.0))
         label_tab.load_session_data(video_data, eeg_data, self.sync_result)
 
+    def _open_session_dialog(self) -> None:
+        """Operator-facing counterpart to the automatic Live→Review handoff:
+        pick a session root (or its continuous/ folder) and load it. All
+        discovery, fallback, and status-line logic lives in
+        load_session_folder."""
+        folder = QFileDialog.getExistingDirectory(self, "Open session folder", "")
+        if not folder:
+            return
+        self.load_session_folder(folder)
+
     def load_session_folder(self, session_root: str, round_num: int = 1) -> None:
         """
         Auto-populate the review tab from a Brain Battle <timestamp>/ folder.
 
         Called by LiveSessionTab when a capture session finishes, so the
         operator can jump straight from LIVE MONITOR → SYNC + REVIEW without
-        re-picking every file. Defaults to loading Round 1; operator can still
-        manually pick other rounds via the UPLOAD buttons.
+        re-picking every file. Expects the v2.x continuous-recording layout
+        (mirrors LabellingTab._open_session_folder):
+            <session_root>/continuous/Side Cams/*.mp4
+            <session_root>/continuous/POV Cams/*.mp4
+            <session_root>/continuous/Muse data/*.csv
+            <session_root>/phase_markers.csv  (optional)
+
+        round_num is a legacy v1.x parameter and is ignored — v2.x sessions
+        have no per-round folders; phase boundaries live in phase_markers.csv.
 
         Mapping (matches SourceRow definitions above):
-            0-1 DSLR      ← Side Cams/*.mp4   (slot_index 1, 2)
-            2-3 POV       ← POV  Cams/*.mp4   (slot_index 3, 4)
-            4-5 MUSE-S    ← Muse data/*.csv   (first two CSVs, alphabetical)
+            0-1 DSLR      ← Side Cams/*.mp4   (first two, alphabetical)
+            2-3 POV       ← POV  Cams/*.mp4
+            4-5 MUSE-S    ← Muse data/*.csv
         """
         from pathlib import Path as _Path
         root = _Path(session_root)
-        round_folder = root / f"Round {round_num}"
-        if not round_folder.is_dir():
-            return  # Session may have been stopped before this round began.
+        cont = root / "continuous"
+        if not cont.is_dir():
+            # Operator may have handed us the continuous/ folder itself…
+            if (root / "Side Cams").is_dir() or (root / "POV Cams").is_dir():
+                cont = root; root = root.parent
+            else:
+                # …or the parent directory of the session folder — look one
+                # level deep (mirrors LabellingTab._open_session_folder).
+                children = sorted(root.iterdir()) if root.is_dir() else []
+                for child in children:
+                    if child.is_dir() and (child / "continuous").is_dir():
+                        root = child; cont = child / "continuous"; break
+                else:
+                    self._set_sync_status(
+                        f"NO continuous/ FOLDER IN {root.name}", "#ef4444")
+                    return
 
-        def _sorted(glob_pat):
-            return sorted([p for p in round_folder.glob(glob_pat) if p.is_file()])
+        def _files(subdir, patterns):
+            d = cont / subdir
+            out = []
+            if d.is_dir():
+                for pat in patterns:
+                    out += sorted(p for p in d.glob(pat) if p.is_file())
+            return list(dict.fromkeys(out))  # dedup (case-insensitive FS)
 
-        side_cams = _sorted("Side Cams/*.mp4") + _sorted("Side Cams/*.MP4")
-        pov_cams  = _sorted("POV Cams/*.mp4")  + _sorted("POV Cams/*.MP4")
-        muse_csvs = _sorted("Muse data/*.csv") + _sorted("Muse data/*.CSV")
+        side_cams = _files("Side Cams", ("*.mp4", "*.MP4"))
+        pov_cams  = _files("POV Cams",  ("*.mp4", "*.MP4"))
+        muse_csvs = _files("Muse data", ("*.csv", "*.CSV"))
 
         # Assign each discovered file into the matching SourceRow. Silently
         # skip slots with no corresponding file — operator can upload manually.
@@ -1060,15 +1189,23 @@ class SyncReviewTab(QWidget):
         for i, path in enumerate(muse_csvs[:2]):
             self.sources[4 + i].set_path(str(path))
 
+        # Phase markers → chips on the timeline strip.
+        self._phase_markers = []
+        self.time_slider.clear_markers()
+        markers_csv = root / "phase_markers.csv"
+        if markers_csv.exists():
+            self._phase_markers = _read_phase_markers(str(markers_csv))
+            for t_sec, color, label in self._phase_markers:
+                self.time_slider.add_marker(t_sec, color, label)
+
         found = len(side_cams[:2]) + len(pov_cams[:2]) + len(muse_csvs[:2])
         if found:
-            self.sync_status.setText(
-                f"LOADED  {found} FILES  FROM  {root.name} / ROUND {round_num}"
-            )
-            self.sync_status.setStyleSheet(
-                "color: #637DFF; font-size: 10px; font-family: 'Inter'; "
-                "letter-spacing: 2px; padding: 8px 0;"
-            )
+            msg = f"LOADED  {found} FILES  FROM  {root.name}"
+            if self._phase_markers:
+                msg += f"  ·  {len(self._phase_markers)} MARKERS"
+            self._set_sync_status(msg, "#637DFF")
+        else:
+            self._set_sync_status(f"NO RECORDINGS FOUND IN {root.name}", "#ef4444")
 
 
 class LabelChip(QWidget):
@@ -1137,6 +1274,7 @@ class TimelineWithMarkers(QWidget):
     is cleaner and looks more like a real video editor timeline.
     """
     valueChanged = pyqtSignal(int)
+    sliderMoved  = pyqtSignal(int)  # user-initiated drag, mirrors QSlider
     markerSeek = pyqtSignal(float)  # fires when user clicks a marker; arg = t_sec
 
     def __init__(self, parent=None):
@@ -1147,6 +1285,7 @@ class TimelineWithMarkers(QWidget):
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(0, 10000); self._slider.setValue(0)
         self._slider.valueChanged.connect(self.valueChanged.emit)
+        self._slider.sliderMoved.connect(self.sliderMoved.emit)
         v.addWidget(self._slider)
         self._strip = _MarkerStrip(self)
         v.addWidget(self._strip)
@@ -1662,18 +1801,8 @@ class LabellingTab(QWidget):
         """Read phase_markers.csv and place a phase-style label for each
         row. De-duplicates against already-placed phase markers by
         (timestamp_str, label_name) so calling this multiple times during
-        a multi-file upload is safe."""
-        import csv as _csv
-        # Phase color palette — distinct, semantic, no gray, no duplicates
-        # across categories. All ROUND_*_START events share blue (they're
-        # the same kind of event — you should be able to scan the timeline
-        # and immediately see "5 blue chips = 5 rounds"). Same for breaks.
-        phase_colors = {
-            "baseline": "#10b981",   # emerald — calm, "before the work"
-            "round":    "#3b82f6",   # electric blue — active phase
-            "break":    "#f59e0b",   # amber — rest/pause
-            "done":     "#dc2626",   # crimson — terminal, stop
-        }
+        a multi-file upload is safe. Colours come from the module-level
+        PHASE_MARKER_COLORS palette (shared with the Sync + Review tab)."""
         # Collect existing phase-marker keys for dedup
         existing = set()
         for i in range(self.placed_layout.count()):
@@ -1682,38 +1811,26 @@ class LabellingTab(QWidget):
             if isinstance(w, LabelMarker) and getattr(w, "is_phase", False):
                 existing.add((w.timestamp_str, w.label_name))
 
-        try:
-            with open(csv_path, "r", encoding="utf-8") as f:
-                reader = _csv.DictReader(f)
-                added = 0
-                for row in reader:
-                    try:
-                        t = float(row.get("t_session_seconds", 0.0))
-                    except ValueError:
-                        continue
-                    label = row.get("label", "PHASE").strip()
-                    phase_id = row.get("phase_id", "").strip().lower()
-                    color = phase_colors.get(phase_id, "#637DFF")
-                    h = int(t // 3600); m = int((t % 3600) // 60); s = t % 60
-                    ts_str = f"{h:02d}:{m:02d}:{s:06.3f}"
-                    if (ts_str, label) in existing:
-                        continue  # already placed, skip
-                    marker = LabelMarker(label, color, ts_str, is_phase=True)
-                    marker.removed.connect(self._update_label_count)
-                    marker.removed.connect(self._rebuild_timeline_markers)
-                    # Insert phase markers in sorted order by timestamp at
-                    # the top of the list, before any user-placed markers.
-                    self.placed_layout.insertWidget(self.placed_layout.count() - 1, marker)
-                    # Mirror onto the timeline strip
-                    try: self.tl_slider.add_marker(t, color, label)
-                    except Exception: pass
-                    existing.add((ts_str, label))
-                    added += 1
-                if added > 0:
-                    self._update_label_count()
-                    print(f"[markers] auto-loaded {added} phase markers from {csv_path}")
-        except Exception as e:
-            print(f"[markers] failed to read {csv_path}: {e}")
+        added = 0
+        for t, color, label in _read_phase_markers(csv_path):
+            h = int(t // 3600); m = int((t % 3600) // 60); s = t % 60
+            ts_str = f"{h:02d}:{m:02d}:{s:06.3f}"
+            if (ts_str, label) in existing:
+                continue  # already placed, skip
+            marker = LabelMarker(label, color, ts_str, is_phase=True)
+            marker.removed.connect(self._update_label_count)
+            marker.removed.connect(self._rebuild_timeline_markers)
+            # Insert phase markers in sorted order by timestamp at
+            # the top of the list, before any user-placed markers.
+            self.placed_layout.insertWidget(self.placed_layout.count() - 1, marker)
+            # Mirror onto the timeline strip
+            try: self.tl_slider.add_marker(t, color, label)
+            except Exception: pass
+            existing.add((ts_str, label))
+            added += 1
+        if added > 0:
+            self._update_label_count()
+            print(f"[markers] auto-loaded {added} phase markers from {csv_path}")
 
     def _open_session_folder(self) -> None:
         """One-click loader: pick a session root folder and load every
@@ -2089,9 +2206,7 @@ class BrainBattleApp(QMainWindow):
             def currentIndex(self): return self._shell.current_index()
         self.tabs = _ShellTabShim(self._shell)
 
-        self.live_tab.session_saved.connect(
-            lambda path: self.sync_tab.load_session_folder(path, round_num=1)
-        )
+        self.live_tab.session_saved.connect(self.sync_tab.load_session_folder)
 
         root.addWidget(self._shell, 1)
 
