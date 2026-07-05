@@ -54,15 +54,48 @@ from PyQt6.QtWidgets import (
 
 # --- Hardware encoder detection ----------------------------------------------
 
+def _candidate_encoders() -> list[str]:
+    """Hardware H.264 encoder candidates for this platform, best first."""
+    if sys.platform == "win32":
+        return ["h264_nvenc", "h264_amf", "h264_qsv"]
+    if sys.platform == "darwin":
+        return ["h264_videotoolbox"]
+    return ["h264_nvenc", "h264_qsv"]  # Linux
+
+
+def _validate_encoder(ff: str, encoder: str) -> bool:
+    """
+    Prove the encoder actually WORKS, not just that ffmpeg was compiled with
+    it: encode 8 tiny black frames to the null muxer with the same quality
+    flags a real export would use. An nvenc-enabled ffmpeg build on a machine
+    with no NVIDIA GPU lists h264_nvenc but fails here at device init.
+    """
+    try:
+        r = subprocess.run(
+            [ff, "-hide_banner", "-v", "error",
+             "-f", "lavfi", "-i", "color=black:s=192x108:r=8:d=1",
+             "-frames:v", "8", "-c:v", encoder]
+            + _encoder_args(encoder)
+            + ["-f", "null", "-"],
+            capture_output=True, timeout=20,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
 def _detect_hw_encoder() -> str:
     """
-    Probe ffmpeg for GPU-accelerated H.264 encoders.
-    Returns the best available encoder name string.
+    Pick the best USABLE H.264 encoder.
 
     Priority:
       Windows: h264_nvenc > h264_amf > h264_qsv > libx264
       macOS:   h264_videotoolbox > libx264
       Linux:   h264_nvenc > h264_qsv > libx264
+
+    A candidate must both appear in `ffmpeg -encoders` (compiled in) AND
+    pass a throwaway test encode (_validate_encoder — hardware present and
+    initialisable). Result is cached once at import time via _HW_ENCODER.
     """
     ff = shutil.which("ffmpeg")
     if not ff:
@@ -72,24 +105,16 @@ def _detect_hw_encoder() -> str:
             [ff, "-hide_banner", "-encoders"],
             capture_output=True, text=True, timeout=8,
         )
-        out = result.stdout
-        if sys.platform == "win32":
-            if "h264_nvenc" in out:
-                return "h264_nvenc"
-            if "h264_amf" in out:
-                return "h264_amf"
-            if "h264_qsv" in out:
-                return "h264_qsv"
-        elif sys.platform == "darwin":
-            if "h264_videotoolbox" in out:
-                return "h264_videotoolbox"
-        else:  # Linux
-            if "h264_nvenc" in out:
-                return "h264_nvenc"
-            if "h264_qsv" in out:
-                return "h264_qsv"
+        listed = result.stdout
     except Exception:
-        pass
+        return "libx264"
+    for enc in _candidate_encoders():
+        if enc not in listed:
+            continue
+        if _validate_encoder(ff, enc):
+            return enc
+        print(f"[export] {enc} is listed by ffmpeg but failed a test encode "
+              f"(no usable hardware?) — falling back")
     return "libx264"
 
 
@@ -247,13 +272,23 @@ class VideoExportWorker(QThread):
             stderr=subprocess.PIPE,
         )
 
-        # Parse ffmpeg progress from stderr
+        # Parse ffmpeg progress from stderr, keeping a tail of recent lines.
+        # The readline() loop drains stderr to EOF, so a later
+        # proc.stderr.read() would return empty — the tail deque is the ONLY
+        # copy of ffmpeg's error output if the encode fails.
+        import collections
+        stderr_tail: "collections.deque[str]" = collections.deque(maxlen=40)
         total_dur = self.global_duration or 1.0
         while True:
             line = proc.stderr.readline()
             if not line:
                 break
             line = line.decode(errors="replace")
+            # ffmpeg separates in-place stats updates with \r within one
+            # \n-terminated chunk — split so the tail stays line-shaped.
+            for part in line.split("\r"):
+                if part.strip():
+                    stderr_tail.append(part.rstrip())
             if "time=" in line:
                 try:
                     t_str = line.split("time=")[1].split()[0]
@@ -272,8 +307,10 @@ class VideoExportWorker(QThread):
         proc.wait()
 
         if proc.returncode != 0:
-            err = (proc.stderr.read() or b"").decode(errors="replace")[-300:]
-            self.error.emit(f"ffmpeg failed:\n{err}")
+            err = "\n".join(stderr_tail)[-1000:]
+            if not err:
+                err = f"(ffmpeg produced no stderr output, exit code {proc.returncode})"
+            self.error.emit(f"ffmpeg failed (exit {proc.returncode}):\n{err}")
             return
 
         self.progress.emit(100, "Video export complete.")
@@ -524,7 +561,10 @@ class ExportProgressDialog(QDialog):
         self._close_btn.setEnabled(True)
 
     def _on_error(self, msg: str):
-        self._status.setText(f"Error: {msg[:120]}")
+        # 800 chars, not 120 — the message now carries the tail of ffmpeg's
+        # stderr, and truncating it would hide the actual failure reason.
+        self._status.setWordWrap(True)
+        self._status.setText(f"Error: {msg[:800]}")
         self._status.setStyleSheet(
             "color: #ef4444; font-family: 'Inter'; font-size: 12px;"
         )
