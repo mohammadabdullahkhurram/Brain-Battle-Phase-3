@@ -83,8 +83,11 @@ class SourceOffset:
     path: str
     offset_sec: float        # seek this many seconds into the source to reach t=0
     is_reference: bool = False
-    method: str = ""         # 'reference' | 'xcorr' | 'creation_time'
-    confidence: float = 1.0  # 0-1, based on xcorr peak ratio
+    method: str = ""         # 'reference' | 'xcorr' | 'creation_time' | 'simultaneous_start'
+    # 0-1 xcorr peak prominence (see audio_analysis._peak_confidence), or
+    # None when the offset was assumed rather than measured — None must
+    # never be replaced with a made-up number.
+    confidence: float | None = None
 
 
 @dataclass
@@ -109,7 +112,8 @@ class SyncResult:
         lines = [f"Global duration: {self.global_duration:.3f}s", ""]
         for o in self.all_offsets():
             tag = "[REF]" if o.is_reference else "     "
-            conf = f"  conf={o.confidence:.2f}" if o.method == "xcorr" else ""
+            conf = (f"  conf={o.confidence:.2f}"
+                    if o.method == "xcorr" and o.confidence is not None else "")
             lines.append(
                 f"{tag} {o.source_id:<18} offset={o.offset_sec:+.4f}s  "
                 f"({o.method}){conf}"

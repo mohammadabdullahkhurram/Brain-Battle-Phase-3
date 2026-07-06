@@ -220,8 +220,12 @@ class SidebarShell(QWidget):
         try:
             with open(pref_path, "w") as f:
                 json.dump({"theme": new_theme}, f)
-        except Exception:
-            pass
+        except OSError as e:
+            # Only file I/O can fail here (literal dict of two ASCII strings
+            # is always serialisable); pref just won't persist this switch.
+            import logging
+            logging.getLogger(__name__).warning(
+                "could not save theme preference to %s: %s", pref_path, e)
 
         msg = QMessageBox(self)
         msg.setWindowTitle("Theme saved")

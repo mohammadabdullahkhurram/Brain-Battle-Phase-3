@@ -38,9 +38,12 @@ def _load():
             with open(p, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             return [tuple(x) for x in data]
-        except (json.JSONDecodeError, ValueError, KeyError):
-            # Corrupted JSON — fall back to defaults silently
-            pass
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            # Corrupted JSON — fall back to defaults, but say so: the user's
+            # custom label palette silently resets otherwise.
+            import logging
+            logging.getLogger(__name__).warning(
+                "labels_data.json unreadable (%s) — using default palette", e)
     return list(_DEFAULT_LABELS)
 
 

@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+*.textClipping
+
+# Runtime-generated data
+Captures/
+.brain_battle_prefs.json

@@ -1,8 +1,11 @@
 import ffmpeg
+import logging
 import pandas as pd
 import datetime as dt
 import subprocess
 import os
+
+log = logging.getLogger(__name__)
 
 
 def _parse_creation_time(creation_time: str) -> float:
@@ -128,7 +131,7 @@ def cut_video_from_start_end(video_path: str, start_time: float, end_time: float
 
     end_time_str = str(dt.timedelta(seconds=end_time))
 
-    print("FFMPEG is starting, please wait.")
+    log.info("ffmpeg cut starting")
     try:
         ffmpeg_process = subprocess.Popen(
             out_cmd,
@@ -137,18 +140,18 @@ def cut_video_from_start_end(video_path: str, start_time: float, end_time: float
             universal_newlines=True,
         )
     except OSError:
-        print("OSError: could not launch ffmpeg.")
+        log.error("OSError: could not launch ffmpeg")
         return
     except ValueError as exc:
-        print(f"ValueError: Cannot run FFMPEG with given parameters. {exc}")
+        log.error("cannot run ffmpeg with given parameters: %s", exc)
         return
 
     for line in ffmpeg_process.stdout:
-        print(line, end="")
+        log.debug("%s", line.rstrip())
         for elem in line.split(" "):
             if elem.startswith("time="):
                 progress = elem.split("=")[1].strip()
-                print(f"Progress: currently at {progress} / going until {end_time_str}", end="\r")
+                log.debug("progress: %s / %s", progress, end_time_str)
 
     ffmpeg_process.wait()
-    print("\nFFMPEG has finished processing.")
+    log.info("ffmpeg cut finished")

@@ -48,7 +48,11 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QMessageBox,
 )
 
+import logging
+
 import design_tokens as dt
+
+log = logging.getLogger(__name__)
 from usb_camera_panel     import USBCameraPanel
 from eeg_module           import EEGLiveWidget
 from session_controller   import SessionController, SessionConfig, Phase, PhaseInfo
@@ -56,6 +60,7 @@ from session_setup_dialog import SessionSetupDialog
 from session_storage      import create_session, SessionLayout, PhaseRecord
 from circular_timer       import CircularTimer
 from sync_beep            import SyncBeep
+from log_setup            import attach_session_log
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
@@ -390,7 +395,8 @@ class LiveSessionTab(QWidget):
             base_dir = _default_capture_root()
             os.makedirs(base_dir, exist_ok=True)
             self._layout = create_session(base_dir, cfg)
-            print(f"[session] created at {self._layout.root}")
+            log.info("session created at %s", self._layout.root)
+            attach_session_log(self._layout.root)
         except Exception as e:
             QMessageBox.critical(self, "Cannot create session folder", f"{e}"); return
 
@@ -426,7 +432,7 @@ class LiveSessionTab(QWidget):
         try:
             self.usb_panel.start_recording(cont_root, "session")
         except Exception as e:
-            print(f"[session start] camera record error: {e}")
+            log.error("camera record error at session start: %s", e)
         # EEGs: one CSV per Muse for the entire session
         muse_dir = cont_root / "Muse data"
         muse_dir.mkdir(parents=True, exist_ok=True)
@@ -464,7 +470,7 @@ class LiveSessionTab(QWidget):
                 marker_label = f"{label.upper()}_START" if phase_id != "done" else label.upper()
                 self._layout.append_marker(t_session, phase_id, marker_label, round_num)
             except Exception as e:
-                print(f"[marker] {e}")
+                log.warning("phase marker write failed: %s", e)
 
         # Maintain a phase-record entry in the manifest for analytics. Note
         # this is metadata only — folders won't have separate recordings.
@@ -480,7 +486,7 @@ class LiveSessionTab(QWidget):
             if self._active_phase is not None:
                 prev_phase, prev_round = self._active_phase
                 try: self._layout.close_phase(prev_phase, prev_round)
-                except Exception: pass
+                except Exception as e: log.warning("manifest close_phase failed: %s", e)
             self._active_phase = (phase, round_num)
 
     def _on_tick(self, remaining, elapsed, total) -> None:
@@ -492,12 +498,13 @@ class LiveSessionTab(QWidget):
             try:
                 t_session = time.monotonic() - self._session_t0
                 self._layout.append_marker(t_session, "done", "SESSION_END", 0)
-            except Exception: pass
+            except Exception as e:
+                log.warning("SESSION_END marker write failed: %s", e)
         # Close out the last phase entry in the manifest.
         if self._active_phase is not None and self._layout is not None:
             phase, round_num = self._active_phase
             try: self._layout.close_phase(phase, round_num)
-            except Exception: pass
+            except Exception as e: log.warning("final manifest close_phase failed: %s", e)
             self._active_phase = None
         # Stop the continuous recordings (cameras + EEGs).
         self._stop_continuous_recordings()
@@ -523,15 +530,18 @@ class LiveSessionTab(QWidget):
     def _stop_continuous_recordings(self) -> None:
         """Stop the single per-session recordings on cameras + EEGs."""
         if getattr(self, "_continuous_eeg_active", False):
+            # Session-END stops (not app teardown): a failure here risks an
+            # unflushed/corrupt recording — that is data loss, so log loud.
             try: self.eeg_widget_1.stop_recording()
-            except Exception: pass
+            except Exception as e: log.error("EEG 1 stop_recording failed — CSV may be incomplete: %s", e)
             try: self.eeg_widget_2.stop_recording()
-            except Exception: pass
+            except Exception as e: log.error("EEG 2 stop_recording failed — CSV may be incomplete: %s", e)
             self._continuous_eeg_active = False
         try:
             if self.usb_panel.any_live():
                 self.usb_panel.stop_recording()
-        except Exception: pass
+        except Exception as e:
+            log.error("camera stop_recording failed — MP4s may be incomplete: %s", e)
 
     # Legacy name kept so the Stop button click handler still works
     def _close_current_phase_recordings(self) -> None:
