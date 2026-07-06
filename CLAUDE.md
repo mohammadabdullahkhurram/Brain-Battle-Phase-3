@@ -43,12 +43,14 @@ suites above are the durable safety net.
 
 ## Project status (2026-07-06)
 
-The **functional/review-path migration phase is COMPLETE** on branch
-`fix/v2-migration-review-path`: A/B, D′, E, and C are fixed, committed, and
-verified — including a real-libVLC playback smoke of the Live→Review handoff
-(4 cameras decoding in lockstep, markers, EEG, simultaneous-start sync).
-The **next phase is cleanup**: G/I/F (low-severity fixes), H (pyqtgraph port
-of the review EEG widget), then J/K (orphan removal + logging sweep).
+**Both phases are COMPLETE** on branch `fix/v2-migration-review-path`:
+functional fixes (A/B, D′, E, C — verified, including a real-libVLC playback
+smoke of the Live→Review handoff) and cleanup (G/I/F, smoke gate, J
+deletions, K logging sweep, H pyqtgraph port). What remains is deferred, not
+planned work: the eyes-on-glass visual check (playback + review-EEG
+rendering, needs real capture data), the drift-correction decision, and the
+`sync_engine.py` dataclass extraction — see KNOWN LIMITATIONS / backlog
+notes below.
 
 ## CRITICAL CONTEXT — the v1.x → v2.x migration gap
 
@@ -89,7 +91,7 @@ start simultaneously and share `phase_markers.csv` time.
 | File | Lines | Purpose |
 |---|---|---|
 | `brain_battle_main.py` | 2168 | Entry point + `SyncReviewTab`, `LabellingTab`, `MainEditorSyncWorker`, `BrainBattleApp` shell |
-| `eeg_module.py` | 1600 | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` (pyqtgraph), `EEGReviewWidget` (matplotlib) |
+| `eeg_module.py` | ~1600 | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` + `EEGReviewWidget` (both pyqtgraph) |
 | `design_tokens.py` | 741 | Theme system (dark/light), QSS factories |
 | `live_session_tab.py` | 584 | Live Monitor tab — capture orchestration, emits `session_saved(session_root)` |
 | `export_module.py` | 531 | `VideoExportWorker` (ffmpeg quad-grid), `LabelsExporter`, `FullSessionExportWorker` (zip), progress dialog |
@@ -153,6 +155,12 @@ start simultaneously and share `phase_markers.csv` time.
 - **VLC playback smoke verified up to correct decoded pixels in the render
   buffer** (offscreen Qt, real libVLC, 4-cam lockstep ~250ms = clock
   quantization). The final on-screen blit has not been eyes-verified.
+- **Review-EEG rendering (post-H pyqtgraph port) is likewise not
+  eyes-verified** — constructs, runs all public methods, and is measurably
+  fast on synthetic data, but whether the waveform/band-power LOOK right
+  while scrubbing needs real capture data on glass. One deferred visual
+  check together with the item above: launch the app, open a real session,
+  play + scrub, watch all four cams and both EEG panes.
 
 ### OPEN (cleanup phase: G/I/F, then H, then J/K)
 
@@ -169,11 +177,20 @@ start simultaneously and share `phase_markers.csv` time.
   (Muse chunks ≤ 12 into a 7680 buffer). Fix: set `_n_written = capacity` in
   that branch (subsequent writes/reads then stay consistent).
 
-- **H [LOW] Review-EEG lag.** `EEGReviewWidget` (`eeg_module.py:1355`) is
-  matplotlib; `set_playhead` (`:1526`) calls `set_xlim` per tick (`:1534`)
-  forcing full re-raster, and band-power mode recomputes a spectrum over a
-  10 s window each tick (`:1537`, `:1583-1599`). The LIVE widget was already
-  ported to pyqtgraph (`eeg_plot_pg.py`) — mirror that.
+- **H [LOW] Review-EEG lag — DONE (rendering unverified).** `EEGReviewWidget`
+  ported to pyqtgraph mirroring `eeg_plot_pg.py`: full trace uploaded once at
+  `load()`, playhead ticks move an `InfiniteLine` + shift the ViewBox;
+  band-power welch recomputes only per ≥0.2 s playhead movement. Benchmarked
+  on 3 min of synthetic 4-channel EEG at the app's real 100 ms tick rate:
+  waveform 118→15 ms/tick, band-power 102→11 ms/tick from the renderer alone
+  (→4.6 ms with the throttle), load 403→44 ms. The old widget could not keep
+  up with the 100 ms tick; the new one has ~7× headroom. API unchanged —
+  no other file needed edits. **Rendering correctness is NOT eyes-verified**
+  (needs real capture data on glass) — bundled with the deferred visual
+  check of the Live→Review handoff in KNOWN LIMITATIONS.
+  Side effect: this removed the repo's last matplotlib import — matplotlib
+  is now droppable from requirements (only comment/docstring mentions
+  remain; not yet removed from README's pip line).
 
 - **I [LOW] session_storage.py docstring/API vestiges.** Top-of-file
   docstring (`session_storage.py:1-27`) still describes the v1.x per-phase /

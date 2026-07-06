@@ -29,12 +29,6 @@ import pandas as pd
 log = logging.getLogger(__name__)
 from scipy.signal import welch
 
-import matplotlib
-matplotlib.use("QtAgg")
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -210,14 +204,6 @@ def _tab_style(active: bool) -> str:
         f"font-family:{_dt.FONT_UI}; font-size:10px; "
         f"letter-spacing:0.8px; padding:0 10px;"
     )
-
-
-def _style_ax(ax):
-    ax.set_facecolor(_BG)
-    ax.tick_params(colors=_FG, labelsize=8)
-    for spine in ax.spines.values():
-        spine.set_edgecolor(_GRID)
-    ax.grid(True, color=_GRID, linewidth=0.4, linestyle="--")
 
 
 # ─── BLE scan thread ─────────────────────────────────────────────────────────
@@ -1368,7 +1354,20 @@ class EEGReviewWidget(QFrame):
     """
     Post-session EEG viewer used in Tabs 2 and 3.
     Two views: WAVEFORM | BAND POWER. Playhead cursor follows timeline scrub.
+
+    pyqtgraph-backed (ported from matplotlib, mirroring eeg_plot_pg): the
+    full trace is uploaded to the PlotDataItems ONCE at load(); each
+    set_playhead tick only moves an InfiniteLine and shifts the ViewBox
+    x-range — no per-tick re-raster. Band-power mode recomputes its ±5s
+    welch spectrum only when the playhead has moved >= _BP_STEP_SEC since
+    the last computation (the window is insensitive to smaller moves).
+
+    NOTE: rendering correctness (waveform/band-power LOOKING right while
+    scrubbing) is not eyes-verified — needs real capture data on glass;
+    bundled with the deferred visual check of the Live→Review handoff.
     """
+
+    _BP_STEP_SEC = 0.2   # min playhead movement before a band-power recompute
 
     def __init__(self, channel_id: int = 1, parent=None):
         super().__init__(parent)
@@ -1380,8 +1379,9 @@ class EEGReviewWidget(QFrame):
         self._df:        Optional[pd.DataFrame] = None
         self._offset_sec: float = 0.0
         self._playhead:   float = 0.0
-        self._vlines:     dict  = {}
+        self._vlines:     dict  = {}   # channel -> pg.InfiniteLine
         self._view_mode:  str   = "waveform"
+        self._last_bp_t:  Optional[float] = None  # last band-power playhead
 
         self._build_ui()
         self._build_waveform_plot()
@@ -1453,47 +1453,44 @@ class EEGReviewWidget(QFrame):
     # ── Plot construction ─────────────────────────────────────────────────────
 
     def _build_waveform_plot(self):
-        self._wave_fig = Figure(figsize=(10, 2.2), dpi=90, tight_layout=True)
-        self._wave_fig.patch.set_facecolor(_BG)
-        self._wave_axes: dict[str, plt.Axes] = {}
-        for i, ch in enumerate(_CHANNELS):
-            ax = self._wave_fig.add_subplot(1, 4, i + 1)
-            _style_ax(ax)
-            ax.set_title(ch, fontsize=9, color=_CHAN_COLORS[ch], pad=4,
-                         fontfamily="monospace")
-            ax.set_xlabel("s", fontsize=8, color=_FG)
-            (line,) = ax.plot([], [], color=_CHAN_COLORS[ch],
-                              linewidth=0.7, antialiased=True)
-            ax._bb_line = line
-            vl = ax.axvline(x=0, color=_ACCENT, linewidth=1.4,
-                            alpha=0.9, visible=False)
+        # One PlotItem per channel in a single GraphicsLayoutWidget —
+        # mirrors eeg_plot_pg.WaveformPlot, but holds the FULL trace and
+        # follows the playhead by shifting the view range instead of
+        # windowing the data.
+        import pyqtgraph as pg
+        from eeg_plot_pg import _ch_pen, _style_plot
+
+        glw = pg.GraphicsLayoutWidget()
+        glw.setBackground(_BG)
+        self._wave_plots:  dict = {}
+        self._wave_curves: dict = {}
+        for col, ch in enumerate(_CHANNELS):
+            p = glw.addPlot(row=0, col=col)
+            _style_plot(p)
+            lbl = pg.LabelItem(text=ch, color=_CHAN_COLORS[ch],
+                               size="9pt", bold=True)
+            lbl.setParentItem(p.graphicsItem())
+            lbl.anchor(itemPos=(0, 0), parentPos=(0, 0), offset=(8, 4))
+            curve = p.plot([], [], pen=_ch_pen(ch, width=0.9))
+            # Only ever paint the visible ±5s slice of the full trace.
+            curve.setClipToView(True)
+            curve.setDownsampling(auto=True, method="peak")
+            vl = pg.InfiniteLine(pos=0, angle=90,
+                                 pen=pg.mkPen(color=_ACCENT, width=1.4))
+            vl.setVisible(False)
+            p.addItem(vl)
             self._vlines[ch] = vl
-            self._wave_axes[ch] = ax
-        self._wave_canvas = FigureCanvas(self._wave_fig)
-        self._wave_canvas.setStyleSheet(f"background-color: {_BG};")
+            self._wave_plots[ch] = p
+            self._wave_curves[ch] = curve
+        self._wave_canvas = glw   # attribute name kept from the mpl version
         self._canvas_layout.addWidget(self._wave_canvas)
         self._wave_canvas.setVisible(False)
 
     def _build_bandpower_plot(self):
-        self._band_fig = Figure(figsize=(10, 2.2), dpi=90, tight_layout=True)
-        self._band_fig.patch.set_facecolor(_BG)
-        self._band_axes: dict[str, plt.Axes] = {}
-        names  = list(_BANDS.keys())
-        colors = [v[2] for v in _BANDS.values()]
-        for i, ch in enumerate(_CHANNELS):
-            ax = self._band_fig.add_subplot(1, 4, i + 1)
-            _style_ax(ax)
-            ax.set_title(ch, fontsize=9, color=_CHAN_COLORS[ch], pad=4,
-                         fontfamily="monospace")
-            ax.set_xticks(range(len(names)))
-            ax.set_xticklabels(names, fontsize=9, color=_FG)
-            ax.set_ylim(0, 1)
-            bars = ax.bar(range(len(names)), [0] * len(names),
-                          color=colors, width=0.6)
-            ax._bb_bars = bars
-            self._band_axes[ch] = ax
-        self._band_canvas = FigureCanvas(self._band_fig)
-        self._band_canvas.setStyleSheet(f"background-color: {_BG};")
+        # Reuses the live widget's pyqtgraph bar panel wholesale — its
+        # set_bands() API matches _band_powers() output exactly.
+        from eeg_plot_pg import BandPowerPlot
+        self._band_canvas = BandPowerPlot(bands=_BANDS)
         self._canvas_layout.addWidget(self._band_canvas)
         self._band_canvas.setVisible(False)
 
@@ -1531,8 +1528,9 @@ class EEGReviewWidget(QFrame):
         )
         self._status_dot.setStyleSheet("color: #22c55e; font-size: 13px;")
         self._placeholder.setVisible(False)
+        self._last_bp_t = None
         for vl in self._vlines.values():
-            vl.set_visible(True)
+            vl.setVisible(True)
         self._show_view(self._view_mode)
 
     def set_playhead(self, global_t: float):
@@ -1540,21 +1538,28 @@ class EEGReviewWidget(QFrame):
             return
         self._playhead = global_t
         if self._view_mode == "waveform":
+            # Cheap per tick: move one line + shift the view range per
+            # channel. The curves keep their full data; no re-upload.
             VIEW_HALF = 5.0
-            for ch, ax in self._wave_axes.items():
-                self._vlines[ch].set_xdata([global_t, global_t])
-                ax.set_xlim(global_t - VIEW_HALF, global_t + VIEW_HALF)
-            self._wave_canvas.draw_idle()
+            for ch, p in self._wave_plots.items():
+                self._vlines[ch].setValue(global_t)
+                p.setXRange(global_t - VIEW_HALF, global_t + VIEW_HALF,
+                            padding=0)
         else:
-            self._render_bandpower_at(global_t, half=5.0)
+            # welch over ±5s is insensitive to sub-window moves — only
+            # recompute once the playhead has moved _BP_STEP_SEC.
+            if (self._last_bp_t is None
+                    or abs(global_t - self._last_bp_t) >= self._BP_STEP_SEC):
+                self._render_bandpower_at(global_t, half=5.0)
 
     def clear(self):
         self._df = None
-        for ax in self._wave_axes.values():
-            ax._bb_line.set_data([], [])
+        self._last_bp_t = None
+        for curve in self._wave_curves.values():
+            curve.setData([], [])
         for vl in self._vlines.values():
-            vl.set_visible(False)
-        self._wave_canvas.draw_idle()
+            vl.setVisible(False)
+        self._band_canvas.clear()
         self._placeholder.setVisible(True)
         self._wave_canvas.setVisible(False)
         self._band_canvas.setVisible(False)
@@ -1564,33 +1569,35 @@ class EEGReviewWidget(QFrame):
     # ── Internal rendering ────────────────────────────────────────────────────
 
     def _render_waveform(self):
+        """Upload the full trace ONCE; later playhead ticks only move the
+        view. This replaces the matplotlib set_data + full-canvas redraw."""
         if self._df is None:
             return
         t = self._df["global_t"].to_numpy(dtype=np.float64)
-        for ch, ax in self._wave_axes.items():
+        for ch, p in self._wave_plots.items():
             if ch not in self._df.columns:
                 continue
             y = self._df[ch].to_numpy(dtype=np.float32)
-            ax._bb_line.set_data(t, y)
-            ax.set_xlim(t[0], t[-1])
+            self._wave_curves[ch].setData(t, y)
+            p.setXRange(float(t[0]), float(t[-1]), padding=0)
             if len(y) > 1:
                 lo, hi = float(np.nanmin(y)), float(np.nanmax(y))
                 m = max((hi - lo) * 0.05, 5.0)
-                ax.set_ylim(lo - m, hi + m)
-        self._wave_canvas.draw_idle()
+                p.setYRange(lo - m, hi + m, padding=0)
+
+    def _band_values(self, frame) -> dict:
+        """Per-channel {band: relative power} for a DataFrame slice."""
+        per_channel = {}
+        for ch in _CHANNELS:
+            if ch in frame.columns:
+                per_channel[ch] = _band_powers(
+                    frame[ch].to_numpy(dtype=np.float32))
+        return per_channel
 
     def _render_bandpower_full(self):
         if self._df is None:
             return
-        for ch, ax in self._band_axes.items():
-            if ch not in self._df.columns:
-                continue
-            pw = _band_powers(self._df[ch].to_numpy(dtype=np.float32))
-            vals = [pw.get(b, 0.0) for b in _BANDS]
-            for bar, v in zip(ax._bb_bars, vals):
-                bar.set_height(v)
-            ax.set_ylim(0, max(max(vals) * 1.2, 0.05))
-        self._band_canvas.draw_idle()
+        self._band_canvas.set_bands(self._band_values(self._df))
 
     def _render_bandpower_at(self, global_t: float, half: float):
         if self._df is None:
@@ -1602,12 +1609,5 @@ class EEGReviewWidget(QFrame):
         w = self._df[mask]
         if len(w) < SAMPLE_RATE // 2:
             return
-        for ch, ax in self._band_axes.items():
-            if ch not in w.columns:
-                continue
-            pw = _band_powers(w[ch].to_numpy(dtype=np.float32))
-            vals = [pw.get(b, 0.0) for b in _BANDS]
-            for bar, v in zip(ax._bb_bars, vals):
-                bar.set_height(v)
-            ax.set_ylim(0, max(max(vals) * 1.2, 0.05))
-        self._band_canvas.draw_idle()
+        self._band_canvas.set_bands(self._band_values(w))
+        self._last_bp_t = global_t
