@@ -1,5 +1,9 @@
 # Brain Battle — Changelog
 
+**Current release: v2.1.0** (authoritative source: `version.py` `__version__`).
+The "Phase 2.N" headings below are historical dev-log numbering, kept as
+history — they do not track the release version.
+
 ## Phase 2.17 · Second-Muse picker + 2-min disconnect fix
 
 User reported two related symptoms after the v2.16 direct-BLE

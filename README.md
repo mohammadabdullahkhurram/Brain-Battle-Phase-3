@@ -1,7 +1,7 @@
 # BRAIN BATTLE
 ### Neuroscience Sports Capture System
 **Constructor University Bremen — Community Impact Project**
-`v1.0  //  Software Phase 2`
+`v2.1.0  //  Software Phase 2`
 
 ---
 
@@ -725,8 +725,8 @@ pip install PyQt6 pyqtgraph opencv-python numpy scipy pandas matplotlib pylsl mu
 | Project name | Brain Battle — Neuroscience Sports Capture System      |
 | Institution  | Constructor University Bremen                          |
 | Type         | Community Impact Project (CIP)                         |
-| Phase        | Software Phase 2.4 — Design refinement + dark/light themes |
-| Version      | v1.4                                                   |
+| Phase        | Software Phase 2 — continuous-recording capture + review |
+| Version      | v2.1.0 (authoritative: `version.py` `__version__`)     |
 | GitHub       | https://github.com/Brain-Battle                        |
 | Hardware     | 2× Muse-S (MuseS-7538, MuseS-7564), 2× DSLR (USB-C UVC), 2× POV (FPV receiver → USB) |
 

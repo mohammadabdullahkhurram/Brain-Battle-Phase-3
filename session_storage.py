@@ -1,26 +1,26 @@
 """
 session_storage.py
 ──────────────────
-Owns the on-disk layout for a capture session.
-
-Per the Brain Battle spec, every session is saved inside:
+Owns the on-disk layout for a capture session (v2.x continuous-recording
+model — one take per camera for the whole session, phases as timestamps):
 
     Brain Battle <timestamp>/
-        baseline/
-            Side Cams/
-            POV Cams/
-            Muse data/
-        Round 1/
-            Side Cams/
-            POV Cams/
-            Muse data/
-        Round 2/
-            ...
+        continuous/
+            Side Cams/*.mp4      # one MP4 per camera, entire session
+            POV Cams/*.mp4       # (subfolders created lazily by the
+            Muse data/*.csv      #  recording code when a slot records)
+        phase_markers.csv        # t_session_seconds, phase_id, label,
+                                 # round_num, unix_time — one row per
+                                 # phase transition (appended live)
         session_manifest.json
 
-The manifest captures the session config plus each phase's start/end
-wall-clock and monotonic timestamps — this is what the post-session sync
-engine uses to split SD-card footage into per-round segments later.
+Recording never stops between baseline → rounds → breaks; downstream tools
+derive phase boundaries from phase_markers.csv rather than from folders.
+The manifest additionally records the session config and each phase's
+start/end wall-clock + monotonic timestamps for analytics.
+
+(The v1.x per-phase model — baseline/, Round 1/, … each with their own
+recordings — is gone; its folder-resolution API was removed with it.)
 
 This module is pure filesystem logic: no Qt, no subprocess, no audio.
 That keeps it easy to unit-test.
@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Optional
 
 from session_controller import SessionConfig, Phase
+from version import __version__
 
 
 # ─── Directory naming ─────────────────────────────────────────────────────────
@@ -56,18 +57,6 @@ def _session_folder_name(started_at: _dt.datetime) -> str:
     """
     ts = started_at.strftime("%Y-%m-%d %H-%M-%S")
     return f"Brain Battle {ts}"
-
-
-def _phase_folder_name(phase: Phase, round_num: int) -> str:
-    if phase == Phase.BASELINE:
-        return "baseline"
-    if phase == Phase.ROUND:
-        return f"Round {round_num}"
-    if phase == Phase.BREAK:
-        # Breaks do not get their own recordings under the spec, but we
-        # still note them in the manifest; no folder needed.
-        return ""
-    return ""
 
 
 # ─── Data ─────────────────────────────────────────────────────────────────────
@@ -95,28 +84,6 @@ class SessionLayout:
     phases:        list[PhaseRecord] = field(default_factory=list)
 
     # ---- folder resolution ---------------------------------------------------
-
-    def phase_dir(self, phase: Phase, round_num: int) -> Optional[Path]:
-        """
-        Returns the existing folder for the given phase, or None for BREAK
-        phases (breaks don't get a folder under the spec).
-        """
-        name = _phase_folder_name(phase, round_num)
-        if not name:
-            return None
-        return self.root / name
-
-    def side_cams_dir(self, phase: Phase, round_num: int) -> Optional[Path]:
-        pd = self.phase_dir(phase, round_num)
-        return pd / "Side Cams" if pd else None
-
-    def pov_cams_dir(self, phase: Phase, round_num: int) -> Optional[Path]:
-        pd = self.phase_dir(phase, round_num)
-        return pd / "POV Cams" if pd else None
-
-    def muse_dir(self, phase: Phase, round_num: int) -> Optional[Path]:
-        pd = self.phase_dir(phase, round_num)
-        return pd / "Muse data" if pd else None
 
     def manifest_path(self) -> Path:
         return self.root / "session_manifest.json"
@@ -167,7 +134,7 @@ class SessionLayout:
     def _write_manifest(self) -> None:
         data = {
             "app":            "Brain Battle",
-            "version":        "Phase 2",
+            "version":        __version__,
             "started_at":     self.started_at.isoformat(timespec="seconds"),
             "started_unix":   self.started_at.timestamp(),
             "config":         asdict(self.config),
@@ -184,11 +151,10 @@ def create_session(base_dir: str | os.PathLike,
                    config: SessionConfig,
                    started_at: Optional[_dt.datetime] = None) -> SessionLayout:
     """
-    Build the full Brain Battle <timestamp>/ tree up-front.
-
-    We create every phase folder eagerly (even before that phase runs) so
-    that: (a) disk-full / permission failures surface immediately, and
-    (b) the operator can watch files appear in the right place in real time.
+    Build the Brain Battle <timestamp>/ tree for a v2.x continuous session:
+    the root, continuous/ (+ Muse data/), and an initial manifest — created
+    eagerly so disk-full / permission failures surface immediately. Camera
+    subfolders are created lazily by the recording code (see NOTE below).
     """
     started_at = started_at or _dt.datetime.now()
     root = Path(base_dir) / _session_folder_name(started_at)

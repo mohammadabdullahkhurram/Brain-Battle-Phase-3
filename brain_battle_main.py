@@ -31,6 +31,7 @@ from live_session_tab import LiveSessionTab
 from vlc_module import VLCVideoSlot, SyncPlaybackController
 from export_module import FullSessionExportWorker, LabelsExporter, ExportProgressDialog
 from labels_config import LABELS as PREDEFINED_LABELS, next_colour, save as save_labels
+from version import __version__
 
 _INT32_MAX = 2_147_483_647
 
@@ -2213,7 +2214,7 @@ class LabellingTab(QWidget):
 class BrainBattleApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Brain Battle")
+        self.setWindowTitle(f"Brain Battle  v{__version__}")
         self.setMinimumSize(1280, 800); self.resize(1440, 900); self._build()
 
     def _build(self):
