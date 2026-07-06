@@ -54,6 +54,25 @@ from PyQt6.QtWidgets import (
 
 # --- Hardware encoder detection ----------------------------------------------
 
+def _encoder_args(encoder: str) -> list[str]:
+    """Return encoder-specific quality/preset flags.
+
+    MUST be defined above _detect_hw_encoder's import-time invocation —
+    _validate_encoder builds its probe command with these flags, and a
+    forward reference here raises NameError inside the probe's broad
+    except, silently downgrading every run to libx264 (real bug, found
+    2026-07-06)."""
+    if encoder == "libx264":
+        return ["-preset", "fast", "-crf", "23"]
+    elif encoder == "h264_nvenc":
+        return ["-preset", "p4", "-cq", "23"]
+    elif encoder == "h264_videotoolbox":
+        return ["-q:v", "65"]
+    elif encoder in ("h264_amf", "h264_qsv"):
+        return ["-quality", "balanced"]
+    return ["-preset", "fast", "-crf", "23"]
+
+
 def _candidate_encoders() -> list[str]:
     """Hardware H.264 encoder candidates for this platform, best first."""
     if sys.platform == "win32":
@@ -121,19 +140,6 @@ def _detect_hw_encoder() -> str:
 # Detect once at import time; shared by all workers in this process
 _HW_ENCODER = _detect_hw_encoder()
 print(f"[export] H.264 encoder: {_HW_ENCODER}")
-
-
-def _encoder_args(encoder: str) -> list[str]:
-    """Return encoder-specific quality/preset flags."""
-    if encoder == "libx264":
-        return ["-preset", "fast", "-crf", "23"]
-    elif encoder == "h264_nvenc":
-        return ["-preset", "p4", "-cq", "23"]
-    elif encoder == "h264_videotoolbox":
-        return ["-q:v", "65"]
-    elif encoder in ("h264_amf", "h264_qsv"):
-        return ["-quality", "balanced"]
-    return ["-preset", "fast", "-crf", "23"]
 
 
 # --- Helpers -----------------------------------------------------------------
