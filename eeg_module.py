@@ -101,9 +101,13 @@ class _RingBuffer:
             return
         if n >= self._capacity:
             # Incoming chunk is bigger than the whole buffer — keep only
-            # the most recent `_capacity` samples.
+            # the most recent `_capacity` samples. They are stored starting
+            # at index 0, so _n_written must be reset to exactly _capacity:
+            # to_array() derives the rotation head from _n_written %
+            # _capacity, and any other value would rotate these samples out
+            # of chronological order (and misplace subsequent small writes).
             self._buf[:] = samples[-self._capacity:]
-            self._n_written += n
+            self._n_written = self._capacity
             return
         start = self._n_written % self._capacity
         end = start + n
