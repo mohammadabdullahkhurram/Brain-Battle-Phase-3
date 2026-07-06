@@ -109,7 +109,6 @@ start simultaneously and share `phase_markers.csv` time.
 | `sync_utils/eeg_video_sync.py` | 154 | EEG-vs-video window comparison |
 | `sync_beep.py` | 125 | Round-start beep |
 | `labels_config.py` | 71 | Label palette persistence (`labels_data.json`) |
-| `sync_utils/eeg_module.py` | 1207 | **ORPHANED** — zero imports anywhere; older copy of eeg widgets |
 | `sync_utils/infobox.py` | 20 | Tiny message-box helper |
 
 ## Issue backlog
@@ -181,18 +180,22 @@ start simultaneously and share `phase_markers.csv` time.
   "SD-card footage" model; `phase_dir`/`side_cams_dir`/`pov_cams_dir`/
   `muse_dir` (`:99-119`) return `Round N/` paths that are never created.
 
-- **J [CLEANUP] Orphans.** `sync_utils/eeg_module.py` (1207 lines) has zero
-  imports — deletable. `SyncWorker` import at `brain_battle_main.py:25` is
-  unused, BUT `SourceOffset` and `SyncResult` from `sync_engine` ARE used by
-  the active sync/export path — don't delete `sync_engine.py` wholesale.
+- **J [CLEANUP] Orphans — DONE.** Deleted `sync_utils/eeg_module.py`
+  (1207-line orphan, grep-confirmed zero importers; its "(v3)" docstring
+  label was stale — git showed it untouched since the initial folder
+  restructure while root `eeg_module.py` got all later work). Removed the
+  fully-dead `from sync_engine import SyncWorker, SyncResult` line (both
+  names unused — the live path re-imports `SourceOffset`/`SyncResult`
+  locally in `_on_sync_finished`). `sync_engine.py` itself STAYS for those
+  dataclasses. Also deleted the never-created `_drift_hb`/`_nudge_drift`
+  machinery — see the lockstep note below.
 
-- **NEW [CLEANUP] `_drift_hb` / `_nudge_drift` is dead code** (found during
-  the VLC playback smoke). The 2-second drift-correction heartbeat is
-  `hasattr`-guarded in `_toggle_play` and `shutdown` but **never created**,
-  so `_nudge_drift` never runs — playback lockstep rests solely on
-  simultaneous `play()` calls (held to ~250ms clock quantization in the
-  smoke). Decide during J/K: wire it up (QTimer(2000) → `_nudge_drift`,
-  started post-sync) or delete the whole mechanism.
+- **DEFERRED [DECISION] Long-session playback lockstep rests solely on
+  simultaneous `play()`** — no active drift correction; the removed
+  `_drift_hb` heartbeat was dead code (guarded but never created), so
+  nothing was lost. Held to ~250ms (libVLC clock quantization) over short
+  windows in the real-VLC smoke. Revisit whether drift correction is needed
+  once real multi-minute capture data exists to observe actual drift.
 
 - **K [DIAGNOSTICS] No logging.** Zero use of the `logging` module; ~56
   `print()` calls and ~34 `except: pass`-style blocks swallow errors silently.

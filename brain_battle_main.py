@@ -22,7 +22,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap, QPainter
 
-from sync_engine import SyncWorker, SyncResult
 from sync_utils.audio_analysis import compute_delays_with_confidence, find_all_durations, has_audio_stream
 from sync_utils.video_sync import generate_single_preview, get_first_frame_pts, run_ffmpeg_subprocess
 from sync_utils.eeg_video_sync import compare_video_eeg, cut_video_from_start_end
@@ -882,44 +881,15 @@ class SyncReviewTab(QWidget):
                 worker.wait(2000)
             except Exception:
                 pass
-        # Stop the drift heartbeat timer
-        hb = getattr(self, '_drift_hb', None)
-        if hb is not None:
-            try: hb.stop()
-            except Exception: pass
 
     def _raise_overlays(self): pass
 
-    def _nudge_drift(self):
-        """
-        Drift-correction heartbeat — runs every 2 s during playback.
-        If any player has drifted more than 150 ms from the reference
-        player's global time, nudge it back.
-        global_t = player_local_time - seek_offset  (reference seek = 0).
-        """
-        active = [p for p in self.media_players if p and
-                  p.get_state() == vlc.State.Playing]
-        if len(active) < 2:
-            return
-        seek_targets = getattr(self, "_residuals_ms", [])
-        if not seek_targets:
-            return
-        # Use the clip with seek=0 (the reference) as the clock source
-        ref_idx = next(
-            (i for i, s in enumerate(seek_targets) if s == 0),
-            next((i for i, p in enumerate(self.media_players) if p and
-                  p.get_state() == vlc.State.Playing), 0)
-        )
-        ref_p = self.media_players[ref_idx]
-        if ref_p is None:
-            return
-        ref_global = ref_p.get_time()   # seek=0 so global_t = local_t
-        for i, p in enumerate(self.media_players):
-            if p and p.get_state() == vlc.State.Playing and i != ref_idx:
-                my_seek = seek_targets[i] if i < len(seek_targets) else 0
-                p_global = p.get_time() - my_seek
-                if abs(p_global - ref_global) > 150:
-                    p.set_time(_clamp_ms(ref_global + my_seek))
+    # NOTE: playback lockstep across the four players rests solely on
+    # issuing play() to all of them in the same event-loop turn (plus the
+    # per-clip seek offsets). There is NO active drift correction — a
+    # _drift_hb/_nudge_drift heartbeat existed as dead code (guarded but
+    # never created) and was removed. Revisit once real multi-minute
+    # capture data exists to observe whether VLC clocks actually drift.
 
     def _toggle_play(self):
         active = [p for p in self.media_players if p]
@@ -927,11 +897,9 @@ class SyncReviewTab(QWidget):
         if any_playing:
             for p in active: p.pause()
             self.play_btn.setText("▶  PLAY"); self._pos_timer.stop()
-            if hasattr(self, '_drift_hb'): self._drift_hb.stop()
         else:
             for p in active: p.play()
             self.play_btn.setText("⏸  PAUSE"); self._pos_timer.start()
-            if hasattr(self, '_drift_hb') and getattr(self, 'sync_result', None): self._drift_hb.start()
 
     def _set_position(self, position_ms):
         # With the corrected sync formula: each clip's local time = global_t + seek_offset.
