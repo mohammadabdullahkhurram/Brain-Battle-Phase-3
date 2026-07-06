@@ -13,7 +13,18 @@ python3 brain_battle_main.py
 
 System binaries required: `ffmpeg` (audio extraction, export) and VLC (review
 playback via python-vlc). Captures land in `Captures/` next to the source
-(override with `BRAIN_BATTLE_CAPTURE_DIR`). There is no test suite.
+(override with `BRAIN_BATTLE_CAPTURE_DIR`). Regression tests live in `tests/`
+(plain scripts, run with `python3 tests/<name>.py`; they need ffmpeg and stub
+python-vlc only when libVLC is absent).
+
+## Project status (2026-07-06)
+
+The **functional/review-path migration phase is COMPLETE** on branch
+`fix/v2-migration-review-path`: A/B, D′, E, and C are fixed, committed, and
+verified — including a real-libVLC playback smoke of the Live→Review handoff
+(4 cameras decoding in lockstep, markers, EEG, simultaneous-start sync).
+The **next phase is cleanup**: G/I/F (low-severity fixes), H (pyqtgraph port
+of the review EEG widget), then J/K (orphan removal + logging sweep).
 
 ## CRITICAL CONTEXT — the v1.x → v2.x migration gap
 
@@ -35,12 +46,13 @@ Brain Battle <timestamp>/
   `session_storage.py`, `live_session_tab.py` record one continuous take and
   write `phase_markers.csv`. Per-round folders are never created
   (`session_storage.py:207-211` documents this explicitly).
-- The **REVIEW/SYNC half is only PARTIALLY migrated**. The Labelling tab's
-  `_open_session_folder` (`brain_battle_main.py:1718-1806`) was migrated and
-  correctly reads `continuous/` + `phase_markers.csv` — **use it as the
-  reference pattern**. The Sync tab's `load_session_folder`
-  (`brain_battle_main.py:1027-1071`) was NOT migrated and still globs
-  `Round {n}/` folders that no longer exist. Most known bugs live in this gap.
+- The **REVIEW/SYNC half is now migrated too** (fixed in `8aaa14a`): the Sync
+  tab's `load_session_folder` reads `continuous/` + `phase_markers.csv`,
+  mirroring the Labelling tab's `_open_session_folder`, and the tab has its
+  own OPEN SESSION FOLDER button. The historical migration gap — the Sync tab
+  globbing nonexistent `Round {n}/` folders and returning silently — is where
+  most of the original bugs lived; keep both loaders in step if the session
+  layout ever changes again.
 
 A second structural consequence: all four in-app cameras (side AND POV) record
 via `cv2.VideoWriter` (`usb_camera.py`), which writes **no audio track**. So
@@ -76,49 +88,50 @@ start simultaneously and share `phase_markers.csv` time.
 | `sync_utils/eeg_module.py` | 1207 | **ORPHANED** — zero imports anywhere; older copy of eeg widgets |
 | `sync_utils/infobox.py` | 20 | Tiny message-box helper |
 
-## Confirmed issues (verified 2026-07-05, line numbers exact)
+## Issue backlog
 
-- **A [HIGH] Live→Review handoff silently broken for v2.x sessions.**
-  `session_saved → sync_tab.load_session_folder(path, round_num=1)`
-  (`brain_battle_main.py:2092-2094`). `load_session_folder` (`:1027`) globs
-  `Round {n}/` (`:1043`) and silently returns if absent (`:1044-1045`) — but
-  v2.x never creates round folders (`session_storage.py:204-211`). After every
-  real capture, the Sync tab loads nothing with no error. Reference fix
-  pattern: `LabellingTab._open_session_folder` (`:1718-1806`).
+### DONE (functional-fix phase, commits on fix/v2-migration-review-path)
 
-- **B [HIGH] Sync crashes on audio-less clips.** `_run_sync`
-  (`brain_battle_main.py:900-912`) passes all sources to `compute_delays`
-  with no audio-track filtering. In-app MP4s (cv2.VideoWriter) have no audio
-  stream → `ffmpeg -vn` pipe yields an empty buffer
-  (`sync_utils/audio_analysis.py:83-84`) → `np.convolve` in `_envelope`
-  (`:99`) raises `ValueError: a cannot be empty` (reached via `_xcorr_delay`
-  `:122-123`). A NaN delay would also crash `_clamp_ms`
-  (`brain_battle_main.py:37-38`, `int(nan)`).
+- **A/B [HIGH] — DONE in `8aaa14a`.** Live→Review handoff ported to the
+  `continuous/` layout (was globbing v1 `Round {n}/` and returning silently);
+  alignment is audio-aware (<2 audio clips → simultaneous_start with offsets
+  0, 2+ → xcorr among the audio-bearing subset); `_clamp_ms` NaN/inf-guarded;
+  `_xcorr_delay` returns 0 on empty input; OPEN SESSION FOLDER button and
+  phase markers added to the Sync tab.
 
-- **D′ [MED] Seek-offset sign inversion in synced playback.** Verified
-  empirically: `_xcorr_delay` (`sync_utils/audio_analysis.py:112-137`)
-  matches its docstring — positive = other starts LATER. Under that
-  convention, the current seek formula `seek_ms = norm_delays`
-  (`brain_battle_main.py:337`) is inverted: it makes the latest-starting clip
-  seek the most, misaligning clips by 2×offset. The "previous formula"
-  (`max_norm_delay - d`) that the comment at `:334-336` calls inverted was
-  actually correct. Fix in the worker, not in `_xcorr_delay`.
-  (Original finding D — "xcorr sign inverted vs docstring" — was NOT
-  reproduced; docstring and implementation agree.)
+- **D′ [MED] — DONE in `faa8f38`.** Seek formula reverted to
+  `max_norm_delay - d` (the old code seeked the latest-starting clip the
+  most, misaligning external uploads by ~2× the true offset). Red-first
+  regression test: `tests/test_seek_alignment.py` (3019ms spread before →
+  19ms after). That line has flip-flopped twice — never change it without
+  running that test.
 
-- **C [MED] Sync confidence indicator is dead code.** `_xcorr_delay` returns
-  only the bare delay (peak magnitude discarded). `_on_sync_finished`
-  hardcodes confidence 1.0 for video (`brain_battle_main.py:927`) and 0.95
-  for EEG (`:929`). `SourceRow.set_confidence` (`:284-291`) has zero call
-  sites. Exported `sync_offsets.csv` confidence values are fabricated.
+- **E [MED] — DONE in `bfa0a36`.** Export failures now surface the tail of
+  ffmpeg's stderr + exit code (deque captured during the progress loop);
+  `_detect_hw_encoder` requires a real test-encode probe, not just an
+  `-encoders` listing, falling through to libx264.
 
-- **E [MED] Export shows a blank error on failure; encoder detection is
-  optimistic.** The progress loop drains stderr via `readline()` to EOF
-  (`export_module.py:252-256`), so `proc.stderr.read()` at `:275` returns
-  empty → error dialog says "ffmpeg failed:" with nothing after it. Also
-  `_detect_hw_encoder` (`:57-93`) only checks ffmpeg's `-encoders` listing,
-  not that the GPU is usable — it can pick `h264_nvenc` with no NVIDIA card
-  and fail at runtime with the same blank error.
+- **C [MED] — DONE in `16f91a2`.** Real xcorr confidence
+  (baseline-corrected peak-to-second-peak prominence, `_peak_confidence`);
+  wired through worker → `SourceOffset` → the `set_confidence` badge;
+  `sync_offsets.csv` records the true value or a labeled
+  `n/a (<method>)` sentinel for unmeasured sources. Discrimination test:
+  `tests/test_xcorr_confidence.py`.
+
+### KNOWN LIMITATIONS (discovered during the fixes — by design or unverifiable here)
+
+- **Sync confidence measures internal consistency, not correctness.** A high
+  score means the correlation peak dominates its window — coincident loud
+  transients in genuinely unrelated audio can still score high (inherent to
+  envelope xcorr, not fixable by the metric).
+- **Encoder validation's "listed-but-no-hardware" fallback** (e.g. nvenc on a
+  GPU-less box) is proven by forced-probe-failure unit tests only; it has
+  never been exercised on real GPU-less hardware.
+- **VLC playback smoke verified up to correct decoded pixels in the render
+  buffer** (offscreen Qt, real libVLC, 4-cam lockstep ~250ms = clock
+  quantization). The final on-screen blit has not been eyes-verified.
+
+### OPEN (cleanup phase: G/I/F, then H, then J/K)
 
 - **F [LOW] Version strings disagree everywhere.** Manifest writes
   `"Phase 2"` (`session_storage.py:170`); folder says v2.1.0; README says
@@ -147,11 +160,18 @@ start simultaneously and share `phase_markers.csv` time.
 - **J [CLEANUP] Orphans.** `sync_utils/eeg_module.py` (1207 lines) has zero
   imports — deletable. `SyncWorker` import at `brain_battle_main.py:25` is
   unused, BUT `SourceOffset` and `SyncResult` from `sync_engine` ARE used by
-  the active sync/export path (`:925-940`) — don't delete `sync_engine.py`
-  wholesale.
+  the active sync/export path — don't delete `sync_engine.py` wholesale.
 
-- **K [DIAGNOSTICS] No logging.** Zero use of the `logging` module; 55
-  `print()` calls and 34 `except: pass`-style blocks swallow errors silently.
+- **NEW [CLEANUP] `_drift_hb` / `_nudge_drift` is dead code** (found during
+  the VLC playback smoke). The 2-second drift-correction heartbeat is
+  `hasattr`-guarded in `_toggle_play` and `shutdown` but **never created**,
+  so `_nudge_drift` never runs — playback lockstep rests solely on
+  simultaneous `play()` calls (held to ~250ms clock quantization in the
+  smoke). Decide during J/K: wire it up (QTimer(2000) → `_nudge_drift`,
+  started post-sync) or delete the whole mechanism.
+
+- **K [DIAGNOSTICS] No logging.** Zero use of the `logging` module; ~56
+  `print()` calls and ~34 `except: pass`-style blocks swallow errors silently.
 
 ## Conventions & gotchas
 
