@@ -13,9 +13,33 @@ python3 brain_battle_main.py
 
 System binaries required: `ffmpeg` (audio extraction, export) and VLC (review
 playback via python-vlc). Captures land in `Captures/` next to the source
-(override with `BRAIN_BATTLE_CAPTURE_DIR`). Regression tests live in `tests/`
-(plain scripts, run with `python3 tests/<name>.py`; they need ffmpeg and stub
-python-vlc only when libVLC is absent).
+(override with `BRAIN_BATTLE_CAPTURE_DIR`).
+
+## Tests (`tests/` — plain scripts, `python3 tests/<name>.py`, nonzero exit on failure)
+
+All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
+
+- `test_smoke.py` — the "loads and stands up" floor and **acceptance gate for
+  deletions/refactors**: fresh-subprocess import of every first-party module
+  (dynamic discovery), import-time `_HW_ENCODER` == post-import detection
+  (the check that would have caught the four-commit videotoolbox NameError
+  bug), headless construction of all three tabs + app shell, session-timeline
+  order, `__version__` in the window title. Run this before and after any
+  module deletion (J/K) or structural change (H).
+- `test_seek_alignment.py` — ground truth for the sync seek formula: a known
+  transient must land at the same playhead time in every clip after seeks
+  (the formula flip-flopped twice; never change it without this). Also pins
+  the simultaneous-start path to all-zero seeks.
+- `test_xcorr_confidence.py` — confidence metric discrimination (high on
+  shared signal, near-zero on unrelated, monotone decay under noise) plus
+  threading: worker → SyncResult → badge → honest `n/a (<method>)` CSV rows.
+- `test_ring_buffer.py` — `_RingBuffer` chronological ordering, including
+  the over-capacity write branch (latent bug fixed in `0de80f2`).
+
+Broader end-to-end suites from the fix sessions (31-check acceptance, hybrid
+audio/no-audio sync, export error-text, real-VLC playback smoke) were
+session-local scratchpad scripts and are NOT checked in — the checked-in
+suites above are the durable safety net.
 
 ## Project status (2026-07-06)
 
