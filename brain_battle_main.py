@@ -2,6 +2,13 @@ import os
 os.environ["QT_MEDIA_BACKEND"] = "ffmpeg"
 os.environ["QT_FFMPEG_DISABLE_HW_DECODING"] = "1"
 
+# Configure logging BEFORE the heavy imports so import-time messages
+# (e.g. export_module's encoder detection) reach the console handler.
+import logging
+from log_setup import init_logging
+init_logging()
+log = logging.getLogger(__name__)
+
 from pathlib import Path
 import sys
 import tempfile
@@ -328,7 +335,7 @@ def _read_phase_markers(csv_path: str) -> list[tuple[float, str, str]]:
                 phase_id = (row.get("phase_id") or "").strip().lower()
                 rows.append((t, PHASE_MARKER_COLORS.get(phase_id, "#637DFF"), label))
     except Exception as e:
-        print(f"[markers] failed to read {csv_path}: {e}")
+        log.warning("failed to read phase markers %s: %s", csv_path, e)
     return rows
 
 
@@ -371,9 +378,9 @@ class MainEditorSyncWorker(QThread):
                     pivot = int(_np.argmax(durations))
                     eeg_start, eeg_end = compare_video_eeg(original_video_paths[pivot], self.eeg_paths[0], durations[pivot])
                     self.progress.emit(15, f"EEG window: {eeg_start:.1f}s → {eeg_end:.1f}s in pivot video")
-                    print(f"[EEG sync] pivot video EEG window: {eeg_start:.3f}s → {eeg_end:.3f}s")
+                    log.info("EEG sync: pivot video EEG window %.3fs -> %.3fs", eeg_start, eeg_end)
                 except Exception as e:
-                    self.progress.emit(15, f"EEG offset skipped: {e}"); print(f"[EEG sync warning] {e}")
+                    self.progress.emit(15, f"EEG offset skipped: {e}"); log.warning("EEG sync window skipped: %s", e)
 
             norm_delays = [0.0] * len(original_video_paths)
             self.confidences = [None] * len(original_video_paths)
@@ -392,7 +399,7 @@ class MainEditorSyncWorker(QThread):
                 self.progress.emit(
                     20, "No audio tracks on 2+ clips — aligning by simultaneous start (all offsets 0)...")
             max_norm_delay = max(norm_delays)
-            print(f"Normalised delays: {[round(d,3) for d in norm_delays]}  (max={max_norm_delay:.3f}s)")
+            log.info("normalised delays: %s (max=%.3fs)", [round(d, 3) for d in norm_delays], max_norm_delay)
 
             self.progress.emit(90, "Computing VLC seek offsets...")
             # Convention (per _xcorr_delay's docstring, verified empirically):
@@ -408,7 +415,7 @@ class MainEditorSyncWorker(QThread):
             # transient lands at the same playhead time in every clip.
             seek_ms = [_clamp_ms((max_norm_delay - d) * 1000) for d in norm_delays]
             for i, (path, s) in enumerate(zip(original_video_paths, seek_ms)):
-                print(f"  clip {i} ({os.path.basename(path)}): delay={norm_delays[i]:.3f}s  seek={s}ms")
+                log.debug("clip %d (%s): delay=%.3fs seek=%sms", i, os.path.basename(path), norm_delays[i], s)
 
             self.progress.emit(100, "Sync complete.")
             self.finished.emit(original_video_paths, norm_delays + [max_norm_delay] + [float(s) for s in seek_ms])
@@ -649,7 +656,8 @@ class SyncReviewTab(QWidget):
             probe = _ff.probe(path)
             vs = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
             if vs: src_w = int(vs.get("width", 1920)); src_h = int(vs.get("height", 1080))
-        except Exception: pass
+        except Exception as e:
+            log.warning("dimension probe failed for %s: %r — assuming 1920x1080", path, e)
         width = src_w // 2; height = src_h // 2
         # Align pitch to a 32-byte boundary.
         # VLC's swscaler pads rows internally to 16 bytes; QImage expects the
@@ -833,13 +841,13 @@ class SyncReviewTab(QWidget):
             def run(self):
                 try:
                     df = pd.read_csv(self._p)
-                    print(f"[EEG load] columns: {list(df.columns)[:8]}  rows: {len(df)}")
+                    log.debug("EEG load: columns=%s rows=%s", list(df.columns)[:8], len(df))
                     col_map = {c.lower(): c for c in df.columns}
                     if 'timestamps' not in df.columns and 'timestamps' in col_map:
                         df = df.rename(columns={col_map['timestamps']: 'timestamps'})
                     self.done.emit(df)
                 except Exception as e:
-                    print(f"[EEG load error] {e}")
+                    log.error("EEG CSV load failed: %s", e)
 
         loader = _EEGLoader(path, parent=self)
         # Keep reference so GC doesn't destroy it before it finishes
@@ -850,8 +858,8 @@ class SyncReviewTab(QWidget):
         def _on_done(df, _w=widget, _l=loader):
             try:
                 _w.load(df, offset_sec=0.0)
-            except Exception as e:
-                import traceback; traceback.print_exc()
+            except Exception:
+                log.error("EEG review widget load failed", exc_info=True)
             finally:
                 # Wait for the thread's run() to fully exit before letting
                 # Python GC reclaim it — prevents "QThread destroyed while
@@ -1009,7 +1017,8 @@ class SyncReviewTab(QWidget):
                     seek_s = seek_ms_list[i] / 1000.0 if i < len(seek_ms_list) else 0.0
                     content_dur = max(d - seek_s, 0.0)
                     global_duration = content_dur if global_duration == 0.0 else min(global_duration, content_dur)
-                except Exception: pass
+                except Exception as e:
+                    log.warning("duration probe failed for %s: %r — global duration may be wrong", path, e)
         self.sync_result = _SR(global_duration=max(global_duration, 0.0), video_offsets=video_offsets, eeg_offsets=eeg_offsets)
 
         target_seeks = [_clamp_ms(s) for s in seek_ms_list]
@@ -1029,7 +1038,7 @@ class SyncReviewTab(QWidget):
             for i, p in enumerate(self.media_players):
                 if p:
                     seek = target_seeks[i] if i < len(target_seeks) else 0
-                    p.pause(); p.set_time(seek); print(f"  player {i}: set_time({seek}ms)")
+                    p.pause(); p.set_time(seek); log.debug("player %d: set_time(%sms)", i, seek)
             # Global usable duration = min(clip_length - seek) across all players
             min_usable_ms = 0
             for i, p in enumerate(self.media_players):
@@ -1061,7 +1070,7 @@ class SyncReviewTab(QWidget):
         for i, widget in enumerate([self.eeg_review_1, self.eeg_review_2]):
             if i < len(eeg_sources):
                 try: df = pd.read_csv(eeg_sources[i].file_path); widget.load(df, offset_sec=0.0)
-                except Exception as e: print(f"EEG {i+1} error: {e}")
+                except Exception as e: log.warning("EEG %d load for review failed: %s", i + 1, e)
         if sync_mode == "simultaneous_start":
             msg = "IN-APP SESSION — ALIGNED BY SIMULTANEOUS START"
             if self._phase_markers:
@@ -1070,7 +1079,7 @@ class SyncReviewTab(QWidget):
             n_audio = sum(1 for f in audio_flags if f)
             msg = f"SYNCED {n_audio} CLIPS BY AUDIO  ✓"
         self._set_sync_status(msg, "#22c55e"); self.sync_btn.setEnabled(True); self.goto_label_btn.setEnabled(True)
-        print(f"\nSync mode: {sync_mode}  ·  offsets (seek per player): {seek_ms_list} ms")
+        log.info("sync mode: %s · offsets (seek per player): %s ms", sync_mode, seek_ms_list)
 
     def _on_sync_error(self, msg):
         self.sync_progress.setValue(0); self._set_sync_status(f"ERROR: {msg[:60]}", "#ef4444")
@@ -1123,7 +1132,9 @@ class SyncReviewTab(QWidget):
         for i, s in enumerate(self.sources[4:]):
             if s.file_path:
                 try: df = pd.read_csv(s.file_path); off = self.sync_result.eeg_offsets[i].offset_sec if i < len(self.sync_result.eeg_offsets) else 0.0; eeg_data.append((df, off))
-                except Exception: eeg_data.append((None, 0.0))
+                except Exception as e:
+                    log.warning("EEG CSV read for labelling handoff failed (%s): %r", s.file_path, e)
+                    eeg_data.append((None, 0.0))
             else: eeg_data.append((None, 0.0))
         label_tab.load_session_data(video_data, eeg_data, self.sync_result)
 
@@ -1757,14 +1768,14 @@ class LabellingTab(QWidget):
             try:
                 slot.load(path, offset_sec=0.0)
             except Exception as e:
-                print(f"[label load] video {source_id}: {e}")
+                log.warning("label tab: video %d load failed: %s", source_id, e)
             # Re-attach every loaded slot to the sync controller. Without
             # this, the PLAY button has no players to control and the
             # video stays black even though it loaded successfully.
             try:
                 self._label_sync_ctrl.attach(self.label_slots, offsets_sec=None)
             except Exception as e:
-                print(f"[label sync attach] {e}")
+                log.warning("label tab: sync attach failed: %s", e)
             # Tell the timeline strip how long the video is so existing
             # markers re-position correctly.
             try:
@@ -1776,7 +1787,8 @@ class LabellingTab(QWidget):
                     self.tl_slider.set_duration_sec(dur)
                 else:
                     QTimer.singleShot(600, self._refresh_timeline_duration)
-            except Exception: pass
+            except Exception as e:
+                log.debug("timeline duration not ready yet (retried later): %r", e)
             self._play_btn_lbl.setEnabled(True)
         elif source_id == 4:
             self._load_label_eeg_async(path, self.eeg_label_1)
@@ -1789,7 +1801,7 @@ class LabellingTab(QWidget):
         try:
             self._try_auto_load_markers_for(path)
         except Exception as e:
-            print(f"[markers auto-load] {e}")
+            log.warning("phase-marker auto-load failed: %s", e)
 
     def _try_auto_load_markers_for(self, file_path: str) -> None:
         """Walk up to 4 directory levels looking for phase_markers.csv.
@@ -1832,14 +1844,14 @@ class LabellingTab(QWidget):
             # Insert phase markers in sorted order by timestamp at
             # the top of the list, before any user-placed markers.
             self.placed_layout.insertWidget(self.placed_layout.count() - 1, marker)
-            # Mirror onto the timeline strip
+            # Mirror onto the timeline strip (the list stays authoritative)
             try: self.tl_slider.add_marker(t, color, label)
-            except Exception: pass
+            except Exception as e: log.debug("timeline marker mirror failed: %r", e)
             existing.add((ts_str, label))
             added += 1
         if added > 0:
             self._update_label_count()
-            print(f"[markers] auto-loaded {added} phase markers from {csv_path}")
+            log.info("auto-loaded %d phase markers from %s", added, csv_path)
 
     def _open_session_folder(self) -> None:
         """One-click loader: pick a session root folder and load every
@@ -1887,7 +1899,7 @@ class LabellingTab(QWidget):
                 self.label_sources[i].set_path(str(vp))
                 loaded_video = True
             except Exception as e:
-                print(f"[session open] side {i} load failed: {e}")
+                log.warning("session open: side cam %d load failed: %s", i, e)
         for i, vp in enumerate(pov_videos[:2]):
             slot_idx = 2 + i
             try:
@@ -1895,7 +1907,7 @@ class LabellingTab(QWidget):
                 self.label_sources[slot_idx].set_path(str(vp))
                 loaded_video = True
             except Exception as e:
-                print(f"[session open] pov {i} load failed: {e}")
+                log.warning("session open: pov cam %d load failed: %s", i, e)
 
         # EEG CSVs
         muse_csvs = sorted(muse_dir.glob("*.csv")) if muse_dir.exists() else []
@@ -1905,7 +1917,7 @@ class LabellingTab(QWidget):
                 self._load_label_eeg_async(str(mp), widget)
                 self.label_sources[4 + i].set_path(str(mp))
             except Exception as e:
-                print(f"[session open] muse {i} load failed: {e}")
+                log.warning("session open: muse %d load failed: %s", i, e)
 
         # Phase markers
         markers_csv = root / "phase_markers.csv"
@@ -1917,7 +1929,7 @@ class LabellingTab(QWidget):
             try:
                 self._label_sync_ctrl.attach(self.label_slots, offsets_sec=None)
             except Exception as e:
-                print(f"[label sync attach] {e}")
+                log.warning("label tab: sync attach failed: %s", e)
             QTimer.singleShot(600, self._refresh_timeline_duration)
             self._play_btn_lbl.setEnabled(True)
 
@@ -1945,15 +1957,15 @@ class LabellingTab(QWidget):
                         df = df.rename(columns={col_map['timestamps']: 'timestamps'})
                     self.done.emit(df)
                 except Exception as e:
-                    print(f"[label EEG load error] {e}")
+                    log.error("label tab: EEG CSV load failed: %s", e)
         loader = _LabelEEGLoader(path, parent=self)
         if not hasattr(self, '_label_eeg_loaders'):
             self._label_eeg_loaders = []
         self._label_eeg_loaders.append(loader)
         def _on_done(df, _w=widget, _l=loader):
             try: _w.load(df, offset_sec=0.0)
-            except Exception as e:
-                import traceback; traceback.print_exc()
+            except Exception:
+                log.error("label tab: EEG widget load failed", exc_info=True)
             finally:
                 try: _l.wait(2000)
                 except Exception: pass
@@ -2077,7 +2089,8 @@ class LabellingTab(QWidget):
                 # also update the end-time display
                 h = int(dur//3600); m = int((dur%3600)//60); s = dur%60
                 self._end_lbl.setText(f"{h:02d}:{m:02d}:{s:06.3f}")
-        except Exception: pass
+        except Exception as e:
+            log.debug("timeline duration refresh failed (VLC not ready): %r", e)
 
     def _on_timeline_scrub(self, value):
         loaded = [sl for sl in self.label_slots if sl.is_loaded()]
@@ -2126,7 +2139,8 @@ class LabellingTab(QWidget):
         # Mirror the label onto the timeline strip as a coloured tick
         try:
             self.tl_slider.add_marker(ts, self.active_color, self.active_label)
-        except Exception: pass
+        except Exception as e:
+            log.debug("timeline marker mirror failed: %r", e)
 
     def _rebuild_timeline_markers(self):
         """Re-derive ticks from the current PLACED LABELS list. Called
@@ -2270,12 +2284,14 @@ if __name__ == "__main__":
             _theme = _prefs.get("theme", "dark")
             if _theme in ("light", "dark"):
                 _dt.set_theme(_theme)
-    except Exception:
-        pass
+    except Exception as e:
+        # Broad on purpose: a malformed prefs file (wrong JSON shape raises
+        # AttributeError, not just ValueError) must never block startup.
+        log.debug("theme prefs not loaded (normal on first run): %r", e)
 
     app = QApplication(sys.argv); app.setApplicationName("Brain Battle")
     def _excepthook(exc_type, exc_value, exc_tb):
-        print("\n=== UNHANDLED EXCEPTION ==="); _tb.print_exception(exc_type, exc_value, exc_tb)
+        log.critical("UNHANDLED EXCEPTION", exc_info=(exc_type, exc_value, exc_tb))
     sys.excepthook = _excepthook
     try:
         window = BrainBattleApp(); window.show()

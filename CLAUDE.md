@@ -197,8 +197,23 @@ start simultaneously and share `phase_markers.csv` time.
   windows in the real-VLC smoke. Revisit whether drift correction is needed
   once real multi-minute capture data exists to observe actual drift.
 
-- **K [DIAGNOSTICS] No logging.** Zero use of the `logging` module; ~56
-  `print()` calls and ~34 `except: pass`-style blocks swallow errors silently.
+- **K [DIAGNOSTICS] Logging — DONE.** Central config in `log_setup.py`
+  (console at INFO; `attach_session_log()` adds a DEBUG file handler inside
+  each session folder). All `print()` calls replaced with module loggers.
+  Silent `except` blocks triaged: real-failure-hiding handlers (probes,
+  manifest/marker writes, session-end recording stops, frame writes) now log
+  at warning/error; legitimate-quiet teardown races log at debug or carry an
+  intent comment; control flow unchanged everywhere. Level policy lives in
+  `log_setup.py`'s docstring. Most failure-path log lines are
+  verified-by-inspection (their triggers need real hardware/corrupt data).
+
+- **NOTE [CLEANUP-CANDIDATE] `sync_engine.py` is half-orphaned.** Its
+  `SourceOffset`/`SyncResult` dataclasses are load-bearing (imported locally
+  in `_on_sync_finished`), but everything else — `SyncWorker`, `compute_sync`,
+  `_load_video`'s zeros-on-failure audio fallback — is unreachable since the
+  J deletions (nothing imports the module except that dataclass import). K
+  deliberately did NOT instrument the dead path. A future focused cleanup
+  could move the two dataclasses out and delete the rest.
 
 ## Conventions & gotchas
 

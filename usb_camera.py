@@ -36,6 +36,7 @@ Platform notes
 
 from __future__ import annotations
 
+import logging
 import platform
 import time
 from dataclasses import dataclass
@@ -45,6 +46,8 @@ from typing import Optional
 import cv2
 import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
+
+log = logging.getLogger(__name__)
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -197,6 +200,7 @@ class USBCameraThread(QThread):
 
     # ── Thread body ──
     def run(self) -> None:  # noqa: C901 — single run-loop, hard to split further
+        write_err_logged = False  # one frame-write warning per capture run
         self.state_changed.emit("opening")
         cap = cv2.VideoCapture(self._dev.index, self._dev.backend or _preferred_backend())
         if not cap.isOpened():
@@ -240,11 +244,9 @@ class USBCameraThread(QThread):
         actual_h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self._want_h
         actual_fps = cap.get(cv2.CAP_PROP_FPS) or float(self._want_fps)
         if abs(actual_fps - self._want_fps) > 0.5:
-            print(
-                f"[usb_camera] WARN cam idx={self._dev.index} requested "
-                f"{self._want_fps} fps but reports {actual_fps:.2f} fps — "
-                f"may drift across long sessions vs other cameras."
-            )
+            log.warning("cam idx=%s requested %s fps but reports %.2f fps — "
+                        "may drift across long sessions vs other cameras",
+                        self._dev.index, self._want_fps, actual_fps)
 
         self.state_changed.emit("live")
         total_frames = 0
@@ -327,8 +329,13 @@ class USBCameraThread(QThread):
                             # mid-stream. Rare but possible on hot-plug.
                             resized = cv2.resize(frame, (first_frame_shape[1], first_frame_shape[0]))
                             self._writer.write(resized)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Dropped recorded frames = data loss, but a dying
+                        # camera raises per-frame — log once per capture run.
+                        if not write_err_logged:
+                            write_err_logged = True
+                            log.warning("frame write failed (further drops "
+                                        "this run suppressed): %r", e)
 
                 # ── Preview emit throttling ───────────────────────────────
                 # Cap preview emits at ~20 Hz (50 ms). Even if the camera

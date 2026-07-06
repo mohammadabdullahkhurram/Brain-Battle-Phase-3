@@ -61,7 +61,11 @@ def set_theme(theme: Theme) -> None:
     _CURRENT = theme
     for cb in list(_observers):
         try: cb()
-        except Exception: pass
+        except Exception:
+            # Cosmetic only: a failing observer means one widget misses a
+            # re-theme; never let it break the switch for the others.
+            import logging
+            logging.getLogger(__name__).debug("theme observer raised", exc_info=True)
 
 def current_theme() -> Theme:
     return _CURRENT

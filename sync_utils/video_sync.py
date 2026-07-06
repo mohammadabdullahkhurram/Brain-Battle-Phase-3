@@ -14,6 +14,7 @@ Changes from original
 from __future__ import annotations
 
 import ffmpeg
+import logging
 import numpy as np
 import datetime
 import subprocess
@@ -21,6 +22,8 @@ import tempfile
 import sys
 import os
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 
 # --- Font helper (cross-platform) --------------------------------------------
@@ -179,8 +182,7 @@ def generate_grid_command(all_video_paths: list[str], delays: list[float],
     )
 
     command = out.compile()
-    print("\n--- Compiled FFmpeg Command ---")
-    print(command)
+    log.debug("compiled ffmpeg command: %s", command)
 
     return command, stop_duration
 
@@ -253,25 +255,25 @@ def run_ffmpeg_subprocess(ffmpeg_command: str, resulting_duration: float,
             universal_newlines=True,
         )
     except OSError:
-        print("OSError running FFmpeg")
+        log.error("OSError running FFmpeg")
         return
     except ValueError as e:
-        print(f"ValueError: {e}")
+        log.error("ValueError running FFmpeg: %s", e)
         return
     except Exception as e:
-        print(f"FFmpeg error: {e}")
+        log.error("FFmpeg error: %s", e)
         return
 
     end_time = str(datetime.timedelta(seconds=resulting_duration))
-    print("FFmpeg starting...")
+    log.info("FFmpeg starting...")
     for line in ffmpeg_process.stdout:
         if debug:
-            print(line, end="")
+            log.debug("%s", line.rstrip())
         if line.startswith("out_time="):
             progress = line.split("=")[1].strip()
-            print(f"Progress: {progress} / {end_time}")
+            log.debug("progress: %s / %s", progress, end_time)
 
-    print("FFmpeg finished.")
+    log.info("FFmpeg finished.")
     ffmpeg_process.terminate()
 
 
@@ -295,6 +297,6 @@ def get_first_frame_pts(video_path: str) -> float:
         packets = data.get("packets", [])
         if packets:
             return float(packets[0].get("pts_time", 0.0))
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("first-frame pts probe failed for %s: %r — using 0.0", video_path, e)
     return 0.0

@@ -35,6 +35,7 @@ Changes from original
 from __future__ import annotations
 
 import csv
+import logging
 import os
 import subprocess
 import sys
@@ -45,6 +46,9 @@ import shutil
 from typing import Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
+
+log = logging.getLogger(__name__)
+
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QProgressBar, QFileDialog,
@@ -99,7 +103,10 @@ def _validate_encoder(ff: str, encoder: str) -> bool:
             capture_output=True, timeout=20,
         )
         return r.returncode == 0
-    except Exception:
+    except Exception as e:
+        # Swallowed-probe-error class (the videotoolbox NameError bug lived
+        # here for four commits) — always leave a trace.
+        log.warning("encoder probe for %s raised: %r", encoder, e)
         return False
 
 
@@ -125,21 +132,22 @@ def _detect_hw_encoder() -> str:
             capture_output=True, text=True, timeout=8,
         )
         listed = result.stdout
-    except Exception:
+    except Exception as e:
+        log.warning("ffmpeg -encoders listing failed (%r) — falling back to libx264", e)
         return "libx264"
     for enc in _candidate_encoders():
         if enc not in listed:
             continue
         if _validate_encoder(ff, enc):
             return enc
-        print(f"[export] {enc} is listed by ffmpeg but failed a test encode "
-              f"(no usable hardware?) — falling back")
+        log.warning("%s is listed by ffmpeg but failed a test encode "
+                    "(no usable hardware?) — falling back", enc)
     return "libx264"
 
 
 # Detect once at import time; shared by all workers in this process
 _HW_ENCODER = _detect_hw_encoder()
-print(f"[export] H.264 encoder: {_HW_ENCODER}")
+log.info("H.264 encoder: %s", _HW_ENCODER)
 
 
 # --- Helpers -----------------------------------------------------------------

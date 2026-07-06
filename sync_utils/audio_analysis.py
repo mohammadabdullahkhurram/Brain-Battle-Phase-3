@@ -19,9 +19,12 @@ from typing import List
 
 import numpy as np
 from scipy import signal
+import logging
 import os
 import subprocess
 import ffmpeg as _ffmpeg
+
+log = logging.getLogger(__name__)
 
 
 # --- Config ------------------------------------------------------------------
@@ -44,7 +47,8 @@ def _probe_duration(video_path: str) -> float:
     try:
         probe = _ffmpeg.probe(video_path)
         return float(probe["format"].get("duration", 0.0))
-    except Exception:
+    except Exception as e:
+        log.warning("duration probe failed for %s: %r — using 0.0", video_path, e)
         return 0.0
 
 
@@ -61,7 +65,9 @@ def has_audio_stream(video_path: str) -> bool:
         probe = _ffmpeg.probe(video_path)
         return any(s.get("codec_type") == "audio"
                    for s in probe.get("streams", []))
-    except Exception:
+    except Exception as e:
+        log.warning("audio-stream probe failed for %s: %r — treating as no-audio",
+                    video_path, e)
         return False
 
 
@@ -99,8 +105,8 @@ def process_audio(video_path: str, target_sr: int = XCORR_SR):
     ]
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     audio = np.frombuffer(result.stdout, dtype=np.float32).copy()
-    print(f"Audio extracted: {get_file_name(video_path)} "
-          f"(sr={target_sr}, samples={len(audio)})")
+    log.debug("audio extracted: %s (sr=%s, samples=%s)",
+              get_file_name(video_path), target_sr, len(audio))
     return audio, target_sr
 
 
@@ -237,8 +243,8 @@ def find_all_delays(video_paths: List[str],
         if i == ref_index:
             continue
         delays[i], confidences[i] = _xcorr_delay(ref, audios[i], sr, max_offset_s)
-        print(f"  clip {i} ({get_file_name(video_paths[i])}): "
-              f"delay={delays[i]:.4f}s  confidence={confidences[i]:.3f}")
+        log.info("clip %d (%s): delay=%.4fs confidence=%.3f",
+                 i, get_file_name(video_paths[i]), delays[i], confidences[i])
 
     confidences[ref_index] = max(
         c for i, c in enumerate(confidences) if i != ref_index)
@@ -280,5 +286,5 @@ def autosync(video_paths: List[str]) -> List[float]:
     if not all(os.path.exists(p) for p in video_paths):
         raise FileNotFoundError("One or more video paths are invalid.")
     delays, _confs = find_all_delays(video_paths)
-    print(f"Delays: {delays}")
+    log.info("delays: %s", delays)
     return delays

@@ -27,6 +27,7 @@ this panel only deals with session-level recording orchestration.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PyQt6.QtCore    import Qt
@@ -126,10 +127,12 @@ class USBCameraPanel(QWidget):
         started: list[Path] = []
         safe_label = phase_label.replace(" ", "_")
         live_slots = [s for s in self._slots if s.is_live]
-        print(f"[session start] {len(live_slots)} of {len(self._slots)} camera slots live")
+        logging.getLogger(__name__).info(
+            "[session start] %d of %d camera slots live", len(live_slots), len(self._slots))
         for slot in self._slots:
             if not slot.is_live:
-                print(f"[session start]   skip slot {slot.slot_index} ({slot.label}) — not connected")
+                logging.getLogger(__name__).info(
+                    "[session start] skip slot %s (%s) — not connected", slot.slot_index, slot.label)
                 continue
             sub = "Side Cams" if self.slot_kind(slot.slot_index) == "side" else "POV Cams"
             safe_name = slot.label.replace(" ", "_")
@@ -138,7 +141,8 @@ class USBCameraPanel(QWidget):
             out_path = out_dir / f"{safe_label}_{safe_name}.mp4"
             slot.start_recording(out_path)
             started.append(out_path)
-            print(f"[session start]   recording slot {slot.slot_index} ({slot.label}) → {out_path}")
+            logging.getLogger(__name__).info(
+                "[session start] recording slot %s (%s) -> %s", slot.slot_index, slot.label, out_path)
         return started
 
     def stop_recording(self) -> None:

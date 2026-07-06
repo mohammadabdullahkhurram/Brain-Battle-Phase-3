@@ -16,6 +16,7 @@ Changes from v1
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import sys
 import time
@@ -24,6 +25,8 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+
+log = logging.getLogger(__name__)
 from scipy.signal import welch
 
 import matplotlib
@@ -355,7 +358,7 @@ class _MuseDirectReader(QThread):
             pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
             df.to_csv(path, index=False)
         except Exception as e:
-            print(f"[muse-direct] CSV write failed for {path}: {e}")
+            log.error("[muse-direct] CSV write failed for %s: %s", path, e)
             path = None
         finally:
             self._record_path = None
@@ -407,7 +410,7 @@ class _MuseDirectReader(QThread):
             data_copy = np.array(data, dtype=np.float32, copy=True)
             ts_copy   = np.array(timestamps, dtype=np.float64, copy=True)
         except Exception as e:
-            print(f"[muse-direct] sample copy failed: {e}")
+            log.warning("[muse-direct] sample copy failed: %s", e)
             return
 
         if self._record_path is not None:
@@ -424,13 +427,14 @@ class _MuseDirectReader(QThread):
             arr = np.ascontiguousarray(data_copy.T)  # (12, 5), C-contiguous
             self.samples.emit(arr, ts_copy)
         except Exception as e:
-            print(f"[muse-direct] samples emit failed: {e}")
+            log.warning("[muse-direct] samples emit failed: %s", e)
 
     # ── BLE thread ────────────────────────────────────────────────────────────
 
     def _request_stop(self) -> None:
         """Called via call_soon_threadsafe — runs on the bleak loop thread."""
         if self._muse is not None:
+            # Best-effort BLE disconnect — device may already be gone.
             try: self._muse.disconnect()
             except Exception: pass
             self._muse = None
@@ -447,7 +451,7 @@ class _MuseDirectReader(QThread):
         try:
             self._loop.call_later(30.0, self._do_keep_alive)
         except Exception as e:
-            print(f"[muse-direct] keep_alive schedule failed: {e}")
+            log.warning("[muse-direct] keep_alive schedule failed: %s", e)
 
     def _do_keep_alive(self) -> None:
         """Fired by call_later. Send the ping and re-schedule."""
@@ -459,7 +463,7 @@ class _MuseDirectReader(QThread):
             # A failed ping isn't fatal — bleak may handle the
             # reconnect, or the next data chunk will surface the
             # disconnect via the existing error path.
-            print(f"[muse-direct] keep_alive ping failed: {e}")
+            log.warning("[muse-direct] keep_alive ping failed: %s", e)
         # Re-schedule for the next interval
         self._schedule_keep_alive()
 
@@ -571,8 +575,9 @@ class _LSLReaderThread(QThread):
                 while self._running:
                     try:
                         chunk, ts = inlet.pull_chunk(timeout=0.1, max_samples=12)
-                    except Exception:
+                    except Exception as e:
                         # Any inlet error — break inner loop and re-resolve
+                        log.debug("LSL pull_chunk failed, re-resolving: %r", e)
                         break
 
                     if chunk:
@@ -586,10 +591,13 @@ class _LSLReaderThread(QThread):
                         )
                     else:
                         pass  # pylsl recover=True handles reconnection
-            except Exception:
-                pass
+            except Exception as e:
+                # Resolve/connect errors retry forever while running — debug
+                # level so a missing headband does not flood the log.
+                log.debug("LSL resolve/connect failed, retrying: %r", e)
             finally:
                 if inlet:
+                    # Best-effort close — inlet may already be dead.
                     try: inlet.close_stream()
                     except Exception: pass
                 inlet = None
@@ -1057,7 +1065,7 @@ class EEGLiveWidget(QFrame):
         if self._is_streaming:
             return
         if not self._connected_device:
-            print("[muse-direct] start_stream called with no selected device")
+            log.warning("[muse-direct] start_stream called with no selected device")
             return
         name = self._connected_device.get("name", device_name)
         address = self._connected_device.get("address", "")
@@ -1138,7 +1146,7 @@ class EEGLiveWidget(QFrame):
             self._reader.start_recording(save_path)
             self._rec_indicator_active = True
         else:
-            print(f"[muse-direct] cannot start recording — no active reader")
+            log.warning("[muse-direct] cannot start recording — no active reader")
 
     # Legacy method kept so the EEG record button + auto-start flow don't
     # break if anything still calls them. Direct path uses _enable_recording.
@@ -1164,9 +1172,9 @@ class EEGLiveWidget(QFrame):
         try:
             path = self._reader.stop_recording()
             if path:
-                print(f"[muse-direct] saved {path}")
+                log.info("[muse-direct] saved %s", path)
         except Exception as e:
-            print(f"[muse-direct] stop_recording flush failed: {e}")
+            log.error("[muse-direct] stop_recording flush failed: %s", e)
 
         # Legacy subprocess cleanup, in case any code path still set
         # _record_proc. Belt-and-braces during the migration to direct BLE.
