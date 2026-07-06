@@ -43,14 +43,20 @@ suites above are the durable safety net.
 
 ## Project status (2026-07-06)
 
-**Both phases are COMPLETE** on branch `fix/v2-migration-review-path`:
-functional fixes (A/B, D′, E, C — verified, including a real-libVLC playback
-smoke of the Live→Review handoff) and cleanup (G/I/F, smoke gate, J
-deletions, K logging sweep, H pyqtgraph port). What remains is deferred, not
-planned work: the eyes-on-glass visual check (playback + review-EEG
-rendering, needs real capture data), the drift-correction decision, and the
-`sync_engine.py` dataclass extraction — see KNOWN LIMITATIONS / backlog
-notes below.
+**FINISHED.** Both phases — functional fixes and cleanup — are complete on
+branch `fix/v2-migration-review-path` (15 commits; `git log --oneline
+1a840e1..` for detail). The migration gap that started this work (the
+review/sync path still reading the v1 per-round layout) is closed. Coverage:
+
+| Commits | Work |
+|---|---|
+| `8aaa14a` `faa8f38` `bfa0a36` `16f91a2` | Functional fixes A/B, D′, E, C |
+| `0993721` | E follow-up (videotoolbox NameError, silently broken 4 commits) |
+| `0de80f2` `e16aab3` | Cleanup G (ring buffer), I+F (storage API, `__version__`) |
+| `bbc0769` `5ff48db` `7697642` `93888f4` | Smoke gate, J deletions, K logging, H pyqtgraph port |
+| `43ece84` `fc13bd8` `d1ec67b` (+ this one) | CLAUDE.md + README documentation |
+
+Every remaining item is in **Deferred work** below — nothing else is planned.
 
 ## CRITICAL CONTEXT — the v1.x → v2.x migration gap
 
@@ -115,7 +121,7 @@ start simultaneously and share `phase_markers.csv` time.
 
 ## Issue backlog
 
-### DONE (functional-fix phase, commits on fix/v2-migration-review-path)
+### DONE — all ten grounding items (commits on fix/v2-migration-review-path)
 
 - **A/B [HIGH] — DONE in `8aaa14a`.** Live→Review handoff ported to the
   `continuous/` layout (was globbing v1 `Round {n}/` and returning silently);
@@ -143,7 +149,49 @@ start simultaneously and share `phase_markers.csv` time.
   `n/a (<method>)` sentinel for unmeasured sources. Discrimination test:
   `tests/test_xcorr_confidence.py`.
 
-### KNOWN LIMITATIONS (discovered during the fixes — by design or unverifiable here)
+- **G [LOW] — DONE in `0de80f2`.** Ring buffer over-capacity ordering: the
+  `n >= capacity` branch of `_RingBuffer.extend` left `_n_written` unaligned,
+  so `to_array` mis-rotated. Latent (Muse chunks ≤12 into a 7680 buffer).
+  Guarding test: `tests/test_ring_buffer.py`.
+
+- **I + F [LOW] — DONE in `e16aab3`.** I: deleted the uncalled v1 per-phase
+  path API (`phase_dir`/`side_cams_dir`/`pov_cams_dir`/`muse_dir`/
+  `_phase_folder_name`) and rewrote `session_storage.py`'s stale docstrings
+  to the continuous/ model. F: single `version.py` `__version__ = "2.1.0"`,
+  surfaced to the window title, the session manifest (was `"Phase 2"`), the
+  README, and the CHANGELOG header. Guarded by `tests/test_smoke.py`
+  (window-title check).
+
+- **Smoke gate — ADDED in `bbc0769`.** `tests/test_smoke.py`: the
+  import/construct floor and acceptance gate for deletions/refactors (the
+  check that would have caught the videotoolbox bug, verified RED against
+  the pre-`0993721` revision). E's follow-up fix itself is `0993721`.
+
+- **J [CLEANUP] — DONE in `5ff48db`.** Deleted `sync_utils/eeg_module.py`
+  (1207-line orphan, zero importers; its "(v3)" docstring label was stale —
+  root `eeg_module.py` got all later work), the fully-dead
+  `from sync_engine import SyncWorker, SyncResult` line, and the
+  never-created `_drift_hb`/`_nudge_drift` machinery. `sync_engine.py` stays
+  for its live dataclasses. Guarded by the smoke gate (dynamic module
+  discovery auto-shrank 24→23).
+
+- **K [DIAGNOSTICS] — DONE in `7697642`.** Central logging in
+  `log_setup.py` (console at INFO; `attach_session_log()` adds a DEBUG file
+  handler in each session folder). All 56 `print()` calls → module loggers;
+  36 silent `except` blocks triaged (real-failure-hiding → warning/error,
+  teardown races → debug/comment); control flow unchanged everywhere. Level
+  policy in `log_setup.py`'s docstring. Most failure-path log lines are
+  verified-by-inspection (triggers need real hardware/corrupt data).
+
+- **H [LOW] — DONE in `93888f4`.** `EEGReviewWidget` ported matplotlib →
+  pyqtgraph mirroring `eeg_plot_pg.py`: trace uploaded once at `load()`,
+  playhead ticks move an `InfiniteLine` + shift the ViewBox; band-power
+  welch recomputes per ≥0.2 s movement (`_BP_STEP_SEC`). Measured: waveform
+  scrub 118→15 ms/tick, band-power renderer 102→11 ms; the old widget could
+  not service the app's 100 ms tick. API unchanged; removed the repo's last
+  matplotlib import. Rendering correctness deferred — see below.
+
+### KNOWN LIMITATIONS (inherent — not fixable by more work here)
 
 - **Sync confidence measures internal consistency, not correctness.** A high
   score means the correlation peak dominates its window — coincident loud
@@ -152,85 +200,46 @@ start simultaneously and share `phase_markers.csv` time.
 - **Encoder validation's "listed-but-no-hardware" fallback** (e.g. nvenc on a
   GPU-less box) is proven by forced-probe-failure unit tests only; it has
   never been exercised on real GPU-less hardware.
-- **VLC playback smoke verified up to correct decoded pixels in the render
-  buffer** (offscreen Qt, real libVLC, 4-cam lockstep ~250ms = clock
-  quantization). The final on-screen blit has not been eyes-verified.
-- **Review-EEG rendering (post-H pyqtgraph port) is likewise not
-  eyes-verified** — constructs, runs all public methods, and is measurably
-  fast on synthetic data, but whether the waveform/band-power LOOK right
-  while scrubbing needs real capture data on glass. One deferred visual
-  check together with the item above: launch the app, open a real session,
-  play + scrub, watch all four cams and both EEG panes.
 
-### OPEN (cleanup phase: G/I/F, then H, then J/K)
+## Deferred work — THE one place to look
 
-- **F [LOW] Version strings disagree everywhere.** Manifest writes
-  `"Phase 2"` (`session_storage.py:170`); folder says v2.1.0; README says
-  `v1.0 // Software Phase 2` (line 4), "Phase 2.2" (line 677), and
-  "Phase 2.4 / v1.4" (lines 728-729); CHANGELOG goes to Phase 2.17. No
-  `__version__` constant exists anywhere.
+Everything not finished lives here, each with why it's deferred and what
+unblocks it. Nothing else is planned or half-open elsewhere in this file.
 
-- **G [LOW] Ring buffer latent ordering bug.** `_RingBuffer.extend`
-  (`eeg_module.py:95-117`): the `n >= capacity` branch (`:102-107`) writes
-  chronological data at index 0 but leaves `_n_written` unaligned, so
-  `to_array` (`:122-135`) rotates samples out of order. Never triggered today
-  (Muse chunks ≤ 12 into a 7680 buffer). Fix: set `_n_written = capacity` in
-  that branch (subsequent writes/reads then stay consistent).
+1. **Eyes-on-glass visual check** — synced playback (decode, 4-cam lockstep,
+   markers, simultaneous-start sync) and the pyqtgraph review-EEG rendering.
+   *Why deferred:* both are verified headless to correct-pixels-in-the-render-
+   buffer plus measured scrub performance, but nobody has *watched* them —
+   offscreen Qt can't put pixels on glass, and synthetic fixtures aren't real
+   signals. *Unblocked by:* the first real capture session. **The 30-second
+   procedure:** `python3 brain_battle_main.py` → Sync + Review → OPEN SESSION
+   FOLDER → pick the session → confirm all four cams show video and PLAY runs
+   them in lockstep → scrub the timeline and watch both EEG panes follow
+   (waveform view + band-power view) → click a phase-marker chip and confirm
+   it seeks.
 
-- **H [LOW] Review-EEG lag — DONE (rendering unverified).** `EEGReviewWidget`
-  ported to pyqtgraph mirroring `eeg_plot_pg.py`: full trace uploaded once at
-  `load()`, playhead ticks move an `InfiniteLine` + shift the ViewBox;
-  band-power welch recomputes only per ≥0.2 s playhead movement. Benchmarked
-  on 3 min of synthetic 4-channel EEG at the app's real 100 ms tick rate:
-  waveform 118→15 ms/tick, band-power 102→11 ms/tick from the renderer alone
-  (→4.6 ms with the throttle), load 403→44 ms. The old widget could not keep
-  up with the 100 ms tick; the new one has ~7× headroom. API unchanged —
-  no other file needed edits. **Rendering correctness is NOT eyes-verified**
-  (needs real capture data on glass) — bundled with the deferred visual
-  check of the Live→Review handoff in KNOWN LIMITATIONS.
-  Side effect: this removed the repo's last matplotlib import — matplotlib
-  is now droppable from requirements (only comment/docstring mentions
-  remain; not yet removed from README's pip line).
+2. **Drift-correction decision** — there is NO active playback drift
+   correction; lockstep rests solely on issuing `play()` to all four players
+   in the same event-loop turn (the removed `_drift_hb` heartbeat was dead
+   code, so nothing was lost). Held to ~250 ms — libVLC clock quantization —
+   over short windows in the real-VLC smoke. *Why deferred:* whether VLC
+   clocks actually drift apart is unknowable without long recordings.
+   *Unblocked by:* a real multi-minute session — play it end to end and watch
+   for growing desync; if it drifts, reintroduce a heartbeat (QTimer ~2 s →
+   nudge players toward the reference clock).
 
-- **I [LOW] session_storage.py docstring/API vestiges.** Top-of-file
-  docstring (`session_storage.py:1-27`) still describes the v1.x per-phase /
-  "SD-card footage" model; `phase_dir`/`side_cams_dir`/`pov_cams_dir`/
-  `muse_dir` (`:99-119`) return `Round N/` paths that are never created.
+3. **`sync_engine.py` dataclass extraction** — `SourceOffset`/`SyncResult`
+   are live (imported locally in `_on_sync_finished`); everything else in the
+   module (`SyncWorker`, `compute_sync`, the zeros-on-failure audio loader)
+   is unreachable and deliberately un-instrumented by K. *Why deferred:* pure
+   refactor, no behavior at stake — doable anytime. Move the two dataclasses
+   into their own module (or `brain_battle_main`), delete the rest, run the
+   smoke gate.
 
-- **J [CLEANUP] Orphans — DONE.** Deleted `sync_utils/eeg_module.py`
-  (1207-line orphan, grep-confirmed zero importers; its "(v3)" docstring
-  label was stale — git showed it untouched since the initial folder
-  restructure while root `eeg_module.py` got all later work). Removed the
-  fully-dead `from sync_engine import SyncWorker, SyncResult` line (both
-  names unused — the live path re-imports `SourceOffset`/`SyncResult`
-  locally in `_on_sync_finished`). `sync_engine.py` itself STAYS for those
-  dataclasses. Also deleted the never-created `_drift_hb`/`_nudge_drift`
-  machinery — see the lockstep note below.
-
-- **DEFERRED [DECISION] Long-session playback lockstep rests solely on
-  simultaneous `play()`** — no active drift correction; the removed
-  `_drift_hb` heartbeat was dead code (guarded but never created), so
-  nothing was lost. Held to ~250ms (libVLC clock quantization) over short
-  windows in the real-VLC smoke. Revisit whether drift correction is needed
-  once real multi-minute capture data exists to observe actual drift.
-
-- **K [DIAGNOSTICS] Logging — DONE.** Central config in `log_setup.py`
-  (console at INFO; `attach_session_log()` adds a DEBUG file handler inside
-  each session folder). All `print()` calls replaced with module loggers.
-  Silent `except` blocks triaged: real-failure-hiding handlers (probes,
-  manifest/marker writes, session-end recording stops, frame writes) now log
-  at warning/error; legitimate-quiet teardown races log at debug or carry an
-  intent comment; control flow unchanged everywhere. Level policy lives in
-  `log_setup.py`'s docstring. Most failure-path log lines are
-  verified-by-inspection (their triggers need real hardware/corrupt data).
-
-- **NOTE [CLEANUP-CANDIDATE] `sync_engine.py` is half-orphaned.** Its
-  `SourceOffset`/`SyncResult` dataclasses are load-bearing (imported locally
-  in `_on_sync_finished`), but everything else — `SyncWorker`, `compute_sync`,
-  `_load_video`'s zeros-on-failure audio fallback — is unreachable since the
-  J deletions (nothing imports the module except that dataclass import). K
-  deliberately did NOT instrument the dead path. A future focused cleanup
-  could move the two dataclasses out and delete the rest.
+4. **matplotlib removal from requirements** — nothing imports it since H
+   (grep-verified; only comment/docstring mentions remain). *Why deferred:*
+   one-line change bundled better with the next environment touch — doable
+   anytime. Drop it from the README pip line and any environment files.
 
 ## Conventions & gotchas
 
