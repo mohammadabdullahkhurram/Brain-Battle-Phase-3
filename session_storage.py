@@ -82,6 +82,16 @@ class SessionLayout:
     started_at:    _dt.datetime
     config:        SessionConfig
     phases:        list[PhaseRecord] = field(default_factory=list)
+    # Capture-time clock bridge (set once at recording start). This pair,
+    # captured at the same instant, is what maps the monotonic domain
+    # (phase markers, camera frame sidecars — all t_session_seconds) to the
+    # Unix domain (EEG CSV timestamps). t_session = unix_ts - capture_t0_unix.
+    # Fixes the "three assumed zeros" of ARCHITECTURE_AND_EVALUATION.md §1.6/§2.4.
+    capture_t0_monotonic: Optional[float] = None
+    capture_t0_unix:      Optional[float] = None
+    # Measured per-source first-sample time (Unix), so each source's startup
+    # latency is recorded, not assumed. Keyed by source id (e.g. "EEG_01").
+    source_starts:        dict = field(default_factory=dict)
 
     # ---- folder resolution ---------------------------------------------------
 
@@ -116,6 +126,26 @@ class SessionLayout:
             w.writerow([f"{t_session_sec:.3f}", phase_id, label,
                        round_num, f"{time.time():.3f}"])
 
+    # ---- capture-time clock bridge ------------------------------------------
+
+    def set_capture_origin(self, t0_monotonic: float, t0_unix: float) -> None:
+        """Record the shared capture-time origin captured at recording start.
+        This is the authoritative bridge review/label read to place markers,
+        camera frames, and EEG samples on ONE axis."""
+        self.capture_t0_monotonic = float(t0_monotonic)
+        self.capture_t0_unix = float(t0_unix)
+        self._write_manifest()
+
+    def record_source_start(self, source_id: str, first_unix: float) -> None:
+        """Record a source's measured first-sample Unix time. With the
+        capture origin set, its session-axis offset is first_unix -
+        capture_t0_unix — the measured startup latency for that source."""
+        entry = {"first_unix": float(first_unix)}
+        if self.capture_t0_unix is not None:
+            entry["first_t_session"] = float(first_unix) - self.capture_t0_unix
+        self.source_starts[source_id] = entry
+        self._write_manifest()
+
     # ---- manifest bookkeeping -----------------------------------------------
 
     def add_phase(self, rec: PhaseRecord) -> None:
@@ -137,6 +167,11 @@ class SessionLayout:
             "version":        __version__,
             "started_at":     self.started_at.isoformat(timespec="seconds"),
             "started_unix":   self.started_at.timestamp(),
+            "capture_clock":  {
+                "t0_monotonic": self.capture_t0_monotonic,
+                "t0_unix":      self.capture_t0_unix,
+            },
+            "source_starts":  self.source_starts,
             "config":         asdict(self.config),
             "phases":         [asdict(p) for p in self.phases],
         }

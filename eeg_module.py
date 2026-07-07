@@ -310,17 +310,24 @@ class _MuseDirectReader(QThread):
         self._record_path: Optional[str] = None
         self._rec_samples: list[np.ndarray] = []     # list of (channels=5, N=12) arrays
         self._rec_timestamps: list[np.ndarray] = []  # list of (N=12,) arrays
+        self._rec_origin_unix: Optional[float] = None  # shared capture origin
+        self._last_first_unix: Optional[float] = None  # measured first-sample time
 
     # ── public API ────────────────────────────────────────────────────────────
 
-    def start_recording(self, path: str) -> None:
+    def start_recording(self, path: str, origin_unix: Optional[float] = None) -> None:
         """Begin accumulating samples into an in-memory buffer.
         Calls to flush_recording() write the CSV. Safe to call before
         the BLE connection is established — samples received from that
-        point onward are captured."""
+        point onward are captured.
+
+        `origin_unix` is the shared capture-time origin (session t0 wall
+        clock). When set, the CSV gains a `t_session_seconds` column placing
+        EEG on the same axis as camera frames and phase markers."""
         self._record_path = path
         self._rec_samples = []
         self._rec_timestamps = []
+        self._rec_origin_unix = origin_unix
 
     def stop_recording(self) -> str | None:
         """Flush accumulated samples to CSV at the path set by
@@ -340,6 +347,19 @@ class _MuseDirectReader(QThread):
                 eeg, columns=["TP9", "AF7", "AF8", "TP10", "AUX"]
             )
             df["timestamps"] = timestamps
+            self._last_first_unix = float(timestamps[0])
+            # ── UNVERIFIED: EEG capture-time alignment ────────────────────
+            # `timestamps` are muselsl's wall-clock timestamps (time.time()-
+            # derived, per-band regression-corrected inside muselsl). We map
+            # each onto the shared session axis as t_session = ts - origin.
+            # The ARITHMETIC here is unit-tested (test_capture_clock.py). What
+            # is NOT verifiable without a real Muse band: whether muselsl's
+            # timestamps are accurate to tens-of-ms, and whether BLE transport
+            # latency skews them. Until confirmed against real EEG, the EEG
+            # position on the shared axis (hence between-brain timing) must be
+            # treated as unverified. See CLAUDE.md "Deferred work".
+            if self._rec_origin_unix is not None:
+                df["t_session_seconds"] = timestamps - self._rec_origin_unix
             import pathlib
             pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
             df.to_csv(path, index=False)
@@ -350,6 +370,7 @@ class _MuseDirectReader(QThread):
             self._record_path = None
             self._rec_samples = []
             self._rec_timestamps = []
+            self._rec_origin_unix = None
         return path
 
     def stop(self) -> None:
@@ -1101,7 +1122,7 @@ class EEGLiveWidget(QFrame):
         self._show_view(self._view_mode)
         self._status_dot.setStyleSheet("color: #22c55e; font-size: 13px;")
 
-    def start_recording(self, save_path: str):
+    def start_recording(self, save_path: str, origin_unix=None):
         """Begin saving EEG to a CSV at `save_path`.
 
         Direct BLE makes this trivial — we already receive every sample
@@ -1122,17 +1143,22 @@ class EEGLiveWidget(QFrame):
             # buffers anything it receives once start_recording() is set
             # on it. Set the path immediately so any samples received during
             # warmup are captured.
-            QTimer.singleShot(500, lambda: self._enable_recording(save_path))
+            QTimer.singleShot(500, lambda: self._enable_recording(save_path, origin_unix))
         else:
-            self._enable_recording(save_path)
+            self._enable_recording(save_path, origin_unix)
 
-    def _enable_recording(self, save_path: str):
+    def _enable_recording(self, save_path: str, origin_unix=None):
         """Tell the direct reader to start accumulating samples for CSV."""
         if self._reader is not None and hasattr(self._reader, "start_recording"):
-            self._reader.start_recording(save_path)
+            self._reader.start_recording(save_path, origin_unix=origin_unix)
             self._rec_indicator_active = True
         else:
             log.warning("[muse-direct] cannot start recording — no active reader")
+
+    def last_recorded_first_unix(self):
+        """Measured Unix time of the first EEG sample from the last recording,
+        or None. Used to store the source's startup latency in the manifest."""
+        return getattr(self._reader, "_last_first_unix", None) if self._reader else None
 
     # Legacy method kept so the EEG record button + auto-start flow don't
     # break if anything still calls them. Direct path uses _enable_recording.

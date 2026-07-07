@@ -59,9 +59,21 @@ MEASURED (tens-of-ms target — deliberately NOT sub-ms; no genlock/LSL). See
   VideoCapture, no camera on this box): 13/13 — row-per-frame, count == MP4
   frames, monotonic-increasing, unix sane, shared origin identical across
   cameras. NOT yet verified: real capture cadence (needs a physical camera).
-- STEP 2 (unified clock + EEG-side stamping, EEG half UNVERIFIABLE without a
-  real band), STEP 3 (align review/label by stamps), STEP 4 (retire audio
-  xcorr), STEP 5 (co-registered EEG export) — pending.
+- **STEP 2 — unified clock bridge + EEG-side stamping: DONE (EEG half
+  UNVERIFIED).** The shared origin is persisted to the manifest as
+  `capture_clock: {t0_monotonic, t0_unix}` (`session_storage.set_capture_origin`),
+  and each band's measured first-sample time to `source_starts`
+  (`record_source_start`) — startup skew is now recorded, not assumed. The EEG
+  recorder writes a `t_session_seconds` column (`= timestamps - origin_unix`)
+  so EEG sits on the same axis as camera frames and markers. Reconciliation
+  math + manifest bridge unit-tested in `tests/test_capture_clock.py` (9/9,
+  incl. the real reader flush path). **UNVERIFIED**: the EEG *clock source*
+  (muselsl wall-clock accuracy + BLE latency) is not confirmable without a
+  real band — labeled in `eeg_module.py` (reconciliation comment),
+  `live_session_tab.py` (comment + a startup `log.warning`), and Deferred work
+  below. The arithmetic is verified; the EEG position on the axis is not.
+- STEP 3 (align review/label by stamps), STEP 4 (retire audio xcorr),
+  STEP 5 (co-registered EEG export) — pending.
 
 ---
 
@@ -229,6 +241,20 @@ start simultaneously and share `phase_markers.csv` time.
 
 Everything not finished lives here, each with why it's deferred and what
 unblocks it. Nothing else is planned or half-open elsewhere in this file.
+
+0. **UNVERIFIED: EEG capture-time alignment** (Step 2 of the unified-clock
+   phase). EEG samples are placed on the shared session axis by
+   `t_session = muse_timestamp - capture_t0_unix`. The *arithmetic* is
+   unit-tested (`tests/test_capture_clock.py`), but the EEG *clock source* is
+   not: muselsl derives its timestamps from `time.time()` corrected by a
+   per-band regression, and BLE transport adds latency — neither is
+   confirmable without a real Muse band. *Why it matters:* between-brain
+   synchrony timing depends on where each band sits on the axis. *Unblocked
+   by:* a real 2-band session — record a known simultaneous physical event
+   (e.g. both boxers tap in view of a camera at one buzzer), then check the
+   EEG artifact lands at the same `t_session` as the camera frame. Until then,
+   the app logs this warning at every EEG session start. Labeled in
+   `eeg_module.py`, `live_session_tab.py`.
 
 1. **Eyes-on-glass visual check** — synced playback (decode, 4-cam lockstep,
    markers, simultaneous-start sync) and the pyqtgraph review-EEG rendering.

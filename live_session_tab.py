@@ -433,6 +433,12 @@ class LiveSessionTab(QWidget):
         self._session_t0 = time.monotonic()  # session-relative time origin
         self._session_t0_unix = time.time()
         capture_clock = (self._session_t0, self._session_t0_unix)
+        # Persist the origin as the manifest bridge (review/label read it to
+        # place markers, camera frames, and EEG on one axis).
+        try:
+            self._layout.set_capture_origin(self._session_t0, self._session_t0_unix)
+        except Exception as e:
+            log.error("could not record capture origin in manifest: %s", e)
         # Continuous folder is built by create_session
         cont_root = self._layout.continuous_dir()
         # Cameras: one MP4 per slot for the entire session
@@ -450,12 +456,24 @@ class LiveSessionTab(QWidget):
             raw = dev["name"] if dev else f"Muse-{idx}"
             fn = f"session_{_muse_friendly(raw)}.csv"
             return str(muse_dir / re.sub(r'[<>:"/\\|?*]', '-', fn))
+        # EEG samples are placed on the shared axis via origin_unix.
+        # UNVERIFIED: this depends on muselsl's wall-clock timestamps and BLE
+        # transport latency, neither confirmable without a real Muse band —
+        # see the warning below and CLAUDE.md "Deferred work".
+        origin_unix = self._session_t0_unix
         if getattr(self.eeg_widget_1, "_connected_device", None):
-            self.eeg_widget_1.start_recording(save_path=_path_for(self.eeg_widget_1, 1))
+            self.eeg_widget_1.start_recording(
+                save_path=_path_for(self.eeg_widget_1, 1), origin_unix=origin_unix)
             self._continuous_eeg_active = True
         if getattr(self.eeg_widget_2, "_connected_device", None):
-            self.eeg_widget_2.start_recording(save_path=_path_for(self.eeg_widget_2, 2))
+            self.eeg_widget_2.start_recording(
+                save_path=_path_for(self.eeg_widget_2, 2), origin_unix=origin_unix)
             self._continuous_eeg_active = True
+        if self._continuous_eeg_active:
+            log.warning(
+                "EEG capture-time alignment is UNVERIFIED — muselsl clock "
+                "derivation + BLE latency must be confirmed against a real Muse "
+                "band before between-brain timing is trusted (see CLAUDE.md).")
 
     def _on_phase_changed(self, phase_id, label, duration, round_num) -> None:
         """In continuous mode, phase changes just emit a marker — they do
@@ -544,6 +562,16 @@ class LiveSessionTab(QWidget):
             try: self.eeg_widget_2.stop_recording()
             except Exception as e: log.error("EEG 2 stop_recording failed — CSV may be incomplete: %s", e)
             self._continuous_eeg_active = False
+            # Record each band's measured first-sample time so its startup
+            # skew is stored, not assumed (UNVERIFIED clock source; see above).
+            if self._layout is not None:
+                for idx, w in ((1, self.eeg_widget_1), (2, self.eeg_widget_2)):
+                    try:
+                        first = w.last_recorded_first_unix()
+                        if first is not None:
+                            self._layout.record_source_start(f"EEG_{idx:02d}", first)
+                    except Exception as e:
+                        log.warning("could not record EEG %d start time: %s", idx, e)
         try:
             if self.usb_panel.any_live():
                 self.usb_panel.stop_recording()
