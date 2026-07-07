@@ -26,15 +26,17 @@ All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
   bug), headless construction of all three tabs + app shell, session-timeline
   order, `__version__` in the window title. Run this before and after any
   module deletion (J/K) or structural change (H).
-- `test_seek_alignment.py` — ground truth for the sync seek formula: a known
-  transient must land at the same playhead time in every clip after seeks
-  (the formula flip-flopped twice; never change it without this). Also pins
-  the simultaneous-start path to all-zero seeks.
-- `test_xcorr_confidence.py` — confidence metric discrimination (high on
-  shared signal, near-zero on unrelated, monotone decay under noise) plus
-  threading: worker → SyncResult → badge → honest `n/a (<method>)` CSV rows.
+- `test_capture_clock.py` — the capture-clock alignment (v3): reconciliation
+  arithmetic (`t_session = unix − t0`), two-band relative skew, marker/EEG
+  co-registration, manifest bridge round-trip, the real EEG reader flush path,
+  and the review-tab alignment (video seek = axis_shift − start, all three
+  co-register) — which owns the D′ seek-formula invariant since the audio
+  seek test was retired.
 - `test_ring_buffer.py` — `_RingBuffer` chronological ordering, including
   the over-capacity write branch (latent bug fixed in `0de80f2`).
+
+(The audio-era `test_seek_alignment.py` and `test_xcorr_confidence.py` were
+deleted in Step 4 with the xcorr feature they guarded.)
 
 Broader end-to-end suites from the fix sessions (31-check acceptance, hybrid
 audio/no-audio sync, export error-text, real-VLC playback smoke) were
@@ -106,8 +108,19 @@ Step status:
     (necessary, NOT sufficient — they cannot prove the tab renders aligned
     playback). Plus the EEG-axis position still carries Step 2's UNVERIFIED
     clock-source flag. Both fold into the deferred visual check.
-- STEP 4 (retire audio xcorr — MainEditorSyncWorker is now unused by the review
-  path), STEP 5 (co-registered EEG export) — pending.
+- **STEP 4 — retire audio xcorr: DONE.** All sessions come from the recording
+  app (capture_clock present), so audio cross-correlation is obsolete. Deleted
+  `MainEditorSyncWorker`, the manual-upload branch of the align path,
+  `sync_utils/audio_analysis.py`, `sync_utils/eeg_video_sync.py`, and the two
+  now-dangling tests (`test_xcorr_confidence.py`, `test_seek_alignment.py` —
+  the D′ seek-formula invariant is preserved in
+  `test_capture_clock.py::test_review_alignment_coregisters_all_three`).
+  Removed the dead confidence computation + `SourceRow.set_confidence` badge.
+  KEPT `sync_engine.SourceOffset`/`SyncResult` (load-bearing in export) and the
+  honest `sync_offsets.csv` `n/a (capture_clock)` output. The tab is now
+  **Review** (was "Sync + Review"); `_run_sync` → `_align`, "AUTO-SYNC" button
+  → "ALIGN". Single alignment method: capture-time stamps.
+- STEP 5 (co-registered EEG export) — pending.
 
 ---
 
@@ -181,10 +194,8 @@ start simultaneously and share `phase_markers.csv` time.
 | `session_controller.py` | 241 | Pure-logic phase state machine (IDLE→BASELINE→ROUND↔BREAK→DONE), 1 Hz QTimer |
 | `session_setup_dialog.py` | 225 | Rounds/durations config dialog |
 | `session_storage.py` | 218 | On-disk session layout, manifest, `phase_markers.csv` writer |
-| `sync_utils/audio_analysis.py` | 215 | Audio extraction + xcorr delay estimation (`compute_delays`, `_xcorr_delay`) |
 | `circular_timer.py` | 192 | Circular countdown dial |
 | `usb_camera_panel.py` | 158 | 2×2 grid of camera slots, start/stop recording fan-out |
-| `sync_utils/eeg_video_sync.py` | 154 | EEG-vs-video window comparison |
 | `sync_beep.py` | 125 | Round-start beep |
 | `labels_config.py` | 71 | Label palette persistence (`labels_data.json`) |
 | `sync_utils/infobox.py` | 20 | Tiny message-box helper |
@@ -202,22 +213,23 @@ start simultaneously and share `phase_markers.csv` time.
 
 - **D′ [MED] — DONE in `faa8f38`.** Seek formula reverted to
   `max_norm_delay - d` (the old code seeked the latest-starting clip the
-  most, misaligning external uploads by ~2× the true offset). Red-first
-  regression test: `tests/test_seek_alignment.py` (3019ms spread before →
-  19ms after). That line has flip-flopped twice — never change it without
-  running that test.
+  most, misaligning by ~2× the true offset). The formula now lives in the
+  capture-clock `_align` path (`seek = axis_shift - start`); its invariant is
+  guarded by `test_capture_clock.py::test_review_alignment_coregisters_all_three`
+  (the original audio-based `test_seek_alignment.py` was retired in Step 4).
 
 - **E [MED] — DONE in `bfa0a36`.** Export failures now surface the tail of
   ffmpeg's stderr + exit code (deque captured during the progress loop);
   `_detect_hw_encoder` requires a real test-encode probe, not just an
   `-encoders` listing, falling through to libx264.
 
-- **C [MED] — DONE in `16f91a2`.** Real xcorr confidence
-  (baseline-corrected peak-to-second-peak prominence, `_peak_confidence`);
-  wired through worker → `SourceOffset` → the `set_confidence` badge;
-  `sync_offsets.csv` records the true value or a labeled
-  `n/a (<method>)` sentinel for unmeasured sources. Discrimination test:
-  `tests/test_xcorr_confidence.py`.
+- **C [MED] — DONE in `16f91a2`, SUPERSEDED in Step 4.** Real xcorr confidence
+  was wired through the worker → `SourceOffset` → a `set_confidence` badge.
+  Step 4 removed the xcorr source, so the computed confidence and the badge
+  are gone; `SourceOffset.confidence` is now always `None` under capture-clock
+  alignment and `sync_offsets.csv` records the honest `n/a (capture_clock)`
+  sentinel (that CSV behaviour is the surviving, live part). The discrimination
+  test `test_xcorr_confidence.py` was deleted with the feature.
 
 - **G [LOW] — DONE in `0de80f2`.** Ring buffer over-capacity ordering: the
   `n >= capacity` branch of `_RingBuffer.extend` left `_n_written` unaligned,

@@ -11,10 +11,8 @@ log = logging.getLogger(__name__)
 
 from pathlib import Path
 import sys
-import tempfile
 import datetime as _dt
 
-import numpy as _np
 import vlc
 
 from PyQt6.QtWidgets import (
@@ -29,9 +27,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap, QPainter
 
-from sync_utils.audio_analysis import compute_delays_with_confidence, find_all_durations, has_audio_stream
 from sync_utils.video_sync import generate_single_preview, get_first_frame_pts, run_ffmpeg_subprocess
-from sync_utils.eeg_video_sync import compare_video_eeg, cut_video_from_start_end
 from eeg_module import EEGLiveWidget, EEGReviewWidget
 from live_session_tab import LiveSessionTab
 from vlc_module import VLCVideoSlot, SyncPlaybackController
@@ -294,15 +290,6 @@ class SourceRow(QWidget):
         else:
             sign = "+" if seconds > 0 else ""
             self.offset_lbl.setText(f"{sign}{seconds:.3f}s"); self.offset_lbl.setStyleSheet("color: #4a9eff; font-size: 10px; font-family: 'Inter'; text-align: right;")
-    def set_confidence(self, confidence, method):
-        if method != "xcorr": return
-        if confidence >= 0.6: badge, color = "✓", "#22c55e"
-        elif confidence >= 0.3: badge, color = "~", "#f59e0b"
-        else: badge, color = "?", "#ef4444"
-        current = self.type_lbl.text().rstrip(" ✓~?")
-        self.type_lbl.setText(f"{current} {badge}")
-        self.type_lbl.setStyleSheet(f"color: {color}; font-size: 10px; font-family: 'Inter'; letter-spacing: 1px;")
-
 
 import pandas as pd
 
@@ -375,90 +362,6 @@ def _read_frame_sidecar_start(mp4_path: str) -> "float | None":
     return None
 
 
-class MainEditorSyncWorker(QThread):
-    progress = pyqtSignal(int, str)
-    finished = pyqtSignal(list, list)
-    error    = pyqtSignal(str)
-
-    def __init__(self, video_paths, eeg_paths=None, pivot_index=None, parent=None):
-        super().__init__(parent)
-        self.video_paths = video_paths; self.eeg_paths = eeg_paths or []
-        self.pivot_index = pivot_index; self._temp_dir = tempfile.TemporaryDirectory()
-        # Set by run(); read by _on_sync_finished for the status line and
-        # per-source method labels.
-        self.sync_mode = "simultaneous_start"   # or "audio_xcorr"
-        self.audio_flags: list[bool] = []
-        # Per video path: [0,1] xcorr peak-prominence, or None when never
-        # measured (audio-less clip / simultaneous-start mode). None is
-        # deliberate — an unmeasured confidence must not look like a score.
-        self.confidences: list[float | None] = []
-
-    def run(self):
-        try:
-            original_video_paths = list(self.video_paths)
-            self.progress.emit(5, "Analyzing durations...")
-            durations = find_all_durations(original_video_paths)
-
-            # In-app captures (cv2.VideoWriter) have no audio stream, so audio
-            # xcorr is impossible — and unnecessary, since all in-app sources
-            # start simultaneously. Only clips that actually carry audio
-            # participate in xcorr; if fewer than 2 do, skip it entirely.
-            self.progress.emit(8, "Probing audio streams...")
-            self.audio_flags = [has_audio_stream(p) for p in original_video_paths]
-            audio_idx = [i for i, f in enumerate(self.audio_flags) if f]
-            self.sync_mode = "audio_xcorr" if len(audio_idx) >= 2 else "simultaneous_start"
-
-            if self.eeg_paths:
-                self.progress.emit(10, "EEG data detected — computing EEG window offset...")
-                try:
-                    pivot = int(_np.argmax(durations))
-                    eeg_start, eeg_end = compare_video_eeg(original_video_paths[pivot], self.eeg_paths[0], durations[pivot])
-                    self.progress.emit(15, f"EEG window: {eeg_start:.1f}s → {eeg_end:.1f}s in pivot video")
-                    log.info("EEG sync: pivot video EEG window %.3fs -> %.3fs", eeg_start, eeg_end)
-                except Exception as e:
-                    self.progress.emit(15, f"EEG offset skipped: {e}"); log.warning("EEG sync window skipped: %s", e)
-
-            norm_delays = [0.0] * len(original_video_paths)
-            self.confidences = [None] * len(original_video_paths)
-            if self.sync_mode == "audio_xcorr":
-                self.progress.emit(20, f"Computing delays via audio xcorr ({len(audio_idx)} clips with audio)...")
-                audio_paths = [original_video_paths[i] for i in audio_idx]
-                sub_delays, sub_confs = compute_delays_with_confidence(audio_paths)
-                # Normalise within the audio-bearing subset; audio-less clips
-                # keep offset 0 (simultaneous-start assumption). Confidence
-                # is per-pairing and unaffected by normalisation.
-                sub_min = min(sub_delays)
-                for j, i in enumerate(audio_idx):
-                    norm_delays[i] = sub_delays[j] - sub_min
-                    self.confidences[i] = float(sub_confs[j])
-            else:
-                self.progress.emit(
-                    20, "No audio tracks on 2+ clips — aligning by simultaneous start (all offsets 0)...")
-            max_norm_delay = max(norm_delays)
-            log.info("normalised delays: %s (max=%.3fs)", [round(d, 3) for d in norm_delays], max_norm_delay)
-
-            self.progress.emit(90, "Computing VLC seek offsets...")
-            # Convention (per _xcorr_delay's docstring, verified empirically):
-            # norm_delays[i] is how much LATER clip i started recording than
-            # the earliest-starting clip. A late starter is MISSING head
-            # footage; an early starter has EXTRA head footage to skip.
-            # Playhead t=0 is the latest start (the first moment every clip
-            # has), so the latest-starting clip (d = max) seeks 0 and every
-            # earlier clip seeks forward past its extra head:
-            #     seek_i = max_norm_delay - norm_delays[i]
-            # This line has flip-flopped twice — do NOT change it without
-            # running tests/test_seek_alignment.py, which checks a known
-            # transient lands at the same playhead time in every clip.
-            seek_ms = [_clamp_ms((max_norm_delay - d) * 1000) for d in norm_delays]
-            for i, (path, s) in enumerate(zip(original_video_paths, seek_ms)):
-                log.debug("clip %d (%s): delay=%.3fs seek=%sms", i, os.path.basename(path), norm_delays[i], s)
-
-            self.progress.emit(100, "Sync complete.")
-            self.finished.emit(original_video_paths, norm_delays + [max_norm_delay] + [float(s) for s in seek_ms])
-        except Exception as e:
-            self.error.emit(str(e))
-
-
 class SyncReviewTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -525,12 +428,14 @@ class SyncReviewTab(QWidget):
         root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
         toolbar = make_opaque_toolbar(44)
         tb = QHBoxLayout(toolbar); tb.setContentsMargins(16,0,16,0); tb.setSpacing(8)
-        tb.addWidget(make_panel_title("SYNC + REVIEW")); tb.addStretch()
+        tb.addWidget(make_panel_title("REVIEW")); tb.addStretch()
         self.open_session_btn = QPushButton("OPEN SESSION FOLDER"); self.open_session_btn.setFixedHeight(28)
         self.open_session_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
         self.open_session_btn.clicked.connect(self._open_session_dialog)
         tb.addWidget(self.open_session_btn)
-        self.sync_btn = QPushButton("AUTO-SYNC"); self.sync_btn.setFixedHeight(28)
+        # "ALIGN" (not "AUTO-SYNC"): alignment is READ from the capture-time
+        # stamps, not discovered — there is nothing to sync.
+        self.sync_btn = QPushButton("ALIGN"); self.sync_btn.setFixedHeight(28)
         self.sync_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 16px;")
         self.export_btn = QPushButton("EXPORT SYNCED DATA"); self.export_btn.setFixedHeight(28)
         self.export_btn.setStyleSheet("background-color: transparent; border: 1px solid #4a9eff; color: #4a9eff; font-family: 'Inter'; font-size: 10px; letter-spacing: 1px; padding: 0 14px;")
@@ -662,7 +567,7 @@ class SyncReviewTab(QWidget):
         splitter.addWidget(preview_widget); splitter.setSizes([400, 1200])
         splitter.setStretchFactor(0,0); splitter.setStretchFactor(1,1)
         root.addWidget(splitter, stretch=1); root.addWidget(controls)
-        self.sync_btn.clicked.connect(self._run_sync); self.goto_label_btn.clicked.connect(self._request_label_tab)
+        self.sync_btn.clicked.connect(self._align); self.goto_label_btn.clicked.connect(self._request_label_tab)
 
     # ── Video loading — VLC vmem → QPainter (no native NSView / Metal) ──────────
     #
@@ -1007,55 +912,32 @@ class SyncReviewTab(QWidget):
         secs = ms / 1000.0; h = int(secs//3600); m = int((secs%3600)//60); s = secs%60
         self.tc_label.setText(f"{h:02d}:{m:02d}:{s:06.3f}")
 
-    def _run_sync(self):
-        """Two entry modes:
-          • A loaded v3 session (capture_clock present) → alignment is READ
-            from the recorded capture-time stamps: each camera's measured
-            start (sidecar) is its offset, the latest start (axis_shift) is
-            the playhead-0 reference, seek = axis_shift - start. Synchronous,
-            no audio.
-          • Manually uploaded external footage (no capture_clock) → the audio
-            xcorr worker, as before. (Whether this external path survives is
-            the Step 4 decision; pre-3.0 recorded SESSIONS are already rejected
-            at load, so they never reach here.)"""
+    def _align(self):
+        """Align the loaded session by its recorded capture-time stamps —
+        the single alignment method (v3, all sources come from the recording
+        app). Each camera's measured start (from its sidecar) is its offset;
+        the latest start (axis_shift) is the playhead-0 reference;
+        seek = axis_shift - start. Synchronous — no audio, no discovery."""
         video_paths = [s.file_path for s in self.sources[:4] if s.file_path]
         if len(video_paths) < 2:
-            QMessageBox.warning(self, "Not enough sources", "Upload at least 2 video files before syncing."); return
-
-        if self._capture_t0_unix is not None:
-            self.sync_btn.setEnabled(False); self.goto_label_btn.setEnabled(False)
-            self.sync_progress.setVisible(True); self.sync_progress.setValue(100)
-            self._set_sync_status("ALIGNING BY CAPTURE CLOCK…", "#637DFF")
-            cam_starts = [self._cam_starts[i] if i < len(self._cam_starts) else 0.0
-                          for i in range(len(video_paths))]
-            max_start = max(cam_starts) if cam_starts else 0.0
-            seek_ms = [_clamp_ms((max_start - d) * 1000) for d in cam_starts]
-            # Reuse the existing player/EEG/timeline apply path
-            # (_on_sync_finished) via the same payload the old worker emitted,
-            # plus a tiny result object carrying the metadata it reads.
-            class _StampResult:
-                sync_mode   = "capture_clock"
-                audio_flags = [False] * len(video_paths)
-                confidences = [None] * len(video_paths)
-            self._worker = _StampResult()
-            payload = ([float(d) for d in cam_starts] + [float(max_start)]
-                       + [float(s) for s in seek_ms])
-            self._on_sync_finished(video_paths, payload)
-            return
-
-        # Manual external-upload path (no capture clock) → audio xcorr worker.
+            QMessageBox.warning(self, "Not enough sources", "A session needs at least 2 camera recordings to align."); return
+        if self._capture_t0_unix is None:
+            QMessageBox.warning(
+                self, "No capture clock",
+                "This session has no capture_clock. v3 aligns by capture-time "
+                "stamps; sessions recorded before v3.0 are not supported."); return
         self.sync_btn.setEnabled(False); self.goto_label_btn.setEnabled(False)
-        self.sync_progress.setVisible(True); self.sync_progress.setValue(0)
-        self._set_sync_status("INITIALISING…", "#637DFF")
-        eeg_paths = [s.file_path for s in self.sources[4:] if s.file_path]
-        self._worker = MainEditorSyncWorker(video_paths, eeg_paths=eeg_paths, parent=self)
-        self._worker.progress.connect(self._on_sync_progress)
-        self._worker.finished.connect(self._on_sync_finished)
-        self._worker.error.connect(self._on_sync_error)
-        self._worker.start()
-
-    def _on_sync_progress(self, pct, msg):
-        self.sync_progress.setValue(pct); self._set_sync_status(msg.upper(), "#637DFF")
+        self.sync_progress.setVisible(True); self.sync_progress.setValue(100)
+        self._set_sync_status("ALIGNING BY CAPTURE CLOCK…", "#637DFF")
+        cam_starts = [self._cam_starts[i] if i < len(self._cam_starts) else 0.0
+                      for i in range(len(video_paths))]
+        max_start = max(cam_starts) if cam_starts else 0.0
+        seek_ms = [_clamp_ms((max_start - d) * 1000) for d in cam_starts]
+        # Drive the player/EEG/timeline apply path (_on_sync_finished) with the
+        # per-source offsets + seeks in the payload shape it consumes.
+        payload = ([float(d) for d in cam_starts] + [float(max_start)]
+                   + [float(s) for s in seek_ms])
+        self._on_sync_finished(video_paths, payload)
 
     def _on_sync_finished(self, video_paths, delays_with_sentinel):
         self.sync_progress.setValue(100)
@@ -1066,26 +948,16 @@ class SyncReviewTab(QWidget):
         self._temp_paths = video_paths; self._delays = delays; self._residuals_ms = seek_ms_list
 
         from sync_engine import SourceOffset, SyncResult as _SR
-        sync_mode   = getattr(self._worker, "sync_mode", "audio_xcorr")
-        audio_flags = list(getattr(self._worker, "audio_flags", []))
-        confidences = list(getattr(self._worker, "confidences", []))
         video_sources = [s for s in self.sources[:4] if s.file_path]
-        # audio_flags/confidences align with video_paths, which was built
-        # from the same filtered source list — index i maps 1:1.
-        def _method(i):
-            if sync_mode == "audio_xcorr" and i < len(audio_flags) and audio_flags[i]:
-                return "xcorr"
-            if sync_mode == "capture_clock":
-                return "capture_clock"
-            return "simultaneous_start"
-        def _conf(i):
-            # None = never measured (audio-less / simultaneous start) — kept
-            # as None all the way to the CSV so it can't pose as a score.
-            return confidences[i] if i < len(confidences) else None
-        video_offsets = [SourceOffset(source_id=f"VIDEO_{i+1:02d}", path=src.file_path, offset_sec=delays[i] if i < len(delays) else 0.0, is_reference=(delays[i] == 0.0 if i < len(delays) else True), method=_method(i), confidence=_conf(i)) for i, src in enumerate(video_sources)]
+        # Single alignment method: capture_clock. offset_sec = each camera's
+        # measured start on the shared axis; confidence is not applicable
+        # (there is no correlation to score) — None flows to the CSV as the
+        # honest "n/a (capture_clock)" sentinel.
+        video_offsets = [SourceOffset(source_id=f"VIDEO_{i+1:02d}", path=src.file_path, offset_sec=delays[i] if i < len(delays) else 0.0, is_reference=(delays[i] == 0.0 if i < len(delays) else True), method="capture_clock", confidence=None) for i, src in enumerate(video_sources)]
         eeg_sources = [s for s in self.sources[4:] if s.file_path]
-        # EEG offsets are assumed (0.0), not measured — confidence None.
-        eeg_offsets = [SourceOffset(source_id=f"EEG_{i+1:02d}", path=s.file_path, offset_sec=0.0, method="creation_time", confidence=None) for i, s in enumerate(eeg_sources)]
+        # EEG is placed on the shared axis by its t_session_seconds column;
+        # its offset is the axis_shift the widget applies — confidence None.
+        eeg_offsets = [SourceOffset(source_id=f"EEG_{i+1:02d}", path=s.file_path, offset_sec=0.0, method="capture_clock", confidence=None) for i, s in enumerate(eeg_sources)]
         global_duration = 0.0
         for i, path in enumerate(video_paths):
             if path and os.path.exists(path):
@@ -1138,12 +1010,6 @@ class SyncReviewTab(QWidget):
         self.time_slider.setRange(0, 0); self.time_slider.setValue(0)
         self.play_btn.setText("▶  PLAY"); self.play_btn.setEnabled(True); self._post_sync_offsets_ms = [0]*4
         for i, (src_row, delay) in enumerate(zip(self.sources[:4], delays)): src_row.set_offset(delay)
-        # Confidence badge (✓ / ~ / ?) on each measured row. set_confidence
-        # only renders for method "xcorr", so unmeasured rows stay bare.
-        for i, src_row in enumerate(video_sources):
-            c = _conf(i)
-            if c is not None:
-                src_row.set_confidence(c, "xcorr")
         eeg_sources = [s for s in self.sources[4:] if s.file_path]
         for i, widget in enumerate([self.eeg_review_1, self.eeg_review_2]):
             if i < len(eeg_sources):
@@ -1152,33 +1018,21 @@ class SyncReviewTab(QWidget):
                 # latest source start. Co-registers EEG with markers + video.
                 try: df = pd.read_csv(eeg_sources[i].file_path); widget.load(df, offset_sec=self._axis_shift)
                 except Exception as e: log.warning("EEG %d load for review failed: %s", i + 1, e)
-        if sync_mode == "capture_clock":
-            msg = "ALIGNED BY CAPTURE-TIME CLOCK"
-            if self._phase_markers:
-                msg += f"  ·  {len(self._phase_markers)} MARKERS LOADED"
-        elif sync_mode == "simultaneous_start":
-            msg = "IN-APP SESSION — ALIGNED BY SIMULTANEOUS START"
-            if self._phase_markers:
-                msg += f"  ·  {len(self._phase_markers)} MARKERS LOADED"
-        else:
-            n_audio = sum(1 for f in audio_flags if f)
-            msg = f"SYNCED {n_audio} CLIPS BY AUDIO  ✓"
+        msg = "ALIGNED BY CAPTURE-TIME CLOCK"
+        if self._phase_markers:
+            msg += f"  ·  {len(self._phase_markers)} MARKERS LOADED"
         self._set_sync_status(msg, "#22c55e"); self.sync_btn.setEnabled(True); self.goto_label_btn.setEnabled(True)
-        log.info("sync mode: %s · offsets (seek per player): %s ms", sync_mode, seek_ms_list)
-
-    def _on_sync_error(self, msg):
-        self.sync_progress.setValue(0); self._set_sync_status(f"ERROR: {msg[:60]}", "#ef4444")
-        self.sync_btn.setEnabled(True); QMessageBox.critical(self, "Sync failed", msg)
+        log.info("capture-clock alignment · offsets (seek per player): %s ms", seek_ms_list)
 
     def _set_sync_status(self, text, color):
         self.sync_status.setText(text)
         self.sync_status.setStyleSheet(f"color: {color}; font-size: 10px; font-family: 'Inter'; letter-spacing: 2px; padding: 8px 0;")
 
     def _sync_offsets_rows(self) -> list:
-        """Rows for sync_offsets.csv. Confidence is the measured xcorr peak
-        prominence when it exists; when alignment was assumed rather than
-        measured (simultaneous_start videos, creation_time EEG) the cell
-        says so explicitly instead of carrying a fake number."""
+        """Rows for sync_offsets.csv. Under capture-clock alignment there is
+        no correlation to score, so `confidence` is None and the cell records
+        the honest `n/a (capture_clock)` sentinel instead of a fake number.
+        `method` and `offset_sec` are always written."""
         if not self.sync_result:
             return []
         return [{
@@ -1192,7 +1046,7 @@ class SyncReviewTab(QWidget):
 
     def _export_synced_data(self):
         from PyQt6.QtWidgets import QInputDialog
-        if not self.sync_result: QMessageBox.warning(self, "No sync data", "Run AUTO-SYNC before exporting."); return
+        if not self.sync_result: QMessageBox.warning(self, "No aligned data", "Click ALIGN before exporting."); return
         zip_name, ok = QInputDialog.getText(self, "Export", "Name this export:", text="Brain_Battle_Session")
         if not ok or not zip_name.strip(): return
         zip_name = zip_name.strip().replace(" ", "_")
@@ -2319,7 +2173,7 @@ class BrainBattleApp(QMainWindow):
         self.label_tab = LabellingTab()
 
         self._shell.add_page("activity", "Live Monitor",    self.live_tab)
-        self._shell.add_page("layers",   "Sync + Review",   self.sync_tab)
+        self._shell.add_page("layers",   "Review",           self.sync_tab)
         self._shell.add_page("tag",      "Labelling",       self.label_tab)
 
         # For LabellingTab compatibility with SyncReviewTab.proceed_to_label_tab()
