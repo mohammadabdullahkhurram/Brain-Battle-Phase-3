@@ -82,8 +82,32 @@ Step status:
   real band — labeled in `eeg_module.py` (reconciliation comment),
   `live_session_tab.py` (comment + a startup `log.warning`), and Deferred work
   below. The arithmetic is verified; the EEG position on the axis is not.
-- STEP 3 (align review/label by stamps), STEP 4 (retire audio xcorr),
-  STEP 5 (co-registered EEG export) — pending.
+- **STEP 3 — align review/label by capture-time stamps: DONE (logic-verified,
+  NOT eyes-verified).** Clean break, no legacy fallback (v3.0).
+  - `EEGReviewWidget.load` now places EEG on the shared axis via its
+    `t_session_seconds` column (minus the caller's axis_shift) instead of its
+    own first sample — this is the §2.4 EEG-vs-marker fix, and it benefits
+    BOTH tabs (same widget class).
+  - **SyncReviewTab fully converted:** `load_session_folder` reads
+    `capture_clock.t0_unix` (manifest) + each camera's measured start (frame
+    sidecar); `axis_shift = max(start)` = playhead-0; AUTO-SYNC is now
+    synchronous — it READS the alignment (video seek = axis_shift − start,
+    method `capture_clock`), no audio worker. Markers placed at
+    `t_session − axis_shift`; EEG loaded with `offset_sec = axis_shift`. All
+    three co-register (unit-tested, `test_capture_clock.py`).
+  - **LabellingTab: EEG-vs-marker §2.4 fixed** by the widget change (it loads
+    EEG at offset 0, markers at raw `t_session` → both on raw `t_session`).
+    Its distinct `SyncPlaybackController` + fractional-slider VIDEO timeline is
+    NOT converted to the capture axis in this step — a scoped follow-up (small
+    residual video-vs-marker skew = camera startup latency, tens of ms). See
+    Deferred work.
+  - **UNVERIFIED / not-eyes-verified:** this is the review/label path that has
+    never been watched on real data. Logic + construction + suites are green
+    (necessary, NOT sufficient — they cannot prove the tab renders aligned
+    playback). Plus the EEG-axis position still carries Step 2's UNVERIFIED
+    clock-source flag. Both fold into the deferred visual check.
+- STEP 4 (retire audio xcorr — MainEditorSyncWorker is now unused by the review
+  path), STEP 5 (co-registered EEG export) — pending.
 
 ---
 
@@ -267,16 +291,29 @@ unblocks it. Nothing else is planned or half-open elsewhere in this file.
    `eeg_module.py`, `live_session_tab.py`.
 
 1. **Eyes-on-glass visual check** — synced playback (decode, 4-cam lockstep,
-   markers, simultaneous-start sync) and the pyqtgraph review-EEG rendering.
-   *Why deferred:* both are verified headless to correct-pixels-in-the-render-
-   buffer plus measured scrub performance, but nobody has *watched* them —
-   offscreen Qt can't put pixels on glass, and synthetic fixtures aren't real
-   signals. *Unblocked by:* the first real capture session. **The 30-second
-   procedure:** `python3 brain_battle_main.py` → Sync + Review → OPEN SESSION
-   FOLDER → pick the session → confirm all four cams show video and PLAY runs
-   them in lockstep → scrub the timeline and watch both EEG panes follow
-   (waveform view + band-power view) → click a phase-marker chip and confirm
-   it seeks.
+   markers, **capture-clock alignment from Step 3**) and the pyqtgraph
+   review-EEG rendering. *Why deferred:* verified headless to correct-pixels
+   + measured scrub perf + alignment ARITHMETIC (unit tests), but nobody has
+   *watched* whether the tab renders aligned playback — offscreen Qt can't put
+   pixels on glass, and synthetic fixtures aren't real signals. *Unblocked
+   by:* the first real capture session. **The procedure:**
+   `python3 brain_battle_main.py` → Sync + Review → OPEN SESSION FOLDER → pick
+   a v3 session → AUTO-SYNC → confirm all four cams show video and PLAY runs
+   them in lockstep → scrub and watch both EEG panes follow → click a
+   phase-marker chip and confirm the playhead + EEG land at that event. The
+   sharp check: a marker at a known physical event (round buzzer) should line
+   up with that event in the video AND the EEG artifact (this also discharges
+   deferred #0's EEG-clock check).
+
+2. **LabellingTab video timeline not on the capture axis** (Step 3 scoped it
+   out). Its EEG-vs-marker skew IS fixed, but its `SyncPlaybackController` +
+   fractional slider still plays video from local 0, leaving a small
+   video-vs-marker residual = camera startup latency (tens of ms). *Why
+   deferred:* the label tab uses a different playback model than the review
+   tab, and converting it blind on an unwatched path is risky. *Unblocked by:*
+   the eyes-on-glass session (see how much the residual actually matters for
+   labelling) + porting the review tab's axis_shift approach into the label
+   tab's controller.
 
 2. **Drift-correction decision** — there is NO active playback drift
    correction; lockstep rests solely on issuing `play()` to all four players

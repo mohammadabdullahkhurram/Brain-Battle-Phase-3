@@ -1534,8 +1534,18 @@ class EEGReviewWidget(QFrame):
              device_name: str = ""):
         self._df = df.copy()
         self._offset_sec = offset_sec
-        first_ts = float(df["timestamps"].iloc[0])
-        self._df["global_t"] = (df["timestamps"] - first_ts) - offset_sec
+        # v3 capture-time alignment: when the recording carried a shared-clock
+        # `t_session_seconds` column, place the EEG on THAT axis (minus the
+        # playhead axis_shift the caller passes as offset_sec). This is what
+        # co-registers EEG with phase markers — both are then on the one
+        # capture-clock axis, fixing the §2.4 own-zero skew where EEG used to
+        # start at its own first sample. (EEG clock SOURCE is still UNVERIFIED;
+        # see Step 2 — this only concerns which axis the samples land on.)
+        if "t_session_seconds" in df.columns:
+            self._df["global_t"] = df["t_session_seconds"].astype(float) - offset_sec
+        else:
+            first_ts = float(df["timestamps"].iloc[0])
+            self._df["global_t"] = (df["timestamps"] - first_ts) - offset_sec
         self._render_waveform()
         self._render_bandpower_full()
         duration = float(

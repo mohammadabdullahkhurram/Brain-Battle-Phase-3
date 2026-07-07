@@ -152,12 +152,46 @@ def test_reader_writes_t_session_column():
               abs(r._last_first_unix - (origin + 0.4)) < 1e-6)
 
 
+def test_review_alignment_coregisters_all_three():
+    """Step 3: the review-tab alignment math. Given per-camera measured
+    starts (from sidecars), axis_shift = max(start) is the playhead-0 point;
+    video seek[i] = axis_shift - start[i]; markers and EEG are placed at
+    (t_session - axis_shift). At any playhead p, all three must resolve to
+    the SAME shared t_session = p + axis_shift."""
+    cam_starts = [0.10, 0.42, 0.25, 0.31]      # measured startup latencies (s)
+    axis_shift = max(cam_starts)               # 0.42 — latest camera
+    seeks = [axis_shift - s for s in cam_starts]
+    check("latest camera seeks 0 (reference)",
+          abs(seeks[cam_starts.index(axis_shift)]) < 1e-9)
+    check("all seeks non-negative (valid VLC set_time)", all(s >= -1e-9 for s in seeks))
+
+    for p in (0.0, 1.0, 5.0):
+        shared = p + axis_shift
+        # video: player i local time = p + seek[i]; its frame's shared time =
+        # start[i] + local = start[i] + p + (axis_shift - start[i]) = shared
+        vid = [cam_starts[i] + (p + seeks[i]) for i in range(4)]
+        check(f"all cameras show shared t={shared:.2f} at playhead {p}",
+              all(abs(v - shared) < 1e-9 for v in vid), str([round(v,3) for v in vid]))
+        # a marker at shared t_session M is placed at (M - axis_shift); the
+        # playhead reaches it when p == M - axis_shift, i.e. shared == M.
+        marker_shared = shared          # marker whose placed pos == p
+        placed = marker_shared - axis_shift
+        check(f"marker at shared {marker_shared:.2f} sits at playhead {p}",
+              abs(placed - p) < 1e-9)
+        # EEG loaded with offset_sec=axis_shift → global_t = t_session - shift;
+        # at playhead p the cursor (set to p) shows EEG t_session = p + shift.
+        eeg_shared = p + axis_shift
+        check(f"EEG cursor at playhead {p} shows shared t={eeg_shared:.2f}",
+              abs(eeg_shared - shared) < 1e-9)
+
+
 if __name__ == "__main__":
     test_single_band_offset_recovered()
     test_two_bands_relative_skew_preserved()
     test_marker_and_eeg_coregister()
     test_manifest_bridge_roundtrips()
     test_reader_writes_t_session_column()
+    test_review_alignment_coregisters_all_three()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

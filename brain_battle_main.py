@@ -339,6 +339,42 @@ def _read_phase_markers(csv_path: str) -> list[tuple[float, str, str]]:
     return rows
 
 
+def _read_capture_t0_unix(session_root) -> "float | None":
+    """Read capture_clock.t0_unix from a session's manifest — the shared
+    origin the v3 timestamp alignment reconciles every source against.
+    Returns None if the manifest or the field is absent (a pre-3.0 session,
+    which v3 does not support)."""
+    import json as _json
+    from pathlib import Path as _P
+    try:
+        data = _json.loads((_P(session_root) / "session_manifest.json")
+                           .read_text(encoding="utf-8"))
+        return data.get("capture_clock", {}).get("t0_unix")
+    except Exception as e:
+        log.warning("could not read capture_clock from manifest in %s: %s",
+                    session_root, e)
+        return None
+
+
+def _read_frame_sidecar_start(mp4_path: str) -> "float | None":
+    """First frame's t_session_seconds from a camera's timestamp sidecar
+    (<mp4-stem>.timestamps.csv) — the camera's measured start on the shared
+    axis. None if the sidecar is missing/empty."""
+    from pathlib import Path as _P
+    import csv as _csv
+    p = _P(mp4_path)
+    sidecar = p.parent / (p.stem + ".timestamps.csv")
+    if not sidecar.exists():
+        return None
+    try:
+        with open(sidecar, "r", encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                return float(row["t_session_seconds"])  # first data row
+    except Exception as e:
+        log.warning("could not read frame sidecar %s: %s", sidecar, e)
+    return None
+
+
 class MainEditorSyncWorker(QThread):
     progress = pyqtSignal(int, str)
     finished = pyqtSignal(list, list)
@@ -435,6 +471,13 @@ class SyncReviewTab(QWidget):
         self.sync_result = None; self._worker = None
         self._temp_paths = []; self._delays = []; self._residuals_ms = []
         self._phase_markers: list[tuple[float, str, str]] = []
+        # v3 capture-time alignment state (set by load_session_folder):
+        # the shared origin, each video's measured start on the shared axis,
+        # and axis_shift = the latest source start = the playhead-0 point.
+        self._session_root = None
+        self._capture_t0_unix = None
+        self._cam_starts: list[float] = []
+        self._axis_shift: float = 0.0
         self._post_sync_offsets_ms = [0, 0, 0, 0]
         self._pos_timer = QTimer(self); self._pos_timer.setInterval(100)
         self._pos_timer.timeout.connect(self._poll_position)
@@ -965,9 +1008,42 @@ class SyncReviewTab(QWidget):
         self.tc_label.setText(f"{h:02d}:{m:02d}:{s:06.3f}")
 
     def _run_sync(self):
+        """Two entry modes:
+          • A loaded v3 session (capture_clock present) → alignment is READ
+            from the recorded capture-time stamps: each camera's measured
+            start (sidecar) is its offset, the latest start (axis_shift) is
+            the playhead-0 reference, seek = axis_shift - start. Synchronous,
+            no audio.
+          • Manually uploaded external footage (no capture_clock) → the audio
+            xcorr worker, as before. (Whether this external path survives is
+            the Step 4 decision; pre-3.0 recorded SESSIONS are already rejected
+            at load, so they never reach here.)"""
         video_paths = [s.file_path for s in self.sources[:4] if s.file_path]
         if len(video_paths) < 2:
             QMessageBox.warning(self, "Not enough sources", "Upload at least 2 video files before syncing."); return
+
+        if self._capture_t0_unix is not None:
+            self.sync_btn.setEnabled(False); self.goto_label_btn.setEnabled(False)
+            self.sync_progress.setVisible(True); self.sync_progress.setValue(100)
+            self._set_sync_status("ALIGNING BY CAPTURE CLOCK…", "#637DFF")
+            cam_starts = [self._cam_starts[i] if i < len(self._cam_starts) else 0.0
+                          for i in range(len(video_paths))]
+            max_start = max(cam_starts) if cam_starts else 0.0
+            seek_ms = [_clamp_ms((max_start - d) * 1000) for d in cam_starts]
+            # Reuse the existing player/EEG/timeline apply path
+            # (_on_sync_finished) via the same payload the old worker emitted,
+            # plus a tiny result object carrying the metadata it reads.
+            class _StampResult:
+                sync_mode   = "capture_clock"
+                audio_flags = [False] * len(video_paths)
+                confidences = [None] * len(video_paths)
+            self._worker = _StampResult()
+            payload = ([float(d) for d in cam_starts] + [float(max_start)]
+                       + [float(s) for s in seek_ms])
+            self._on_sync_finished(video_paths, payload)
+            return
+
+        # Manual external-upload path (no capture clock) → audio xcorr worker.
         self.sync_btn.setEnabled(False); self.goto_label_btn.setEnabled(False)
         self.sync_progress.setVisible(True); self.sync_progress.setValue(0)
         self._set_sync_status("INITIALISING…", "#637DFF")
@@ -999,6 +1075,8 @@ class SyncReviewTab(QWidget):
         def _method(i):
             if sync_mode == "audio_xcorr" and i < len(audio_flags) and audio_flags[i]:
                 return "xcorr"
+            if sync_mode == "capture_clock":
+                return "capture_clock"
             return "simultaneous_start"
         def _conf(i):
             # None = never measured (audio-less / simultaneous start) — kept
@@ -1069,9 +1147,16 @@ class SyncReviewTab(QWidget):
         eeg_sources = [s for s in self.sources[4:] if s.file_path]
         for i, widget in enumerate([self.eeg_review_1, self.eeg_review_2]):
             if i < len(eeg_sources):
-                try: df = pd.read_csv(eeg_sources[i].file_path); widget.load(df, offset_sec=0.0)
+                # offset_sec = axis_shift places EEG on the playhead axis:
+                # its t_session_seconds column, shifted to playhead 0 = the
+                # latest source start. Co-registers EEG with markers + video.
+                try: df = pd.read_csv(eeg_sources[i].file_path); widget.load(df, offset_sec=self._axis_shift)
                 except Exception as e: log.warning("EEG %d load for review failed: %s", i + 1, e)
-        if sync_mode == "simultaneous_start":
+        if sync_mode == "capture_clock":
+            msg = "ALIGNED BY CAPTURE-TIME CLOCK"
+            if self._phase_markers:
+                msg += f"  ·  {len(self._phase_markers)} MARKERS LOADED"
+        elif sync_mode == "simultaneous_start":
             msg = "IN-APP SESSION — ALIGNED BY SIMULTANEOUS START"
             if self._phase_markers:
                 msg += f"  ·  {len(self._phase_markers)} MARKERS LOADED"
@@ -1202,6 +1287,7 @@ class SyncReviewTab(QWidget):
 
         # Assign each discovered file into the matching SourceRow. Silently
         # skip slots with no corresponding file — operator can upload manually.
+        video_paths = list(side_cams[:2]) + list(pov_cams[:2])
         for i, path in enumerate(side_cams[:2]):
             self.sources[i].set_path(str(path))
         for i, path in enumerate(pov_cams[:2]):
@@ -1209,14 +1295,30 @@ class SyncReviewTab(QWidget):
         for i, path in enumerate(muse_csvs[:2]):
             self.sources[4 + i].set_path(str(path))
 
-        # Phase markers → chips on the timeline strip.
+        # ── v3 capture-time alignment (no legacy fallback) ──────────────────
+        # Read the shared origin and each camera's measured start on the shared
+        # axis. axis_shift = the latest source start = the moment every source
+        # has data = the playhead-0 point. Markers and EEG are placed relative
+        # to this same shift so all three co-register (fixes §2.4).
+        self._session_root = str(root)
+        self._capture_t0_unix = _read_capture_t0_unix(str(root))
+        self._cam_starts = [(_read_frame_sidecar_start(str(p)) or 0.0)
+                            for p in video_paths]
+        starts = [s for s in self._cam_starts if s is not None]
+        self._axis_shift = max(starts) if starts else 0.0
+        if self._capture_t0_unix is None:
+            log.warning("session %s has no capture_clock — v3 requires it "
+                        "(pre-3.0 sessions are unsupported)", root.name)
+
+        # Phase markers → chips on the timeline strip, shifted onto the
+        # playhead axis (t_session - axis_shift) so they line up with video.
         self._phase_markers = []
         self.time_slider.clear_markers()
         markers_csv = root / "phase_markers.csv"
         if markers_csv.exists():
             self._phase_markers = _read_phase_markers(str(markers_csv))
             for t_sec, color, label in self._phase_markers:
-                self.time_slider.add_marker(t_sec, color, label)
+                self.time_slider.add_marker(t_sec - self._axis_shift, color, label)
 
         found = len(side_cams[:2]) + len(pov_cams[:2]) + len(muse_csvs[:2])
         if found:
