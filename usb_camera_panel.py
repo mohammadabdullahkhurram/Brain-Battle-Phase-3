@@ -114,7 +114,8 @@ class USBCameraPanel(QWidget):
     def slot_kind(self, slot_index: int) -> str:
         return self._slot_kinds.get(slot_index, "side")
 
-    def start_recording(self, phase_folder: Path, phase_label: str) -> list[Path]:
+    def start_recording(self, phase_folder: Path, phase_label: str,
+                        clock=None) -> list[Path]:
         """
         Kick off recording on every live slot. Returns the list of paths
         each live camera is writing to. Slots that aren't connected are
@@ -123,6 +124,10 @@ class USBCameraPanel(QWidget):
         only when a slot of that kind actually records, so an absent
         subfolder unambiguously means "no camera connected to that side"
         rather than "feature broken".
+
+        `clock` is the shared capture-time origin (t0_monotonic, t0_unix)
+        forwarded to every camera thread so all frame-timestamp sidecars
+        sit on one reference clock.
         """
         started: list[Path] = []
         safe_label = phase_label.replace(" ", "_")
@@ -139,7 +144,7 @@ class USBCameraPanel(QWidget):
             out_dir = phase_folder / sub
             out_dir.mkdir(parents=True, exist_ok=True)
             out_path = out_dir / f"{safe_label}_{safe_name}.mp4"
-            slot.start_recording(out_path)
+            slot.start_recording(out_path, clock=clock)
             started.append(out_path)
             logging.getLogger(__name__).info(
                 "[session start] recording slot %s (%s) -> %s", slot.slot_index, slot.label, out_path)

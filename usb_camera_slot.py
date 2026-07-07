@@ -449,10 +449,10 @@ class USBCameraSlot(QFrame):
         self._fps_lbl.setText(f"{fps:>4.1f} FPS")
 
     # ── Phase-aware recording API (called by LiveSessionTab at phase boundaries) ──
-    def start_recording(self, path: str | Path) -> None:
+    def start_recording(self, path: str | Path, clock=None) -> None:
         if self._thread is None:
             return
-        self._thread.start_recording(path)
+        self._thread.start_recording(path, clock=clock)
         self._rec_lbl.setText("● REC")
 
     def stop_recording(self) -> None:

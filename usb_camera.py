@@ -177,14 +177,29 @@ class USBCameraThread(QThread):
         self._writer:          Optional[cv2.VideoWriter] = None
         self._rec_req_path:    Optional[Path] = None     # start request
         self._rec_stop_req:    bool = False              # stop request
+        # Capture-time clock origin (t0_monotonic, t0_unix) shared across all
+        # camera threads so every frame stamp sits on one reference; set per
+        # recording via start_recording(clock=...). None → each thread uses
+        # its own first recorded frame as the origin (still self-consistent).
+        self._rec_req_clock:   Optional[tuple[float, float]] = None
+        self._rec_clock:       Optional[tuple[float, float]] = None
+        self._ts_file = None                             # timestamp sidecar handle
+        self._rec_frame_idx:   int = 0
 
     # ── Public API (thread-safe; uses flags the run-loop polls) ──────────
     def stop(self) -> None:
         self._stop_flag = True
 
-    def start_recording(self, path: str | Path) -> None:
-        """Queue a recording-start request. Picked up on the next frame."""
+    def start_recording(self, path: str | Path,
+                        clock: Optional[tuple[float, float]] = None) -> None:
+        """Queue a recording-start request. Picked up on the next frame.
+
+        `clock` is the shared capture-time origin (t0_monotonic, t0_unix)
+        captured once at session recording-start; passing the same tuple to
+        every camera thread puts all their frame stamps on one reference.
+        """
         self._rec_req_path = Path(path)
+        self._rec_req_clock = clock
 
     def stop_recording(self) -> None:
         """Queue a recording-stop request. Picked up on the next frame."""
@@ -267,6 +282,7 @@ class USBCameraThread(QThread):
                 if self._rec_req_path is not None and not self._recording \
                         and first_frame_shape is not None:
                     path = self._rec_req_path; self._rec_req_path = None
+                    clock = self._rec_req_clock; self._rec_req_clock = None
                     path.parent.mkdir(parents=True, exist_ok=True)
                     fh, fw = first_frame_shape
                     # Sanity-check FPS: cap.get() returns NaN/0 on some
@@ -281,6 +297,9 @@ class USBCameraThread(QThread):
                         self._rec_path = path; self._recording = True
                         self._rec_fps = safe_fps  # for downstream use
                         self._rec_size = (fw, fh)
+                        self._rec_clock = clock
+                        self._rec_frame_idx = 0
+                        self._open_timestamp_sidecar(path)
                     else:
                         self._writer = None
                         self.state_changed.emit("error: could not open video writer")
@@ -295,6 +314,7 @@ class USBCameraThread(QThread):
                         self._writer = None
                         self._recording = False
                         self._rec_path = None
+                        self._close_timestamp_sidecar()
 
                 ok, frame = cap.read()
                 if not ok or frame is None:
@@ -329,6 +349,12 @@ class USBCameraThread(QThread):
                             # mid-stream. Rare but possible on hot-plug.
                             resized = cv2.resize(frame, (first_frame_shape[1], first_frame_shape[0]))
                             self._writer.write(resized)
+                        # Stamp the frame we just wrote. `now` is this frame's
+                        # grab time on the process-wide monotonic clock — the
+                        # same clock every camera thread reads, so all sidecars
+                        # share one axis. Stamp AFTER a successful write so the
+                        # sidecar row count matches the MP4 frame count.
+                        self._stamp_frame(now)
                     except Exception as e:
                         # Dropped recorded frames = data loss, but a dying
                         # camera raises per-frame — log once per capture run.
@@ -361,8 +387,61 @@ class USBCameraThread(QThread):
                 pass
             self._writer = None
             self._recording = False
+            self._close_timestamp_sidecar()
             cap.release()
             self.state_changed.emit("stopped")
+
+    # ── Capture-time frame timestamps (additive; MP4 writing is unchanged) ──
+    #
+    # For every frame written to the MP4 we append one row to a sidecar CSV
+    # next to it: <mp4-stem>.timestamps.csv. This turns the video from
+    # "frames at a nominal fps" into "frames at known capture instants", so
+    # downstream alignment is measured against a shared clock rather than
+    # assumed (see docs/ARCHITECTURE_AND_EVALUATION.md §1.6, Intent A/B).
+
+    def _open_timestamp_sidecar(self, mp4_path: Path) -> None:
+        ts_path = mp4_path.parent / (mp4_path.stem + ".timestamps.csv")
+        try:
+            self._ts_file = open(ts_path, "w", encoding="utf-8", newline="")
+            # t_session_seconds — same name/axis as phase_markers.csv, so
+            # frames and markers line up directly. t_monotonic/t_unix are the
+            # raw process clock + wall clock at grab time.
+            self._ts_file.write("frame_index,t_session_seconds,t_monotonic,t_unix\n")
+        except OSError as e:
+            self._ts_file = None
+            log.warning("could not open timestamp sidecar %s: %s", ts_path, e)
+
+    def _stamp_frame(self, t_monotonic: float) -> None:
+        if self._ts_file is None:
+            return
+        clock = self._rec_clock
+        if clock is not None:
+            t0_mono, t0_unix = clock
+        else:
+            # No shared origin passed — anchor to this recording's first frame
+            # so the sidecar is still internally consistent.
+            if self._rec_frame_idx == 0:
+                self._rec_clock = (t_monotonic, time.time())
+                t0_mono, t0_unix = self._rec_clock
+            else:
+                t0_mono, t0_unix = self._rec_clock
+        t_session = t_monotonic - t0_mono
+        t_unix = t0_unix + t_session
+        try:
+            self._ts_file.write(
+                f"{self._rec_frame_idx},{t_session:.6f},{t_monotonic:.6f},{t_unix:.6f}\n")
+        except OSError:
+            pass  # a write failure here must not stop capture
+        self._rec_frame_idx += 1
+
+    def _close_timestamp_sidecar(self) -> None:
+        if self._ts_file is not None:
+            try:
+                self._ts_file.flush(); self._ts_file.close()
+            except OSError:
+                pass
+            self._ts_file = None
+        self._rec_clock = None
 
 
 __all__ = ["CameraDevice", "USBCameraThread", "list_cameras"]

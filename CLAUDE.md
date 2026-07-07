@@ -41,11 +41,35 @@ audio/no-audio sync, export error-text, real-VLC playback smoke) were
 session-local scratchpad scripts and are NOT checked in — the checked-in
 suites above are the durable safety net.
 
-## Project status (2026-07-06)
+## Project status
 
-**FINISHED.** Both phases — functional fixes and cleanup — are complete on
-branch `fix/v2-migration-review-path` (15 commits; `git log --oneline
-1a840e1..` for detail). The migration gap that started this work (the
+**IN PROGRESS — unified capture-time clock** on branch
+`feat/unified-capture-clock` (off main after the merge below). Goal: one
+monotonic capture-time reference stamped on every source so alignment is
+MEASURED (tens-of-ms target — deliberately NOT sub-ms; no genlock/LSL). See
+`docs/ARCHITECTURE_AND_EVALUATION.md` for the design. Step status:
+
+- **STEP 1 — camera frame timestamps: DONE, verified.** Each recording now
+  writes a per-camera sidecar `<mp4-stem>.timestamps.csv`
+  (`frame_index, t_session_seconds, t_monotonic, t_unix`) alongside the
+  (unchanged) MP4. A shared origin `(t0_monotonic, t0_unix)` is captured once
+  at recording-start in `live_session_tab._on_session_started` and threaded
+  through `usb_panel → slot → USBCameraThread`, so all cameras stamp on one
+  clock. Verified against the real `USBCameraThread.run()` loop (file-backed
+  VideoCapture, no camera on this box): 13/13 — row-per-frame, count == MP4
+  frames, monotonic-increasing, unix sane, shared origin identical across
+  cameras. NOT yet verified: real capture cadence (needs a physical camera).
+- STEP 2 (unified clock + EEG-side stamping, EEG half UNVERIFIABLE without a
+  real band), STEP 3 (align review/label by stamps), STEP 4 (retire audio
+  xcorr), STEP 5 (co-registered EEG export) — pending.
+
+---
+
+### Prior phase — FINISHED
+
+Both phases — functional fixes and cleanup — are complete and merged to main
+(branch `fix/v2-migration-review-path`, 15 commits, merge `5c08a9b`; plus the
+architecture report `2695f7d`). The migration gap that started that work (the
 review/sync path still reading the v1 per-round layout) is closed. Coverage:
 
 | Commits | Work |

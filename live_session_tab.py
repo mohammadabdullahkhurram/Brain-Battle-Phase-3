@@ -425,12 +425,19 @@ class LiveSessionTab(QWidget):
         Phases just mark timestamps in phase_markers.csv; recordings
         themselves don't restart between baseline → rounds → breaks."""
         if self._layout is None: return
+        # Shared capture-time clock origin, captured once here at the
+        # recording-start instant: monotonic drives session-relative stamps
+        # (immune to wall-clock changes); unix pins them to an absolute time
+        # so EEG (Unix-epoch) and cameras share one reference. Markers and
+        # every camera frame sidecar are stamped against this origin.
         self._session_t0 = time.monotonic()  # session-relative time origin
+        self._session_t0_unix = time.time()
+        capture_clock = (self._session_t0, self._session_t0_unix)
         # Continuous folder is built by create_session
         cont_root = self._layout.continuous_dir()
         # Cameras: one MP4 per slot for the entire session
         try:
-            self.usb_panel.start_recording(cont_root, "session")
+            self.usb_panel.start_recording(cont_root, "session", clock=capture_clock)
         except Exception as e:
             log.error("camera record error at session start: %s", e)
         # EEGs: one CSV per Muse for the entire session
