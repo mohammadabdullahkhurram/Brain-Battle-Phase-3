@@ -185,6 +185,69 @@ def test_review_alignment_coregisters_all_three():
               abs(eeg_shared - shared) < 1e-9)
 
 
+def _band_with_spike(start_offset, spike_t_session, n_sec=8, sr=SR, amp=50.0):
+    """A band whose t_session starts at start_offset, with a unit spike on TP9
+    at absolute session time spike_t_session."""
+    n = int(n_sec * sr)
+    ts = start_offset + np.arange(n) / sr
+    df = pd.DataFrame({c: np.zeros(n) for c in ("TP9", "AF7", "AF8", "TP10", "AUX")})
+    df["t_session_seconds"] = ts
+    # nearest sample to the target session time
+    spike_i = int(np.argmin(np.abs(ts - spike_t_session)))
+    df.loc[spike_i, "TP9"] = amp
+    return df
+
+
+def test_coregistered_preserves_between_brain_skew():
+    from export_module import build_coregistered_eeg
+    # Two boxers: band A starts 0.20s in with a spike at session t=5.00;
+    # band B starts 0.55s in with a spike at session t=5.35. The between-brain
+    # skew (0.35s) is the payload — it must survive co-registration.
+    a = _band_with_spike(0.20, 5.00)
+    b = _band_with_spike(0.55, 5.35)
+    markers = [(0.5, "baseline", "BASELINE_START"), (3.0, "round", "ROUND_1_START")]
+    m = build_coregistered_eeg([a, b], markers, sr=SR)
+
+    check("co-registered output built", m is not None)
+    check("shared grid + both bands' channels present",
+          "t_session_seconds" in m.columns and "TP9_01" in m.columns and "TP9_02" in m.columns,
+          str([c for c in m.columns if c.startswith("TP9")]))
+    g = m["t_session_seconds"].to_numpy()
+    ta = float(g[int(np.nanargmax(m["TP9_01"].to_numpy()))])
+    tb = float(g[int(np.nanargmax(m["TP9_02"].to_numpy()))])
+    check("band-A spike at its session time (~5.00)", abs(ta - 5.00) < 1.0 / SR, f"{ta:.4f}")
+    check("band-B spike at its session time (~5.35)", abs(tb - 5.35) < 1.0 / SR, f"{tb:.4f}")
+    check("between-brain skew preserved (~0.35s)", abs((tb - ta) - 0.35) < 2.0 / SR,
+          f"skew={tb - ta:.4f}s")
+
+    # Markers land at the right t_session on the shared grid.
+    for mt, pid, lab in markers:
+        rows = m.index[m["marker"] == lab].tolist()
+        ok = len(rows) == 1 and abs(float(g[rows[0]]) - mt) <= 1.0 / SR
+        check(f"marker {lab} lands at t≈{mt}", ok,
+              f"grid_t={float(g[rows[0]]):.4f}" if rows else "not found")
+    # Active phase forward-filled: a row at t=4.0 is inside ROUND_1 (>=3.0)
+    i4 = int(np.argmin(np.abs(g - 4.0)))
+    check("active phase forward-filled (t=4.0 → round)",
+          m["phase_id"].iloc[i4] == "round", str(m["phase_id"].iloc[i4]))
+
+    # NaN outside each band's own range (band B has no data before 0.55)
+    i_early = int(np.argmin(np.abs(g - 0.30)))
+    check("NaN where a band has no sample (B before its start)",
+          np.isnan(m["TP9_02"].iloc[i_early]) and not np.isnan(m["TP9_01"].iloc[i_early]))
+
+    # Round-trips through CSV cleanly.
+    import tempfile, os as _os
+    with tempfile.TemporaryDirectory() as tmp:
+        p = _os.path.join(tmp, "coreg.csv")
+        m.to_csv(p, index=False)
+        back = pd.read_csv(p)
+        check("CSV round-trips (shape + skew)",
+              back.shape == m.shape
+              and abs(float(back["t_session_seconds"][int(np.nanargmax(back["TP9_02"]))]
+                            - back["t_session_seconds"][int(np.nanargmax(back["TP9_01"]))]) - 0.35) < 2.0 / SR)
+
+
 if __name__ == "__main__":
     test_single_band_offset_recovered()
     test_two_bands_relative_skew_preserved()
@@ -192,6 +255,7 @@ if __name__ == "__main__":
     test_manifest_bridge_roundtrips()
     test_reader_writes_t_session_column()
     test_review_alignment_coregisters_all_three()
+    test_coregistered_preserves_between_brain_skew()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

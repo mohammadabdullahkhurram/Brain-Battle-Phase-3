@@ -353,6 +353,76 @@ class LabelsExporter:
             writer.writerows(labels)
 
 
+# --- Co-registered EEG (both boxers on one shared axis) ----------------------
+
+_EEG_CHANNELS = ["TP9", "AF7", "AF8", "TP10", "AUX"]
+
+
+def build_coregistered_eeg(eeg_dfs, phase_markers, sr: int = 256):
+    """Merge both boxers' EEG onto ONE shared `t_session_seconds` axis so the
+    between-brain comparison is a direct row lookup instead of a manual
+    cross-reference of two CSVs on different clocks.
+
+    Inputs
+      eeg_dfs       — list of per-band DataFrames, each carrying a
+                      `t_session_seconds` column (from the v3 capture-time
+                      clock) + the 5 Muse channels. Bands lacking that column
+                      are skipped (v3 always writes it).
+      phase_markers — list of (t_session_seconds, phase_id, label) on the SAME
+                      axis as the EEG (raw session time, NOT the review-tab's
+                      axis_shifted display values).
+      sr            — grid rate (Hz).
+
+    Output: a wide DataFrame — one uniform-grid row per time point spanning the
+    union of the bands, columns:
+      t_session_seconds, <chan>_01…, <chan>_02…, phase_id, phase_label, marker
+    Each band's channels are linearly interpolated onto the grid within its own
+    range and NaN outside it (honest "no sample here"). `phase_id`/`phase_label`
+    are the active phase (forward-filled from markers); `marker` is non-empty
+    only on the grid row at each phase boundary.
+
+    NOTE (UNVERIFIED): each band's position on this shared axis comes from the
+    Step-2 EEG capture-time stamping, whose clock source (muselsl wall clock +
+    BLE latency) is NOT confirmed without a real Muse band. The RELATIVE
+    between-brain skew here is therefore measured-but-hardware-unverified.
+    Returns None if no band carries `t_session_seconds`.
+    """
+    import numpy as np
+    import pandas as pd
+
+    bands = [df for df in eeg_dfs
+             if df is not None and "t_session_seconds" in getattr(df, "columns", [])]
+    if not bands:
+        return None
+
+    t_min = min(float(df["t_session_seconds"].iloc[0]) for df in bands)
+    t_max = max(float(df["t_session_seconds"].iloc[-1]) for df in bands)
+    n = max(1, int(round((t_max - t_min) * sr)) + 1)
+    grid = t_min + np.arange(n) / sr
+
+    out = {"t_session_seconds": np.round(grid, 6)}
+    for bi, df in enumerate(bands, start=1):
+        ts = df["t_session_seconds"].to_numpy(dtype=float)
+        for ch in _EEG_CHANNELS:
+            if ch in df.columns:
+                y = df[ch].to_numpy(dtype=float)
+                # interp within [ts[0], ts[-1]]; NaN outside this band's range
+                out[f"{ch}_{bi:02d}"] = np.interp(grid, ts, y,
+                                                  left=np.nan, right=np.nan)
+
+    phase_id    = np.array([""] * n, dtype=object)
+    phase_label = np.array([""] * n, dtype=object)
+    marker      = np.array([""] * n, dtype=object)
+    for mt, pid, lab in sorted(phase_markers or [], key=lambda m: m[0]):
+        idx = int(np.searchsorted(grid, mt))     # first grid row >= marker time
+        if 0 <= idx < n:
+            marker[idx] = lab
+            phase_id[idx:]    = pid               # active from here onward
+            phase_label[idx:] = lab
+    out["phase_id"], out["phase_label"], out["marker"] = phase_id, phase_label, marker
+    return pd.DataFrame(out)
+
+
 # --- 3. Full session zip export worker ---------------------------------------
 
 class FullSessionExportWorker(QThread):
@@ -382,6 +452,7 @@ class FullSessionExportWorker(QThread):
         sync_offsets_rows: list[dict],
         global_duration: float,
         merge_video:     bool = True,
+        phase_markers:   list = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -394,6 +465,9 @@ class FullSessionExportWorker(QThread):
         self.sync_offsets_rows  = sync_offsets_rows
         self.global_duration    = global_duration
         self.merge_video        = merge_video
+        # (t_session_seconds, phase_id, label) on the raw session axis — for
+        # the co-registered EEG output.
+        self.phase_markers      = phase_markers or []
 
     def run(self):
         try:
@@ -470,6 +544,23 @@ class FullSessionExportWorker(QThread):
                 if eeg_path and os.path.exists(eeg_path):
                     files_to_zip.append((eeg_path, f"eeg/eeg_{i+1:02d}.csv"))
 
+            # Co-registered EEG — both boxers on one shared t_session axis + markers
+            self.progress.emit(91, "Building co-registered EEG...")
+            coreg_bands = 0
+            try:
+                import pandas as _pd
+                dfs = [_pd.read_csv(p) for p in self.eeg_paths
+                       if p and os.path.exists(p)]
+                coreg = build_coregistered_eeg(dfs, self.phase_markers)
+                if coreg is not None:
+                    coreg_bands = sum(1 for d in dfs
+                                      if "t_session_seconds" in d.columns)
+                    coreg_path = os.path.join(tmp, "eeg_coregistered.csv")
+                    coreg.to_csv(coreg_path, index=False)
+                    files_to_zip.append((coreg_path, "eeg_coregistered.csv"))
+            except Exception as e:
+                log.warning("co-registered EEG build failed: %r", e)
+
             # Original videos
             self.progress.emit(92, "Adding original videos...")
             for i, vpath in enumerate(self.video_paths):
@@ -491,11 +582,26 @@ class FullSessionExportWorker(QThread):
                 f"Video encoder:   {_HW_ENCODER}",
                 "",
                 "Contents:",
-                "  merged_video.mp4   — quad-grid synced video",
-                "  labels.csv         — event labels with timestamps",
-                "  sync_offsets.csv   — per-source sync offsets",
-                "  eeg/               — raw EEG CSV recordings",
-                "  videos/            — original camera files",
+                "  merged_video.mp4     — quad-grid synced video",
+                "  labels.csv           — event labels with timestamps",
+                "  sync_offsets.csv     — per-source alignment (method=capture_clock)",
+                "  eeg/                 — raw per-band EEG CSV recordings",
+                "  eeg_coregistered.csv — BOTH boxers' EEG on one shared t_session axis",
+                "  videos/              — original camera files",
+                "",
+                "eeg_coregistered.csv:",
+                "  One row per time point on a uniform 256 Hz t_session_seconds grid.",
+                "  Columns: t_session_seconds, <chan>_01 (boxer 1), <chan>_02 (boxer 2),",
+                "  phase_id, phase_label (active phase), marker (phase-boundary rows).",
+                "  NaN = that band had no sample at that time.",
+                "",
+                "  *** UNVERIFIED between-brain alignment ***",
+                "  Each band's position on the shared axis comes from the capture-time",
+                "  clock (muselsl wall-clock timestamps + BLE latency). That clock",
+                "  SOURCE has NOT been confirmed against a real Muse band, so the",
+                "  relative between-brain timing here is measured-but-hardware-unverified.",
+                "  Confirm against a known simultaneous physical event before trusting",
+                "  sub-second between-brain synchrony. See project CLAUDE.md 'Deferred work'.",
             ]
             readme_path = os.path.join(tmp, "README.txt")
             with open(readme_path, "w") as f:

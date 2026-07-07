@@ -29,9 +29,10 @@ All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
 - `test_capture_clock.py` — the capture-clock alignment (v3): reconciliation
   arithmetic (`t_session = unix − t0`), two-band relative skew, marker/EEG
   co-registration, manifest bridge round-trip, the real EEG reader flush path,
-  and the review-tab alignment (video seek = axis_shift − start, all three
+  the review-tab alignment (video seek = axis_shift − start, all three
   co-register) — which owns the D′ seek-formula invariant since the audio
-  seek test was retired.
+  seek test was retired — and the co-registered EEG export (both bands on one
+  axis, between-brain skew + markers preserved, CSV round-trip).
 - `test_ring_buffer.py` — `_RingBuffer` chronological ordering, including
   the over-capacity write branch (latent bug fixed in `0de80f2`).
 
@@ -120,7 +121,24 @@ Step status:
   honest `sync_offsets.csv` `n/a (capture_clock)` output. The tab is now
   **Review** (was "Sync + Review"); `_run_sync` → `_align`, "AUTO-SYNC" button
   → "ALIGN". Single alignment method: capture-time stamps.
-- STEP 5 (co-registered EEG export) — pending.
+- **STEP 5 — co-registered EEG export: DONE (alignment UNVERIFIED per Step 2).**
+  `export_module.build_coregistered_eeg` merges both boxers' EEG onto ONE
+  uniform 256 Hz `t_session_seconds` grid (union span): columns
+  `t_session_seconds, <chan>_01, <chan>_02, phase_id, phase_label, marker`,
+  NaN where a band has no sample. Written to the bundle as
+  `eeg_coregistered.csv` alongside the raw per-band files; the tab passes the
+  raw-axis phase markers via `_read_markers_for_export`. Verified against
+  synthetic bands (`test_capture_clock.py::test_coregistered_preserves_between_brain_skew`):
+  a known 0.35s between-brain skew survives, markers land at the right
+  `t_session`, phase forward-fills, NaN outside range, CSV round-trips — plus
+  an end-to-end export producing the zip. **INHERITED UNVERIFIED**: the
+  between-brain alignment is only as accurate as the Step-2 EEG clock
+  placement (deferred #0/#1) — labeled in the CSV's README section and the
+  `build_coregistered_eeg` docstring.
+
+**This completes the unified-capture-clock build phase.** All that remains is
+the eyes-on-glass verification with real capture data (deferred #0/#1) and the
+scoped follow-ups below.
 
 ---
 
@@ -183,7 +201,7 @@ start simultaneously and share `phase_markers.csv` time.
 | `eeg_module.py` | ~1600 | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` + `EEGReviewWidget` (both pyqtgraph) |
 | `design_tokens.py` | 741 | Theme system (dark/light), QSS factories |
 | `live_session_tab.py` | 584 | Live Monitor tab — capture orchestration, emits `session_saved(session_root)` |
-| `export_module.py` | 531 | `VideoExportWorker` (ffmpeg quad-grid), `LabelsExporter`, `FullSessionExportWorker` (zip), progress dialog |
+| `export_module.py` | ~600 | `VideoExportWorker` (ffmpeg quad-grid), `LabelsExporter`, `build_coregistered_eeg` (both boxers on one axis), `FullSessionExportWorker` (zip), progress dialog |
 | `usb_camera_slot.py` | 479 | One camera slot widget (preview + record state) |
 | `sync_engine.py` | 465 | `SourceOffset`/`SyncResult` dataclasses (ACTIVELY USED) + `SyncWorker` QThread (unused) |
 | `vlc_module.py` | 391 | `VLCVideoSlot`, `SyncPlaybackController` — labelling-tab playback |
@@ -299,7 +317,9 @@ unblocks it. Nothing else is planned or half-open elsewhere in this file.
    (e.g. both boxers tap in view of a camera at one buzzer), then check the
    EEG artifact lands at the same `t_session` as the camera frame. Until then,
    the app logs this warning at every EEG session start. Labeled in
-   `eeg_module.py`, `live_session_tab.py`.
+   `eeg_module.py`, `live_session_tab.py`. **The exported
+   `eeg_coregistered.csv` (Step 5) inherits this** — its between-brain skew is
+   measured-but-hardware-unverified; that same buzzer check discharges it too.
 
 1. **Eyes-on-glass visual check** — synced playback (decode, 4-cam lockstep,
    markers, **capture-clock alignment from Step 3**) and the pyqtgraph

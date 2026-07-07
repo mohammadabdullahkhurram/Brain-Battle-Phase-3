@@ -1043,6 +1043,31 @@ class SyncReviewTab(QWidget):
             "is_reference": o.is_reference,
         } for o in self.sync_result.all_offsets()]
 
+    def _read_markers_for_export(self) -> list:
+        """(t_session_seconds, phase_id, label) triples from the loaded
+        session's phase_markers.csv — raw session axis (unshifted), matching
+        the EEG t_session_seconds. Empty if no session/markers file."""
+        import csv as _csv
+        from pathlib import Path as _P
+        if not self._session_root:
+            return []
+        path = _P(self._session_root) / "phase_markers.csv"
+        if not path.exists():
+            return []
+        out = []
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    try:
+                        t = float(row.get("t_session_seconds", ""))
+                    except (TypeError, ValueError):
+                        continue
+                    out.append((t, (row.get("phase_id") or "").strip(),
+                                (row.get("label") or "").strip()))
+        except Exception as e:
+            log.warning("could not read markers for export: %s", e)
+        return out
+
     def _export_synced_data(self):
         from PyQt6.QtWidgets import QInputDialog
         if not self.sync_result: QMessageBox.warning(self, "No aligned data", "Click ALIGN before exporting."); return
@@ -1056,7 +1081,10 @@ class SyncReviewTab(QWidget):
         offset_secs = [self.sync_result.video_offsets[i].offset_sec if i < len(self.sync_result.video_offsets) else 0.0 for i in range(4)]
         eeg_paths = [s.file_path or "" for s in self.sources[4:]]
         sync_rows = self._sync_offsets_rows()
-        worker = FullSessionExportWorker(zip_path=save_path, zip_name=zip_name, video_paths=video_paths, offset_secs=offset_secs, eeg_paths=eeg_paths, labels=[], sync_offsets_rows=sync_rows, global_duration=self.sync_result.global_duration, merge_video=True, parent=self)
+        # Phase markers on the RAW session axis (t_session, phase_id, label) —
+        # same axis as the EEG's t_session_seconds, for the co-registered file.
+        markers = self._read_markers_for_export()
+        worker = FullSessionExportWorker(zip_path=save_path, zip_name=zip_name, video_paths=video_paths, offset_secs=offset_secs, eeg_paths=eeg_paths, labels=[], sync_offsets_rows=sync_rows, global_duration=self.sync_result.global_duration, merge_video=True, phase_markers=markers, parent=self)
         ExportProgressDialog(worker, parent=self).exec()
 
     def _request_label_tab(self):
