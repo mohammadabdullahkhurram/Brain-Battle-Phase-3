@@ -43,11 +43,21 @@ suites above are the durable safety net.
 
 ## Project status
 
-**IN PROGRESS — unified capture-time clock** on branch
-`feat/unified-capture-clock` (off main after the merge below). Goal: one
-monotonic capture-time reference stamped on every source so alignment is
-MEASURED (tens-of-ms target — deliberately NOT sub-ms; no genlock/LSL). See
-`docs/ARCHITECTURE_AND_EVALUATION.md` for the design. Step status:
+**IN PROGRESS — unified capture-time clock** on the long-lived `develop`
+branch (`main` stays the stable baseline; develop merges to main only when a
+version is verified and ready to ship). Goal: one monotonic capture-time
+reference stamped on every source so alignment is MEASURED (tens-of-ms target
+— deliberately NOT sub-ms; no genlock/LSL). See
+`docs/ARCHITECTURE_AND_EVALUATION.md` for the design.
+
+**Versions: `develop` = `3.0.0-dev`, `main` = `2.1.0`.** 3.0.0 is a
+DELIBERATE BREAKING CHANGE: the review/label path aligns by the capture-time
+clock (`capture_clock` in the manifest + `t_session_seconds` in the camera
+sidecars and EEG CSVs). Pre-3.0 sessions recorded without that data are NOT
+supported — there is no legacy-fallback alignment path (one alignment path,
+not two). Record fresh with 3.0. Becomes `3.0.0` when develop merges to main.
+
+Step status:
 
 - **STEP 1 — camera frame timestamps: DONE, verified.** Each recording now
   writes a per-camera sidecar `<mp4-stem>.timestamps.csv`

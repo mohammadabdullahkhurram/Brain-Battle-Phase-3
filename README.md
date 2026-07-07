@@ -1,7 +1,13 @@
 # Brain Battle
 
-**v2.1.0** — desktop capture, sync, review, and labelling suite for neuroscience
-boxing sessions: 4 USB cameras + 2 Muse-S EEG headbands, one time-aligned dataset.
+**v3.0.0-dev** (on `develop`; `main` ships v2.1.0) — desktop capture, sync,
+review, and labelling suite for neuroscience boxing sessions: 4 USB cameras +
+2 Muse-S EEG headbands, one time-aligned dataset.
+
+> **3.0.0 is a breaking change.** Alignment is now driven by a capture-time
+> clock (per-frame and per-EEG-sample timestamps against a shared origin).
+> Sessions recorded before 3.0 lack this data and are **not** supported —
+> there is no legacy fallback. Record fresh with 3.0.
 
 Brain Battle is a Community Impact Project developed at Constructor University
 Bremen. It records EEG from two boxers (Muse-S over Bluetooth) alongside up to
@@ -39,8 +45,8 @@ python3 brain_battle_main.py
 
 - Captures are written to `Captures/` next to the source; override with the
   `BRAIN_BATTLE_CAPTURE_DIR` environment variable.
-- The authoritative version lives in `version.py` (`__version__ = "2.1.0"`) and
-  is surfaced in the window title and each session's manifest.
+- The authoritative version lives in `version.py` (`__version__`) and is
+  surfaced in the window title and each session's manifest.
 - Logging: console at INFO; every capture session also gets a DEBUG-level
   `session_*.log` inside its own folder (see `log_setup.py`).
 
@@ -221,7 +227,7 @@ python3 tests/test_ring_buffer.py      # EEG ring-buffer chronological ordering 
 |---|---|
 | Project | Brain Battle — Neuroscience Sports Capture System |
 | Institution | Constructor University Bremen (Community Impact Project) |
-| Version | v2.1.0 (authoritative: `version.py`) |
+| Version | develop v3.0.0-dev · main v2.1.0 (authoritative: `version.py`) |
 | GitHub | https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-2-v2.1.0 |
 | Hardware | 2× Muse-S (`MuseS-7538`, `MuseS-7564`), 2× DSLR (USB-C UVC), 2× POV (FPV receiver → USB) |
 
