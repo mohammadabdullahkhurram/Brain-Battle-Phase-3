@@ -188,7 +188,6 @@ start simultaneously and share `phase_markers.csv` time.
 | `sync_engine.py` | 465 | `SourceOffset`/`SyncResult` dataclasses (ACTIVELY USED) + `SyncWorker` QThread (unused) |
 | `vlc_module.py` | 391 | `VLCVideoSlot`, `SyncPlaybackController` — labelling-tab playback |
 | `usb_camera.py` | 361 | `USBCameraThread` — cv2 capture + `cv2.VideoWriter` recording (no audio track) |
-| `sync_utils/video_sync.py` | 300 | ffmpeg preview/trim helpers |
 | `eeg_plot_pg.py` | 276 | pyqtgraph live EEG plot (the fast path the live widget uses) |
 | `sidebar_shell.py` | 274 | Sidebar navigation shell (replaced QTabWidget) |
 | `session_controller.py` | 241 | Pure-logic phase state machine (IDLE→BASELINE→ROUND↔BREAK→DONE), 1 Hz QTimer |

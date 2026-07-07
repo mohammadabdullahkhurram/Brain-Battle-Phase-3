@@ -27,7 +27,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap, QPainter
 
-from sync_utils.video_sync import generate_single_preview, get_first_frame_pts, run_ffmpeg_subprocess
 from eeg_module import EEGLiveWidget, EEGReviewWidget
 from live_session_tab import LiveSessionTab
 from vlc_module import VLCVideoSlot, SyncPlaybackController
