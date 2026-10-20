@@ -55,7 +55,7 @@ planned next. Summary of where the product is headed:
 ## Running
 
 ```bash
-pip install PyQt6 pyqtgraph opencv-python pylsl muselsl scipy pandas ffmpeg-python numpy python-vlc bleak
+pip install -r requirements.txt
 python3 brain_battle_main.py
 ```
 
@@ -421,11 +421,12 @@ works," since they can't be closed by writing more code.
    in `docs/ROADMAP.md` Phase 5 (move the two dataclasses into their own
    module or `brain_battle_main`, delete the rest, run the smoke gate).
 
-5. **matplotlib references outside this file** — nothing imports it since H
-   (grep-verified; only comment/docstring mentions remain). This file's own
-   `pip install` line no longer lists it. `README.md` still does, and there
-   is no pinned `requirements.txt` yet — both are tracked in
-   `docs/ROADMAP.md` Phase 1.
+5. ~~**matplotlib references outside this file**~~ — **DONE in Phase 1.**
+   `requirements.txt` (derived from actual imports, grep-verified) excludes
+   it; `CLAUDE.md` and `README.md` both now say `pip install -r
+   requirements.txt` instead of listing packages by hand. Only the
+   historical comment/docstring mentions above (H's own entry) remain, which
+   is correct — they describe what H removed, not a current dependency.
 
 ## Conventions & gotchas
 

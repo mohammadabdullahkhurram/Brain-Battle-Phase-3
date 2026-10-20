@@ -1,0 +1,26 @@
+# Brain Battle — pinned Python dependencies.
+#
+# Derived from the actual `import` statements across the repo (grepped, not
+# copied from an old pip line) and pinned to the versions this environment's
+# tests/ suite passed against. matplotlib is intentionally absent — nothing
+# has imported it since the pyqtgraph port (93888f4).
+#
+# Two more runtime dependencies are NOT here because they are system
+# installs, not pip packages:
+#   ffmpeg — audio/video extraction, export encoding (brew install ffmpeg)
+#   VLC    — the desktop app providing libVLC, used via python-vlc below
+#
+PyQt6==6.10.2
+opencv-python==4.11.0.86
+pyqtgraph==0.14.0
+pylsl==1.18.1
+muselsl==2.3.1
+scipy==1.15.3
+pandas==2.2.3
+ffmpeg-python==0.2.0
+numpy==2.2.5
+python-vlc==3.0.21203
+# bleak is never imported directly in this repo, but muselsl's direct-BLE
+# backend (backend="bleak", used throughout eeg_module.py) requires it at
+# runtime — without it, EEG connect fails with an import error inside muselsl.
+bleak==2.1.1

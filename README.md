@@ -22,7 +22,7 @@ time-aligned dataset for analysis. It is a PyQt6 app, ~11k lines of Python.
 **Python** (3.10+):
 
 ```bash
-pip install PyQt6 pyqtgraph opencv-python pylsl muselsl scipy pandas ffmpeg-python numpy python-vlc bleak
+pip install -r requirements.txt
 ```
 
 **System dependencies:**
