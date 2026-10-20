@@ -63,6 +63,38 @@ System binaries required: `ffmpeg` (audio extraction, export) and VLC (review
 playback via python-vlc). Captures land in `Captures/` next to the source
 (override with `BRAIN_BATTLE_CAPTURE_DIR`).
 
+## Demo session
+
+Hardware is broken (see "Project situation" above), so every phase of
+`docs/ROADMAP.md` builds and tests against a **generated demo session**
+instead:
+
+```bash
+python3 tools/generate_demo_session.py                    # default: 2 rounds, 160s, seed 0
+python3 tools/generate_demo_session.py --out /tmp/demo --rounds 3 --seed 7
+python3 tools/generate_demo_session.py --interrupted       # looks like a mid-round crash
+```
+
+It writes a real v3 session folder — 4 camera MP4s + sidecars (one camera
+deliberately drifts: 30fps declared container vs. ~29.5fps true capture
+rate, for Phase 5's drift-detection work), 2 boxer EEG CSVs with plausible
+synthetic signal, `phase_markers.csv`, and `session_manifest.json` — by
+reusing the real writers (`session_storage`, `USBCameraThread`'s sidecar
+methods, `_MuseDirectReader`'s chunk/flush path) wherever they're headlessly
+callable, so it can't silently drift from the format the app actually
+reads/writes. Deterministic for a given `--seed`; the default config
+generates in well under a minute.
+
+**This is also the eyes-on-glass check** deferred work item #1 has been
+waiting for: every camera shows a full-frame white flash and every EEG
+channel gets a sharp spike at each phase-marker instant, so you can load a
+generated session into Review, hit ALIGN, and visually confirm all four
+cameras + both EEG panes land on the same instant at each flash/spike — the
+same check a real capture session needs, just without needing hardware to
+produce the fixture. `tests/test_demo_session.py` automates the arithmetic
+side of this (sidecar/MP4 frame counts, EEG columns/rate, and that ALIGN's
+computed seeks match the generator's own start delays exactly).
+
 ## Tests (`tests/` — plain scripts, `python3 tests/<name>.py`, nonzero exit on failure)
 
 All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
@@ -83,6 +115,11 @@ All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
   axis, between-brain skew + markers preserved, CSV round-trip).
 - `test_ring_buffer.py` — `_RingBuffer` chronological ordering, including
   the over-capacity write branch (latent bug fixed in `0de80f2`).
+- `test_demo_session.py` — `tools/generate_demo_session.py` end to end: sidecar
+  row counts == MP4 frame counts (incl. the deliberately drifting camera), EEG
+  CSV columns/sample rate, a headless `SyncReviewTab.load_session_folder` +
+  ALIGN pass whose computed seeks match the generator's own start delays, and
+  the `--interrupted` fixture (no `SESSION_END`, last phase left open).
 
 (The audio-era `test_seek_alignment.py` and `test_xcorr_confidence.py` were
 deleted in Step 4 with the xcorr feature they guarded.)

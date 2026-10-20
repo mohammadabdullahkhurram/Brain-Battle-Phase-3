@@ -22,26 +22,29 @@ whoever picks up the item, not a contract.
 
 ## Phase 1 — Foundation
 
-- **`requirements.txt` pinning current deps (no matplotlib).**
-  *Why:* there is no pinned dependency file today — only the `pip install`
-  line in `CLAUDE.md`/`README.md`, which drifts (it still listed `matplotlib`
-  until this pass even though nothing has imported it since `93888f4`).
-  *Files:* new `requirements.txt`; `README.md` (pip line).
+- ~~**`requirements.txt` pinning current deps (no matplotlib).**~~ **DONE.**
+  `requirements.txt` is derived from the repo's actual `import` statements
+  (grepped, not copied from the old pip line) and pinned to the versions the
+  `tests/` suite passed against; `matplotlib` stays excluded. `CLAUDE.md` and
+  `README.md` now say `pip install -r requirements.txt`.
+  *Files touched:* new `requirements.txt`; `README.md`/`CLAUDE.md` (pip line).
 
-- **Demo session generator** — a script that creates a realistic fake
-  session folder in the v3 layout: 4 videos with `.timestamps.csv` sidecars
-  (including a slight, deliberate fps drift on at least one camera so later
-  drift-detection work has something real to catch), 2 EEG CSVs with a
-  `t_session_seconds` column, a `phase_markers.csv`, and a
-  `session_manifest.json` with a `capture_clock` origin.
-  *Why:* hardware is broken and nobody has real capture data; every
-  subsequent phase (data safety, the new screens, labelling, export) needs a
-  repeatable fixture to build and test against instead of hand-waving.
-  *Files:* new script, e.g. `tools/generate_demo_session.py`; mirrors the
-  contracts in `session_storage.py` (`SessionLayout`, `PhaseRecord`,
-  `_write_manifest`), `usb_camera.py` (`_open_timestamp_sidecar`/
-  `_stamp_frame` CSV format), and `eeg_module.py` (`stop_recording`'s CSV
-  columns: `TP9,AF7,AF8,TP10,AUX,timestamps[,t_session_seconds]`).
+- ~~**Demo session generator**~~ **DONE.** `tools/generate_demo_session.py`
+  builds a realistic fake v3 session folder: 4 videos with `.timestamps.csv`
+  sidecars (one camera has a deliberate drift — 30fps declared container vs.
+  ~29.5fps true capture rate — for Phase 5's drift-detection work), 2 EEG
+  CSVs with a `t_session_seconds` column and plausible synthetic signal
+  (noise, alpha, blink artifacts, round-phase motion scaling, a shared spike
+  at every phase marker), a `phase_markers.csv`, and a `session_manifest.json`
+  with a `capture_clock` origin. `--interrupted` produces a crash-looking
+  session for Phase 2. Reuses the real writers wherever they're headlessly
+  callable (`session_storage.SessionLayout`, `session_controller._build_timeline`,
+  `USBCameraThread`'s sidecar methods, `_MuseDirectReader`'s chunk/flush path)
+  so the fixture can't silently drift from the real format. Covered end to
+  end by `tests/test_demo_session.py`. See `CLAUDE.md`'s "Demo session"
+  section for usage.
+  *Files touched:* new `tools/generate_demo_session.py`,
+  `tests/test_demo_session.py`.
 
 - **Decide later: merge `develop` → `main`** (owner's call; `main` is meant
   to be the verified, shippable baseline).

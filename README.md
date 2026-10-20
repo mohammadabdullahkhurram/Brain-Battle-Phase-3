@@ -211,7 +211,29 @@ python3 tests/test_capture_clock.py  # capture-clock alignment: reconciliation a
                                      # review-tab seek-formula invariant, co-registered EEG export
 python3 tests/test_ring_buffer.py    # EEG ring-buffer chronological ordering incl. the
                                      # over-capacity write branch
+python3 tests/test_demo_session.py   # the demo session generator below, end to end
 ```
+
+## Demo session
+
+Hardware (cameras, Muse-S bands) isn't always available. `tools/generate_demo_session.py`
+builds a complete, realistic v3 session folder without any — 4 camera MP4s
+with timestamp sidecars, 2 boxer EEG CSVs with plausible synthetic signal,
+phase markers, and a manifest — by reusing the app's own writers wherever
+they can be called headlessly, so it can't silently drift from the format
+the app actually reads:
+
+```bash
+python3 tools/generate_demo_session.py                 # 2 rounds, 160s, deterministic (seed 0)
+python3 tools/generate_demo_session.py --rounds 3 --seed 7
+python3 tools/generate_demo_session.py --interrupted    # looks like a mid-round crash
+```
+
+Every camera flashes full white and every EEG channel spikes at each
+phase-marker instant, so a generated session can also drive the eyes-on-glass
+check from "Known limitations" below: open it in Review, hit ALIGN, and
+confirm all four cameras and both EEG panes land on the same instant at each
+flash/spike — without needing real hardware to produce the fixture.
 
 ## Known limitations — verify with real data
 
