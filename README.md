@@ -53,7 +53,7 @@ python3 brain_battle_main.py
 ## Workflow — three tabs
 
 ```
-LIVE MONITOR  →  SYNC + REVIEW  →  LABELLING  →  Export
+LIVE MONITOR  →  REVIEW  →  LABELLING  →  Export
 ```
 
 1. **Live Monitor** — connect cameras and headbands, START SESSION, configure
@@ -62,37 +62,51 @@ LIVE MONITOR  →  SYNC + REVIEW  →  LABELLING  →  Export
    Recording is **one continuous take** per source for the whole session;
    phase transitions are written as timestamps to `phase_markers.csv`, not as
    separate files.
-2. **Sync + Review** — auto-loads the finished session (or use OPEN SESSION
-   FOLDER for a past one). AUTO-SYNC aligns the sources — see
+2. **Review** — auto-loads the finished session (or use OPEN SESSION
+   FOLDER for a past one). ALIGN reads the sources' alignment — see
    [Synchronisation](#synchronisation) — then all four videos play in lockstep
    with both EEG traces following the playhead. Phase markers appear as
    colour-coded chips on the timeline.
 3. **Labelling** — load the session (OPEN SESSION FOLDER), place event labels
    at the playhead from a configurable palette (keys `1`–`9` select+place,
    `Space` toggles play/pause). Phase markers auto-load as read-only entries.
-4. **Export** — from the Sync tab: a ZIP with a quad-grid merged MP4
+4. **Export** — from the Review tab: a ZIP with a quad-grid merged MP4
    (hardware-encoded where a working encoder is detected), original videos,
-   EEG CSVs, labels CSV, and per-source sync offsets.
+   EEG CSVs, a co-registered EEG file (both boxers on one shared time axis),
+   labels CSV, and per-source sync offsets.
 
 ## Synchronisation
 
-Alignment is **audio-aware**, decided per sync run:
+Alignment is driven by a **capture-time clock**, not audio — this is a
+breaking change from pre-3.0 versions (see the warning at the top of this
+file). At recording start, one shared origin `(t0_monotonic, t0_unix)` is
+captured once and threaded into every camera and every connected Muse-S, so
+every source stamps itself against the same clock:
 
-- **In-app captures** have no audio track (OpenCV's `VideoWriter` writes
-  video-only), and they don't need one — all sources start simultaneously, so
-  every offset is 0 and phases come from `phase_markers.csv`
-  (method: `simultaneous_start`).
-- **External footage** (e.g. SD-card DSLR files uploaded manually) is aligned
-  by audio cross-correlation among the audio-bearing clips only: bandpassed
-  envelope xcorr at 4 kHz, ±30 s search window. Each measured offset carries a
-  real **confidence** score (baseline-corrected peak prominence, 0–1) shown as
-  a ✓/~/? badge per source (method: `xcorr`).
+- Each camera writes a per-frame sidecar `<mp4-stem>.timestamps.csv`
+  (`frame_index, t_session_seconds, t_monotonic, t_unix`) next to its MP4.
+- Each EEG recording gets a `t_session_seconds` column alongside its raw
+  Unix-epoch `timestamps`.
+- `phase_markers.csv` was already on this axis (`t_session_seconds` relative
+  to the shared origin).
 
-`sync_offsets.csv` in every export records the true per-source method and the
-measured confidence — or an explicit `n/a (<method>)` where alignment was
-assumed rather than measured. The seek formula that maps offsets to per-player
-seeks is guarded by `tests/test_seek_alignment.py`; do not change it without
-running that test.
+ALIGN in the Review tab reads — not discovers — the alignment: each camera's
+measured start (from its sidecar's first row) becomes its offset, the
+latest-starting source becomes the playhead-zero reference, and every other
+player seeks by `(playhead_zero − its own start)`. There is nothing to
+correlate and no audio involved; in-app cameras never record audio in the
+first place (OpenCV's `VideoWriter` is video-only).
+
+`sync_offsets.csv` in every export records `method = capture_clock` and the
+honest sentinel `confidence = n/a (capture_clock)` for every source — there
+is no correlation score to report under this method. The seek formula is
+guarded by `tests/test_capture_clock.py`; do not change it without running
+that test.
+
+**Known gap:** the EEG *clock source* (muselsl's wall-clock derivation + BLE
+transport latency) has not been verified against a real Muse-S band, and the
+Labelling tab's own video transport is not yet converted onto this shared
+axis. See `CLAUDE.md`'s "Deferred work" section and `docs/ROADMAP.md`.
 
 ## Architecture
 
@@ -136,10 +150,7 @@ running that test.
 
 | Module | Purpose |
 |---|---|
-| `sync_utils/audio_analysis.py` | Audio extraction, xcorr delay + confidence, audio-stream probing |
-| `sync_utils/video_sync.py` | ffmpeg preview/trim helpers |
-| `sync_utils/eeg_video_sync.py` | EEG-vs-video window comparison via `creation_time` metadata |
-| `sync_engine.py` | `SourceOffset`/`SyncResult` dataclasses used by the sync/export path (the rest of the module is a dormant legacy path) |
+| `sync_engine.py` | `SourceOffset`/`SyncResult` dataclasses used by the sync/export path (the rest of the module — audio cross-correlation — is dormant, dead code; see `docs/ROADMAP.md`) |
 | `vlc_module.py` | `VLCVideoSlot`, `SyncPlaybackController` — labelling-tab playback |
 | `export_module.py` | Quad-grid ffmpeg merge (validated hardware encoder with libx264 fallback), labels CSV, session ZIP |
 | `sync_utils/infobox.py` | Tiny message-box helper |
@@ -179,11 +190,12 @@ model — `baseline/`, `Round 1/`, … — is gone.)
   muselsl CSVs (`timestamps` first, `Right AUX`) also load.
 - **Labels CSV** — `timestamp_sec, timestamp_str, label, color`.
 - **`sync_offsets.csv`** — `source, offset_sec, method, confidence,
-  is_reference` per video/EEG source; confidence is measured (xcorr) or an
-  explicit `n/a (<method>)` sentinel.
+  is_reference` per video/EEG source; `method` is always `capture_clock` and
+  `confidence` is always the honest sentinel `n/a (capture_clock)` — there is
+  no correlation score under this alignment method.
 - **Export ZIP** — `merged_video.mp4` (2×2 quad grid), `labels.csv`,
-  `sync_offsets.csv`, `eeg/eeg_0N.csv`, `videos/video_0N.*` (originals),
-  `README.txt`.
+  `sync_offsets.csv`, `eeg/eeg_0N.csv`, `eeg_coregistered.csv` (both boxers on
+  one shared time axis), `videos/video_0N.*` (originals), `README.txt`.
 
 ## Testing
 
@@ -191,32 +203,32 @@ Plain scripts, no framework; each exits nonzero on failure. All need `ffmpeg`
 on PATH and stub `python-vlc` only when libVLC is absent.
 
 ```bash
-python3 tests/test_smoke.py            # import/construct floor — gate for deletions/refactors:
-                                       # fresh-subprocess import of every module, encoder-probe
-                                       # invariant, headless construction of all tabs + shell
-python3 tests/test_seek_alignment.py   # sync seek-formula ground truth: a known transient must
-                                       # land at the same playhead time in every clip
-python3 tests/test_xcorr_confidence.py # confidence discrimination (high shared / low unrelated /
-                                       # decays under noise) + threading into badge and CSV
-python3 tests/test_ring_buffer.py      # EEG ring-buffer chronological ordering incl. the
-                                       # over-capacity write branch
+python3 tests/test_smoke.py          # import/construct floor — gate for deletions/refactors:
+                                     # fresh-subprocess import of every module, encoder-probe
+                                     # invariant, headless construction of all tabs + shell
+python3 tests/test_capture_clock.py  # capture-clock alignment: reconciliation arithmetic,
+                                     # marker/EEG co-registration, manifest round-trip, the
+                                     # review-tab seek-formula invariant, co-registered EEG export
+python3 tests/test_ring_buffer.py    # EEG ring-buffer chronological ordering incl. the
+                                     # over-capacity write branch
 ```
 
 ## Known limitations — verify with real data
 
 - **Rendering needs eyes-on-glass.** Synced playback (decode, lockstep,
-  markers, sync) and the pyqtgraph review-EEG widget are verified headless up
-  to correct pixels in the render buffer and measured scrub performance — but
-  neither has been *watched* with real capture data. First real session:
-  launch the app, open it, play + scrub, watch all four cams and both EEG
-  panes.
+  markers, capture-clock alignment) and the pyqtgraph review-EEG widget are
+  verified headless up to correct pixels in the render buffer, measured scrub
+  performance, and alignment arithmetic — but nobody has *watched* it with
+  real capture data. First real session: launch the app, open it, play +
+  scrub, watch all four cams and both EEG panes.
+- **The EEG clock source is unverified.** Alignment arithmetic is unit-tested,
+  but whether muselsl's wall-clock timestamps + BLE transport latency place
+  EEG accurately on the shared axis has not been checked against a real
+  Muse-S band. See `CLAUDE.md`'s "Deferred work."
 - **No active playback drift correction.** Lockstep rests on starting all four
   players simultaneously (held to ~250 ms clock quantisation over short
   windows). Whether long multi-minute sessions drift is an open question that
   needs real footage to answer.
-- **Sync confidence measures internal consistency, not correctness** — 
-  coincidentally aligned loud transients in unrelated audio can score high
-  (inherent to envelope xcorr).
 - **Encoder fallback on GPU-less machines** (e.g. an nvenc build with no
   NVIDIA card) is covered by forced-failure tests, not exercised on real such
   hardware.
@@ -228,8 +240,9 @@ python3 tests/test_ring_buffer.py      # EEG ring-buffer chronological ordering 
 | Project | Brain Battle — Neuroscience Sports Capture System |
 | Institution | Constructor University Bremen (Community Impact Project) |
 | Version | develop v3.0.0-dev · main v2.1.0 (authoritative: `version.py`) |
-| GitHub | https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-2-v2.1.0 |
+| GitHub | https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3 |
 | Hardware | 2× Muse-S (`MuseS-7538`, `MuseS-7564`), 2× DSLR (USB-C UVC), 2× POV (FPV receiver → USB) |
 
 Development history lives in `CHANGELOG.md` (historical "Phase 2.N" dev-log
 numbering) and `CLAUDE.md` (current project context, issue backlog, test map).
+Planned future work lives in `docs/ROADMAP.md`.

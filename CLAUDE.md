@@ -1,13 +1,61 @@
-# Brain Battle — Phase 2 (v2.1.0)
+# Brain Battle — v3.0.0-dev (develop)
 
 PyQt6 desktop app for neuroscience boxing capture: 4 USB cameras + 2 Muse-S EEG
 headbands (Bluetooth), with a live capture tab, a sync/review tab, a labelling
 tab, and an export pipeline. ~11k lines across 24 .py files.
 
+## Project situation
+
+- **Hardware is currently broken.** Nothing in this project can be tested
+  against real cameras or real Muse-S bands right now. All development and
+  testing happens against a generated demo session (see
+  `docs/ROADMAP.md` Phase 1) until hardware is available again.
+- **Nobody has inspected raw Muse-S EEG from a real sparring round.** Signal
+  usability — noise floor, motion artifact during actual boxing, whether the
+  channels are even readable — is unknown. Don't assume the EEG is clean.
+- **The synchrony analysis method is undecided and has no owner yet.** This
+  matters directly for how much more sync-precision work is worth doing:
+  phase-based measures (PLV, coherence) need alignment accurate to a few ms;
+  power/envelope-based measures tolerate tens of ms (what the current
+  capture-clock design already targets). **Don't invest in tighter sync
+  precision until this is answered** — it would be optimizing a number nobody
+  has confirmed matters.
+- Therefore: build and test everything against the generated demo session
+  described in `docs/ROADMAP.md`, not against hardware that doesn't exist
+  yet or data nobody has seen.
+
+## Working agreement
+
+- The owner approves each `docs/ROADMAP.md` phase before it starts. Never
+  start the next phase on your own initiative.
+- Commit locally per logical change. Never push unless explicitly told to.
+- Run everything in `tests/` before and after every change, and report
+  pass/fail — not just "I ran the tests."
+
+## Product direction
+
+Full plan and reasoning: `docs/ROADMAP.md` — the single source of what's
+planned next. Summary of where the product is headed:
+
+- **Audience is non-technical researchers and research assistants**, not
+  developers. UI copy should be plain language, no jargon ("alignment",
+  "capture clock", "xcorr" are implementation details, not UI vocabulary).
+- **Light mode only.** The dark theme, the theme toggle, and the
+  restart-to-apply theme-switch flow are going away.
+- **Three screens, not three tabs with sync internals exposed:** Sessions
+  (home library of past/current sessions) → Record (a guided capture flow)
+  → Review & Label (one merged screen — recording and labelling stop being
+  separate tabs with separate, sometimes-inconsistent alignment logic), plus
+  a Settings screen for everything that's currently hardcoded in source
+  (boxer↔headband mapping, resolution/fps, label vocabulary, round bell).
+- **The separate Sync/Review tab goes away as a distinct concept** —
+  alignment becomes fully automatic and invisible to the user; there is
+  nothing to click to "sync."
+
 ## Running
 
 ```bash
-pip install PyQt6 pyqtgraph opencv-python matplotlib pylsl muselsl scipy pandas ffmpeg-python numpy python-vlc bleak
+pip install PyQt6 pyqtgraph opencv-python pylsl muselsl scipy pandas ffmpeg-python numpy python-vlc bleak
 python3 brain_battle_main.py
 ```
 
@@ -136,9 +184,12 @@ Step status:
   placement (deferred #0/#1) — labeled in the CSV's README section and the
   `build_coregistered_eeg` docstring.
 
-**This completes the unified-capture-clock build phase.** All that remains is
-the eyes-on-glass verification with real capture data (deferred #0/#1) and the
-scoped follow-ups below.
+**This completes the unified-capture-clock build phase.** What remains from
+this specific phase is the eyes-on-glass verification with real capture data
+(deferred #0/#1) and the scoped follow-ups below. Everything planned after
+this phase — the Sessions/Record/Review & Label redesign, data-safety fixes,
+labelling improvements, shipping — is tracked in `docs/ROADMAP.md`, gated on
+owner approval per phase (see "Working agreement" above).
 
 ---
 
@@ -157,7 +208,9 @@ review/sync path still reading the v1 per-round layout) is closed. Coverage:
 | `bbc0769` `5ff48db` `7697642` `93888f4` | Smoke gate, J deletions, K logging, H pyqtgraph port |
 | `43ece84` `fc13bd8` `d1ec67b` (+ this one) | CLAUDE.md + README documentation |
 
-Every remaining item is in **Deferred work** below — nothing else is planned.
+This phase's own loose ends are in **Deferred work** below. Everything
+planned beyond that — the product direction summarized above — lives in
+`docs/ROADMAP.md`, not here.
 
 ## CRITICAL CONTEXT — the v1.x → v2.x migration gap
 
@@ -300,10 +353,14 @@ start simultaneously and share `phase_markers.csv` time.
   GPU-less box) is proven by forced-probe-failure unit tests only; it has
   never been exercised on real GPU-less hardware.
 
-## Deferred work — THE one place to look
+## Deferred work — loose ends from the capture-clock build
 
-Everything not finished lives here, each with why it's deferred and what
-unblocks it. Nothing else is planned or half-open elsewhere in this file.
+Everything below is specifically blocked on real hardware, or was
+deliberately scoped out of the Step 1-5 capture-clock build above, each with
+why it's deferred and what unblocks it. This list is NOT the project's
+backlog — that's `docs/ROADMAP.md`. Several items below (e.g. #0/#1, the
+EEG/video alignment checks) reappear there as "Deferred until hardware
+works," since they can't be closed by writing more code.
 
 0. **UNVERIFIED: EEG capture-time alignment** (Step 2 of the unified-clock
    phase). EEG samples are placed on the shared session axis by
@@ -346,7 +403,7 @@ unblocks it. Nothing else is planned or half-open elsewhere in this file.
    labelling) + porting the review tab's axis_shift approach into the label
    tab's controller.
 
-2. **Drift-correction decision** — there is NO active playback drift
+3. **Drift-correction decision** — there is NO active playback drift
    correction; lockstep rests solely on issuing `play()` to all four players
    in the same event-loop turn (the removed `_drift_hb` heartbeat was dead
    code, so nothing was lost). Held to ~250 ms — libVLC clock quantization —
@@ -356,18 +413,19 @@ unblocks it. Nothing else is planned or half-open elsewhere in this file.
    for growing desync; if it drifts, reintroduce a heartbeat (QTimer ~2 s →
    nudge players toward the reference clock).
 
-3. **`sync_engine.py` dataclass extraction** — `SourceOffset`/`SyncResult`
+4. **`sync_engine.py` dataclass extraction** — `SourceOffset`/`SyncResult`
    are live (imported locally in `_on_sync_finished`); everything else in the
    module (`SyncWorker`, `compute_sync`, the zeros-on-failure audio loader)
    is unreachable and deliberately un-instrumented by K. *Why deferred:* pure
-   refactor, no behavior at stake — doable anytime. Move the two dataclasses
-   into their own module (or `brain_battle_main`), delete the rest, run the
-   smoke gate.
+   refactor, no behavior at stake — doable anytime. Tracked as its own item
+   in `docs/ROADMAP.md` Phase 5 (move the two dataclasses into their own
+   module or `brain_battle_main`, delete the rest, run the smoke gate).
 
-4. **matplotlib removal from requirements** — nothing imports it since H
-   (grep-verified; only comment/docstring mentions remain). *Why deferred:*
-   one-line change bundled better with the next environment touch — doable
-   anytime. Drop it from the README pip line and any environment files.
+5. **matplotlib references outside this file** — nothing imports it since H
+   (grep-verified; only comment/docstring mentions remain). This file's own
+   `pip install` line no longer lists it. `README.md` still does, and there
+   is no pinned `requirements.txt` yet — both are tracked in
+   `docs/ROADMAP.md` Phase 1.
 
 ## Conventions & gotchas
 
