@@ -36,6 +36,37 @@ from version import __version__
 
 _INT32_MAX = 2_147_483_647
 
+# Autosaved labels file written into each session folder. schema_version lets
+# Phase 4 migrate the on-disk shape (e.g. moving times onto the capture-clock
+# t_session axis, filling boxer/end fields) without silently misreading v1.
+LABELS_JSON_NAME = "labels.json"
+LABELS_SCHEMA_VERSION = 1
+
+
+def _atomic_write_json(path, data) -> None:
+    """Write JSON to `path` via a temp file + os.replace so a crash during
+    the write never leaves a half-written (corrupt) labels file — either the
+    old file or the complete new one survives."""
+    import json as _json
+    import os as _os
+    import tempfile as _tempfile
+    d = _os.path.dirname(_os.path.abspath(path))
+    _os.makedirs(d, exist_ok=True)
+    fd, tmp = _tempfile.mkstemp(dir=d, prefix=".labels-", suffix=".tmp")
+    try:
+        with _os.fdopen(fd, "w", encoding="utf-8") as f:
+            _json.dump(data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            _os.fsync(f.fileno())
+        _os.replace(tmp, path)   # atomic on POSIX and Windows (same filesystem)
+    except Exception:
+        try:
+            _os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _clamp_ms(ms) -> int:
     try:
         ms = float(ms)
@@ -1102,7 +1133,10 @@ class SyncReviewTab(QWidget):
                     log.warning("EEG CSV read for labelling handoff failed (%s): %r", s.file_path, e)
                     eeg_data.append((None, 0.0))
             else: eeg_data.append((None, 0.0))
-        label_tab.load_session_data(video_data, eeg_data, self.sync_result)
+        # Pass the session folder so the label tab autosaves/restores labels
+        # into it (same labels.json the OPEN SESSION FOLDER path uses).
+        label_tab.load_session_data(video_data, eeg_data, self.sync_result,
+                                    session_root=self._session_root)
 
     def _open_session_dialog(self) -> None:
         """Operator-facing counterpart to the automatic Live→Review handoff:
@@ -1223,9 +1257,18 @@ class LabelChip(QWidget):
 
 class LabelMarker(QWidget):
     removed = pyqtSignal()
-    def __init__(self, label_name, color, timestamp_str, parent=None, is_phase=False):
+    def __init__(self, label_name, color, timestamp_str, parent=None, is_phase=False,
+                 t_seconds=None, boxer=None, end_t_seconds=None):
         super().__init__(parent); self.label_name = label_name; self.timestamp_str = timestamp_str; self._color = color
         self.is_phase = is_phase
+        # Numeric placement time in seconds (authoritative — timestamp_str is
+        # for display). None on legacy markers built before this field, in
+        # which case callers parse it back from timestamp_str. boxer /
+        # end_t_seconds are Phase-4 fields carried through now as nullable so
+        # the autosave schema is forward-compatible.
+        self.t_seconds = t_seconds
+        self.boxer = boxer
+        self.end_t_seconds = end_t_seconds
         # Phase markers (auto-loaded from session) get a dashed left border
         # so they're visibly distinct from the user's manual labels.
         if is_phase:
@@ -1495,6 +1538,10 @@ class _MarkerStrip(QWidget):
 class LabellingTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent); self._fake_ts = 0.0
+        # Session folder autosave of user labels lands at <root>/labels.json.
+        # None until a session is opened; restoring suppresses per-insert saves.
+        self._session_root = None
+        self._restoring = False
         self._build()
         self._install_shortcuts()
         self._apply_theme()
@@ -1797,6 +1844,12 @@ class LabellingTab(QWidget):
             candidate = p / "phase_markers.csv"
             if candidate.exists():
                 self._load_phase_markers_csv(str(candidate))
+                # The folder holding phase_markers.csv is the session root —
+                # adopt it for label autosave if we don't already have one,
+                # and restore any labels saved there before.
+                if not self._session_root:
+                    self._session_root = str(p)
+                    self._restore_labels_from_json()
                 return
             if p.parent == p: break  # filesystem root
             p = p.parent
@@ -1837,17 +1890,26 @@ class LabellingTab(QWidget):
             log.info("auto-loaded %d phase markers from %s", added, csv_path)
 
     def _open_session_folder(self) -> None:
-        """One-click loader: pick a session root folder and load every
-        recording inside it (4 videos + 2 EEG CSVs + phase markers).
-        Expects the v2.5 continuous-recording layout:
+        """Pick a session root folder via a dialog, then load it."""
+        folder = QFileDialog.getExistingDirectory(self, "Open session folder", "")
+        if not folder:
+            return
+        self.load_session_folder(folder, announce=True)
+
+    def load_session_folder(self, folder: str, announce: bool = False) -> None:
+        """Load every recording in a session folder (4 videos + 2 EEG CSVs +
+        phase markers), then restore any user labels autosaved to
+        <root>/labels.json. Expects the v2.x continuous-recording layout:
             <session_root>/continuous/Side Cams/*.mp4
             <session_root>/continuous/POV Cams/*.mp4
             <session_root>/continuous/Muse data/*.csv
             <session_root>/phase_markers.csv  (optional)
-        """
+            <session_root>/labels.json        (optional — autosaved labels)
+
+        announce controls the final summary message box (off for headless
+        callers). Split out of _open_session_folder so it's testable without
+        a file dialog."""
         from pathlib import Path
-        folder = QFileDialog.getExistingDirectory(self, "Open session folder", "")
-        if not folder: return
         root = Path(folder)
         cont = root / "continuous"
         if not cont.exists():
@@ -1861,12 +1923,19 @@ class LabellingTab(QWidget):
                     if child.is_dir() and (child / "continuous").exists():
                         root = child; cont = child / "continuous"; break
                 else:
-                    QMessageBox.information(
-                        self, "No session found",
-                        "Couldn't find a 'continuous/' folder under the selected path.\n\n"
-                        "Pick the session root (e.g. 'Brain Battle 2026-04-29 18-30-05/').",
-                    )
+                    if announce:
+                        QMessageBox.information(
+                            self, "No session found",
+                            "Couldn't find a 'continuous/' folder under the selected path.\n\n"
+                            "Pick the session root (e.g. 'Brain Battle 2026-04-29 18-30-05/').",
+                        )
                     return
+
+        # This session's folder is now resolved — it owns the labels.json
+        # autosave target. Clear any markers left from a previously-open
+        # session so we show THIS session's state fresh, not an accumulation.
+        self._session_root = str(root)
+        self._clear_all_placed_labels()
 
         # Find videos in known subfolders + load into slots in this order:
         # Side Cams → slots 0,1 ; POV Cams → slots 2,3
@@ -1907,6 +1976,9 @@ class LabellingTab(QWidget):
         if markers_csv.exists():
             self._load_phase_markers_csv(str(markers_csv))
 
+        # Restore any user labels autosaved from a previous labelling pass.
+        self._restore_labels_from_json()
+
         if loaded_video:
             # Re-attach all slots to the sync controller so PLAY works.
             try:
@@ -1920,11 +1992,12 @@ class LabellingTab(QWidget):
         n_videos = len(side_videos[:2]) + len(pov_videos[:2])
         n_muse   = len(muse_csvs[:2])
         n_marks  = sum(1 for _ in open(markers_csv, encoding="utf-8")) - 1 if markers_csv.exists() else 0
-        QMessageBox.information(
-            self, "Session loaded",
-            f"Loaded {n_videos} video(s), {n_muse} EEG CSV(s), "
-            f"{max(0, n_marks)} phase marker(s) from\n{root.name}",
-        )
+        if announce:
+            QMessageBox.information(
+                self, "Session loaded",
+                f"Loaded {n_videos} video(s), {n_muse} EEG CSV(s), "
+                f"{max(0, n_marks)} phase marker(s) from\n{root.name}",
+            )
 
     def _load_label_eeg_async(self, path: str, widget):
         """Load EEG CSV for label tab — mirrors SyncReviewTab._load_eeg_async."""
@@ -2094,7 +2167,14 @@ class LabellingTab(QWidget):
         # setValue triggers _on_timeline_scrub which does the actual seeking
         self.tl_slider.setValue(slider_val)
 
-    def load_session_data(self, video_slots_data, eeg_data, sync_result):
+    def load_session_data(self, video_slots_data, eeg_data, sync_result,
+                          session_root=None):
+        # Handoff from the Review tab. When it passes the session folder, adopt
+        # it for label autosave and restore any labels saved earlier, matching
+        # the OPEN SESSION FOLDER path.
+        if session_root:
+            self._session_root = str(session_root)
+            self._clear_all_placed_labels()
         for i, (path, offset) in enumerate(video_slots_data):
             if i < len(self.label_slots) and path: self.label_slots[i].load(path, offset_sec=offset)
         loaded = [s for s in self.label_slots if s.is_loaded()]; offsets = [s._offset_sec for s in loaded]
@@ -2105,6 +2185,8 @@ class LabellingTab(QWidget):
         for i, (df, offset) in enumerate(eeg_data):
             if i == 0 and df is not None: self.eeg_label_1.load(df, offset_sec=offset)
             elif i == 1 and df is not None: self.eeg_label_2.load(df, offset_sec=offset)
+        if session_root:
+            self._restore_labels_from_json()
         self._play_btn_lbl.setEnabled(True)
 
     def load_eeg_data(self, df1, offset1, df2, offset2):
@@ -2113,17 +2195,19 @@ class LabellingTab(QWidget):
 
     def _place_label(self):
         if not self.active_label: return
-        ts = self._fake_ts; h = int(ts//3600); m = int((ts%3600)//60); s = ts%60
+        ts = float(self._fake_ts); h = int(ts//3600); m = int((ts%3600)//60); s = ts%60
         ts_str = f"{h:02d}:{m:02d}:{s:06.3f}"
-        marker = LabelMarker(self.active_label, self.active_color, ts_str)
+        marker = LabelMarker(self.active_label, self.active_color, ts_str, t_seconds=ts)
         marker.removed.connect(self._update_label_count)
         marker.removed.connect(self._rebuild_timeline_markers)
+        marker.removed.connect(self._autosave_labels)
         self.placed_layout.insertWidget(self.placed_layout.count()-1, marker); self._update_label_count()
         # Mirror the label onto the timeline strip as a coloured tick
         try:
             self.tl_slider.add_marker(ts, self.active_color, self.active_label)
         except Exception as e:
             log.debug("timeline marker mirror failed: %r", e)
+        self._autosave_labels()
 
     def _rebuild_timeline_markers(self):
         """Re-derive ticks from the current PLACED LABELS list. Called
@@ -2162,10 +2246,121 @@ class LabellingTab(QWidget):
             item = self.placed_layout.itemAt(i)
             if item and item.widget() and isinstance(item.widget(), LabelMarker):
                 marker = item.widget(); ts_str = marker.timestamp_str; name = marker.label_name
-                try: parts = ts_str.split(":"); ts_sec = float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
-                except Exception: ts_sec = 0.0
-                labels.append({"timestamp_sec": round(ts_sec,3), "timestamp_str": ts_str, "label": name, "color": marker._color})
+                # Prefer the numeric placement time; fall back to parsing the
+                # display string only for any legacy marker without it.
+                ts_sec = marker.t_seconds
+                if ts_sec is None:
+                    try: parts = ts_str.split(":"); ts_sec = float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
+                    except Exception: ts_sec = 0.0
+                labels.append({"timestamp_sec": round(float(ts_sec),3), "timestamp_str": ts_str, "label": name, "color": marker._color})
         return labels
+
+    # ── Label autosave / restore (session folder) ───────────────────────────
+
+    def _user_label_markers(self):
+        """Placed markers that are user labels (not auto-loaded phase markers)."""
+        out = []
+        for i in range(self.placed_layout.count()):
+            item = self.placed_layout.itemAt(i)
+            w = item.widget() if item else None
+            if isinstance(w, LabelMarker) and not w.is_phase:
+                out.append(w)
+        return out
+
+    def _autosave_labels(self):
+        """Atomically persist the current user labels to <root>/labels.json.
+        Called on every add/remove. No-op while restoring or if no session
+        folder is set (labels still work in memory + via EXPORT)."""
+        if self._restoring or not self._session_root:
+            return
+        labels = []
+        for w in self._user_label_markers():
+            t = w.t_seconds
+            if t is None:
+                try:
+                    parts = w.timestamp_str.split(":")
+                    t = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                except Exception:
+                    t = 0.0
+            labels.append({
+                "t_seconds": round(float(t), 3),
+                "label": w.label_name,
+                "color": w._color,
+                "boxer": w.boxer,              # Phase-4 field, null for now
+                "end_t_seconds": w.end_t_seconds,  # Phase-4 field, null for now
+            })
+        data = {"schema_version": LABELS_SCHEMA_VERSION, "labels": labels}
+        try:
+            _atomic_write_json(os.path.join(self._session_root, LABELS_JSON_NAME), data)
+        except Exception as e:
+            log.warning("label autosave to %s failed: %s", self._session_root, e)
+
+    def _restore_labels_from_json(self):
+        """Re-place user labels saved to <root>/labels.json by a previous
+        labelling pass. No-op if the file is absent or its schema_version
+        isn't one this build understands."""
+        if not self._session_root:
+            return
+        path = os.path.join(self._session_root, LABELS_JSON_NAME)
+        if not os.path.exists(path):
+            return
+        import json as _json
+        try:
+            data = _json.loads(open(path, encoding="utf-8").read())
+        except Exception as e:
+            log.warning("could not read %s: %s", path, e)
+            return
+        ver = data.get("schema_version")
+        if ver != LABELS_SCHEMA_VERSION:
+            log.warning("labels.json schema_version %r != %r — not restoring "
+                        "(a newer/older build wrote it)", ver, LABELS_SCHEMA_VERSION)
+            return
+        self._restoring = True
+        try:
+            for entry in data.get("labels", []):
+                try:
+                    t = float(entry.get("t_seconds", 0.0))
+                except (TypeError, ValueError):
+                    continue
+                name = entry.get("label", "LABEL")
+                color = entry.get("color", "#637DFF")
+                h = int(t // 3600); m = int((t % 3600) // 60); s = t % 60
+                ts_str = f"{h:02d}:{m:02d}:{s:06.3f}"
+                marker = LabelMarker(name, color, ts_str, t_seconds=t,
+                                     boxer=entry.get("boxer"),
+                                     end_t_seconds=entry.get("end_t_seconds"))
+                marker.removed.connect(self._update_label_count)
+                marker.removed.connect(self._rebuild_timeline_markers)
+                marker.removed.connect(self._autosave_labels)
+                self.placed_layout.insertWidget(self.placed_layout.count() - 1, marker)
+                try:
+                    self.tl_slider.add_marker(t, color, name)
+                except Exception as e:
+                    log.debug("timeline marker mirror failed on restore: %r", e)
+            self._update_label_count()
+        finally:
+            self._restoring = False
+
+    def _clear_all_placed_labels(self):
+        """Remove every placed marker (user + phase) and its timeline tick.
+        Used when opening a session so it shows that session's labels fresh
+        rather than an accumulation. Suppresses autosave during the clear."""
+        self._restoring = True
+        try:
+            for i in reversed(range(self.placed_layout.count())):
+                item = self.placed_layout.itemAt(i)
+                w = item.widget() if item else None
+                if isinstance(w, LabelMarker):
+                    self.placed_layout.removeWidget(w)
+                    w.setParent(None)
+                    w.deleteLater()
+            try:
+                self.tl_slider.clear_markers()
+            except Exception:
+                pass
+            self._update_label_count()
+        finally:
+            self._restoring = False
 
     def _export_labels(self):
         labels = self.get_labels()
