@@ -203,10 +203,43 @@ def test_interrupted_session():
               if len(manifest["phases"]) > 1 else True)
 
 
+# ─── 6: marker label format (underscore form) + both-forms loader ───────────
+
+def test_marker_label_format():
+    # The demo generator mirrors live_session_tab's writer: phase markers use
+    # the underscore token form (ROUND_1_START), not the legacy "ROUND 1_START".
+    with tempfile.TemporaryDirectory() as tmp:
+        result = generate_demo_session(out=tmp, rounds=2, round_sec=8,
+                                       break_sec=3, baseline_sec=3, seed=4)
+        with open(os.path.join(result["root"], "phase_markers.csv"), encoding="utf-8") as f:
+            labels = [row.split(",")[2] for row in f.read().strip().splitlines()[1:]]
+        expected = ["BASELINE_START", "ROUND_1_START", "BREAK_1_START",
+                    "ROUND_2_START", "SESSION_END"]
+        check("generated markers use underscore form (ROUND_1_START)",
+              labels == expected, str(labels))
+
+    # The one structural parser of marker labels (_MarkerStrip._abbrev) must
+    # produce the same abbreviation for BOTH the new underscore form and the
+    # legacy space form, so sessions recorded either way read correctly.
+    from brain_battle_main import _MarkerStrip
+    pairs = [
+        ("ROUND_1_START", "ROUND 1_START", "R1"),
+        ("BREAK_2_START", "BREAK 2_START", "B2"),
+        ("BASELINE_START", "BASELINE_START", "BL"),
+        ("SESSION_END", "SESSION_END", "END"),
+    ]
+    for new_form, old_form, want in pairs:
+        a_new, a_old = _MarkerStrip._abbrev(new_form), _MarkerStrip._abbrev(old_form)
+        check(f"_abbrev accepts both forms of {new_form}",
+              a_new == want and a_old == want,
+              f"new={a_new!r} old={a_old!r} want={want!r}")
+
+
 if __name__ == "__main__":
     test_layout_and_sidecars_and_eeg()
     test_review_tab_loads_and_aligns()
     test_interrupted_session()
+    test_marker_label_format()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

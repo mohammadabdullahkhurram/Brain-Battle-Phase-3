@@ -492,7 +492,12 @@ class LiveSessionTab(QWidget):
         if self._layout is not None and hasattr(self, "_session_t0"):
             try:
                 t_session = time.monotonic() - self._session_t0
-                marker_label = f"{label.upper()}_START" if phase_id != "done" else label.upper()
+                # Normalise spaces to underscores so the marker reads
+                # ROUND_1_START / BREAK_1_START (not "ROUND 1_START") — one
+                # consistent token form across the file. Loaders accept both
+                # the underscore and the legacy space form regardless.
+                norm = label.upper().replace(" ", "_")
+                marker_label = f"{norm}_START" if phase_id != "done" else norm
                 self._layout.append_marker(t_session, phase_id, marker_label, round_num)
             except Exception as e:
                 log.warning("phase marker write failed: %s", e)

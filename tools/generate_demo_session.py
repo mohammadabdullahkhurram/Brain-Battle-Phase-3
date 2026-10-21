@@ -125,7 +125,9 @@ def _phase_plan(cfg: SessionConfig, interrupted: bool):
     markers = []
     elapsed = 0.0
     for info in timeline:
-        marker_label = f"{info.label.upper()}_START"
+        # Mirror live_session_tab's writer exactly: spaces → underscores so
+        # the token reads ROUND_1_START / BREAK_1_START.
+        marker_label = f"{info.label.upper().replace(' ', '_')}_START"
         markers.append((elapsed, info.phase.value, marker_label, info.round_num))
         phase_records.append({
             "phase": info.phase, "label": info.label, "round_num": info.round_num,
