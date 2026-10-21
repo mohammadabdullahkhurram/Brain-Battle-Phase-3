@@ -118,7 +118,8 @@ def test_manifest_bridge_roundtrips():
 
 
 def test_reader_writes_t_session_column():
-    # Exercise the REAL reader flush path (no BLE — inject buffers directly).
+    # Exercise the REAL streaming write path: feed chunks through _on_eeg (the
+    # BLE callback entry point) and let the writer thread stream them to disk.
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
         import vlc  # noqa: F401
@@ -133,18 +134,19 @@ def test_reader_writes_t_session_column():
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "eeg.csv")
         r.start_recording(path, origin_unix=origin)
-        # inject two 12-sample chunks starting 0.4s after origin
+        # feed two 12-sample chunks starting 0.4s after origin via the real
+        # callback — the writer thread streams them to the CSV.
         n = 12
         for c in range(2):
             data = np.random.randn(5, n).astype(np.float32)
             ts = origin + 0.4 + (np.arange(n) + c * n) / SR
-            r._rec_samples.append(data)
-            r._rec_timestamps.append(ts.astype(np.float64))
-        r._record_path = path  # ensure set
-        written = r.stop_recording()
+            r._on_eeg(data, ts.astype(np.float64))
+        written = r.stop_recording()        # drains + joins the writer thread
         df = pd.read_csv(written)
         check("reader CSV has t_session_seconds column",
               "t_session_seconds" in df.columns, str(list(df.columns)))
+        check("reader streamed all 24 samples",
+              len(df) == 2 * n, f"got {len(df)} rows")
         check("reader first t_session == injected 0.4s startup",
               abs(float(df["t_session_seconds"].iloc[0]) - 0.4) < 1e-4,
               f"got {df['t_session_seconds'].iloc[0]:.6f}")

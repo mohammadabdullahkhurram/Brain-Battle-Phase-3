@@ -16,9 +16,13 @@ Changes from v1
 
 from __future__ import annotations
 
+import csv as _csv
 import logging
+import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 from collections import deque
 from typing import Optional
@@ -303,74 +307,149 @@ class _MuseDirectReader(QThread):
         self._loop = None
         self._first_chunk_seen = False
 
-        # Optional CSV-recording state. Old code held all samples in memory
-        # and flushed on disconnect. For a typical 15-min session this is
-        # ~9 MB per Muse — well within memory budget. Eliminates the need
-        # for a separate `muselsl record` subprocess.
+        # CSV-recording state. Samples are STREAMED to disk by a dedicated
+        # writer thread (not buffered in RAM until stop), so a hard kill
+        # mid-session leaves a valid CSV with everything up to the last flush.
+        # The BLE callback only enqueues chunks (non-blocking); all file I/O —
+        # formatting rows, flush (≥1/s), fsync (~5s) — happens on the writer
+        # thread, off the BLE path.
         self._record_path: Optional[str] = None
-        self._rec_samples: list[np.ndarray] = []     # list of (channels=5, N=12) arrays
-        self._rec_timestamps: list[np.ndarray] = []  # list of (N=12,) arrays
         self._rec_origin_unix: Optional[float] = None  # shared capture origin
         self._last_first_unix: Optional[float] = None  # measured first-sample time
+        self._rec_queue: Optional[queue.Queue] = None
+        self._rec_stop_event: Optional[threading.Event] = None
+        self._writer_thread: Optional[threading.Thread] = None
 
     # ── public API ────────────────────────────────────────────────────────────
 
     def start_recording(self, path: str, origin_unix: Optional[float] = None) -> None:
-        """Begin accumulating samples into an in-memory buffer.
-        Calls to flush_recording() write the CSV. Safe to call before
-        the BLE connection is established — samples received from that
-        point onward are captured.
+        """Begin STREAMING samples to a CSV at `path`. The header is written
+        and fsync'd immediately, so the file is valid from t=0; each chunk
+        received afterwards is appended by a background writer thread that
+        flushes at least once per second (fsync ~every 5 s). After a hard
+        kill at any instant, the CSV parses and contains everything up to the
+        last flush.
+
+        Safe to call before the BLE connection is established — samples
+        received from that point onward are captured.
 
         `origin_unix` is the shared capture-time origin (session t0 wall
         clock). When set, the CSV gains a `t_session_seconds` column placing
         EEG on the same axis as camera frames and phase markers."""
-        self._record_path = path
-        self._rec_samples = []
-        self._rec_timestamps = []
+        # If a prior recording is somehow still running, stop it first so we
+        # never leak a writer thread or interleave two files.
+        if self._writer_thread is not None and self._writer_thread.is_alive():
+            self.stop_recording()
+
+        self._last_first_unix = None
         self._rec_origin_unix = origin_unix
+        cols = ["TP9", "AF7", "AF8", "TP10", "AUX", "timestamps"]
+        if origin_unix is not None:
+            cols.append("t_session_seconds")
+
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            # buffering=1 → line-buffered: each complete row reaches the OS
+            # buffer on its newline, so a hard kill can at worst truncate the
+            # single row being written, never lose already-written rows. The
+            # periodic flush()/fsync() below is then belt-and-braces (OS
+            # buffer → disk for power-loss durability). Header fsync'd up front.
+            f = open(path, "w", buffering=1, newline="", encoding="utf-8")
+            f.write(",".join(cols) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        except OSError as e:
+            log.error("[muse-direct] could not open EEG CSV %s: %s", path, e)
+            self._record_path = None
+            return
+
+        self._record_path = path
+        self._rec_queue = queue.Queue()
+        self._rec_stop_event = threading.Event()
+        self._writer_thread = threading.Thread(
+            target=self._csv_writer_loop,
+            args=(f, cols, origin_unix, self._rec_queue, self._rec_stop_event),
+            name="eeg-csv-writer", daemon=True,
+        )
+        self._writer_thread.start()
+
+    def _csv_writer_loop(self, f, cols, origin_unix, q, stop_event) -> None:
+        """Writer-thread body: drain the chunk queue to CSV rows, flushing
+        ≥1/s and fsyncing ~every 5 s. Runs until stop_event is set AND the
+        queue is drained. All file I/O lives here, off the BLE callback.
+
+        ── UNVERIFIED: EEG capture-time alignment ─────────────────────────
+        `timestamps` are muselsl's wall-clock timestamps (time.time()-derived,
+        per-band regression-corrected inside muselsl). We map each onto the
+        shared session axis as t_session = ts - origin. The ARITHMETIC is
+        unit-tested (test_capture_clock.py); what is NOT verifiable without a
+        real Muse band is whether those timestamps are accurate to tens-of-ms
+        and whether BLE transport latency skews them. See CLAUDE.md."""
+        writer = _csv.writer(f)
+        has_session = origin_unix is not None
+        last_flush = time.monotonic()
+        last_fsync = last_flush
+        try:
+            while True:
+                try:
+                    item = q.get(timeout=0.2)
+                except queue.Empty:
+                    item = None
+                if item is not None:
+                    data, ts = item          # data (5, N), ts (N,)
+                    if self._last_first_unix is None and len(ts):
+                        self._last_first_unix = float(ts[0])
+                    for i in range(data.shape[1]):
+                        row = [data[0, i], data[1, i], data[2, i],
+                               data[3, i], data[4, i], ts[i]]
+                        if has_session:
+                            row.append(ts[i] - origin_unix)
+                        writer.writerow(row)
+                now = time.monotonic()
+                if now - last_flush >= 1.0:
+                    f.flush()
+                    last_flush = now
+                    if now - last_fsync >= 5.0:
+                        try:
+                            os.fsync(f.fileno())
+                        except OSError:
+                            pass
+                        last_fsync = now
+                if stop_event.is_set() and q.empty():
+                    break
+        except Exception as e:  # never let the writer thread die silently
+            log.error("[muse-direct] EEG CSV writer failed: %s", e)
+        finally:
+            try:
+                f.flush()
+                os.fsync(f.fileno())
+                f.close()
+            except OSError:
+                pass
 
     def stop_recording(self) -> str | None:
-        """Flush accumulated samples to CSV at the path set by
-        start_recording(). Returns the path written or None if nothing
-        was recorded. Safe to call from any thread — the actual file
-        write happens here, not on the BLE thread."""
+        """Stop streaming: signal the writer thread to drain and close, join
+        it, and return the CSV path (or None if nothing was recording).
+        Idempotent and safe to call from any thread."""
         path = self._record_path
-        if not path or not self._rec_timestamps:
-            self._record_path = None
+        stop_event = self._rec_stop_event
+        writer_thread = self._writer_thread
+        if path is None and writer_thread is None:
             return None
-        try:
-            timestamps = np.concatenate(self._rec_timestamps)
-            # samples list elements are (5_channels, 12_samples) → stack to
-            # (5, total_N) then transpose to (total_N, 5) for CSV row order.
-            eeg = np.concatenate(self._rec_samples, axis=1).T
-            df = pd.DataFrame(
-                eeg, columns=["TP9", "AF7", "AF8", "TP10", "AUX"]
-            )
-            df["timestamps"] = timestamps
-            self._last_first_unix = float(timestamps[0])
-            # ── UNVERIFIED: EEG capture-time alignment ────────────────────
-            # `timestamps` are muselsl's wall-clock timestamps (time.time()-
-            # derived, per-band regression-corrected inside muselsl). We map
-            # each onto the shared session axis as t_session = ts - origin.
-            # The ARITHMETIC here is unit-tested (test_capture_clock.py). What
-            # is NOT verifiable without a real Muse band: whether muselsl's
-            # timestamps are accurate to tens-of-ms, and whether BLE transport
-            # latency skews them. Until confirmed against real EEG, the EEG
-            # position on the shared axis (hence between-brain timing) must be
-            # treated as unverified. See CLAUDE.md "Deferred work".
-            if self._rec_origin_unix is not None:
-                df["t_session_seconds"] = timestamps - self._rec_origin_unix
-            import pathlib
-            pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(path, index=False)
-        except Exception as e:
-            log.error("[muse-direct] CSV write failed for %s: %s", path, e)
-            path = None
-        finally:
-            self._record_path = None
-            self._rec_samples = []
-            self._rec_timestamps = []
-            self._rec_origin_unix = None
+        if stop_event is not None:
+            stop_event.set()
+        if writer_thread is not None:
+            # Generous join: the writer only has to drain a small queue and
+            # fsync. Never block capture shutdown forever if it wedges.
+            writer_thread.join(timeout=10.0)
+            if writer_thread.is_alive():
+                log.error("[muse-direct] EEG CSV writer did not stop in 10s "
+                          "— file may be missing its final flush")
+        self._record_path = None
+        self._rec_queue = None
+        self._rec_stop_event = None
+        self._writer_thread = None
+        self._rec_origin_unix = None
         return path
 
     def stop(self) -> None:
@@ -395,7 +474,8 @@ class _MuseDirectReader(QThread):
         (macOS) or its asyncio loop thread (Linux/Windows). We do as little
         work as possible here:
           1. Mark connected on first chunk.
-          2. Append raw arrays to record buffer (if recording).
+          2. Enqueue a copy for the CSV writer thread (if recording) — a
+             non-blocking queue.put, so no file I/O ever runs on this thread.
           3. Emit a contiguous copy to the main thread via Qt's queued
              connection.
 
@@ -420,11 +500,14 @@ class _MuseDirectReader(QThread):
             log.warning("[muse-direct] sample copy failed: %s", e)
             return
 
-        if self._record_path is not None:
-            # channels-first layout is most efficient for storage —
-            # transpose only once at flush time.
-            self._rec_samples.append(data_copy)
-            self._rec_timestamps.append(ts_copy)
+        q = self._rec_queue
+        if self._record_path is not None and q is not None:
+            # Hand the chunk to the writer thread (channels-first, (5, N)).
+            # queue.put is non-blocking here; the writer formats + flushes.
+            try:
+                q.put_nowait((data_copy, ts_copy))
+            except queue.Full:  # unbounded Queue never raises, but be safe
+                log.warning("[muse-direct] EEG write queue full — dropping chunk")
 
         # Emit to main thread. Transpose to (N_samples, N_channels) which
         # is what _on_samples expects. np.ascontiguousarray ensures the
