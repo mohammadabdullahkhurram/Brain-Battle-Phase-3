@@ -58,14 +58,18 @@ whoever picks up the item, not a contract.
 
 ## Phase 2 — Data safety
 
-- **EEG streamed to disk in chunks during recording (not RAM-only).**
-  *Why:* today `_MuseDirectReader` buffers every sample in memory and only
-  writes the CSV in `stop_recording()` — a crash mid-session loses the
-  entire recording for that band (~9 MB per 15 minutes, but 100% of it).
-  *Files:* `eeg_module.py` (`_MuseDirectReader.start_recording`,
-  `_on_eeg`, `stop_recording`), `live_session_tab.py` (recording wiring).
+- ~~**EEG streamed to disk in chunks during recording (not RAM-only).**~~
+  **DONE.** `_MuseDirectReader` writes the CSV header (fsync'd) on start and
+  a background writer thread appends each chunk — line-buffered, flush >=1/s,
+  fsync ~5s — while the BLE callback only does a non-blocking `queue.put`. A
+  hard kill leaves a valid CSV with everything up to the last flush. Covered
+  by `tests/test_eeg_streaming.py` (SIGKILL mid-recording).
+  *Files touched:* `eeg_module.py`.
 
-- **Crash-safe video container (MKV or fragmented MP4).**
+- **Crash-safe video container (MKV or fragmented MP4).** PROPOSAL stage —
+  investigated (SIGKILL behaviour, playback in both stacks, CPU/size,
+  sidecar frame-exactness) and a recommendation delivered; implementation is
+  a separate approved step, not yet done.
   *Why:* `usb_camera.py` writes `mp4v` via `cv2.VideoWriter`, which only
   finalizes its moov atom in `release()`; an unclean process exit (crash,
   force-quit, power loss) before that point leaves an unplayable file.
@@ -73,32 +77,27 @@ whoever picks up the item, not a contract.
   block), possibly `usb_camera_slot.py`; `export_module.py` if the merged
   quad-grid export needs a transcode step for the new container.
 
-- **Labels autosaved into the session folder on every change; reopen and
-  continue labelling.**
-  *Why:* today placed labels live only in the `LabellingTab`'s in-memory
-  widget list and are written out only when EXPORT LABELS CSV is clicked —
-  closing the tab or crashing loses every unexported label.
-  *Files:* `brain_battle_main.py` (`LabellingTab._place_label`,
-  `LabelMarker._remove`, `_open_session_folder`), `export_module.py`
-  (`LabelsExporter`, reused for the autosave write path).
+- ~~**Labels autosaved into the session folder on every change; reopen and
+  continue labelling.**~~ **DONE.** User labels persist to
+  `<session>/labels.json` (atomic temp+replace, schema_version, numeric
+  seconds, nullable boxer/end fields for Phase 4) on every add/remove;
+  opening a session restores them. Covered by `tests/test_labels_autosave.py`.
+  *Files touched:* `brain_battle_main.py`.
 
-- **Crash-recovery prompt on next launch for interrupted sessions.**
-  *Why:* a session with no `SESSION_END` marker or an unclosed final phase
-  in the manifest is a session that didn't shut down cleanly; the operator
-  currently has no way to discover this except by poking at folders.
-  *Files:* `session_storage.py` (the manifest already carries the needed
-  state — phases list, missing `end_unix`), the new Sessions home screen
-  (Phase 3) as the natural surface for the prompt, or `brain_battle_main.py`
-  at startup in the interim.
+- ~~**Crash-recovery prompt on next launch for interrupted sessions.**~~
+  **DONE.** On launch the app scans the capture folder for sessions that
+  never finished (phases recorded but no `SESSION_END`), flags each manifest
+  `interrupted: true` (no fabricated `SESSION_END`) so it won't re-nag, and
+  offers to open the most recent. Covered by `tests/test_crash_recovery.py`.
+  *Files touched:* `session_storage.py`, `brain_battle_main.py`.
 
-- **Disk-space check + estimated session size before recording.**
-  *Why:* 4 cameras + 2 EEG streams over a multi-round session can be
-  multi-GB (mp4v is bulky), and there is currently no pre-flight warning —
-  only the camera/EEG pre-flight dialogs in `_on_start_clicked`, which don't
-  check disk at all.
-  *Files:* `live_session_tab.py` (`_on_start_clicked` pre-flight checks),
-  `session_setup_dialog.py` (surfacing the estimate alongside the
-  rounds/duration config).
+- ~~**Disk-space check + estimated session size before recording.**~~ **DONE.**
+  `estimate_session_bytes` derives size from configured duration x per-source
+  rate (rates measured from the demo files); the setup dialog shows the live
+  estimate, and `_on_start_clicked` blocks below 1x free space and warns below
+  2x. Covered by `tests/test_crash_recovery.py`.
+  *Files touched:* `session_storage.py`, `session_setup_dialog.py`,
+  `live_session_tab.py`.
 
 ---
 
@@ -140,6 +139,20 @@ whoever picks up the item, not a contract.
   *Files:* `brain_battle_main.py` (`SyncReviewTab` + `LabellingTab` merge —
   pick one of the two playback stacks and delete the other),
   `vlc_module.py`, `sidebar_shell.py`.
+
+- **Fix the Review layout not fitting a laptop screen.**
+  *Why:* observed eyes-on-glass on the demo session (2026-10-21) — on a
+  laptop display the Review tab's side-camera row is squeezed out of view and
+  the right edge is clipped, so the operator can't see all four cameras at
+  once. The current layout uses fixed heights (e.g. the 320 px EEG row, the
+  84 px control strip) and an `_AspectVideoArea` that sizes the 2×2 grid
+  purely off width, with no overall vertical budget — so on a short viewport
+  the video + EEG + controls don't fit. Fold this into the Review & Label
+  redesign above: give the merged screen a height-aware layout (scroll or
+  proportionally shrink panes) so everything fits at laptop resolutions.
+  *Files:* `brain_battle_main.py` (`SyncReviewTab._build`'s
+  `_AspectVideoArea`, the fixed-height EEG/controls rows; same for the merged
+  screen).
 
 - **Settings screen**: storage folder, headband → Boxer A/B assignment
   (replaces hardcoded `BOXER_LABELS`), video resolution/fps, default
@@ -217,12 +230,19 @@ whoever picks up the item, not a contract.
 
 ## Phase 5 — Remaining report items and research value
 
-- **Use the FULL per-frame sidecar for playback timing** (not just the
-  first row); detect and flag capture-rate drift.
+- **[RAISED PRIORITY] Use the FULL per-frame sidecar for playback timing**
+  (not just the first row); detect and flag capture-rate drift.
   *Why:* `_read_frame_sidecar_start` (`brain_battle_main.py`) reads only the
   sidecar's first row today — any mid-session frame-rate drift (which
   `usb_camera.py` already logs a warning for, but never surfaces
-  structurally) is invisible to alignment.
+  structurally) is invisible to alignment. **Confirmed eyes-on-glass on the
+  demo session (2026-10-21):** the deliberately-drifting camera visibly
+  desyncs — at the same displayed frame 283, POV 01 reads
+  `t_session 9.653` while POV 02 reads `9.487` (~166 ms apart and growing).
+  So this is a real, reproduced alignment defect, not a theoretical one —
+  worth doing earlier in Phase 5 than the items below it, or pulling forward
+  into the Phase 3 Review & Label merge where the playback path is already
+  being reworked.
   *Files:* `brain_battle_main.py` (`_read_frame_sidecar_start`, the
   `_align` path), `usb_camera.py` (where drift is logged but not reported).
 

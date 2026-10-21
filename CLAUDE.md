@@ -118,8 +118,20 @@ All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
 - `test_demo_session.py` — `tools/generate_demo_session.py` end to end: sidecar
   row counts == MP4 frame counts (incl. the deliberately drifting camera), EEG
   CSV columns/sample rate, a headless `SyncReviewTab.load_session_folder` +
-  ALIGN pass whose computed seeks match the generator's own start delays, and
-  the `--interrupted` fixture (no `SESSION_END`, last phase left open).
+  ALIGN pass whose computed seeks match the generator's own start delays, the
+  `--interrupted` fixture (no `SESSION_END`, last phase left open), and the
+  `ROUND_1_START` marker-token form (both forms accepted by the loader).
+- `test_eeg_streaming.py` — the streamed EEG recorder (Phase 2): drives the
+  real `_MuseDirectReader` write path in a subprocess, SIGKILLs it
+  mid-recording, and asserts the CSV still parses, has the right columns,
+  monotonic timestamps, and everything up to the last flush.
+- `test_labels_autosave.py` — `LabellingTab` label autosave/restore:
+  place → `<session>/labels.json` → reopen restores; removal rewrites;
+  phase markers excluded; EXPORT LABELS CSV still works.
+- `test_crash_recovery.py` — `session_storage` interrupted-session detection /
+  marking (no fabricated `SESSION_END`, no re-nag) and the
+  `LiveSessionTab._check_disk_space` proceed/warn/block branches (QMessageBox
+  + `shutil.disk_usage` stubbed).
 
 (The audio-era `test_seek_alignment.py` and `test_xcorr_confidence.py` were
 deleted in Step 4 with the xcorr feature they guarded.)
