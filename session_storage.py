@@ -216,4 +216,138 @@ def create_session(base_dir: str | os.PathLike,
     return layout
 
 
-__all__ = ["SessionLayout", "PhaseRecord", "create_session"]
+# ─── Crash recovery ─────────────────────────────────────────────────────────────
+
+def _read_manifest(session_root: Path) -> Optional[dict]:
+    p = session_root / "session_manifest.json"
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _has_session_end(session_root: Path) -> bool:
+    """True if phase_markers.csv contains a SESSION_END row — the explicit
+    'this recording finished cleanly' marker written by _on_session_finished."""
+    p = session_root / "phase_markers.csv"
+    if not p.is_file():
+        return False
+    try:
+        return "SESSION_END" in p.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
+def is_interrupted_session(session_root: str | os.PathLike) -> bool:
+    """A session that recorded at least one phase but never finalised: no
+    SESSION_END marker was written. (A clean finish always writes one.)
+    Sessions already flagged `interrupted: true` in the manifest return
+    False here so the recovery prompt doesn't nag about them again."""
+    root = Path(session_root)
+    m = _read_manifest(root)
+    if m is None:
+        return False
+    if m.get("interrupted") is True:
+        return False
+    if not m.get("phases"):          # nothing was ever recorded
+        return False
+    return not _has_session_end(root)
+
+
+def scan_interrupted_sessions(base_dir: str | os.PathLike) -> list["SessionLayoutInfo"]:
+    """Find capture sessions under base_dir that look interrupted (crashed
+    mid-recording) and have not yet been flagged. Returns a list of
+    SessionLayoutInfo sorted newest-first by started_at."""
+    base = Path(base_dir)
+    out: list[SessionLayoutInfo] = []
+    if not base.is_dir():
+        return out
+    for child in base.iterdir():
+        if not child.is_dir() or not child.name.startswith("Brain Battle "):
+            continue
+        if is_interrupted_session(child):
+            m = _read_manifest(child) or {}
+            out.append(SessionLayoutInfo(
+                root=str(child),
+                started_at=m.get("started_at", ""),
+                started_unix=float(m.get("started_unix") or 0.0),
+            ))
+    out.sort(key=lambda s: s.started_unix, reverse=True)
+    return out
+
+
+def mark_session_interrupted(session_root: str | os.PathLike) -> bool:
+    """Flag a session's manifest `interrupted: true` (atomic temp+rename) so
+    the crash-recovery prompt won't ask about it again. Does NOT fabricate a
+    SESSION_END marker — the recording genuinely never finished. Returns True
+    on success."""
+    root = Path(session_root)
+    m = _read_manifest(root)
+    if m is None:
+        return False
+    m["interrupted"] = True
+    tmp = root / "session_manifest.json.tmp"
+    try:
+        tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, root / "session_manifest.json")
+        return True
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return False
+
+
+@dataclass
+class SessionLayoutInfo:
+    """Lightweight descriptor for a session folder found on disk (used by
+    crash recovery — no live SessionLayout needed)."""
+    root:         str
+    started_at:   str      # ISO string from the manifest, for display
+    started_unix: float
+
+
+# ─── Disk-space estimate ────────────────────────────────────────────────────────
+
+# Per-source write rates, MEASURED from demo-generated files (960x540 mp4v at
+# 30 fps; 256 Hz EEG CSV), rounded up for headroom. NOTE: the demo video is
+# low-motion synthetic footage, so real boxing footage will encode LARGER than
+# this — treat the estimate as a floor, not a ceiling. Recalibrate from real
+# captures once hardware is available (see docs/ROADMAP.md).
+VIDEO_BYTES_PER_SEC = 125_000   # demo ~100 KB/s/camera + headroom
+EEG_BYTES_PER_SEC   = 25_000    # demo ~22.5 KB/s/band + headroom
+
+
+def session_total_seconds(config: SessionConfig) -> int:
+    """Planned wall-clock length of a session: baseline + rounds + the breaks
+    between them (no break after the last round)."""
+    return (config.baseline_sec
+            + config.num_rounds * config.round_sec
+            + max(0, config.num_rounds - 1) * config.break_sec)
+
+
+def estimate_session_bytes(config: SessionConfig, n_cameras: int, n_eeg: int) -> int:
+    """Estimated on-disk size of a session given its configured duration and
+    the number of recording cameras / EEG bands."""
+    secs = session_total_seconds(config)
+    return int(secs * (n_cameras * VIDEO_BYTES_PER_SEC + n_eeg * EEG_BYTES_PER_SEC))
+
+
+def human_bytes(n: float) -> str:
+    """Human-readable byte size, e.g. 264_000_000 -> '264 MB'."""
+    n = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(n) < 1024.0 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit in ("B", "KB") else f"{n:.1f} {unit}"
+        n /= 1024.0
+
+
+__all__ = [
+    "SessionLayout", "PhaseRecord", "SessionLayoutInfo", "create_session",
+    "is_interrupted_session", "scan_interrupted_sessions",
+    "mark_session_interrupted", "session_total_seconds", "estimate_session_bytes",
+    "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",
+]

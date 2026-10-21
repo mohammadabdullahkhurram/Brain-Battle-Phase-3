@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from session_controller import SessionConfig, BASELINE_DURATION_SEC
+from session_storage import estimate_session_bytes, human_bytes as _human_bytes
 
 
 _STYLE = """
@@ -81,12 +82,17 @@ QFrame#card {
 class SessionSetupDialog(QDialog):
     """Modal configuration dialog for a new capture session."""
 
-    def __init__(self, parent=None, initial: SessionConfig | None = None):
+    def __init__(self, parent=None, initial: SessionConfig | None = None,
+                 n_cameras: int = 0, n_eeg: int = 0):
         super().__init__(parent)
         self.setWindowTitle("Brain Battle — Session Setup")
         self.setModal(True)
         self.setMinimumWidth(480)
         self.setStyleSheet(_STYLE)
+
+        # Source counts drive the live disk-space estimate below the summary.
+        self._n_cameras = n_cameras
+        self._n_eeg = n_eeg
 
         cfg = initial or SessionConfig()
         self._build(cfg)
@@ -165,6 +171,13 @@ class SessionSetupDialog(QDialog):
             "padding-top:6px; border-top:1px solid #2A2A30;"
         )
         card_l.addWidget(self.summary)
+
+        # Estimated disk usage — updates live with the duration/source counts.
+        self.estimate = QLabel("")
+        self.estimate.setStyleSheet(
+            "color:#A1A1AA; font-size:10px; letter-spacing:1px;"
+        )
+        card_l.addWidget(self.estimate)
         root.addWidget(card)
 
         # Wire live-summary updates
@@ -211,6 +224,18 @@ class SessionSetupDialog(QDialog):
             f"{', ' + str(cfg.num_rounds - 1) + ' breaks' if cfg.num_rounds > 1 else ''}"
             f"{', baseline ' + str(cfg.baseline_sec) + 's' if cfg.baseline_sec else ''})"
         )
+
+        n_src = self._n_cameras + self._n_eeg
+        if n_src > 0:
+            est = estimate_session_bytes(cfg, self._n_cameras, self._n_eeg)
+            self.estimate.setText(
+                f"ESTIMATED SIZE  ≈  {_human_bytes(est)}   "
+                f"({self._n_cameras} camera(s), {self._n_eeg} headband(s))"
+            )
+        else:
+            self.estimate.setText(
+                "ESTIMATED SIZE  —  connect sources to estimate"
+            )
 
     # ------------------------------------------------------------------- API
     def value(self) -> SessionConfig:

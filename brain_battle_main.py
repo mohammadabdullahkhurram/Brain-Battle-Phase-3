@@ -67,6 +67,18 @@ def _atomic_write_json(path, data) -> None:
         raise
 
 
+def _friendly_when(iso: str) -> str:
+    """Turn a manifest 'started_at' ISO string into a plain, readable
+    date+time for the crash-recovery prompt. Falls back to the raw string."""
+    if not iso:
+        return "an earlier session"
+    try:
+        dt = _dt.datetime.fromisoformat(iso)
+        return dt.strftime("%A %d %B %Y at %H:%M")
+    except (ValueError, TypeError):
+        return iso
+
+
 def _clamp_ms(ms) -> int:
     try:
         ms = float(ms)
@@ -2415,6 +2427,49 @@ class BrainBattleApp(QMainWindow):
         self._status_bar.showMessage("6 sources expected  ·  2× DSLR  ·  2× POV  ·  2× Muse-S")
         self.setStatusBar(self._status_bar)
         self._restyle_status()
+
+        # After the window is up, check for a recording that was interrupted
+        # (crashed mid-session) last time and offer to open it.
+        QTimer.singleShot(0, self._check_for_interrupted_sessions)
+
+    def _check_for_interrupted_sessions(self):
+        """Scan the capture folder for sessions that never finished and, if
+        any are found, flag them (so we don't ask again) and offer to open the
+        most recent one. Never raises — a recovery prompt must not block launch."""
+        try:
+            from session_storage import scan_interrupted_sessions, mark_session_interrupted
+            from live_session_tab import _default_capture_root
+            found = scan_interrupted_sessions(_default_capture_root())
+        except Exception as e:
+            log.warning("interrupted-session scan failed: %s", e)
+            return
+        if not found:
+            return
+        # Flag every detected interrupted session so none of them re-prompt,
+        # then ask about the most recent.
+        for s in found:
+            try:
+                mark_session_interrupted(s.root)
+            except Exception as e:
+                log.warning("could not flag interrupted session %s: %s", s.root, e)
+        recent = found[0]
+        when = _friendly_when(recent.started_at)
+        box = QMessageBox(self)
+        box.setWindowTitle("Recording interrupted")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText(
+            f"A recording from {when} was interrupted.\n\n"
+            f"Everything recorded up to that point has been kept."
+        )
+        open_btn = box.addButton("Open it", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is open_btn:
+            try:
+                self._shell.set_current_index(1)   # Review tab
+                self.sync_tab.load_session_folder(recent.root)
+            except Exception as e:
+                log.warning("could not open interrupted session %s: %s", recent.root, e)
 
     def _restyle_app(self):
         """Apply the global stylesheet — called on startup and on theme toggle."""

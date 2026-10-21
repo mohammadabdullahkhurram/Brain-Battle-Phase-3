@@ -57,7 +57,10 @@ from usb_camera_panel     import USBCameraPanel
 from eeg_module           import EEGLiveWidget
 from session_controller   import SessionController, SessionConfig, Phase, PhaseInfo
 from session_setup_dialog import SessionSetupDialog
-from session_storage      import create_session, SessionLayout, PhaseRecord
+from session_storage      import (
+    create_session, SessionLayout, PhaseRecord,
+    estimate_session_bytes, human_bytes,
+)
 from circular_timer       import CircularTimer
 from sync_beep            import SyncBeep
 from log_setup            import attach_session_log
@@ -385,15 +388,29 @@ class LiveSessionTab(QWidget):
             )
             if reply != QMessageBox.StandardButton.Yes: return
 
-        dlg = SessionSetupDialog(self, initial=self._controller.config)
+        dlg = SessionSetupDialog(self, initial=self._controller.config,
+                                 n_cameras=cam_connected, n_eeg=eeg_connected)
         if dlg.exec() != dlg.DialogCode.Accepted: return
         cfg = dlg.value()
         try: self._controller.configure(cfg)
         except ValueError as e:
             QMessageBox.warning(self, "Invalid session", str(e)); return
+
+        # Disk-space pre-flight: compare the estimated session size against
+        # free space. Block if there isn't even 1× the estimate; warn (but
+        # allow) below 2× so the operator can decide with a full disk ahead.
+        base_dir = _default_capture_root()
         try:
-            base_dir = _default_capture_root()
             os.makedirs(base_dir, exist_ok=True)
+            if not self._check_disk_space(base_dir, cfg, cam_connected, eeg_connected):
+                return
+        except Exception as e:
+            # A failed disk check must not silently block capture — log and
+            # let the operator proceed (create_session will surface real
+            # disk-full/permission errors below).
+            log.warning("disk-space pre-flight failed (%s) — proceeding", e)
+
+        try:
             self._layout = create_session(base_dir, cfg)
             log.info("session created at %s", self._layout.root)
             attach_session_log(self._layout.root)
@@ -407,6 +424,35 @@ class LiveSessionTab(QWidget):
         self._path_lbl.setText(self._layout.root.name)
         self._path_lbl.setVisible(True)
         self._controller.start()
+
+    def _check_disk_space(self, base_dir, cfg, n_cameras, n_eeg) -> bool:
+        """Return True to proceed with recording, False to abort. Blocks (with
+        a plain-language message) when free space is below the estimated
+        session size; warns but lets the operator proceed below 2× it."""
+        import shutil
+        estimate = estimate_session_bytes(cfg, n_cameras, n_eeg)
+        free = shutil.disk_usage(base_dir).free
+        est_h, free_h = human_bytes(estimate), human_bytes(free)
+        if free < estimate:
+            QMessageBox.critical(
+                self, "Not enough disk space",
+                f"This recording needs about {est_h}, but only {free_h} is free "
+                f"on the drive.\n\nFree up space or shorten the session, then "
+                f"try again.",
+            )
+            return False
+        if free < 2 * estimate:
+            reply = QMessageBox.question(
+                self, "Low disk space",
+                f"This recording needs about {est_h}. Only {free_h} is free — "
+                f"less than twice what it needs, so the drive may fill up.\n\n"
+                f"Start the recording anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return False
+        return True
 
     def _on_stop_clicked(self) -> None:
         if not self._controller.is_running: return
