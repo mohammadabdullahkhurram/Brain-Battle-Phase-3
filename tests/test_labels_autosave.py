@@ -70,6 +70,9 @@ def test_autosave_and_restore():
               str(data.get("schema_version")))
         check("three labels saved", len(data.get("labels", [])) == 3,
               str(len(data.get("labels", []))))
+        check("time_axis recorded (so Phase 3 can convert to capture axis)",
+              data.get("time_axis") == bbm.LABELS_TIME_AXIS,
+              repr(data.get("time_axis")))
         first = data["labels"][0]
         check("times stored as numbers, not HH:MM:SS strings",
               isinstance(first["t_seconds"], (int, float))

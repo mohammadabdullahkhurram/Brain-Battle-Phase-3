@@ -41,6 +41,13 @@ _INT32_MAX = 2_147_483_647
 # t_session axis, filling boxer/end fields) without silently misreading v1.
 LABELS_JSON_NAME = "labels.json"
 LABELS_SCHEMA_VERSION = 1
+# Which time axis the autosaved label times (`t_seconds`) are on. The Labelling
+# tab still plays video from local 0 (NOT the capture-clock t_session axis the
+# Review tab aligns on — see docs/ROADMAP.md Phase 3), so label times are
+# seconds from the start of playback. Recorded in labels.json so the Phase 3
+# Review & Label merge can convert them onto the capture axis (add each source's
+# measured start). When that lands, this becomes "capture_clock_t_session".
+LABELS_TIME_AXIS = "labelling_playhead_offset0"
 
 
 def _atomic_write_json(path, data) -> None:
@@ -2301,7 +2308,8 @@ class LabellingTab(QWidget):
                 "boxer": w.boxer,              # Phase-4 field, null for now
                 "end_t_seconds": w.end_t_seconds,  # Phase-4 field, null for now
             })
-        data = {"schema_version": LABELS_SCHEMA_VERSION, "labels": labels}
+        data = {"schema_version": LABELS_SCHEMA_VERSION,
+                "time_axis": LABELS_TIME_AXIS, "labels": labels}
         try:
             _atomic_write_json(os.path.join(self._session_root, LABELS_JSON_NAME), data)
         except Exception as e:
