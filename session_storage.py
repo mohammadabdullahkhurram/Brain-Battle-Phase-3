@@ -312,13 +312,14 @@ class SessionLayoutInfo:
 
 # ─── Disk-space estimate ────────────────────────────────────────────────────────
 
-# Per-source write rates, MEASURED from demo-generated files (960x540 mp4v at
-# 30 fps; 256 Hz EEG CSV), rounded up for headroom. NOTE: the demo video is
-# low-motion synthetic footage, so real boxing footage will encode LARGER than
-# this — treat the estimate as a floor, not a ceiling. Recalibrate from real
-# captures once hardware is available (see docs/ROADMAP.md).
-VIDEO_BYTES_PER_SEC = 125_000   # demo ~100 KB/s/camera + headroom
-EEG_BYTES_PER_SEC   = 25_000    # demo ~22.5 KB/s/band + headroom
+# Per-source write rates for the pre-flight size estimate. The video rate is
+# now derived from the recorder's actual target bitrate (usb_camera.REC_BITRATE
+# = 5 Mbps per camera, capped at -maxrate 6 Mbps) rather than measured from
+# low-motion demo footage — so it holds for real boxing footage, which H.264
+# rate control drives toward that target regardless of scene complexity. The
+# EEG rate was measured from the 256 Hz CSV (same structure for real + demo).
+VIDEO_BYTES_PER_SEC = 700_000   # ~5-6 Mbps H.264 target, bytes/s, with headroom
+EEG_BYTES_PER_SEC   = 25_000    # ~22.5 KB/s/band measured + headroom
 
 
 def session_total_seconds(config: SessionConfig) -> int:

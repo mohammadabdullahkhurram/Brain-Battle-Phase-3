@@ -37,8 +37,14 @@ Platform notes
 from __future__ import annotations
 
 import logging
+import os
 import platform
+import queue
+import shutil
+import subprocess
+import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -48,6 +54,27 @@ import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 
 log = logging.getLogger(__name__)
+
+
+# ─── Recording encoder config ──────────────────────────────────────────────────
+#
+# Target bitrate for the 960×540 H.264 recording. 540p30 boxing footage is
+# high-motion (fast exchanges, moving bodies); 4 Mbps shows visible blocking on
+# the hardest frames, 6 Mbps is clean but ~50% larger. 5 Mbps is the balance —
+# visibly clean at this resolution while staying ~0.6 MB/s per camera (~2.4 MB/s
+# across four), well inside the pre-flight disk estimate. -maxrate/-bufsize cap
+# the peaks so a burst of motion can't blow past the plan.
+REC_BITRATE       = "5M"
+REC_MAXRATE       = "6M"
+REC_BUFSIZE       = "10M"
+# Bounded hand-off queue (capture thread → encoder writer thread). ~2 s at
+# 30 fps: long enough to ride out a brief encoder hiccup, short enough that a
+# genuinely stalled encoder drops frames instead of ballooning memory.
+REC_QUEUE_MAXSIZE = 60
+
+
+def _ffmpeg_path() -> Optional[str]:
+    return shutil.which("ffmpeg")
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -124,6 +151,248 @@ def _friendly_name(idx: int) -> str:
     return f"Camera {idx}"
 
 
+# ─── ffmpeg frame encoder (crash-safe fragmented H.264) ─────────────────────────
+
+def _resolve_encoder() -> str:
+    """The H.264 encoder to record with — REUSES export_module's probe
+    (hardware encoder validated once, libx264 fallback). Imported lazily so
+    importing usb_camera doesn't trigger the probe (keeps module import cheap,
+    which the smoke gate relies on)."""
+    try:
+        from export_module import _HW_ENCODER
+        return _HW_ENCODER
+    except Exception as e:
+        log.warning("could not read probed encoder (%r) — using libx264", e)
+        return "libx264"
+
+
+def _encoder_rate_args(encoder: str) -> list[str]:
+    """Encoder-specific rate-control flags around the shared target bitrate.
+    (The encoder NAME comes from export_module's probe; only these recorder
+    rate flags live here — the detection is not duplicated.)"""
+    rate = ["-b:v", REC_BITRATE, "-maxrate", REC_MAXRATE, "-bufsize", REC_BUFSIZE]
+    if encoder == "libx264":
+        # ultrafast keeps 4 software encodes cheap on a laptop; zerolatency
+        # avoids frame reordering/lookahead so capture isn't held up.
+        return ["-preset", "ultrafast", "-tune", "zerolatency", *rate]
+    return rate
+
+
+def preflight_recording() -> tuple[bool, str, str]:
+    """Check recording is possible BEFORE a session starts. Returns
+    (ok, encoder, message). ok=False means block the start and show `message`
+    (plain language). Validates both that ffmpeg is on PATH and that the chosen
+    encoder actually runs (reusing export_module's real test-encode probe)."""
+    if _ffmpeg_path() is None:
+        return (False, "", "ffmpeg was not found on this computer. Recording "
+                           "needs it — install ffmpeg and try again.")
+    encoder = _resolve_encoder()
+    try:
+        from export_module import _validate_encoder
+        ff = _ffmpeg_path()
+        if not _validate_encoder(ff, encoder):
+            # Chosen encoder failed its test-encode; try plain libx264 before
+            # giving up (the probe only validates hardware encoders).
+            if encoder != "libx264" and _validate_encoder(ff, "libx264"):
+                return (True, "libx264", "")
+            return (False, encoder,
+                    "No working video encoder was found on this computer, so "
+                    "the session can't be recorded. Check the ffmpeg install.")
+    except Exception as e:
+        log.warning("encoder validation raised (%r) — allowing start", e)
+    return (True, encoder, "")
+
+
+class FrameEncoder:
+    """Owns one ffmpeg subprocess writing a crash-safe fragmented H.264 MP4,
+    fed raw BGR frames over stdin, plus the per-frame timestamp sidecar.
+
+    Crash-safety: fragmented MP4 (`+frag_keyframe+empty_moov+default_base_moof`,
+    `-frag_duration 500000`) flushes a self-contained fragment ~every 0.5 s, so
+    a hard kill loses at most the final in-progress fragment — everything before
+    it stays playable (unlike mp4v, whose moov atom is only written at close).
+
+    Sidecar invariant: `write_frame` appends the sidecar row ONLY after that
+    frame's bytes were accepted by ffmpeg's stdin, so sidecar rows == frames
+    handed to the encoder. Dropped frames never reach here, so they get no row.
+
+    This class does NO queueing or frame-dropping — the caller (USBCameraThread)
+    owns the bounded queue and the drop policy; a demo/offline caller can drive
+    write_frame() synchronously. stdin.write blocks when ffmpeg is slow, which
+    is the back-pressure signal the caller's queue turns into drops.
+    """
+
+    def __init__(self, path, width: int, height: int, fps: float,
+                 clock: Optional[tuple[float, float]] = None,
+                 encoder: Optional[str] = None):
+        self.path = str(path)
+        self._w = int(width)
+        self._h = int(height)
+        self._fps = float(fps)
+        self._clock = clock
+        # Explicit encoder name skips the export_module probe (used by the demo
+        # generator's worker processes, which resolve it once in the parent).
+        self._want_encoder = encoder
+        self._proc: Optional[subprocess.Popen] = None
+        self._ts_file = None
+        self._frame_idx = 0
+        self._encoder = ""
+        self._stderr_tail: "deque[str]" = deque(maxlen=200)
+        self._stderr_thread: Optional[threading.Thread] = None
+
+    # ── lifecycle ──
+    def start(self) -> bool:
+        ff = _ffmpeg_path()
+        if ff is None:
+            log.error("[cam-enc] ffmpeg not found — cannot record %s", self.path)
+            return False
+        self._encoder = self._want_encoder or _resolve_encoder()
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        cmd = (
+            [ff, "-hide_banner", "-loglevel", "error", "-nostats", "-y",
+             "-f", "rawvideo", "-pix_fmt", "bgr24",
+             "-s", f"{self._w}x{self._h}", "-r", f"{self._fps:g}",
+             "-i", "pipe:0",
+             "-an",
+             "-c:v", self._encoder,
+             "-pix_fmt", "yuv420p",
+             "-fps_mode", "passthrough",
+             "-g", str(max(1, int(round(self._fps))))]       # keyframe ~every 1 s
+            + _encoder_rate_args(self._encoder)
+            + ["-movflags", "+frag_keyframe+empty_moov+default_base_moof",
+               "-frag_duration", "500000",
+               self.path]
+        )
+        try:
+            self._proc = subprocess.Popen(
+                cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        except OSError as e:
+            log.error("[cam-enc] could not launch ffmpeg for %s: %s", self.path, e)
+            self._proc = None
+            return False
+        # Drain stderr continuously into a bounded tail so the pipe can't fill
+        # and stall the encoder; the tail is logged if ffmpeg dies.
+        self._stderr_thread = threading.Thread(
+            target=self._drain_stderr, daemon=True, name="cam-enc-stderr")
+        self._stderr_thread.start()
+        self._open_sidecar()
+        return True
+
+    def _drain_stderr(self) -> None:
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        try:
+            for raw in iter(proc.stderr.readline, b""):
+                line = raw.decode(errors="replace").rstrip()
+                if line:
+                    self._stderr_tail.append(line)
+        except (OSError, ValueError):
+            pass
+
+    def is_alive(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    def write_frame(self, frame: np.ndarray, t_monotonic: float) -> bool:
+        """Feed one frame to ffmpeg and, on success, stamp its sidecar row.
+        Returns False if ffmpeg's pipe is gone (process died) — the caller
+        should stop this camera. Blocks while ffmpeg's stdin is full (the
+        back-pressure the caller converts into drops)."""
+        proc = self._proc
+        if proc is None or proc.stdin is None:
+            return False
+        # Ensure exact dims + contiguous BGR bytes for the rawvideo pipe.
+        if frame.shape[0] != self._h or frame.shape[1] != self._w:
+            frame = cv2.resize(frame, (self._w, self._h))
+        if not frame.flags["C_CONTIGUOUS"]:
+            frame = np.ascontiguousarray(frame)
+        try:
+            proc.stdin.write(frame.tobytes())
+        except (BrokenPipeError, OSError, ValueError):
+            return False
+        self._write_sidecar_row(t_monotonic)   # only AFTER a successful write
+        return True
+
+    def close(self, timeout: float = 5.0) -> Optional[int]:
+        """Normal stop: close stdin (ffmpeg flushes + finalises on EOF), wait
+        up to `timeout`, then kill if it hangs. Idempotent. Returns ffmpeg's
+        exit code (or None)."""
+        proc = self._proc
+        self._proc = None
+        rc = None
+        if proc is not None:
+            try:
+                if proc.stdin is not None:
+                    proc.stdin.close()
+            except OSError:
+                pass
+            try:
+                rc = proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                log.warning("[cam-enc] ffmpeg did not exit in %.0fs — killing (%s)",
+                            timeout, self.path)
+                proc.kill()
+                try:
+                    rc = proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    rc = None
+        if self._stderr_thread is not None:
+            self._stderr_thread.join(timeout=1.0)
+            self._stderr_thread = None
+        self._close_sidecar()
+        return rc
+
+    def stderr_tail(self, n: int = 8) -> str:
+        return "\n".join(list(self._stderr_tail)[-n:])
+
+    # ── sidecar (row-per-encoded-frame) ──
+    def _open_sidecar(self) -> None:
+        p = Path(self.path)
+        ts_path = p.parent / (p.stem + ".timestamps.csv")
+        try:
+            # Line-buffered so each complete row reaches the OS on its newline,
+            # keeping the sidecar crash-consistent with the fragmented video.
+            self._ts_file = open(ts_path, "w", buffering=1, encoding="utf-8", newline="")
+            self._ts_file.write("frame_index,t_session_seconds,t_monotonic,t_unix\n")
+        except OSError as e:
+            self._ts_file = None
+            log.warning("could not open timestamp sidecar %s: %s", ts_path, e)
+
+    def _write_sidecar_row(self, t_monotonic: float) -> None:
+        if self._ts_file is None:
+            self._frame_idx += 1
+            return
+        clock = self._clock
+        if clock is not None:
+            t0_mono, t0_unix = clock
+        else:
+            # No shared origin — anchor to this recording's first frame so the
+            # sidecar is still internally consistent.
+            if self._frame_idx == 0:
+                self._clock = (t_monotonic, time.time())
+            t0_mono, t0_unix = self._clock
+        t_session = t_monotonic - t0_mono
+        t_unix = t0_unix + t_session
+        try:
+            self._ts_file.write(
+                f"{self._frame_idx},{t_session:.6f},{t_monotonic:.6f},{t_unix:.6f}\n")
+        except OSError:
+            pass  # a sidecar write failure must not stop capture
+        self._frame_idx += 1
+
+    def _close_sidecar(self) -> None:
+        if self._ts_file is not None:
+            try:
+                self._ts_file.flush()
+                os.fsync(self._ts_file.fileno())
+                self._ts_file.close()
+            except OSError:
+                pass
+            self._ts_file = None
+
+
 # ─── Capture thread ───────────────────────────────────────────────────────────
 
 class USBCameraThread(QThread):
@@ -152,6 +421,7 @@ class USBCameraThread(QThread):
     frame_ready   = pyqtSignal(np.ndarray)
     state_changed = pyqtSignal(str)
     stats         = pyqtSignal(float, int)  # fps, total_frames
+    record_error  = pyqtSignal(str)         # this camera's recording failed mid-session
 
     def __init__(self, device: CameraDevice,
                  width: int = 960, height: int = 540, fps: int = 30,
@@ -174,7 +444,6 @@ class USBCameraThread(QThread):
         self._stop_flag:       bool = False
         self._recording:       bool = False
         self._rec_path:        Optional[Path] = None
-        self._writer:          Optional[cv2.VideoWriter] = None
         self._rec_req_path:    Optional[Path] = None     # start request
         self._rec_stop_req:    bool = False              # stop request
         # Capture-time clock origin (t0_monotonic, t0_unix) shared across all
@@ -182,9 +451,15 @@ class USBCameraThread(QThread):
         # recording via start_recording(clock=...). None → each thread uses
         # its own first recorded frame as the origin (still self-consistent).
         self._rec_req_clock:   Optional[tuple[float, float]] = None
-        self._rec_clock:       Optional[tuple[float, float]] = None
-        self._ts_file = None                             # timestamp sidecar handle
-        self._rec_frame_idx:   int = 0
+        # Crash-safe recording: a bounded queue hands frames from this capture
+        # thread to a writer thread that feeds the FrameEncoder's ffmpeg stdin.
+        # Capture never blocks on the encoder — a full queue drops the frame.
+        self._encoder:         Optional[FrameEncoder] = None
+        self._rec_queue:       Optional[queue.Queue] = None
+        self._rec_stop_event:  Optional[threading.Event] = None
+        self._writer_thread:   Optional[threading.Thread] = None
+        self._dropped_frames:  int = 0
+        self._last_drop_log:   float = 0.0
 
     # ── Public API (thread-safe; uses flags the run-loop polls) ──────────
     def stop(self) -> None:
@@ -213,9 +488,14 @@ class USBCameraThread(QThread):
     def is_recording(self) -> bool:
         return self._recording
 
+    @property
+    def dropped_frames(self) -> int:
+        """Frames dropped this recording because the encoder couldn't keep up
+        (bounded-queue overflow). 0 is the healthy case."""
+        return self._dropped_frames
+
     # ── Thread body ──
     def run(self) -> None:  # noqa: C901 — single run-loop, hard to split further
-        write_err_logged = False  # one frame-write warning per capture run
         self.state_changed.emit("opening")
         cap = cv2.VideoCapture(self._dev.index, self._dev.backend or _preferred_backend())
         if not cap.isOpened():
@@ -278,43 +558,22 @@ class USBCameraThread(QThread):
         try:
             while not self._stop_flag:
                 # Handle recording-start request — DEFERRED until we have a
-                # valid first frame, so the writer always gets correct dims.
+                # valid first frame, so the encoder always gets correct dims.
                 if self._rec_req_path is not None and not self._recording \
                         and first_frame_shape is not None:
                     path = self._rec_req_path; self._rec_req_path = None
                     clock = self._rec_req_clock; self._rec_req_clock = None
-                    path.parent.mkdir(parents=True, exist_ok=True)
                     fh, fw = first_frame_shape
                     # Sanity-check FPS: cap.get() returns NaN/0 on some
                     # backends. Default to 30 when invalid.
                     safe_fps = float(actual_fps) if actual_fps and actual_fps > 5 else 30.0
                     if safe_fps > 120: safe_fps = 30.0  # bogus-high reading
-                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                    self._writer = cv2.VideoWriter(
-                        str(path), fourcc, safe_fps, (fw, fh),
-                    )
-                    if self._writer.isOpened():
-                        self._rec_path = path; self._recording = True
-                        self._rec_fps = safe_fps  # for downstream use
-                        self._rec_size = (fw, fh)
-                        self._rec_clock = clock
-                        self._rec_frame_idx = 0
-                        self._open_timestamp_sidecar(path)
-                    else:
-                        self._writer = None
-                        self.state_changed.emit("error: could not open video writer")
+                    self._start_recording_encoder(path, fw, fh, safe_fps, clock)
 
                 # Handle recording-stop request.
                 if self._rec_stop_req and self._recording:
                     self._rec_stop_req = False
-                    try:
-                        if self._writer is not None:
-                            self._writer.release()
-                    finally:
-                        self._writer = None
-                        self._recording = False
-                        self._rec_path = None
-                        self._close_timestamp_sidecar()
+                    self._stop_recording_encoder()
 
                 ok, frame = cap.read()
                 if not ok or frame is None:
@@ -336,32 +595,23 @@ class USBCameraThread(QThread):
                     last_stats_emit = now
                     self.stats.emit(float(len(stats_window)), total_frames)
 
-                # Write to disk before emitting — prefer to lose a preview
-                # frame over losing a recorded one in the pathological case.
-                # Recording stays at full capture rate; only the preview is
-                # throttled below.
-                if self._recording and self._writer is not None:
+                # Hand the frame to the encoder writer thread WITHOUT blocking:
+                # capture must keep its cadence even if ffmpeg stalls. A full
+                # queue means the encoder can't keep up — drop the frame, count
+                # it, and (rate-limited) log it. `frame` is a fresh array per
+                # cap.read() in OpenCV-Python, so enqueuing it by reference is
+                # safe even though the writer consumes it later — the same
+                # assumption the preview emit below already relies on.
+                if self._recording and self._rec_queue is not None:
                     try:
-                        if frame.shape[:2] == first_frame_shape:
-                            self._writer.write(frame)
-                        else:
-                            # Resize on the fly if the camera surprises us
-                            # mid-stream. Rare but possible on hot-plug.
-                            resized = cv2.resize(frame, (first_frame_shape[1], first_frame_shape[0]))
-                            self._writer.write(resized)
-                        # Stamp the frame we just wrote. `now` is this frame's
-                        # grab time on the process-wide monotonic clock — the
-                        # same clock every camera thread reads, so all sidecars
-                        # share one axis. Stamp AFTER a successful write so the
-                        # sidecar row count matches the MP4 frame count.
-                        self._stamp_frame(now)
-                    except Exception as e:
-                        # Dropped recorded frames = data loss, but a dying
-                        # camera raises per-frame — log once per capture run.
-                        if not write_err_logged:
-                            write_err_logged = True
-                            log.warning("frame write failed (further drops "
-                                        "this run suppressed): %r", e)
+                        self._rec_queue.put_nowait((frame, now))
+                    except queue.Full:
+                        self._dropped_frames += 1
+                        if now - self._last_drop_log >= 1.0:
+                            self._last_drop_log = now
+                            log.warning("cam idx=%s: encoder queue full — dropping "
+                                        "frames (total this run: %d)",
+                                        self._dev.index, self._dropped_frames)
 
                 # ── Preview emit throttling ───────────────────────────────
                 # Cap preview emits at ~20 Hz (50 ms). Even if the camera
@@ -379,69 +629,110 @@ class USBCameraThread(QThread):
                     last_preview_emit = now
                     self.frame_ready.emit(frame)
         finally:
-            # Always release the writer and the device, even on exception.
+            # Always stop recording (finalise ffmpeg + sidecar) and release the
+            # device, even on exception — so no orphaned ffmpeg survives.
             try:
-                if self._writer is not None:
-                    self._writer.release()
+                if self._recording or self._writer_thread is not None:
+                    self._stop_recording_encoder()
             except Exception:
                 pass
-            self._writer = None
-            self._recording = False
-            self._close_timestamp_sidecar()
             cap.release()
             self.state_changed.emit("stopped")
 
-    # ── Capture-time frame timestamps (additive; MP4 writing is unchanged) ──
+    # ── Crash-safe recording: encoder + writer thread ──
     #
-    # For every frame written to the MP4 we append one row to a sidecar CSV
-    # next to it: <mp4-stem>.timestamps.csv. This turns the video from
-    # "frames at a nominal fps" into "frames at known capture instants", so
-    # downstream alignment is measured against a shared clock rather than
-    # assumed (see docs/ARCHITECTURE_AND_EVALUATION.md §1.6, Intent A/B).
+    # Every frame handed to the encoder appends one row to a sidecar CSV next
+    # to the MP4 (<mp4-stem>.timestamps.csv), written by FrameEncoder ONLY
+    # after that frame's bytes reached ffmpeg's stdin — so sidecar rows ==
+    # encoded frames (dropped frames get neither). This turns the video from
+    # "frames at a nominal fps" into "frames at known capture instants"
+    # (docs/ARCHITECTURE_AND_EVALUATION.md §1.6).
 
-    def _open_timestamp_sidecar(self, mp4_path: Path) -> None:
-        ts_path = mp4_path.parent / (mp4_path.stem + ".timestamps.csv")
-        try:
-            self._ts_file = open(ts_path, "w", encoding="utf-8", newline="")
-            # t_session_seconds — same name/axis as phase_markers.csv, so
-            # frames and markers line up directly. t_monotonic/t_unix are the
-            # raw process clock + wall clock at grab time.
-            self._ts_file.write("frame_index,t_session_seconds,t_monotonic,t_unix\n")
-        except OSError as e:
-            self._ts_file = None
-            log.warning("could not open timestamp sidecar %s: %s", ts_path, e)
-
-    def _stamp_frame(self, t_monotonic: float) -> None:
-        if self._ts_file is None:
+    def _start_recording_encoder(self, path, fw, fh, fps, clock) -> None:
+        enc = FrameEncoder(path, fw, fh, fps, clock)
+        if not enc.start():
+            self.state_changed.emit("error: could not start video encoder")
+            self.record_error.emit(
+                "Could not start recording for this camera (video encoder "
+                "failed to launch).")
             return
-        clock = self._rec_clock
-        if clock is not None:
-            t0_mono, t0_unix = clock
-        else:
-            # No shared origin passed — anchor to this recording's first frame
-            # so the sidecar is still internally consistent.
-            if self._rec_frame_idx == 0:
-                self._rec_clock = (t_monotonic, time.time())
-                t0_mono, t0_unix = self._rec_clock
-            else:
-                t0_mono, t0_unix = self._rec_clock
-        t_session = t_monotonic - t0_mono
-        t_unix = t0_unix + t_session
-        try:
-            self._ts_file.write(
-                f"{self._rec_frame_idx},{t_session:.6f},{t_monotonic:.6f},{t_unix:.6f}\n")
-        except OSError:
-            pass  # a write failure here must not stop capture
-        self._rec_frame_idx += 1
+        self._encoder = enc
+        self._rec_queue = queue.Queue(maxsize=REC_QUEUE_MAXSIZE)
+        self._rec_stop_event = threading.Event()
+        self._dropped_frames = 0
+        self._last_drop_log = 0.0
+        self._rec_path = Path(path)
+        self._writer_thread = threading.Thread(
+            target=self._encoder_writer_loop,
+            args=(enc, self._rec_queue, self._rec_stop_event),
+            name="cam-enc-writer", daemon=True,
+        )
+        self._writer_thread.start()
+        self._recording = True
 
-    def _close_timestamp_sidecar(self) -> None:
-        if self._ts_file is not None:
+    def _encoder_writer_loop(self, enc, q, stop_event) -> None:
+        """Feed queued frames to the encoder. Blocks on ffmpeg's stdin when the
+        encoder is slow (that's the back-pressure the capture loop turns into
+        drops). Runs until stopped and drained, or until ffmpeg dies."""
+        died = False
+        while True:
             try:
-                self._ts_file.flush(); self._ts_file.close()
-            except OSError:
-                pass
-            self._ts_file = None
-        self._rec_clock = None
+                item = q.get(timeout=0.2)
+            except queue.Empty:
+                item = None
+            if item is not None:
+                frame, t_mono = item
+                if not enc.write_frame(frame, t_mono):
+                    died = True
+                    break
+            # Detect an encoder that exited on its own (crash / error) even
+            # during a gap in frames — not just on the next failed write.
+            elif not stop_event.is_set() and not enc.is_alive():
+                died = True
+                break
+            if stop_event.is_set() and q.empty():
+                break
+        if died:
+            self._handle_encoder_death(enc)
+        else:
+            enc.close()   # normal stop: flush + finalise the fragmented MP4
+
+    def _handle_encoder_death(self, enc) -> None:
+        """One camera's ffmpeg died mid-session. Stop ONLY this camera, keep
+        its partial (still-playable, fragmented) file + sidecar, and signal the
+        slot — the other cameras and EEG keep recording."""
+        tail = enc.stderr_tail()
+        log.error("cam idx=%s: ffmpeg encoder died mid-recording — keeping the "
+                  "partial file. ffmpeg stderr tail:\n%s", self._dev.index, tail)
+        try:
+            enc.close(timeout=2.0)   # reap the dead process + close the sidecar
+        except Exception:
+            pass
+        self._recording = False
+        if self._encoder is enc:
+            self._encoder = None
+        self.record_error.emit(
+            "Recording for this camera stopped because of a video-encoder "
+            "error. The footage saved up to that point has been kept.")
+
+    def _stop_recording_encoder(self) -> None:
+        """Normal stop: tell the writer to drain + finalise, then join it (so
+        ffmpeg has exited and no orphan remains before we return)."""
+        self._recording = False
+        if self._rec_stop_event is not None:
+            self._rec_stop_event.set()
+        wt = self._writer_thread
+        if wt is not None:
+            wt.join(timeout=12.0)
+            if wt.is_alive():
+                log.error("cam idx=%s: encoder writer did not stop in time — "
+                          "video may be missing its final fragment", self._dev.index)
+        self._writer_thread = None
+        self._rec_queue = None
+        self._rec_stop_event = None
+        self._rec_path = None
+        self._encoder = None
 
 
-__all__ = ["CameraDevice", "USBCameraThread", "list_cameras"]
+__all__ = ["CameraDevice", "USBCameraThread", "FrameEncoder",
+           "preflight_recording", "list_cameras"]

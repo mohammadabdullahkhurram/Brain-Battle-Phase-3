@@ -13,11 +13,11 @@ from the format the app actually reads/writes):
   - `session_controller._build_timeline` — the EXACT phase-plan logic
     (baseline → rounds → breaks, no break after the last round) a live
     session would run.
-  - `usb_camera.USBCameraThread._open_timestamp_sidecar` /
-    `._stamp_frame` / `._close_timestamp_sidecar` — the EXACT per-frame
-    sidecar CSV writer. The thread is constructed but never `.start()`ed
-    (no real camera, no QThread spun up) — we just call its private
-    sidecar-writing methods directly with synthetic timestamps.
+  - `usb_camera.FrameEncoder` — the EXACT crash-safe fragmented-H.264 encoder
+    + row-per-encoded-frame sidecar the live recorder uses. We drive it
+    synchronously (no capture thread / queue needed offline), feeding
+    synthetic frames + capture timestamps, so the demo's video container and
+    sidecar can't drift from the real on-disk format.
   - `eeg_module._MuseDirectReader._on_eeg` / `.start_recording` /
     `.stop_recording` — the EXACT per-chunk accumulation + CSV flush path
     the real BLE pipeline uses (the same technique
@@ -33,9 +33,8 @@ What's RE-IMPLEMENTED here (no headless-callable equivalent exists):
   - The actual video FRAME pixels (burned-in text, phase-marker flashes) —
     there is no synthetic-frame generator anywhere in the real pipeline;
     `USBCameraThread.run()`'s frame loop is tied to a real `cv2.VideoCapture`.
-    We still write frames through `cv2.VideoWriter` with the SAME fourcc
-    (`mp4v`) and resolution (960x540) the real app uses, so the container
-    format matches exactly.
+    We render frames with cv2 and hand them to the real `FrameEncoder`, so the
+    encoding + container (H.264 fragmented MP4, 960x540) matches exactly.
   - The synthetic EEG SIGNAL itself (noise/alpha/blink/motion/marker-spike) —
     there is no synthetic-EEG generator in `eeg_module.py` to reuse; this is
     plausible fake data, not real physiology.
@@ -79,7 +78,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from session_controller import SessionConfig, Phase, _build_timeline  # noqa: E402
 from session_storage import create_session, PhaseRecord  # noqa: E402
-from usb_camera import CameraDevice, USBCameraThread  # noqa: E402
+from usb_camera import FrameEncoder, preflight_recording  # noqa: E402
 from usb_camera_panel import _SLOT_SPECS  # noqa: E402
 from eeg_module import _MuseDirectReader, BOXER_LABELS  # noqa: E402
 from live_session_tab import _muse_friendly, _default_capture_root  # noqa: E402
@@ -180,18 +179,19 @@ def _render_frame(camera_label: str, frame_idx: int, t_session: float, flash: bo
 
 def _render_camera_worker(task: dict) -> dict:
     """Runs in its own process (see generate_demo_session's ProcessPoolExecutor
-    below) — the four cameras are fully independent, and `cv2.VideoWriter`'s
-    mp4v encode is the dominant cost (~4-5 ms/frame), so parallelizing across
-    cameras is what keeps the default config under a minute. Everything
-    random was already drawn deterministically in the parent process before
-    dispatch (`start_offset` arrives as a plain float); nothing here uses
-    randomness, so process scheduling order doesn't affect determinism.
-    """
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PyQt6.QtWidgets import QApplication as _QApp
-    global _qapp_ref
-    _qapp_ref = _QApp.instance() or _QApp([])
+    below) — the four cameras are fully independent, and H.264 encoding is the
+    dominant cost, so parallelizing across cameras keeps the default config
+    fast. Everything random was already drawn deterministically in the parent
+    process before dispatch (`start_offset` arrives as a plain float); nothing
+    here uses randomness, so process scheduling order doesn't affect frame
+    counts / sidecars.
 
+    Uses the SAME FrameEncoder the live recorder uses (crash-safe fragmented
+    H.264, row-per-encoded-frame sidecar), so the demo can't drift from the
+    real on-disk format. The container is encoded at NOMINAL_FPS while the
+    sidecar carries the true (possibly drifted) capture times — exactly what a
+    real camera whose reported fps differs from its true rate produces.
+    """
     label = task["label"]
     idx = task["idx"]
     start_offset = task["start_offset"]
@@ -200,29 +200,25 @@ def _render_camera_worker(task: dict) -> dict:
     t0_unix = task["t0_unix"]
     total_duration = task["total_duration"]
     marker_times = task["marker_times"]
+    encoder = task["encoder"]
     mp4_path = Path(task["mp4_path"])
     mp4_path.parent.mkdir(parents=True, exist_ok=True)
 
     n_frames = max(0, round((total_duration - start_offset) * capture_fps))
 
-    dev = CameraDevice(index=idx - 1, name=label)
-    cam_thread = USBCameraThread(dev)
-    cam_thread._rec_clock = (t0_monotonic, t0_unix)
-    cam_thread._open_timestamp_sidecar(mp4_path)
-
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")   # same fourcc usb_camera.py writes
-    writer = cv2.VideoWriter(str(mp4_path), fourcc, NOMINAL_FPS, (WIDTH, HEIGHT))
+    enc = FrameEncoder(mp4_path, WIDTH, HEIGHT, NOMINAL_FPS,
+                       clock=(t0_monotonic, t0_unix), encoder=encoder)
+    if not enc.start():
+        raise RuntimeError(f"demo: could not start encoder for {label}")
 
     flashes = _flash_frame_set(marker_times, start_offset, capture_fps, n_frames)
     for i in range(n_frames):
         t_session = start_offset + i / capture_fps
         t_monotonic = t0_monotonic + t_session
         frame = _render_frame(label, i, t_session, flash=(i in flashes))
-        writer.write(frame)
-        cam_thread._stamp_frame(t_monotonic)
-
-    writer.release()
-    cam_thread._close_timestamp_sidecar()
+        if not enc.write_frame(frame, t_monotonic):
+            raise RuntimeError(f"demo: encoder died writing {label} frame {i}")
+    enc.close()
 
     return {
         "label": label, "path": str(mp4_path), "kind": task["kind"],
@@ -366,6 +362,12 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     marker_times = [m[0] for m in markers]
     rng = np.random.default_rng(seed)
 
+    # Resolve the H.264 encoder ONCE here (the export_module probe) and pass
+    # its name to the workers, so they don't each re-run the probe.
+    ok, encoder, msg = preflight_recording()
+    if not ok:
+        raise RuntimeError(f"demo: no usable video encoder — {msg}")
+
     # Draw every random value sequentially in the parent process FIRST (one
     # fixed order, independent of how the camera workers below get scheduled)
     # so a given --seed is reproducible regardless of parallelism.
@@ -380,12 +382,11 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
             "capture_fps": DRIFT_FPS if is_drift else NOMINAL_FPS,
             "t0_monotonic": t0_monotonic, "t0_unix": t0_unix,
             "total_duration": total_duration, "marker_times": marker_times,
-            "mp4_path": str(mp4_path),
+            "mp4_path": str(mp4_path), "encoder": encoder,
         })
 
-    # The four cameras are independent and mp4v encoding dominates runtime —
-    # parallelize across processes so the default config stays well under a
-    # minute (serial generation of ~19k frames takes ~100s on this machine).
+    # The four cameras are independent and H.264 encoding dominates runtime —
+    # parallelize across processes to keep the default config fast.
     import concurrent.futures as _fut
     max_workers = min(4, os.cpu_count() or 4)
     with _fut.ProcessPoolExecutor(max_workers=max_workers) as pool:
