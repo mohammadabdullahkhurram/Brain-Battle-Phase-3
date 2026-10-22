@@ -184,6 +184,7 @@ class USBCameraSlot(QFrame):
         self._thread:   Optional[USBCameraThread] = None
         self._device:   Optional[CameraDevice]    = None
         self._last_fps: float = 0.0
+        self._rec_failed: bool = False
         self._build()
         dt.on_theme_change(self._restyle)
 
@@ -368,10 +369,12 @@ class USBCameraSlot(QFrame):
     def _start_thread(self) -> None:
         if self._device is None:
             return
+        self._rec_failed = False
         self._thread = USBCameraThread(self._device, parent=self)
         self._thread.frame_ready.connect(self._on_frame)
         self._thread.state_changed.connect(self._on_state)
         self._thread.stats.connect(self._on_stats)
+        self._thread.record_error.connect(self._on_record_error)
         self._thread.finished.connect(self._on_thread_finished)
         self._thread.start()
         self._connect_btn.setText("DISCONNECT")
@@ -447,11 +450,33 @@ class USBCameraSlot(QFrame):
     def _on_stats(self, fps: float, total: int) -> None:
         self._last_fps = fps
         self._fps_lbl.setText(f"{fps:>4.1f} FPS")
+        # Surface dropped frames while recording so the operator can see the
+        # encoder falling behind (healthy = no count shown).
+        if self._thread is not None and self._thread.is_recording \
+                and not getattr(self, "_rec_failed", False):
+            dropped = self._thread.dropped_frames
+            self._rec_lbl.setText(f"● REC  ({dropped} dropped)" if dropped else "● REC")
+            self._rec_lbl.setStyleSheet(
+                f"color: {_error()}; font-size: 9px; letter-spacing: 1.4px;"
+                f" font-family: {dt.FONT_UI}; font-weight: 600;")
+
+    def _on_record_error(self, message: str) -> None:
+        """This camera's recording failed mid-session. Mark the slot red with a
+        plain message; the other cameras keep recording."""
+        self._rec_failed = True
+        self._dot.setStyleSheet(f"color: {_error()}; font-size: 11px;")
+        self._status_lbl.setText("RECORDING STOPPED")
+        self._status_lbl.setStyleSheet(
+            f"color: {_error()}; font-size: 9px; letter-spacing: 1px;"
+            f" font-family: {dt.FONT_UI};")
+        self._rec_lbl.setText("● REC ERROR")
+        self._rec_lbl.setToolTip(message)
 
     # ── Phase-aware recording API (called by LiveSessionTab at phase boundaries) ──
     def start_recording(self, path: str | Path, clock=None) -> None:
         if self._thread is None:
             return
+        self._rec_failed = False
         self._thread.start_recording(path, clock=clock)
         self._rec_lbl.setText("● REC")
 
@@ -459,7 +484,8 @@ class USBCameraSlot(QFrame):
         if self._thread is None:
             return
         self._thread.stop_recording()
-        self._rec_lbl.setText("")
+        if not getattr(self, "_rec_failed", False):
+            self._rec_lbl.setText("")
 
     @property
     def current_device(self) -> Optional[CameraDevice]:

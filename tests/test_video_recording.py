@@ -219,10 +219,32 @@ def test_ffmpeg_death_isolated_to_one_camera():
               fb > 0 and fb == sb, f"B ffprobe={fb} sidecar={sb}")
 
 
+# ─── 4. recording pre-flight ────────────────────────────────────────────────
+
+def test_preflight_recording():
+    import usb_camera
+    ok, enc, msg = usb_camera.preflight_recording()
+    check("preflight OK on a machine with ffmpeg + an encoder",
+          ok and enc and msg == "", f"ok={ok} enc={enc!r}")
+
+    # With ffmpeg missing, preflight must block with a plain-language message.
+    orig = usb_camera._ffmpeg_path
+    usb_camera._ffmpeg_path = lambda: None
+    try:
+        ok2, _enc2, msg2 = usb_camera.preflight_recording()
+    finally:
+        usb_camera._ffmpeg_path = orig
+    check("preflight blocks when ffmpeg is missing", not ok2 and bool(msg2),
+          f"ok={ok2} msg={msg2!r}")
+    check("block message is plain language (mentions ffmpeg, no jargon)",
+          "ffmpeg" in msg2.lower() and "encoder" not in msg2.lower(), repr(msg2))
+
+
 if __name__ == "__main__":
     test_sigkill_midrecording()
     test_backpressure_drops_and_consistency()
     test_ffmpeg_death_isolated_to_one_camera()
+    test_preflight_recording()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

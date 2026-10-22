@@ -396,6 +396,15 @@ class LiveSessionTab(QWidget):
         except ValueError as e:
             QMessageBox.warning(self, "Invalid session", str(e)); return
 
+        # Recording pre-flight: without ffmpeg + a working video encoder the
+        # cameras can't record at all — block with a plain message rather than
+        # start a session that silently saves no video.
+        from usb_camera import preflight_recording
+        rec_ok, _enc, rec_msg = preflight_recording()
+        if not rec_ok:
+            QMessageBox.critical(self, "Can't record video", rec_msg)
+            return
+
         # Disk-space pre-flight: compare the estimated session size against
         # free space. Block if there isn't even 1× the estimate; warn (but
         # allow) below 2× so the operator can decide with a full disk ahead.
