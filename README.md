@@ -95,7 +95,7 @@ measured start (from its sidecar's first row) becomes its offset, the
 latest-starting source becomes the playhead-zero reference, and every other
 player seeks by `(playhead_zero − its own start)`. There is nothing to
 correlate and no audio involved; in-app cameras never record audio in the
-first place (OpenCV's `VideoWriter` is video-only).
+first place (each camera is encoded video-only by its own ffmpeg subprocess).
 
 `sync_offsets.csv` in every export records `method = capture_clock` and the
 honest sentinel `confidence = n/a (capture_clock)` for every source — there
@@ -135,7 +135,7 @@ axis. See `CLAUDE.md`'s "Deferred work" section and `docs/ROADMAP.md`.
 
 | Module | Purpose |
 |---|---|
-| `usb_camera.py` | `USBCameraThread` — cv2 capture + `cv2.VideoWriter` recording (video-only, no audio) |
+| `usb_camera.py` | `USBCameraThread` (cv2 capture) + `FrameEncoder` — crash-safe fragmented H.264 via a per-camera ffmpeg subprocess (video-only, no audio) |
 | `usb_camera_slot.py` | One camera slot widget (device pick, preview, record state) |
 | `usb_camera_panel.py` | 2×2 grid of slots; start/stop recording fan-out |
 
@@ -168,13 +168,23 @@ Each capture session creates one folder:
 ```
 Brain Battle <YYYY-MM-DD HH-MM-SS>/
     continuous/
-        Side Cams/*.mp4        # one MP4 per side camera, whole session
-        POV Cams/*.mp4         # one MP4 per POV camera, whole session
-        Muse data/*.csv        # one CSV per headband, whole session
+        Side Cams/*.mp4              # one fragmented H.264 MP4 per side camera
+        Side Cams/*.timestamps.csv   # per-frame capture times (one row per encoded frame)
+        POV Cams/*.mp4               # one fragmented H.264 MP4 per POV camera
+        POV Cams/*.timestamps.csv
+        Muse data/*.csv              # one CSV per headband, whole session
     phase_markers.csv          # phase boundaries as timestamps (see below)
     session_manifest.json      # app/version, config, per-phase start/end times
+    labels.json                # autosaved event labels (written by the Labelling tab)
     session_<timestamp>.log    # DEBUG-level diagnostic log for the session
 ```
+
+Each camera MP4 is written by its own ffmpeg subprocess as a **fragmented
+H.264** file (fragments flush ~every 0.5 s), so a crash or power loss leaves a
+still-playable partial rather than an unreadable file. Its `.timestamps.csv`
+sidecar has exactly one row per encoded frame (`frame_index,
+t_session_seconds, t_monotonic, t_unix`) — the capture-clock times review
+aligns on.
 
 Recording never stops between phases; downstream tools derive phase boundaries
 from `phase_markers.csv`, **not** from folders. (The v1.x per-round folder

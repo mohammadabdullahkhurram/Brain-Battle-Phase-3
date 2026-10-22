@@ -59,9 +59,10 @@ pip install -r requirements.txt
 python3 brain_battle_main.py
 ```
 
-System binaries required: `ffmpeg` (audio extraction, export) and VLC (review
-playback via python-vlc). Captures land in `Captures/` next to the source
-(override with `BRAIN_BATTLE_CAPTURE_DIR`).
+System binaries required: `ffmpeg` (per-camera H.264 **recording**, plus
+export/probing — recording is now blocked at pre-flight without it) and VLC
+(review playback via python-vlc). Captures land in `Captures/` next to the
+source (override with `BRAIN_BATTLE_CAPTURE_DIR`).
 
 ## Demo session
 
@@ -132,6 +133,12 @@ All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
   marking (no fabricated `SESSION_END`, no re-nag) and the
   `LiveSessionTab._check_disk_space` proceed/warn/block branches (QMessageBox
   + `shutil.disk_usage` stubbed).
+- `test_video_recording.py` — crash-safe fragmented-H.264 recording through the
+  REAL file-backed `USBCameraThread`: SIGKILL mid-record (MP4 still plays,
+  sidecar rows == ffprobe frames within the last fragment), back-pressure
+  (slow encoder → frames dropped + counted, invariant still holds), ffmpeg
+  pipe broken (that camera stops with `record_error` + consistent partial, the
+  other finishes), and the ffmpeg/encoder pre-flight.
 
 (The audio-era `test_seek_alignment.py` and `test_xcorr_confidence.py` were
 deleted in Step 4 with the xcorr feature they guarded.)
@@ -290,10 +297,11 @@ Brain Battle <timestamp>/
   layout ever changes again.
 
 A second structural consequence: all four in-app cameras (side AND POV) record
-via `cv2.VideoWriter` (`usb_camera.py`), which writes **no audio track**. So
-audio-xcorr sync can only work on externally recorded footage (e.g. SD-card
-DSLR files uploaded manually); in-app captures don't need xcorr anyway — they
-start simultaneously and share `phase_markers.csv` time.
+**no audio track** — originally via `cv2.VideoWriter`, now via a per-camera
+ffmpeg subprocess (`usb_camera.FrameEncoder`, video-only). So audio-xcorr sync
+could only ever work on externally recorded footage (e.g. SD-card DSLR files
+uploaded manually); in-app captures don't need xcorr anyway — they start
+simultaneously and share `phase_markers.csv` time.
 
 ## Module map
 
@@ -307,7 +315,7 @@ start simultaneously and share `phase_markers.csv` time.
 | `usb_camera_slot.py` | 479 | One camera slot widget (preview + record state) |
 | `sync_engine.py` | 465 | `SourceOffset`/`SyncResult` dataclasses (ACTIVELY USED) + `SyncWorker` QThread (unused) |
 | `vlc_module.py` | 391 | `VLCVideoSlot`, `SyncPlaybackController` — labelling-tab playback |
-| `usb_camera.py` | 361 | `USBCameraThread` — cv2 capture + `cv2.VideoWriter` recording (no audio track) |
+| `usb_camera.py` | ~700 | `USBCameraThread` (cv2 capture) + `FrameEncoder` — crash-safe fragmented H.264 via a per-camera ffmpeg subprocess (bounded queue + writer thread, drop counter, row-per-frame sidecar); no audio track |
 | `eeg_plot_pg.py` | 276 | pyqtgraph live EEG plot (the fast path the live widget uses) |
 | `sidebar_shell.py` | 274 | Sidebar navigation shell (replaced QTabWidget) |
 | `session_controller.py` | 241 | Pure-logic phase state machine (IDLE→BASELINE→ROUND↔BREAK→DONE), 1 Hz QTimer |

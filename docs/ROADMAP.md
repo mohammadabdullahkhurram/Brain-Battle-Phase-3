@@ -66,16 +66,20 @@ whoever picks up the item, not a contract.
   by `tests/test_eeg_streaming.py` (SIGKILL mid-recording).
   *Files touched:* `eeg_module.py`.
 
-- **Crash-safe video container (MKV or fragmented MP4).** PROPOSAL stage —
-  investigated (SIGKILL behaviour, playback in both stacks, CPU/size,
-  sidecar frame-exactness) and a recommendation delivered; implementation is
-  a separate approved step, not yet done.
-  *Why:* `usb_camera.py` writes `mp4v` via `cv2.VideoWriter`, which only
-  finalizes its moov atom in `release()`; an unclean process exit (crash,
-  force-quit, power loss) before that point leaves an unplayable file.
-  *Files:* `usb_camera.py` (`USBCameraThread.run`'s writer init/`finally`
-  block), possibly `usb_camera_slot.py`; `export_module.py` if the merged
-  quad-grid export needs a transcode step for the new container.
+- ~~**Crash-safe video container (MKV or fragmented MP4).**~~ **DONE
+  (Option A).** Each camera now records via its own ffmpeg subprocess writing a
+  fragmented H.264 MP4 (fed raw frames over stdin), replacing cv2.VideoWriter
+  mp4v. A fragment flushes ~every 0.5 s, so a hard kill loses at most the final
+  fragment — the rest stays playable. A bounded queue + writer thread keep
+  capture from ever blocking on the encoder (full queue → drop + counter); a
+  dead ffmpeg stops only that camera (red slot) while the others keep recording.
+  Sidecar rows == encoded frames exactly (`-fps_mode passthrough`, row written
+  only after a successful stdin write). Covered by `tests/test_video_recording.py`.
+  *Files touched:* `usb_camera.py` (new `FrameEncoder` + rewired
+  `USBCameraThread`), `usb_camera_slot.py` (dropped-count + red on error),
+  `live_session_tab.py` (record pre-flight), `tools/generate_demo_session.py`,
+  `session_storage.py` (estimate rate). export_module needed no change —
+  ffmpeg reads the fragmented inputs fine.
 
 - ~~**Labels autosaved into the session folder on every change; reopen and
   continue labelling.**~~ **DONE.** User labels persist to
@@ -315,12 +319,18 @@ whoever picks up the item, not a contract.
 ## Phase 6 — Shipping
 
 - **Package as a double-click app** (py2app macOS, PyInstaller Windows) +
-  build workflow.
+  build workflow. **Must bundle ffmpeg** inside the app (the camera recorder
+  shells out to it per camera for crash-safe H.264, and the pre-flight blocks
+  recording without it) — a non-technical user won't `brew install ffmpeg`, so
+  ship the binary in the bundle and point `usb_camera`/`export_module` at the
+  bundled path. VLC/libVLC bundling for review playback is the same class of
+  problem to resolve here.
   *Why:* today the app only runs via `python3 brain_battle_main.py` inside
   a hand-built Python environment — not realistic for the target
   non-technical researcher/assistant audience.
   *Files:* new `setup.py`/PyInstaller spec files, a build script/CI config
-  (none exist yet), `version.py` (build metadata).
+  (none exist yet), `version.py` (build metadata); ffmpeg-path resolution in
+  `usb_camera.py`/`export_module.py` to prefer the bundled binary.
 
 - **Rewrite README for non-technical users.**
   *Why:* the current `README.md` is written for a developer audience (pip
