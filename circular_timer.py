@@ -16,7 +16,7 @@ Visual layout (dark themed, Brain-Battle yellow accent):
 The remaining-time arc sweeps counter-clockwise from 12 o'clock as the phase
 ticks down. Three color states communicate phase at a glance:
   • BASELINE   → neutral cyan
-  • ROUND N    → yellow-green (brand color #637DFF)
+  • ROUND N    → yellow-green (brand color #3D4FD6)
   • BREAK N    → muted orange
   • IDLE/DONE  → grey
 
@@ -35,17 +35,17 @@ from PyQt6.QtWidgets import QWidget, QSizePolicy
 
 # Phase → (ring color, subtitle template)
 _PHASE_COLORS = {
-    "idle":     QColor("#2A2A30"),
+    "idle":     QColor("#C9CED7"),
     "baseline": QColor("#38BDF8"),   # sky — BASELINE
-    "round":    QColor("#637DFF"),   # azure — ROUND (primary brand accent)
+    "round":    QColor("#3D4FD6"),   # azure — ROUND (primary brand accent)
     "break":    QColor("#F59E0B"),   # amber — BREAK
     "done":     QColor("#10B981"),   # emerald — DONE
 }
 
-_BG_TRACK = QColor("#24242A")
-_TEXT_PRIMARY  = QColor("#F5F7FA")
-_TEXT_SECONDARY = QColor("#B4BCCC")
-_TEXT_TERTIARY = QColor("#6B7489")
+_BG_TRACK = QColor("#DFE2E8")
+_TEXT_PRIMARY  = QColor("#15171C")
+_TEXT_SECONDARY = QColor("#3A404B")
+_TEXT_TERTIARY = QColor("#555D6B")
 
 
 class CircularTimer(QWidget):

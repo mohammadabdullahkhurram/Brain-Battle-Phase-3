@@ -42,13 +42,13 @@ from PyQt6.QtWidgets import (
 
 # ─── Style constants ──────────────────────────────────────────────────────────
 
-_BG     = "#0E0E12"
-_FG     = "#ECEDEE"
-_GRID   = "#24242A"
-_ACCENT = "#637DFF"
+_BG     = "#F6F7F9"
+_FG     = "#15171C"
+_GRID   = "#DFE2E8"
+_ACCENT = "#3D4FD6"
 
 _CHAN_COLORS = {
-    "TP9":  "#4a9eff",
+    "TP9":  "#3D4FD6",
     "AF7":  "#a78bfa",
     "TP10": "#34d399",
     "AF8":  "#f97316",
@@ -59,8 +59,8 @@ _BANDS = {
     "δ":  (0.5,  4.0,  "#6366f1"),
     "θ":  (4.0,  8.0,  "#8b5cf6"),
     "α":  (8.0,  13.0, "#06b6d4"),
-    "β":  (13.0, 30.0, "#10b981"),
-    "γ":  (30.0, 45.0, "#f59e0b"),
+    "β":  (13.0, 30.0, "#15803D"),
+    "γ":  (30.0, 45.0, "#B45309"),
 }
 
 ROLLING_WINDOW_SEC = 10
@@ -715,29 +715,29 @@ class DevicePickerDialog(QDialog):
         self.setMinimumWidth(400)
         self.setMinimumHeight(320)
         self.setStyleSheet("""
-            QDialog { background-color: #0E0E12; }
-            QLabel  { color: #ECEDEE; font-family: 'Inter'; font-size: 12px; }
+            QDialog { background-color: #F6F7F9; }
+            QLabel  { color: #15171C; font-family: 'Inter'; font-size: 12px; }
             QListWidget {
-                background: #0E0E12; border: 1px solid #2A2A30;
-                color: #ECEDEE; font-family: 'Inter'; font-size: 12px;
+                background: #F6F7F9; border: 1px solid #DFE2E8;
+                color: #15171C; font-family: 'Inter'; font-size: 12px;
                 outline: none;
             }
-            QListWidget::item { padding: 12px 16px; border-bottom: 1px solid #24242A; }
-            QListWidget::item:selected { background: #1F2538; color: #637DFF; }
-            QListWidget::item:disabled { color: #2A2A30; background: transparent; }
+            QListWidget::item { padding: 12px 16px; border-bottom: 1px solid #DFE2E8; }
+            QListWidget::item:selected { background: #EEF0FD; color: #3D4FD6; }
+            QListWidget::item:disabled { color: #C9CED7; background: transparent; }
             QPushButton {
-                background: #1C1C21; border: 1px solid #2A2A30; color: #ECEDEE;
+                background: #FFFFFF; border: 1px solid #DFE2E8; color: #15171C;
                 font-family: 'Inter'; font-size: 12px;
                 padding: 8px 20px; min-width: 90px;
             }
-            QPushButton:hover { border-color: #A1A1AA; color: #ffffff; }
+            QPushButton:hover { border-color: #3A404B; color: #ffffff; }
             QPushButton#scan_btn {
-                background: #1F2538; border-color: #637DFF; color: #637DFF;
+                background: #EEF0FD; border-color: #3D4FD6; color: #3D4FD6;
             }
             QPushButton#connect_btn {
-                background: #1F2538; border-color: #637DFF; color: #637DFF;
+                background: #EEF0FD; border-color: #3D4FD6; color: #3D4FD6;
             }
-            QPushButton:disabled { color: #2A2A30; border-color: #2A2A30; }
+            QPushButton:disabled { color: #C9CED7; border-color: #C9CED7; }
         """)
 
         self.exclude_names = exclude_names or set()
@@ -749,7 +749,7 @@ class DevicePickerDialog(QDialog):
 
         self._status = QLabel("Click SCAN to search for nearby Muse-S devices.")
         self._status.setStyleSheet(
-            "color: #A1A1AA; font-family: 'Inter'; font-size: 12px;"
+            "color: #3A404B; font-family: 'Inter'; font-size: 12px;"
         )
         layout.addWidget(self._status)
 
@@ -1042,7 +1042,6 @@ class EEGLiveWidget(QFrame):
         self._canvas_layout.addWidget(self._placeholder)
 
         self._restyle()
-        _dt.on_theme_change(self._restyle)
 
     def _restyle(self):
         dt = self._dt
@@ -1131,7 +1130,7 @@ class EEGLiveWidget(QFrame):
                 label = f"EEG {self.channel_id}  ·  {short_id}"
             self._title_lbl.setText(label)
             self._title_lbl.setStyleSheet(
-                "color: #ECEDEE; font-size: 12px; font-family: 'Inter';"
+                "color: #15171C; font-size: 12px; font-family: 'Inter';"
             )
             self._connect_btn.setEnabled(True)
 
@@ -1187,7 +1186,7 @@ class EEGLiveWidget(QFrame):
         self._placeholder.setVisible(True)
         self._connect_btn.setText("DISCONNECT")
         self._connect_btn.setStyleSheet(
-            "background:transparent; border:1px solid #ef4444; color:#ef4444;"
+            "background:transparent; border:1px solid #B91C1C; color:#B91C1C;"
             "font-family:'Inter'; font-size:11px; padding:0 16px;"
         )
         self._pick_btn.setEnabled(False)
@@ -1203,7 +1202,7 @@ class EEGLiveWidget(QFrame):
         self._draw_timer.start()
         self._placeholder.setVisible(False)
         self._show_view(self._view_mode)
-        self._status_dot.setStyleSheet("color: #22c55e; font-size: 13px;")
+        self._status_dot.setStyleSheet("color: #15803D; font-size: 13px;")
 
     def start_recording(self, save_path: str, origin_unix=None):
         """Begin saving EEG to a CSV at `save_path`.
@@ -1361,7 +1360,7 @@ class EEGLiveWidget(QFrame):
         disconnect_text = "\n".join(["!! DISCONNECTED !!", msg[:60], "", "Select device and reconnect."])
         self._placeholder.setText(disconnect_text)
         self._placeholder.setStyleSheet(
-            "color: #ef4444; font-size: 12px; font-family: 'Inter';"
+            "color: #B91C1C; font-size: 12px; font-family: 'Inter';"
             "letter-spacing: 1px; padding: 24px; text-align: center;"
         )
         self._placeholder.setVisible(True)
@@ -1371,13 +1370,13 @@ class EEGLiveWidget(QFrame):
         short_id = device_name.split("-")[-1] if "-" in device_name else device_name[-4:]
         self._title_lbl.setText(f"EEG {self.channel_id}  ·  {short_id}  ·  LOST")
         self._title_lbl.setStyleSheet(
-            "color: #ef4444; font-size: 12px; font-family: 'Inter';"
+            "color: #B91C1C; font-size: 12px; font-family: 'Inter';"
         )
-        self._status_dot.setStyleSheet("color: #ef4444; font-size: 13px;")
+        self._status_dot.setStyleSheet("color: #B91C1C; font-size: 13px;")
         self._connect_btn.setText("RECONNECT")
         self._connect_btn.setMinimumWidth(82)  # "RECONNECT" needs a hair more than "CONNECT"
         self._connect_btn.setStyleSheet(
-            "background:#2a0f0f; border:1px solid #ef4444; color:#ef4444;"
+            "background:#FDECEC; border:1px solid #B91C1C; color:#B91C1C;"
             "font-family:'Inter'; font-size:10px; padding:0 12px;"
         )
         self._connect_btn.setEnabled(True)
@@ -1506,23 +1505,23 @@ class EEGReviewWidget(QFrame):
 
         bar = QWidget()
         bar.setFixedHeight(38)
-        bar.setStyleSheet("background-color: #0E0E12; border-bottom: 1px solid #2A2A30;")
+        bar.setStyleSheet("background-color: #F6F7F9; border-bottom: 1px solid #DFE2E8;")
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(14, 0, 14, 0)
         bl.setSpacing(12)
 
         self._status_dot = QLabel("●")
         self._status_dot.setFixedWidth(14)
-        self._status_dot.setStyleSheet("color: #2A2A30; font-size: 13px;")
+        self._status_dot.setStyleSheet("color: #C9CED7; font-size: 13px;")
 
         self._title_lbl = QLabel(f"EEG {self.channel_id}  —  NO DATA")
         self._title_lbl.setStyleSheet(
-            "color: #A1A1AA; font-size: 12px; font-family: 'Inter';"
+            "color: #3A404B; font-size: 12px; font-family: 'Inter';"
         )
 
         self._offset_lbl = QLabel("")
         self._offset_lbl.setStyleSheet(
-            "color: #A1A1AA; font-size: 11px; font-family: 'Inter';"
+            "color: #3A404B; font-size: 11px; font-family: 'Inter';"
         )
 
         self._wave_btn = QPushButton("WAVEFORM")
@@ -1554,7 +1553,7 @@ class EEGReviewWidget(QFrame):
         self._placeholder = QLabel(f"[ EEG {self.channel_id}  —  UPLOAD CSV TO VIEW ]")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setStyleSheet(
-            "color: #2A2A30; font-size: 13px; font-family: 'Inter';"
+            "color: #C9CED7; font-size: 13px; font-family: 'Inter';"
             "letter-spacing: 2px; padding: 24px;"
         )
         self._canvas_layout.addWidget(self._placeholder)
@@ -1643,9 +1642,9 @@ class EEGReviewWidget(QFrame):
             display += f"  [{boxer}]"
         self._title_lbl.setText(display)
         self._title_lbl.setStyleSheet(
-            "color: #ECEDEE; font-size: 12px; font-family: 'Inter';"
+            "color: #15171C; font-size: 12px; font-family: 'Inter';"
         )
-        self._status_dot.setStyleSheet("color: #22c55e; font-size: 13px;")
+        self._status_dot.setStyleSheet("color: #15803D; font-size: 13px;")
         self._placeholder.setVisible(False)
         self._last_bp_t = None
         for vl in self._vlines.values():
@@ -1682,7 +1681,7 @@ class EEGReviewWidget(QFrame):
         self._placeholder.setVisible(True)
         self._wave_canvas.setVisible(False)
         self._band_canvas.setVisible(False)
-        self._status_dot.setStyleSheet("color: #2A2A30; font-size: 13px;")
+        self._status_dot.setStyleSheet("color: #C9CED7; font-size: 13px;")
         self._title_lbl.setText(f"EEG {self.channel_id}  —  NO DATA")
 
     # ── Internal rendering ────────────────────────────────────────────────────

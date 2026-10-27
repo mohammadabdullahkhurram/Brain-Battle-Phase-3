@@ -73,22 +73,22 @@ class VLCVideoSlot(QFrame):
 
         top = QWidget()
         top.setFixedHeight(26)
-        top.setStyleSheet("background-color: #0E0E12; border-bottom: 1px solid #2A2A30;")
+        top.setStyleSheet("background-color: #F6F7F9; border-bottom: 1px solid #DFE2E8;")
         tl = QHBoxLayout(top)
         tl.setContentsMargins(10, 0, 10, 0)
         tl.setSpacing(8)
 
         self._dot = QLabel("●")
         self._dot.setFixedWidth(12)
-        self._dot.setStyleSheet("color: #2A2A30; font-size: 11px;")
+        self._dot.setStyleSheet("color: #C9CED7; font-size: 11px;")
 
         self._slot_lbl = QLabel(f"{self.label} {self.slot_index:02d}")
         self._slot_lbl.setStyleSheet(
-            "color: #A1A1AA; font-size: 11px; font-family: 'Inter'; letter-spacing: 1px;"
+            "color: #3A404B; font-size: 11px; font-family: 'Inter'; letter-spacing: 1px;"
         )
         self._file_lbl = QLabel("NO SOURCE")
         self._file_lbl.setStyleSheet(
-            "color: #71717A; font-size: 9px; font-family: 'Inter';"
+            "color: #555D6B; font-size: 9px; font-family: 'Inter';"
         )
         self._file_lbl.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
@@ -96,7 +96,7 @@ class VLCVideoSlot(QFrame):
 
         self._offset_lbl = QLabel("")
         self._offset_lbl.setStyleSheet(
-            "color: #71717A; font-size: 9px; font-family: 'Inter';"
+            "color: #555D6B; font-size: 9px; font-family: 'Inter';"
         )
 
         tl.addWidget(self._dot)
@@ -111,7 +111,7 @@ class VLCVideoSlot(QFrame):
         self._container.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        self._container.setStyleSheet("background-color: #050506;")
+        self._container.setStyleSheet("background-color: #F6F7F9;")
         self._container_layout = QVBoxLayout(self._container)
         self._container_layout.setContentsMargins(0, 0, 0, 0)
         self._root_layout.addWidget(self._container)
@@ -119,7 +119,7 @@ class VLCVideoSlot(QFrame):
         self._placeholder = QLabel(f"[ {self.label} {self.slot_index:02d} ]")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setStyleSheet(
-            "color: #24242A; font-size: 14px; font-family: 'Inter'; letter-spacing: 4px;"
+            "color: #DFE2E8; font-size: 14px; font-family: 'Inter'; letter-spacing: 4px;"
         )
         self._container_layout.addWidget(self._placeholder)
 
@@ -184,22 +184,22 @@ class VLCVideoSlot(QFrame):
         name = path.replace("\\", "/").split("/")[-1][:32]
         self._file_lbl.setText(name)
         self._file_lbl.setStyleSheet(
-            "color: #A1A1AA; font-size: 9px; font-family: 'Inter';"
+            "color: #3A404B; font-size: 9px; font-family: 'Inter';"
         )
-        self._dot.setStyleSheet("color: #22c55e; font-size: 11px;")
+        self._dot.setStyleSheet("color: #15803D; font-size: 11px;")
         self._slot_lbl.setStyleSheet(
-            "color: #ECEDEE; font-size: 11px; font-family: 'Inter'; letter-spacing: 1px;"
+            "color: #15171C; font-size: 11px; font-family: 'Inter'; letter-spacing: 1px;"
         )
         if offset_sec != 0.0:
             sign = "+" if offset_sec >= 0 else ""
             self._offset_lbl.setText(f"{sign}{offset_sec:.3f}s")
             self._offset_lbl.setStyleSheet(
-                "color: #4a9eff; font-size: 9px; font-family: 'Inter';"
+                "color: #3D4FD6; font-size: 9px; font-family: 'Inter';"
             )
         else:
             self._offset_lbl.setText("BASE")
             self._offset_lbl.setStyleSheet(
-                "color: #637DFF; font-size: 9px; font-family: 'Inter';"
+                "color: #3D4FD6; font-size: 9px; font-family: 'Inter';"
             )
 
     def play(self):
@@ -260,9 +260,9 @@ class VLCVideoSlot(QFrame):
         self._placeholder.show()
         self._file_lbl.setText("NO SOURCE")
         self._file_lbl.setStyleSheet(
-            "color: #71717A; font-size: 9px; font-family: 'Inter';"
+            "color: #555D6B; font-size: 9px; font-family: 'Inter';"
         )
-        self._dot.setStyleSheet("color: #2A2A30; font-size: 11px;")
+        self._dot.setStyleSheet("color: #C9CED7; font-size: 11px;")
         self._offset_lbl.setText("")
 
 

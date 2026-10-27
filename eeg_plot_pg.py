@@ -53,16 +53,16 @@ pg.setConfigOptions(
     antialias=True,           # smooth strokes
     useOpenGL=False,          # OpenGL path sometimes crashes on macOS/Linux;
                               # the raster path is already plenty fast for 4 channels.
-    background=(14, 14, 18),  # matches _BG = "#0E0E12" from eeg_module
-    foreground=(212, 208, 200),
+    background=(255, 255, 255),  # white plot background (light mode)
+    foreground=(21, 23, 28),
 )
 
 
 # ─── Palette (mirrors eeg_module constants) ───────────────────────────────────
 
-_BG             = "#0E0E12"
-_GRID           = "#1e2028"
-_AXIS_TEXT      = "#8B8D95"
+_BG             = "#FFFFFF"
+_GRID           = "#DFE2E8"
+_AXIS_TEXT      = "#555D6B"
 
 _CHAN_COLORS = {
     "TP9":  "#4a9eff",

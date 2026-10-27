@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QScrollArea,
     QSplitter, QSlider, QComboBox, QLineEdit,
     QGroupBox, QProgressBar, QStatusBar, QToolBar,
-    QSpacerItem, QMessageBox
+    QSpacerItem, QMessageBox, QStackedWidget
 )
 from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap, QPainter
@@ -105,7 +105,7 @@ class VideoSurface(QWidget):
     """QPainter-based video surface — no native NSView created."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("background-color: #050506;")
+        self.setStyleSheet("background-color: #F6F7F9;")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._st     = None
@@ -193,7 +193,7 @@ APP_STYLE = ""  # Legacy placeholder — kept for compatibility with tests
 def make_divider():
     line = QFrame()
     line.setFrameShape(QFrame.Shape.HLine)
-    line.setStyleSheet("background-color: #2A2A30; max-height: 1px; border: none;")
+    line.setStyleSheet("background-color: #C9CED7; max-height: 1px; border: none;")
     return line
 
 def make_panel_title(text):
@@ -201,7 +201,7 @@ def make_panel_title(text):
 
 def make_source_label(text):
     lbl = QLabel(text)
-    lbl.setStyleSheet("color: #A1A1AA; font-size: 11px; font-family: 'Inter'; letter-spacing: 2px; padding-left: 12px;")
+    lbl.setStyleSheet("color: #3A404B; font-size: 11px; font-family: 'Inter'; letter-spacing: 2px; padding-left: 12px;")
     return lbl
 
 
@@ -226,11 +226,11 @@ def make_opaque_toolbar(height: int = 44) -> QFrame:
     # the toolbar still draws over whatever's underneath.
     from PyQt6.QtGui import QPalette, QColor
     pal = tb.palette()
-    pal.setColor(QPalette.ColorRole.Window, QColor("#0E0E12"))
+    pal.setColor(QPalette.ColorRole.Window, QColor("#F6F7F9"))
     tb.setPalette(pal)
     tb.setStyleSheet(
-        "QFrame#tabToolbar { background-color: #0E0E12; "
-        "border-bottom: 1px solid #2A2A30; }"
+        "QFrame#tabToolbar { background-color: #F6F7F9; "
+        "border-bottom: 1px solid #DFE2E8; }"
     )
     return tb
 
@@ -247,32 +247,32 @@ class VideoSlot(QFrame):
     def _build(self):
         layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
         top_bar = QWidget(); top_bar.setFixedHeight(26)
-        top_bar.setStyleSheet("background-color: #0E0E12; border-bottom: 1px solid #2A2A30;")
+        top_bar.setStyleSheet("background-color: #F6F7F9; border-bottom: 1px solid #DFE2E8;")
         tl = QHBoxLayout(top_bar); tl.setContentsMargins(10,0,10,0)
         self.status_dot = QLabel("●"); self.status_dot.setObjectName("status_dot_idle")
         self.slot_label = QLabel(f"{self.label} {self.slot_index:02d}")
-        self.slot_label.setStyleSheet("color: #71717A; font-size: 10px; font-family: 'Inter'; letter-spacing: 2px;")
+        self.slot_label.setStyleSheet("color: #555D6B; font-size: 10px; font-family: 'Inter'; letter-spacing: 2px;")
         self.filename_label = QLabel("NO SOURCE")
-        self.filename_label.setStyleSheet("color: #2A2A30; font-size: 9px; font-family: 'Inter'; letter-spacing: 1px;")
+        self.filename_label.setStyleSheet("color: #C9CED7; font-size: 9px; font-family: 'Inter'; letter-spacing: 1px;")
         tl.addWidget(self.status_dot); tl.addSpacing(6); tl.addWidget(self.slot_label)
         tl.addSpacing(12); tl.addWidget(self.filename_label); tl.addStretch()
         layout.addWidget(top_bar)
         self.main_area = QWidget()
         self.main_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.main_area.setStyleSheet("background-color: #0E0E12;")
+        self.main_area.setStyleSheet("background-color: #F6F7F9;")
         ml = QVBoxLayout(self.main_area); ml.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.placeholder = QLabel(f"[ {self.label} {self.slot_index:02d} ]")
         self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.placeholder.setStyleSheet("color: #2A2A30; font-size: 16px; font-family: 'Inter'; letter-spacing: 4px;")
+        self.placeholder.setStyleSheet("color: #C9CED7; font-size: 16px; font-family: 'Inter'; letter-spacing: 4px;")
         ml.addWidget(self.placeholder); layout.addWidget(self.main_area)
     def set_active(self, filename=""):
-        self.status_dot.setStyleSheet("color: #22c55e; font-size: 10px;")
+        self.status_dot.setStyleSheet("color: #15803D; font-size: 10px;")
         if filename:
             self.filename_label.setText(filename.split("/")[-1][:28])
-            self.filename_label.setStyleSheet("color: #A1A1AA; font-size: 9px; font-family: 'Inter'; letter-spacing: 1px;")
+            self.filename_label.setStyleSheet("color: #3A404B; font-size: 9px; font-family: 'Inter'; letter-spacing: 1px;")
         self.placeholder.setText("")
     def set_idle(self):
-        self.status_dot.setStyleSheet("color: #2A2A30; font-size: 10px;")
+        self.status_dot.setStyleSheet("color: #C9CED7; font-size: 10px;")
         self.filename_label.setText("NO SOURCE"); self.placeholder.setText(f"[ {self.label} {self.slot_index:02d} ]")
 
 
@@ -284,18 +284,18 @@ class EEGPanel(QFrame):
     def _build(self):
         layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0); layout.setSpacing(0)
         top_bar = QWidget(); top_bar.setFixedHeight(26)
-        top_bar.setStyleSheet("background-color: #0E0E12; border-bottom: 1px solid #2A2A30;")
+        top_bar.setStyleSheet("background-color: #F6F7F9; border-bottom: 1px solid #DFE2E8;")
         tb = QHBoxLayout(top_bar); tb.setContentsMargins(10,0,10,0)
-        dot = QLabel("●"); dot.setStyleSheet("color: #2A2A30; font-size: 10px;")
+        dot = QLabel("●"); dot.setStyleSheet("color: #C9CED7; font-size: 10px;")
         lbl = QLabel(f"EEG CHANNEL {self.channel_id}  —  MUSE-S")
-        lbl.setStyleSheet("color: #71717A; font-size: 10px; font-family: 'Inter'; letter-spacing: 2px;")
+        lbl.setStyleSheet("color: #555D6B; font-size: 10px; font-family: 'Inter'; letter-spacing: 2px;")
         self.hz_label = QLabel("256 HZ")
-        self.hz_label.setStyleSheet("color: #2A2A30; font-size: 9px; font-family: 'Inter'; letter-spacing: 1px;")
+        self.hz_label.setStyleSheet("color: #C9CED7; font-size: 9px; font-family: 'Inter'; letter-spacing: 1px;")
         tb.addWidget(dot); tb.addSpacing(6); tb.addWidget(lbl); tb.addStretch(); tb.addWidget(self.hz_label)
         layout.addWidget(top_bar)
         ph = QLabel(f"EEG plot will render here — channel {self.channel_id}")
         ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ph.setStyleSheet("color: #2A2A30; font-size: 11px; font-family: 'Inter'; letter-spacing: 2px; padding: 20px;")
+        ph.setStyleSheet("color: #C9CED7; font-size: 11px; font-family: 'Inter'; letter-spacing: 2px; padding: 20px;")
         layout.addWidget(ph)
 
 
@@ -307,16 +307,16 @@ class SourceRow(QWidget):
     def _build(self, label):
         layout = QHBoxLayout(self); layout.setContentsMargins(0,3,0,3); layout.setSpacing(6)
         self.status = QLabel("○"); self.status.setFixedWidth(14)
-        self.status.setStyleSheet("color: #A1A1AA; font-size: 12px; font-family: 'Inter';")
+        self.status.setStyleSheet("color: #3A404B; font-size: 12px; font-family: 'Inter';")
         self.type_lbl = QLabel(label); self.type_lbl.setFixedWidth(100)
-        self.type_lbl.setStyleSheet("color: #A1A1AA; font-size: 10px; font-family: 'Inter'; letter-spacing: 1px;")
+        self.type_lbl.setStyleSheet("color: #3A404B; font-size: 10px; font-family: 'Inter'; letter-spacing: 1px;")
         self.file_lbl = QLabel("—")
-        self.file_lbl.setStyleSheet("color: #A1A1AA; font-size: 10px; font-family: 'Inter';")
+        self.file_lbl.setStyleSheet("color: #3A404B; font-size: 10px; font-family: 'Inter';")
         self.file_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.file_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self.offset_lbl = QLabel(""); self.offset_lbl.setVisible(False)
         btn = QPushButton("UPLOAD"); btn.setFixedWidth(72); btn.setFixedHeight(26)
-        btn.setStyleSheet("background-color: #1C1C21; border: 1px solid #71717A; color: #A1A1AA; font-family: 'Inter'; font-size: 10px; padding: 0 6px;")
+        btn.setStyleSheet("background-color: #FFFFFF; border: 1px solid #C9CED7; color: #3A404B; font-family: 'Inter'; font-size: 10px; padding: 0 6px;")
         btn.clicked.connect(self._pick_file)
         layout.addWidget(self.status); layout.addWidget(self.type_lbl); layout.addWidget(self.file_lbl); layout.addWidget(btn)
     def _pick_file(self):
@@ -331,15 +331,15 @@ class SourceRow(QWidget):
             return
         self.file_path = path
         name = path.split("/")[-1]; short = name[:12] + "…" if len(name) > 12 else name
-        self.file_lbl.setText(short); self.file_lbl.setStyleSheet("color: #ECEDEE; font-size: 10px; font-family: 'Inter';")
-        self.status.setText("●"); self.status.setStyleSheet("color: #22c55e; font-size: 12px; font-family: 'Inter';")
+        self.file_lbl.setText(short); self.file_lbl.setStyleSheet("color: #15171C; font-size: 10px; font-family: 'Inter';")
+        self.status.setText("●"); self.status.setStyleSheet("color: #15803D; font-size: 12px; font-family: 'Inter';")
         self.file_loaded.emit(self.source_id, path)
     def set_offset(self, seconds):
         if seconds == 0.0:
-            self.offset_lbl.setText("BASE"); self.offset_lbl.setStyleSheet("color: #637DFF; font-size: 10px; font-family: 'Inter'; text-align: right;")
+            self.offset_lbl.setText("BASE"); self.offset_lbl.setStyleSheet("color: #3D4FD6; font-size: 10px; font-family: 'Inter'; text-align: right;")
         else:
             sign = "+" if seconds > 0 else ""
-            self.offset_lbl.setText(f"{sign}{seconds:.3f}s"); self.offset_lbl.setStyleSheet("color: #4a9eff; font-size: 10px; font-family: 'Inter'; text-align: right;")
+            self.offset_lbl.setText(f"{sign}{seconds:.3f}s"); self.offset_lbl.setStyleSheet("color: #3D4FD6; font-size: 10px; font-family: 'Inter'; text-align: right;")
 
 import pandas as pd
 
@@ -348,10 +348,10 @@ import pandas as pd
 # the Labelling tab. All ROUND_*_START events share blue (same kind of event —
 # scanning the timeline should read "5 blue chips = 5 rounds"); same for breaks.
 PHASE_MARKER_COLORS = {
-    "baseline": "#10b981",   # emerald — calm, "before the work"
-    "round":    "#3b82f6",   # electric blue — active phase
-    "break":    "#f59e0b",   # amber — rest/pause
-    "done":     "#dc2626",   # crimson — terminal, stop
+    "baseline": "#15803D",   # emerald — calm, "before the work"
+    "round":    "#3D4FD6",   # electric blue — active phase
+    "break":    "#B45309",   # amber — rest/pause
+    "done":     "#DC2626",   # crimson — terminal, stop
 }
 
 
@@ -370,7 +370,7 @@ def _read_phase_markers(csv_path: str) -> list[tuple[float, str, str]]:
                     continue
                 label = (row.get("label") or "PHASE").strip()
                 phase_id = (row.get("phase_id") or "").strip().lower()
-                rows.append((t, PHASE_MARKER_COLORS.get(phase_id, "#637DFF"), label))
+                rows.append((t, PHASE_MARKER_COLORS.get(phase_id, "#3D4FD6"), label))
     except Exception as e:
         log.warning("failed to read phase markers %s: %s", csv_path, e)
     return rows
@@ -436,43 +436,8 @@ class SyncReviewTab(QWidget):
         self._pos_timer.timeout.connect(self._poll_position)
         self._app_ref = None
         self._build()
-        self._apply_theme()
-        import design_tokens as _dt
-        _dt.on_theme_change(self._apply_theme)
-
-    def _apply_theme(self):
-        """Re-apply theme-reactive styles to the tab's visible surfaces.
-        Covers toolbar, upload panel, sources, preview background."""
         import design_tokens as _dt
         self.setStyleSheet(f"SyncReviewTab {{ background: {_dt.canvas_bg()}; }}")
-        for w in self.findChildren(QWidget):
-            ss = w.styleSheet()
-            if not ss: continue
-            new_ss = (ss
-                .replace("background-color: #0E0E12", f"background-color: {_dt.canvas_bg()}")
-                .replace("background-color: #000", f"background-color: {_dt.canvas_bg()}")
-                .replace("background: #000", f"background: {_dt.canvas_bg()}")
-                .replace("background-color: #050506", f"background-color: {_dt.canvas_bg()}")
-                .replace("background-color: #1C1C21", f"background-color: {_dt.card_bg()}")
-                .replace("background-color: #1F2538", f"background-color: {_dt.accent_ghost()}")
-                .replace("border: 1px solid #2A2A30", f"border: 1px solid {_dt.border_strong()}")
-                .replace("border-bottom: 1px solid #2A2A30", f"border-bottom: 1px solid {_dt.border_strong()}")
-                .replace("border: 1px solid #637DFF", f"border: 1px solid {_dt.accent()}")
-                .replace("border: 1px solid #4a9eff", f"border: 1px solid {_dt.accent()}")
-                .replace("border: 1px solid #71717A", f"border: 1px solid {_dt.border_strong()}")
-                .replace("color: #2A2A30", f"color: {_dt.text_tertiary()}")
-                .replace("color: #71717A", f"color: {_dt.text_tertiary()}")
-                .replace("color: #A1A1AA", f"color: {_dt.text_secondary()}")
-                .replace("color: #ECEDEE", f"color: {_dt.text_primary()}")
-                .replace("color: #637DFF", f"color: {_dt.accent()}")
-                .replace("color: #4a9eff", f"color: {_dt.accent()}")
-            )
-            if new_ss != ss:
-                w.setStyleSheet(new_ss)
-        for w in self.findChildren(QWidget):
-            try:
-                s = w.style(); s.unpolish(w); s.polish(w); w.update()
-            except Exception: pass
 
     def _build(self):
         root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
@@ -480,15 +445,15 @@ class SyncReviewTab(QWidget):
         tb = QHBoxLayout(toolbar); tb.setContentsMargins(16,0,16,0); tb.setSpacing(8)
         tb.addWidget(make_panel_title("REVIEW")); tb.addStretch()
         self.open_session_btn = QPushButton("OPEN SESSION FOLDER"); self.open_session_btn.setFixedHeight(28)
-        self.open_session_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
+        self.open_session_btn.setStyleSheet("background-color: #EEF0FD; border: 1px solid #3D4FD6; color: #3D4FD6; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
         self.open_session_btn.clicked.connect(self._open_session_dialog)
         tb.addWidget(self.open_session_btn)
         # "ALIGN" (not "AUTO-SYNC"): alignment is READ from the capture-time
         # stamps, not discovered — there is nothing to sync.
         self.sync_btn = QPushButton("ALIGN"); self.sync_btn.setFixedHeight(28)
-        self.sync_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 16px;")
+        self.sync_btn.setStyleSheet("background-color: #EEF0FD; border: 1px solid #3D4FD6; color: #3D4FD6; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 16px;")
         self.export_btn = QPushButton("EXPORT SYNCED DATA"); self.export_btn.setFixedHeight(28)
-        self.export_btn.setStyleSheet("background-color: transparent; border: 1px solid #4a9eff; color: #4a9eff; font-family: 'Inter'; font-size: 10px; letter-spacing: 1px; padding: 0 14px;")
+        self.export_btn.setStyleSheet("background-color: transparent; border: 1px solid #3D4FD6; color: #3D4FD6; font-family: 'Inter'; font-size: 10px; letter-spacing: 1px; padding: 0 14px;")
         self.export_btn.clicked.connect(self._export_synced_data)
         tb.addWidget(self.sync_btn); tb.addWidget(self.export_btn); root.addWidget(toolbar)
         # Defer until the layout commits so the toolbar ends up above
@@ -498,12 +463,12 @@ class SyncReviewTab(QWidget):
 
         splitter = QSplitter(Qt.Orientation.Horizontal); splitter.setHandleWidth(1)
         upload_widget = QWidget(); upload_widget.setFixedWidth(400)
-        upload_widget.setStyleSheet("background-color: #0E0E12;")
+        upload_widget.setStyleSheet("background-color: #F6F7F9;")
         upload_layout = QVBoxLayout(upload_widget); upload_layout.setContentsMargins(10,16,10,16); upload_layout.setSpacing(6)
         upload_layout.addWidget(make_source_label("DATA SOURCES")); upload_layout.addSpacing(6)
         header = QHBoxLayout(); header.setSpacing(6)
         for txt, w in [("", 14), ("TYPE", 100), ("FILE", 0), ("", 80)]:
-            h = QLabel(txt); h.setStyleSheet("color: #2A2A30; font-size: 9px; font-family: 'Inter'; letter-spacing: 2px;")
+            h = QLabel(txt); h.setStyleSheet("color: #C9CED7; font-size: 9px; font-family: 'Inter'; letter-spacing: 2px;")
             if w: h.setFixedWidth(w)
             else: h.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             header.addWidget(h)
@@ -520,13 +485,13 @@ class SyncReviewTab(QWidget):
             self.sources.append(row); row.file_loaded.connect(self._on_file_loaded)
         upload_layout.addWidget(make_divider())
         self.sync_status = QLabel("AWAITING SOURCES")
-        self.sync_status.setStyleSheet("color: #2A2A30; font-size: 10px; font-family: 'Inter'; letter-spacing: 2px; padding: 8px 0;")
+        self.sync_status.setStyleSheet("color: #C9CED7; font-size: 10px; font-family: 'Inter'; letter-spacing: 2px; padding: 8px 0;")
         upload_layout.addWidget(self.sync_status)
         self.sync_progress = QProgressBar(); self.sync_progress.setValue(0)
         self.sync_progress.setFixedHeight(3); self.sync_progress.setVisible(False)
         upload_layout.addWidget(self.sync_progress); upload_layout.addStretch()
         self.goto_label_btn = QPushButton("PROCEED TO LABELLING  →"); self.goto_label_btn.setEnabled(False)
-        self.goto_label_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 10px;")
+        self.goto_label_btn.setStyleSheet("background-color: #EEF0FD; border: 1px solid #3D4FD6; color: #3D4FD6; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 10px;")
         upload_layout.addWidget(self.goto_label_btn); splitter.addWidget(upload_widget)
 
         preview_widget = QWidget(); preview_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -534,8 +499,8 @@ class SyncReviewTab(QWidget):
         right_scroll = QScrollArea(); right_scroll.setWidgetResizable(True)
         right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        right_scroll.setStyleSheet("QScrollArea { background: #000; border: none; } QScrollBar:vertical { background: #0E0E12; width: 8px; border: none; } QScrollBar::handle:vertical { background: #2A2A30; border-radius: 4px; min-height: 24px; } QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; }")
-        right_content = QWidget(); right_content.setStyleSheet("background-color: #000;")
+        right_scroll.setStyleSheet("QScrollArea { background: #F6F7F9; border: none; } QScrollBar:vertical { background: #F6F7F9; width: 8px; border: none; } QScrollBar::handle:vertical { background: #DFE2E8; border-radius: 4px; min-height: 24px; } QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; }")
+        right_content = QWidget(); right_content.setStyleSheet("background-color: #F6F7F9;")
         right_vbox = QVBoxLayout(right_content); right_vbox.setContentsMargins(0,0,0,0); right_vbox.setSpacing(0)
 
         class _AspectVideoArea(QWidget):
@@ -546,7 +511,7 @@ class SyncReviewTab(QWidget):
                 self.setFixedHeight((cell_h + self.HEADER_H) * 2 + self.SPACING)
 
         video_area = _AspectVideoArea(); video_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        video_area.setStyleSheet("background-color: #000;")
+        video_area.setStyleSheet("background-color: #F6F7F9;")
         va_layout = QVBoxLayout(video_area); va_layout.setContentsMargins(0,0,0,0); va_layout.setSpacing(0)
         vgrid = QGridLayout(); vgrid.setSpacing(2); vgrid.setContentsMargins(0,0,0,0)
         vgrid.setRowStretch(0,1); vgrid.setRowStretch(1,1); vgrid.setColumnStretch(0,1); vgrid.setColumnStretch(1,1)
@@ -555,18 +520,18 @@ class SyncReviewTab(QWidget):
             slot = QWidget(); slot.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             slot_layout = QVBoxLayout(slot); slot_layout.setContentsMargins(0,0,0,0); slot_layout.setSpacing(0)
             hdr = QWidget(); hdr.setFixedHeight(26)
-            hdr.setStyleSheet("background-color: #0E0E12; border-bottom: 1px solid #2A2A30;")
+            hdr.setStyleSheet("background-color: #F6F7F9; border-bottom: 1px solid #DFE2E8;")
             hdr_layout = QHBoxLayout(hdr); hdr_layout.setContentsMargins(8,0,8,0); hdr_layout.setSpacing(6)
-            dot = QLabel("●"); dot.setStyleSheet("color: #2A2A30; font-size: 10px;"); dot.setFixedWidth(12)
-            name_lbl = QLabel(cam_label); name_lbl.setStyleSheet("color: #A1A1AA; font-size: 9px; font-family: 'Inter'; letter-spacing: 2px;")
-            status_lbl = QLabel("— NO FILE"); status_lbl.setStyleSheet("color: #2A2A30; font-size: 9px; font-family: 'Inter';")
+            dot = QLabel("●"); dot.setStyleSheet("color: #C9CED7; font-size: 10px;"); dot.setFixedWidth(12)
+            name_lbl = QLabel(cam_label); name_lbl.setStyleSheet("color: #3A404B; font-size: 9px; font-family: 'Inter'; letter-spacing: 2px;")
+            status_lbl = QLabel("— NO FILE"); status_lbl.setStyleSheet("color: #C9CED7; font-size: 9px; font-family: 'Inter';")
             hdr_layout.addWidget(dot); hdr_layout.addWidget(name_lbl); hdr_layout.addWidget(status_lbl); hdr_layout.addStretch()
             slot_layout.addWidget(hdr)
             vlc_container = QWidget(); vlc_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            vlc_container.setStyleSheet("background-color: #0E0E12;")
+            vlc_container.setStyleSheet("background-color: #F6F7F9;")
             slot_layout.addWidget(vlc_container, 1)
             ph = QLabel(placeholder_text, vlc_container); ph.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            ph.setStyleSheet("color: #2A2A30; font-size: 10px; font-family: 'Inter'; letter-spacing: 1px; background-color: transparent;")
+            ph.setStyleSheet("color: #C9CED7; font-size: 10px; font-family: 'Inter'; letter-spacing: 1px; background-color: transparent;")
             ph.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True); ph.show()
             def _resize_container(event, _ph=ph, _c=vlc_container): _ph.setGeometry(0, 0, _c.width(), _c.height())
             vlc_container.resizeEvent = _resize_container
@@ -585,10 +550,10 @@ class SyncReviewTab(QWidget):
         va_layout.addLayout(vgrid); right_vbox.addWidget(video_area)
 
         eeg_row_widget = QWidget(); eeg_row_widget.setFixedHeight(320)
-        eeg_row_widget.setStyleSheet("background-color: #0E0E12;")
+        eeg_row_widget.setStyleSheet("background-color: #F6F7F9;")
         eeg_row_layout = QVBoxLayout(eeg_row_widget); eeg_row_layout.setContentsMargins(0,0,0,0); eeg_row_layout.setSpacing(0)
         eeg_row_layout.addWidget(make_source_label("EEG OVERLAY"))
-        eeg_cols_widget = QWidget(); eeg_cols_widget.setStyleSheet("background-color: #0E0E12;")
+        eeg_cols_widget = QWidget(); eeg_cols_widget.setStyleSheet("background-color: #F6F7F9;")
         eeg_cols = QHBoxLayout(eeg_cols_widget); eeg_cols.setContentsMargins(12,4,12,8); eeg_cols.setSpacing(6)
         self.eeg_review_1 = EEGReviewWidget(channel_id=1); self.eeg_review_2 = EEGReviewWidget(channel_id=2)
         eeg_cols.addWidget(self.eeg_review_1); eeg_cols.addWidget(self.eeg_review_2)
@@ -599,18 +564,18 @@ class SyncReviewTab(QWidget):
         # below the slider for phase_markers.csv chips.
         controls = QWidget(); controls.setFixedHeight(84)
         controls.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        controls.setStyleSheet("background-color: #0E0E12; border-top: 2px solid #2A2A30;")
+        controls.setStyleSheet("background-color: #F6F7F9; border-top: 2px solid #DFE2E8;")
         ctrl_layout = QHBoxLayout(controls); ctrl_layout.setContentsMargins(16,0,16,0); ctrl_layout.setSpacing(10)
         self.play_btn = QPushButton("▶  PLAY"); self.play_btn.setFixedWidth(110); self.play_btn.setFixedHeight(34)
         self.play_btn.setEnabled(False)
-        self.play_btn.setStyleSheet("background-color: #1C1C21; border: 1px solid #71717A; color: #ECEDEE; font-family: 'Inter'; font-size: 11px; letter-spacing: 1px; padding: 6px;")
+        self.play_btn.setStyleSheet("background-color: #FFFFFF; border: 1px solid #C9CED7; color: #15171C; font-family: 'Inter'; font-size: 11px; letter-spacing: 1px; padding: 6px;")
         self.play_btn.clicked.connect(self._toggle_play)
         self.tc_label = QLabel("00:00:00.000"); self.tc_label.setObjectName("timecode"); self.tc_label.setFixedWidth(110)
         self.time_slider = TimelineWithMarkers(); self.time_slider.setRange(0,0); self.time_slider.setValue(0)
         self.time_slider.sliderMoved.connect(self._set_position)
         self.time_slider.markerSeek.connect(self._on_marker_seek)
         self.duration_label = QLabel("--:--:--.---")
-        self.duration_label.setStyleSheet("color: #A1A1AA; font-size: 11px; font-family: 'Inter'; letter-spacing: 1px;")
+        self.duration_label.setStyleSheet("color: #3A404B; font-size: 11px; font-family: 'Inter'; letter-spacing: 1px;")
         self.duration_label.setFixedWidth(90)
         ctrl_layout.addWidget(self.play_btn); ctrl_layout.addWidget(self.tc_label)
         ctrl_layout.addWidget(self.time_slider); ctrl_layout.addWidget(self.duration_label)
@@ -762,7 +727,7 @@ class SyncReviewTab(QWidget):
         from PyQt6.QtWidgets import QVBoxLayout as _VBL
         win_widget = QWidget(container)
         win_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        win_widget.setStyleSheet("background-color: #050506;")
+        win_widget.setStyleSheet("background-color: #F6F7F9;")
         if container.layout() is None:
             _lay = _VBL(container)
             _lay.setContentsMargins(0, 0, 0, 0)
@@ -819,8 +784,8 @@ class SyncReviewTab(QWidget):
             self._load_video(source_id + 1, path); self.play_btn.setEnabled(True)
             slot = self._video_slots[source_id]; slot._ph.hide()
             fname = path.split("/")[-1]; short = fname[:12] + "…" if len(fname) > 12 else fname
-            slot._dot.setStyleSheet("color: #22c55e; font-size: 10px;")
-            slot._status.setText(f"— {short}"); slot._status.setStyleSheet("color: #ECEDEE; font-size: 9px; font-family: 'Inter';")
+            slot._dot.setStyleSheet("color: #15803D; font-size: 10px;")
+            slot._status.setText(f"— {short}"); slot._status.setStyleSheet("color: #15171C; font-size: 9px; font-family: 'Inter';")
         elif source_id == 4:
             self.eeg_file_name_1 = path
             self._load_eeg_async(path, self.eeg_review_1)
@@ -978,7 +943,7 @@ class SyncReviewTab(QWidget):
                 "stamps; sessions recorded before v3.0 are not supported."); return
         self.sync_btn.setEnabled(False); self.goto_label_btn.setEnabled(False)
         self.sync_progress.setVisible(True); self.sync_progress.setValue(100)
-        self._set_sync_status("ALIGNING BY CAPTURE CLOCK…", "#637DFF")
+        self._set_sync_status("ALIGNING BY CAPTURE CLOCK…", "#3D4FD6")
         cam_starts = [self._cam_starts[i] if i < len(self._cam_starts) else 0.0
                       for i in range(len(video_paths))]
         max_start = max(cam_starts) if cam_starts else 0.0
@@ -1071,7 +1036,7 @@ class SyncReviewTab(QWidget):
         msg = "ALIGNED BY CAPTURE-TIME CLOCK"
         if self._phase_markers:
             msg += f"  ·  {len(self._phase_markers)} MARKERS LOADED"
-        self._set_sync_status(msg, "#22c55e"); self.sync_btn.setEnabled(True); self.goto_label_btn.setEnabled(True)
+        self._set_sync_status(msg, "#15803D"); self.sync_btn.setEnabled(True); self.goto_label_btn.setEnabled(True)
         log.info("capture-clock alignment · offsets (seek per player): %s ms", seek_ms_list)
 
     def _set_sync_status(self, text, color):
@@ -1209,7 +1174,7 @@ class SyncReviewTab(QWidget):
                         root = child; cont = child / "continuous"; break
                 else:
                     self._set_sync_status(
-                        f"NO continuous/ FOLDER IN {root.name}", "#ef4444")
+                        f"NO continuous/ FOLDER IN {root.name}", "#B91C1C")
                     return
 
         def _files(subdir, patterns):
@@ -1267,9 +1232,9 @@ class SyncReviewTab(QWidget):
             msg = f"LOADED  {found} FILES  FROM  {root.name}"
             if self._phase_markers:
                 msg += f"  ·  {len(self._phase_markers)} MARKERS"
-            self._set_sync_status(msg, "#637DFF")
+            self._set_sync_status(msg, "#3D4FD6")
         else:
-            self._set_sync_status(f"NO RECORDINGS FOUND IN {root.name}", "#ef4444")
+            self._set_sync_status(f"NO RECORDINGS FOUND IN {root.name}", "#B91C1C")
 
 
 class LabelChip(QWidget):
@@ -1299,18 +1264,18 @@ class LabelMarker(QWidget):
         # Phase markers (auto-loaded from session) get a dashed left border
         # so they're visibly distinct from the user's manual labels.
         if is_phase:
-            self.setStyleSheet(f"background-color: #0E0E12; border-left: 2px dashed {color};")
+            self.setStyleSheet(f"background-color: #F6F7F9; border-left: 2px dashed {color};")
         else:
-            self.setStyleSheet("background-color: #0E0E12;")
+            self.setStyleSheet("background-color: #F6F7F9;")
         layout = QHBoxLayout(self); layout.setContentsMargins(8,5,8,5); layout.setSpacing(10)
         # Triangle for manual, double-bar for phase markers (visual cue)
         dot_glyph = "║" if is_phase else "▶"
         dot = QLabel(dot_glyph); dot.setFixedWidth(12); dot.setStyleSheet(f"color: {color}; font-size: 9px; border: none;")
-        ts = QLabel(timestamp_str); ts.setFixedWidth(88); ts.setStyleSheet("color: #A1A1AA; font-size: 10px; font-family: 'Inter'; border: none;")
+        ts = QLabel(timestamp_str); ts.setFixedWidth(88); ts.setStyleSheet("color: #3A404B; font-size: 10px; font-family: 'Inter'; border: none;")
         name = QLabel(label_name); name.setStyleSheet(f"color: {color}; font-size: 10px; font-family: 'Inter'; letter-spacing: 1px; border: none;")
         name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         remove = QPushButton("×"); remove.setFixedSize(20,20)
-        remove.setStyleSheet("background: transparent; border: none; color: #A1A1AA; font-size: 14px; padding: 0;")
+        remove.setStyleSheet("background: transparent; border: none; color: #3A404B; font-size: 14px; padding: 0;")
         remove.clicked.connect(self._remove)
         layout.addWidget(dot); layout.addWidget(ts); layout.addWidget(name); layout.addWidget(remove)
     def _remove(self):
@@ -1509,9 +1474,9 @@ class _MarkerStrip(QWidget):
         w, h = self.width(), self.height()
         # Strip background — clearly distinct from the canvas so the
         # strip reads as a discrete "lane" you can click into.
-        p.fillRect(self.rect(), QColor("#0A0A0E"))
+        p.fillRect(self.rect(), QColor("#EDEFF2"))
         # Subtle frame top + bottom so the strip is bounded visually
-        p.setPen(QPen(QColor("#2A2A30"), 1))
+        p.setPen(QPen(QColor("#C9CED7"), 1))
         p.drawLine(0, 0, w, 0); p.drawLine(0, h-1, w, h-1)
         # Baseline rule for time ticks
         p.drawLine(self.PAD, self.BASELINE_Y, w - self.PAD, self.BASELINE_Y)
@@ -1520,7 +1485,7 @@ class _MarkerStrip(QWidget):
         # Time-tick scale every 30s on long sessions, every 10% on short
         tick_interval = 30.0 if dur >= 60 else max(5.0, dur / 10)
         t = 0.0
-        p.setPen(QPen(QColor("#3A3A42"), 1))
+        p.setPen(QPen(QColor("#C9CED7"), 1))
         while t <= dur:
             x = self._marker_x(t)
             p.drawLine(x, self.BASELINE_Y - 2, x, self.BASELINE_Y + 1)
@@ -1571,46 +1536,8 @@ class LabellingTab(QWidget):
         self._restoring = False
         self._build()
         self._install_shortcuts()
-        self._apply_theme()
-        import design_tokens as _dt
-        _dt.on_theme_change(self._apply_theme)
-
-    def _apply_theme(self):
-        """Re-apply theme-reactive styles to the labelling tab's surfaces."""
         import design_tokens as _dt
         self.setStyleSheet(f"LabellingTab {{ background: {_dt.canvas_bg()}; }}")
-        for w in self.findChildren(QWidget):
-            ss = w.styleSheet()
-            if not ss: continue
-            new_ss = (ss
-                .replace("background-color: #0E0E12", f"background-color: {_dt.canvas_bg()}")
-                .replace("background: #0E0E12", f"background: {_dt.canvas_bg()}")
-                .replace("background-color: #000", f"background-color: {_dt.canvas_bg()}")
-                .replace("background: #000", f"background: {_dt.canvas_bg()}")
-                .replace("background-color: #050506", f"background-color: {_dt.canvas_bg()}")
-                .replace("background-color: #1C1C21", f"background-color: {_dt.card_bg()}")
-                .replace("background: #1C1C21", f"background: {_dt.card_bg()}")
-                .replace("background-color: #1F2538", f"background-color: {_dt.accent_ghost()}")
-                .replace("background:#1F2538", f"background:{_dt.accent_ghost()}")
-                .replace("border: 1px solid #2A2A30", f"border: 1px solid {_dt.border_strong()}")
-                .replace("border-bottom: 1px solid #2A2A30", f"border-bottom: 1px solid {_dt.border_strong()}")
-                .replace("border-top: 1px solid #2A2A30", f"border-top: 1px solid {_dt.border_strong()}")
-                .replace("border-right: 1px solid #2A2A30", f"border-right: 1px solid {_dt.border_strong()}")
-                .replace("border: 1px solid #637DFF", f"border: 1px solid {_dt.accent()}")
-                .replace("border:1px solid #637DFF", f"border:1px solid {_dt.accent()}")
-                .replace("color: #2A2A30", f"color: {_dt.text_tertiary()}")
-                .replace("color: #71717A", f"color: {_dt.text_tertiary()}")
-                .replace("color: #A1A1AA", f"color: {_dt.text_secondary()}")
-                .replace("color: #ECEDEE", f"color: {_dt.text_primary()}")
-                .replace("color: #637DFF", f"color: {_dt.accent()}")
-                .replace("color:#637DFF", f"color:{_dt.accent()}")
-            )
-            if new_ss != ss:
-                w.setStyleSheet(new_ss)
-        for w in self.findChildren(QWidget):
-            try:
-                s = w.style(); s.unpolish(w); s.polish(w); w.update()
-            except Exception: pass
 
     def _build(self):
         root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
@@ -1618,11 +1545,11 @@ class LabellingTab(QWidget):
         tb = QHBoxLayout(toolbar); tb.setContentsMargins(16,0,16,0); tb.setSpacing(8)
         tb.addWidget(make_panel_title("EVENT LABELLING")); tb.addStretch()
         self.open_session_btn = QPushButton("OPEN SESSION FOLDER"); self.open_session_btn.setFixedHeight(28)
-        self.open_session_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
+        self.open_session_btn.setStyleSheet("background-color: #EEF0FD; border: 1px solid #3D4FD6; color: #3D4FD6; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
         self.open_session_btn.clicked.connect(self._open_session_folder)
         tb.addWidget(self.open_session_btn)
         self.export_csv_btn = QPushButton("EXPORT LABELS CSV"); self.export_csv_btn.setFixedHeight(28)
-        self.export_csv_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
+        self.export_csv_btn.setStyleSheet("background-color: #EEF0FD; border: 1px solid #3D4FD6; color: #3D4FD6; font-family: 'Inter'; font-size: 10px; letter-spacing: 2px; padding: 0 14px;")
         tb.addWidget(self.export_csv_btn); root.addWidget(toolbar)
         QTimer.singleShot(0, toolbar.raise_)
         self._toolbar = toolbar
@@ -1632,12 +1559,12 @@ class LabellingTab(QWidget):
         # top: DATA SOURCES (upload rows) + LABEL PALETTE
         # bottom: PLACED LABELS list
         left = QWidget(); left.setFixedWidth(400)
-        left.setStyleSheet("background-color: #0E0E12; border-right: 1px solid #2A2A30;")
+        left.setStyleSheet("background-color: #F6F7F9; border-right: 1px solid #DFE2E8;")
         left_outer = QVBoxLayout(left); left_outer.setContentsMargins(0,0,0,0); left_outer.setSpacing(0)
 
         # --- DATA SOURCES (uploads) — mirrors SyncReviewTab ---------------------
         sources_panel = QWidget()
-        sources_panel.setStyleSheet("background-color: #0E0E12;")
+        sources_panel.setStyleSheet("background-color: #F6F7F9;")
         sources_layout = QVBoxLayout(sources_panel)
         sources_layout.setContentsMargins(10, 14, 10, 10); sources_layout.setSpacing(6)
         sources_layout.addWidget(make_source_label("DATA SOURCES"))
@@ -1645,7 +1572,7 @@ class LabellingTab(QWidget):
         # Column headers
         header = QHBoxLayout(); header.setSpacing(6)
         for txt, w in [("", 14), ("TYPE", 100), ("FILE", 0), ("", 72)]:
-            h = QLabel(txt); h.setStyleSheet("color: #2A2A30; font-size: 9px; font-family: 'Inter'; letter-spacing: 2px;")
+            h = QLabel(txt); h.setStyleSheet("color: #C9CED7; font-size: 9px; font-family: 'Inter'; letter-spacing: 2px;")
             if w: h.setFixedWidth(w)
             else: h.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             header.addWidget(h)
@@ -1671,51 +1598,51 @@ class LabellingTab(QWidget):
 
         # --- LABEL PALETTE -------------------------------------------------------
         palette_header = QWidget(); palette_header.setFixedHeight(36)
-        palette_header.setStyleSheet("background-color: #0E0E12; border-top: 1px solid #2A2A30; border-bottom: 1px solid #2A2A30;")
+        palette_header.setStyleSheet("background-color: #F6F7F9; border-top: 1px solid #DFE2E8; border-bottom: 1px solid #DFE2E8;")
         ph = QHBoxLayout(palette_header); ph.setContentsMargins(14,0,12,0); ph.setSpacing(6)
         ph.addWidget(make_source_label("LABEL PALETTE")); ph.addStretch()
         left_outer.addWidget(palette_header)
         self.active_label_display = QLabel("NO LABEL SELECTED"); self.active_label_display.setFixedHeight(28)
-        self.active_label_display.setStyleSheet("color: #71717A; font-size: 10px; font-family: 'Inter'; padding: 0 14px; background: #0E0E12; border-bottom: 1px solid #2A2A30;")
+        self.active_label_display.setStyleSheet("color: #555D6B; font-size: 10px; font-family: 'Inter'; padding: 0 14px; background: #F6F7F9; border-bottom: 1px solid #DFE2E8;")
         left_outer.addWidget(self.active_label_display)
 
         chip_scroll = QScrollArea(); chip_scroll.setWidgetResizable(True)
-        chip_scroll.setStyleSheet("border: none; background: #0E0E12;")
+        chip_scroll.setStyleSheet("border: none; background: #F6F7F9;")
         chip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         chip_scroll.setMinimumHeight(140)
-        self._palette_widget = QWidget(); self._palette_widget.setStyleSheet("background: #0E0E12;")
+        self._palette_widget = QWidget(); self._palette_widget.setStyleSheet("background: #F6F7F9;")
         self._palette_layout = QVBoxLayout(self._palette_widget); self._palette_layout.setContentsMargins(12,6,12,6)
         self._palette_layout.setSpacing(3); self._palette_layout.addStretch()
         chip_scroll.setWidget(self._palette_widget); left_outer.addWidget(chip_scroll, 1)
 
         add_bar = QWidget(); add_bar.setFixedHeight(36)
-        add_bar.setStyleSheet("background-color: #0E0E12; border-top: 1px solid #2A2A30;")
+        add_bar.setStyleSheet("background-color: #F6F7F9; border-top: 1px solid #DFE2E8;")
         ab = QHBoxLayout(add_bar); ab.setContentsMargins(12,4,12,4); ab.setSpacing(6)
         self.custom_input = QLineEdit(); self.custom_input.setPlaceholderText("add label…")
-        self.custom_input.setStyleSheet("background: #1C1C21; border: 1px solid #2A2A30; color: #ECEDEE; font-family: 'Inter'; font-size: 11px; padding: 0 8px;")
+        self.custom_input.setStyleSheet("background: #FFFFFF; border: 1px solid #DFE2E8; color: #15171C; font-family: 'Inter'; font-size: 11px; padding: 0 8px;")
         add_btn = QPushButton("+"); add_btn.setFixedSize(28,26)
-        add_btn.setStyleSheet("background:#1F2538; border:1px solid #637DFF; color:#637DFF; font-size:16px; padding:0;")
+        add_btn.setStyleSheet("background:#EEF0FD; border:1px solid #3D4FD6; color:#3D4FD6; font-size:16px; padding:0;")
         ab.addWidget(self.custom_input); ab.addWidget(add_btn)
         left_outer.addWidget(add_bar)
-        self.active_label = None; self.active_color = "#637DFF"
+        self.active_label = None; self.active_color = "#3D4FD6"
         for name, color in PREDEFINED_LABELS: self._add_chip_to_palette(name, color)
         add_btn.clicked.connect(self._add_custom_label); self.custom_input.returnPressed.connect(self._add_custom_label)
 
         # --- PLACED LABELS -------------------------------------------------------
         placed_header = QWidget(); placed_header.setFixedHeight(36)
-        placed_header.setStyleSheet("background-color: #0E0E12; border-top: 1px solid #2A2A30; border-bottom: 1px solid #2A2A30;")
+        placed_header.setStyleSheet("background-color: #F6F7F9; border-top: 1px solid #DFE2E8; border-bottom: 1px solid #DFE2E8;")
         rh = QHBoxLayout(placed_header); rh.setContentsMargins(14,0,14,0)
         rh.addWidget(make_source_label("PLACED LABELS")); rh.addStretch()
         self.label_count = QLabel("0")
-        self.label_count.setStyleSheet("color: #637DFF; font-size: 10px; font-family: 'Inter';")
+        self.label_count.setStyleSheet("color: #3D4FD6; font-size: 10px; font-family: 'Inter';")
         rh.addWidget(self.label_count)
         left_outer.addWidget(placed_header)
 
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("border: none; background-color: #0E0E12;")
+        scroll.setStyleSheet("border: none; background-color: #F6F7F9;")
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setMinimumHeight(140)
-        self.label_list_widget = QWidget(); self.label_list_widget.setStyleSheet("background-color: #0E0E12;")
+        self.label_list_widget = QWidget(); self.label_list_widget.setStyleSheet("background-color: #F6F7F9;")
         self.placed_layout = QVBoxLayout(self.label_list_widget)
         self.placed_layout.setContentsMargins(0,4,0,4); self.placed_layout.setSpacing(0)
         self.placed_layout.addStretch()
@@ -1728,12 +1655,12 @@ class LabellingTab(QWidget):
         right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         right_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         right_scroll.setStyleSheet(
-            "QScrollArea { background: #0E0E12; border: none; } "
-            "QScrollBar:vertical { background: #0E0E12; width: 8px; border: none; } "
-            "QScrollBar::handle:vertical { background: #2A2A30; border-radius: 4px; min-height: 24px; } "
+            "QScrollArea { background: #F6F7F9; border: none; } "
+            "QScrollBar:vertical { background: #F6F7F9; width: 8px; border: none; } "
+            "QScrollBar::handle:vertical { background: #DFE2E8; border-radius: 4px; min-height: 24px; } "
             "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; }"
         )
-        center = QWidget(); center.setStyleSheet("background-color: #0E0E12;")
+        center = QWidget(); center.setStyleSheet("background-color: #F6F7F9;")
         center.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         center_layout = QVBoxLayout(center); center_layout.setContentsMargins(0,0,0,0); center_layout.setSpacing(0)
 
@@ -1748,7 +1675,7 @@ class LabellingTab(QWidget):
 
         video_area = _LabelVideoArea()
         video_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        video_area.setStyleSheet("background-color: #0E0E12;")
+        video_area.setStyleSheet("background-color: #F6F7F9;")
         va = QVBoxLayout(video_area); va.setContentsMargins(12,12,12,8); va.setSpacing(6)
         va.addWidget(make_source_label("SYNCHRONIZED PLAYBACK"))
         vg = QGridLayout(); vg.setSpacing(6)
@@ -1766,7 +1693,7 @@ class LabellingTab(QWidget):
         # EEG overlay below — fixed minimum so it's always legible
         eeg_strip = QWidget()
         eeg_strip.setMinimumHeight(220); eeg_strip.setMaximumHeight(280)
-        eeg_strip.setStyleSheet("background-color: #0E0E12;")
+        eeg_strip.setStyleSheet("background-color: #F6F7F9;")
         eeg_strip_layout = QVBoxLayout(eeg_strip)
         eeg_strip_layout.setContentsMargins(12,6,12,6); eeg_strip_layout.setSpacing(4)
         eeg_strip_layout.addWidget(make_source_label("EEG OVERLAY"))
@@ -1778,7 +1705,7 @@ class LabellingTab(QWidget):
 
         # Timeline + transport — fixed at bottom
         tl_container = QWidget(); tl_container.setFixedHeight(100)
-        tl_container.setStyleSheet("background-color: #0E0E12; border-top: 1px solid #2A2A30;")
+        tl_container.setStyleSheet("background-color: #F6F7F9; border-top: 1px solid #DFE2E8;")
         tl_layout = QVBoxLayout(tl_container); tl_layout.setContentsMargins(16,8,16,8); tl_layout.setSpacing(6)
         tl_header = QHBoxLayout(); tl_header.addWidget(make_source_label("TIMELINE")); tl_header.addStretch()
         self.tl_tc = QLabel("00:00:00.000"); self.tl_tc.setObjectName("timecode"); tl_header.addWidget(self.tl_tc)
@@ -1791,22 +1718,22 @@ class LabellingTab(QWidget):
         tl_layout.addWidget(self.tl_slider)
         play_row = QHBoxLayout(); play_row.setSpacing(8)
         rewind_btn = QPushButton("⏮"); rewind_btn.setFixedSize(32,28)
-        rewind_btn.setStyleSheet("background-color: #1C1C21; border: 1px solid #2A2A30; color: #ECEDEE; font-size: 12px; padding: 0;")
+        rewind_btn.setStyleSheet("background-color: #FFFFFF; border: 1px solid #DFE2E8; color: #15171C; font-size: 12px; padding: 0;")
         rewind_btn.clicked.connect(lambda: self._label_sync_ctrl.seek(0.0)); play_row.addWidget(rewind_btn)
         self._play_btn_lbl = QPushButton("▶  PLAY"); self._play_btn_lbl.setFixedWidth(110); self._play_btn_lbl.setFixedHeight(28)
         self._play_btn_lbl.setEnabled(False)
-        self._play_btn_lbl.setStyleSheet("background-color: #1C1C21; border: 1px solid #2A2A30; color: #ECEDEE; font-size: 12px; padding: 0;")
+        self._play_btn_lbl.setStyleSheet("background-color: #FFFFFF; border: 1px solid #DFE2E8; color: #15171C; font-size: 12px; padding: 0;")
         self._play_btn_lbl.clicked.connect(self._toggle_play_label); play_row.addWidget(self._play_btn_lbl)
         skip_btn = QPushButton("⏭"); skip_btn.setFixedSize(32,28)
-        skip_btn.setStyleSheet("background-color: #1C1C21; border: 1px solid #2A2A30; color: #ECEDEE; font-size: 12px; padding: 0;")
+        skip_btn.setStyleSheet("background-color: #FFFFFF; border: 1px solid #DFE2E8; color: #15171C; font-size: 12px; padding: 0;")
         play_row.addWidget(skip_btn)
         self._label_pos_timer = QTimer(self); self._label_pos_timer.setInterval(100)
         self._label_pos_timer.timeout.connect(self._update_label_timeline)
         place_btn = QPushButton("PLACE LABEL AT PLAYHEAD"); place_btn.setFixedHeight(28)
-        place_btn.setStyleSheet("background-color: #1F2538; border: 1px solid #637DFF; color: #637DFF; font-family: 'Inter'; font-size: 9px; letter-spacing: 2px; padding: 0 14px;")
+        place_btn.setStyleSheet("background-color: #EEF0FD; border: 1px solid #3D4FD6; color: #3D4FD6; font-family: 'Inter'; font-size: 9px; letter-spacing: 2px; padding: 0 14px;")
         place_btn.clicked.connect(self._place_label); play_row.addWidget(place_btn); play_row.addStretch()
         self._end_lbl = QLabel("--:--:--.---")
-        self._end_lbl.setStyleSheet("color: #A1A1AA; font-size: 11px; font-family: 'Inter'; letter-spacing: 1px;")
+        self._end_lbl.setStyleSheet("color: #3A404B; font-size: 11px; font-family: 'Inter'; letter-spacing: 1px;")
         play_row.addWidget(self._end_lbl); tl_layout.addLayout(play_row)
         center_layout.addWidget(tl_container)
 
@@ -2075,7 +2002,7 @@ class LabellingTab(QWidget):
             )
             rl.addWidget(key_lbl)
         rm = QPushButton("×"); rm.setFixedSize(22,24)
-        rm.setStyleSheet("background: transparent; border: none; color: #A1A1AA; font-size: 14px; padding: 0;")
+        rm.setStyleSheet("background: transparent; border: none; color: #3A404B; font-size: 14px; padding: 0;")
         rm.clicked.connect(lambda checked, r=row, n=name: self._remove_chip(r, n)); rl.addWidget(rm)
         self._palette_layout.insertWidget(self._palette_layout.count()-1, row)
 
@@ -2108,8 +2035,8 @@ class LabellingTab(QWidget):
     def _remove_chip(self, row, name):
         row.deleteLater()
         if self.active_label == name:
-            self.active_label = None; self.active_color = "#637DFF"; self.active_label_display.setText("NO LABEL SELECTED")
-            self.active_label_display.setStyleSheet("color: #71717A; font-size: 10px; font-family: 'Inter'; padding: 0 12px; background: #0E0E12; border-bottom: 1px solid #2A2A30;")
+            self.active_label = None; self.active_color = "#3D4FD6"; self.active_label_display.setText("NO LABEL SELECTED")
+            self.active_label_display.setStyleSheet("color: #555D6B; font-size: 10px; font-family: 'Inter'; padding: 0 12px; background: #F6F7F9; border-bottom: 1px solid #DFE2E8;")
         QTimer.singleShot(50, lambda: save_labels(self._current_labels()))
 
     def _current_labels(self):
@@ -2135,14 +2062,14 @@ class LabellingTab(QWidget):
         self.custom_input.clear(); self._select_label(name); save_labels(self._current_labels())
 
     def _select_label(self, name):
-        self.active_label = name; color = "#637DFF"
+        self.active_label = name; color = "#3D4FD6"
         for i in range(self._palette_layout.count()-1):
             item = self._palette_layout.itemAt(i)
             if item and item.widget():
                 chips = item.widget().findChildren(LabelChip)
                 if chips and chips[0]._name == name: color = chips[0].color; break
         self.active_color = color; self.active_label_display.setText(f"● {name}")
-        self.active_label_display.setStyleSheet(f"color: {color}; font-size: 11px; font-family: 'Inter'; padding: 0 12px; background: #0E0E12; border-bottom: 1px solid {color};")
+        self.active_label_display.setStyleSheet(f"color: {color}; font-size: 11px; font-family: 'Inter'; padding: 0 12px; background: #F6F7F9; border-bottom: 1px solid {color};")
 
     def _toggle_play_label(self):
         if self._label_sync_ctrl.is_playing():
@@ -2369,7 +2296,7 @@ class LabellingTab(QWidget):
                 except (TypeError, ValueError):
                     continue
                 name = entry.get("label", "LABEL")
-                color = entry.get("color", "#637DFF")
+                color = entry.get("color", "#3D4FD6")
                 h = int(t // 3600); m = int((t % 3600) // 60); s = t % 60
                 ts_str = f"{h:02d}:{m:02d}:{s:06.3f}"
                 marker = LabelMarker(name, color, ts_str, t_seconds=t,
@@ -2424,6 +2351,167 @@ class LabellingTab(QWidget):
             except Exception as e: QMessageBox.critical(self, "Export failed", str(e))
 
 
+def _h1(text):
+    import design_tokens as dt
+    lbl = QLabel(text)
+    lbl.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
+                      f"font-size: 24px; font-weight: 700;")
+    return lbl
+
+
+def _sub(text):
+    import design_tokens as dt
+    lbl = QLabel(text); lbl.setWordWrap(True)
+    lbl.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
+                      f"font-size: {dt.SIZE_MD}px;")
+    return lbl
+
+
+class SessionsPlaceholder(QWidget):
+    """Temporary Sessions home (DESIGN §1). The real session list lands in the
+    next step; for now this shows the DESIGN empty state with working
+    'New recording' and 'Show folder in Finder' buttons."""
+
+    def __init__(self, capture_dir, on_new_recording, parent=None):
+        super().__init__(parent)
+        import design_tokens as dt
+        self._capture_dir = capture_dir
+        self.setStyleSheet(f"background: {dt.canvas_bg()};")
+        root = QVBoxLayout(self); root.setContentsMargins(40, 36, 40, 36); root.setSpacing(0)
+        header = QHBoxLayout()
+        htext = QVBoxLayout(); htext.setSpacing(4)
+        htext.addWidget(_h1("Sessions"))
+        htext.addWidget(_sub("Every recording in your recordings folder. "
+                             "Open one to watch it back and add labels."))
+        header.addLayout(htext); header.addStretch()
+        show_btn = QPushButton("Show folder in Finder")
+        show_btn.setStyleSheet(dt.qss_secondary_button()); show_btn.setMinimumHeight(44)
+        show_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        show_btn.clicked.connect(self._show_in_finder)
+        new_btn = QPushButton("New recording")
+        new_btn.setStyleSheet(dt.qss_primary_button()); new_btn.setMinimumHeight(44)
+        new_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        new_btn.clicked.connect(on_new_recording)
+        header.addWidget(show_btn); header.addSpacing(10); header.addWidget(new_btn)
+        root.addLayout(header)
+        root.addSpacing(28)
+
+        empty = QFrame(); empty.setObjectName("emptyCard")
+        empty.setStyleSheet(f"QFrame#emptyCard {{ background: {dt.card_bg()}; "
+                            f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_LG}px; }}")
+        ev = QVBoxLayout(empty); ev.setContentsMargins(40, 60, 40, 60)
+        ev.setAlignment(Qt.AlignmentFlag.AlignCenter); ev.setSpacing(10)
+        icon = QLabel(); icon.setPixmap(dt.icon_pixmap("home", color=dt.text_tertiary(), size=40))
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setStyleSheet("border: none; background: transparent;")
+        ev.addWidget(icon)
+        t = QLabel("Sessions list arrives in the next step")
+        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setStyleSheet(f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
+                        f"font-size: {dt.SIZE_LG}px; font-weight: 600; border: none; background: transparent;")
+        ev.addWidget(t)
+        t2 = QLabel("No recordings yet. Press New recording to make your first one.")
+        t2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t2.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
+                         f"font-size: {dt.SIZE_MD}px; border: none; background: transparent;")
+        ev.addWidget(t2)
+        root.addWidget(empty, 1)
+
+    def _show_in_finder(self):
+        import subprocess, sys as _sys
+        d = self._capture_dir
+        try:
+            os.makedirs(d, exist_ok=True)
+            if _sys.platform == "darwin": subprocess.Popen(["open", d])
+            elif _sys.platform == "win32": os.startfile(d)  # noqa
+            else: subprocess.Popen(["xdg-open", d])
+        except Exception as e:
+            log.warning("could not open recordings folder: %s", e)
+
+
+class SettingsPlaceholder(QWidget):
+    """Temporary Settings (DESIGN §7). Lists the planned sections; the real
+    controls land in a later step."""
+
+    _SECTIONS = [
+        ("Recordings folder", "Where recordings are saved, with free space."),
+        ("Headbands", "Assign each headband to Boxer A / Boxer B."),
+        ("Video quality", "Standard 960×540, High 1280×720, or Light 640×360."),
+        ("Session defaults", "Rounds, round length, break, rest, and the round bell."),
+        ("Label list", "The shared set of labels the team places."),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        import design_tokens as dt
+        self.setStyleSheet(f"background: {dt.canvas_bg()};")
+        root = QVBoxLayout(self); root.setContentsMargins(40, 36, 40, 36); root.setSpacing(0)
+        root.addWidget(_h1("Settings"))
+        root.addWidget(_sub("These settings apply to your next recording. The "
+                            "controls arrive in a later step."))
+        root.addSpacing(24)
+        for title, desc in self._SECTIONS:
+            card = QFrame(); card.setObjectName("settingsCard")
+            card.setStyleSheet(f"QFrame#settingsCard {{ background: {dt.card_bg()}; "
+                               f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_LG}px; }}")
+            cv = QVBoxLayout(card); cv.setContentsMargins(20, 16, 20, 16); cv.setSpacing(4)
+            tl = QLabel(title)
+            tl.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
+                             f"font-size: {dt.SIZE_LG}px; font-weight: 600; border: none;")
+            dl = QLabel(desc)
+            dl.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
+                             f"font-size: {dt.SIZE_MD}px; border: none;")
+            cv.addWidget(tl); cv.addWidget(dl)
+            root.addWidget(card); root.addSpacing(12)
+        root.addStretch()
+        foot = QLabel(f"Brain Battle v{__version__} · Constructor University")
+        foot.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
+                           f"font-size: {dt.SIZE_SM}px;")
+        root.addWidget(foot)
+
+
+class ReviewAndLabelPage(QWidget):
+    """Temporary host for the Review & Label section. For now it shows the
+    existing Review screen, with a clearly-marked TEMPORARY link to the old
+    Labelling screen — both are replaced by one merged screen in a later step."""
+
+    def __init__(self, review_widget, label_widget, parent=None):
+        super().__init__(parent)
+        import design_tokens as dt
+        self._review = review_widget
+        self._label = label_widget
+        v = QVBoxLayout(self); v.setContentsMargins(0, 0, 0, 0); v.setSpacing(0)
+
+        bar = QWidget(); bar.setFixedHeight(34)
+        bar.setStyleSheet(f"background: {dt.warning_color()}; ")
+        bl = QHBoxLayout(bar); bl.setContentsMargins(14, 0, 14, 0); bl.setSpacing(8)
+        note = QLabel("Temporary: Review and Labelling are still two screens — "
+                      "they merge into one in a later step.")
+        note.setStyleSheet(f"color: #FFFFFF; font-family: {dt.FONT_UI}; "
+                           f"font-size: {dt.SIZE_SM}px; font-weight: 600;")
+        bl.addWidget(note); bl.addStretch()
+        self._toggle = QPushButton("Old labelling screen →")
+        self._toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._toggle.setStyleSheet(
+            f"QPushButton {{ background: #FFFFFF; color: {dt.warning_color()}; "
+            f"border: none; border-radius: {dt.RADIUS_SM}px; padding: 4px 12px; "
+            f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; font-weight: 600; }}")
+        self._toggle.clicked.connect(self._toggle_page)
+        bl.addWidget(self._toggle)
+        v.addWidget(bar)
+
+        self._stack = QStackedWidget()
+        self._stack.addWidget(review_widget)
+        self._stack.addWidget(label_widget)
+        v.addWidget(self._stack, 1)
+
+    def _toggle_page(self):
+        showing_review = self._stack.currentIndex() == 0
+        self._stack.setCurrentIndex(1 if showing_review else 0)
+        self._toggle.setText("← Back to Review" if showing_review
+                             else "Old labelling screen →")
+
+
 class BrainBattleApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -2431,47 +2519,59 @@ class BrainBattleApp(QMainWindow):
         self.setMinimumSize(1280, 800); self.resize(1440, 900); self._build()
 
     def _build(self):
-        import design_tokens as dt
         from sidebar_shell import SidebarShell
+        from live_session_tab import _default_capture_root
 
-        self._restyle_app()
-        dt.on_theme_change(self._restyle_app)
+        self._restyle_app()   # apply the light global stylesheet once
 
         central = QWidget(); central.setObjectName("AppRoot")
         self.setCentralWidget(central)
         root = QVBoxLayout(central); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
 
-        # Sidebar shell replaces the old QTabWidget
-        self._shell = SidebarShell()
+        capture_dir = _default_capture_root()
+        self._shell = SidebarShell(capture_dir=capture_dir)
+
+        # The existing screens, wired behind the new navigation (DESIGN
+        # "App structure"). Later steps replace them with the redesigned
+        # Sessions / Record / Review & Label screens.
         self.live_tab  = LiveSessionTab()
         self.sync_tab  = SyncReviewTab(); self.sync_tab._app_ref = self
         self.label_tab = LabellingTab()
+        self._review_page = ReviewAndLabelPage(self.sync_tab, self.label_tab)
+        self._sessions_page = SessionsPlaceholder(
+            capture_dir, on_new_recording=self._go_to_new_recording)
+        self._settings_page = SettingsPlaceholder()
 
-        self._shell.add_page("activity", "Live Monitor",    self.live_tab)
-        self._shell.add_page("layers",   "Review",           self.sync_tab)
-        self._shell.add_page("tag",      "Labelling",       self.label_tab)
+        self.IDX_SESSIONS = self._shell.add_page("sessions", "Sessions", "home", self._sessions_page)
+        self.IDX_RECORD   = self._shell.add_page("record", "New recording", "plus-circle", self.live_tab)
+        self.IDX_REVIEW   = self._shell.add_page("review", "Review & Label", "layers",
+                                                 self._review_page, collapse_on_active=True)
+        self.IDX_SETTINGS = self._shell.add_page("settings", "Settings", "settings",
+                                                 self._settings_page, bottom=True)
 
-        # For LabellingTab compatibility with SyncReviewTab.proceed_to_label_tab()
-        # which walks up to find a QTabWidget; we expose .tabs as a shim object
-        # with a .setCurrentIndex() method that routes through the shell.
+        # Compat shim for any code that walked up to a QTabWidget.
         class _ShellTabShim:
             def __init__(self, shell): self._shell = shell
             def setCurrentIndex(self, idx: int): self._shell.set_current_index(idx)
             def currentIndex(self): return self._shell.current_index()
         self.tabs = _ShellTabShim(self._shell)
 
-        self.live_tab.session_saved.connect(self.sync_tab.load_session_folder)
+        # After a recording is saved, land on Review & Label with it loaded.
+        self.live_tab.session_saved.connect(self._on_session_saved)
 
         root.addWidget(self._shell, 1)
-
-        self._status_bar = QStatusBar()
-        self._status_bar.showMessage("6 sources expected  ·  2× DSLR  ·  2× POV  ·  2× Muse-S")
-        self.setStatusBar(self._status_bar)
-        self._restyle_status()
+        self._shell.set_current_index(self.IDX_SESSIONS)   # app opens on Sessions
 
         # After the window is up, check for a recording that was interrupted
         # (crashed mid-session) last time and offer to open it.
         QTimer.singleShot(0, self._check_for_interrupted_sessions)
+
+    def _go_to_new_recording(self):
+        self._shell.set_current_index(self.IDX_RECORD)
+
+    def _on_session_saved(self, session_root):
+        self.sync_tab.load_session_folder(session_root)
+        self._shell.set_current_index(self.IDX_REVIEW)
 
     def _check_for_interrupted_sessions(self):
         """Scan the capture folder for sessions that never finished and, if
@@ -2511,62 +2611,21 @@ class BrainBattleApp(QMainWindow):
             try:
                 session_history.log_event(
                     recent.root, session_history.EVENT_RECORDING_RECOVERED)
-                self._shell.set_current_index(1)   # Review tab
                 self.sync_tab.load_session_folder(recent.root)
+                self._shell.set_current_index(self.IDX_REVIEW)
             except Exception as e:
                 log.warning("could not open interrupted session %s: %s", recent.root, e)
 
     def _restyle_app(self):
-        """Apply the global stylesheet — called on startup and on theme toggle."""
-        from PyQt6.QtWidgets import QApplication
+        """Apply the light global stylesheet once."""
         import design_tokens as dt
         self.setStyleSheet(dt.qss_app() + _supplementary_qss())
-        # Walk the entire widget tree and force repolish so every
-        # QSS selector with objectName re-evaluates against the new theme.
-        stack = [self]
-        while stack:
-            w = stack.pop()
-            if w is None: continue
-            try:
-                s = w.style()
-                s.unpolish(w); s.polish(w); w.update()
-            except Exception: pass
-            try:
-                for child in w.children():
-                    if hasattr(child, "style"):
-                        stack.append(child)
-            except Exception: pass
-        if hasattr(self, "_status_bar"):
-            self._restyle_status()
-
-    def _restyle_status(self):
-        import design_tokens as dt
-        self._status_bar.setStyleSheet(
-            f"background: {dt.canvas_bg()}; border-top: 1px solid {dt.border()}; "
-            f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; font-size: 10px;"
-        )
 
 
 if __name__ == "__main__":
     import traceback as _tb
-    import json as _json
-    import design_tokens as _dt
 
-    # Load saved theme preference (defaults to dark on first run)
-    _pref_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), ".brain_battle_prefs.json"
-    )
-    try:
-        with open(_pref_path, "r") as _f:
-            _prefs = _json.load(_f)
-            _theme = _prefs.get("theme", "dark")
-            if _theme in ("light", "dark"):
-                _dt.set_theme(_theme)
-    except Exception as e:
-        # Broad on purpose: a malformed prefs file (wrong JSON shape raises
-        # AttributeError, not just ValueError) must never block startup.
-        log.debug("theme prefs not loaded (normal on first run): %r", e)
-
+    # Light mode only — no theme preference to load (DESIGN.md).
     app = QApplication(sys.argv); app.setApplicationName("Brain Battle")
     from fonts import register_fonts
     register_fonts()   # bundled Inter; falls back to the system font if absent

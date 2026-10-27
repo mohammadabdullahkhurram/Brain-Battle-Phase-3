@@ -88,7 +88,6 @@ class USBCameraPanel(QWidget):
         layout.addLayout(grid)
 
         self._restyle()
-        dt.on_theme_change(self._restyle)
 
     def _restyle(self) -> None:
         dt = self._dt

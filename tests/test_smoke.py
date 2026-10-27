@@ -159,7 +159,9 @@ def part2_construct_tabs_and_shell(app):
 
     for name, ctor in (("LiveSessionTab", LiveSessionTab),
                        ("SyncReviewTab", bbm.SyncReviewTab),
-                       ("LabellingTab", bbm.LabellingTab)):
+                       ("LabellingTab", bbm.LabellingTab),
+                       ("SessionsPlaceholder", lambda: bbm.SessionsPlaceholder("/tmp", lambda: None)),
+                       ("SettingsPlaceholder", bbm.SettingsPlaceholder)):
         try:
             w = ctor()
             check(f"construct {name}", True)
@@ -202,6 +204,13 @@ def part3_pure_logic(win):
         check("__version__ surfaced in window title",
               win.windowTitle() == f"Brain Battle  v{__version__}",
               repr(win.windowTitle()))
+        # New shell: the four pages exist and the app opens on Sessions.
+        check("shell has Sessions / New recording / Review & Label / Settings pages",
+              all(hasattr(win, a) for a in
+                  ("IDX_SESSIONS", "IDX_RECORD", "IDX_REVIEW", "IDX_SETTINGS")))
+        check("app opens on Sessions",
+              win._shell.current_index() == win.IDX_SESSIONS,
+              f"current={win._shell.current_index()} sessions={getattr(win,'IDX_SESSIONS','?')}")
     else:
         check("__version__ surfaced in window title", False, "no app shell")
 

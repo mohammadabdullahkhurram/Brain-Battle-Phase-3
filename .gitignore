@@ -10,3 +10,4 @@ __pycache__/
 # Runtime-generated data
 Captures/
 .brain_battle_prefs.json
+screens/

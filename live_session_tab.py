@@ -110,8 +110,7 @@ class LiveSessionTab(QWidget):
         self._active_phase: Optional[tuple[Phase, int]] = None
         self._build()
         self._wire_controller()
-        self._restyle()  # Apply the correct theme styling for current mode
-        dt.on_theme_change(self._restyle)
+        self._restyle()  # Apply the light design-system styling
 
     # ═══════════════════════════════════════════════════════════════ UI
 
@@ -310,28 +309,11 @@ class LiveSessionTab(QWidget):
     # ═════════════════════════════════════════════════════════ Theme restyle
 
     def _restyle(self) -> None:
-        """Called when the theme toggles — re-apply all stylesheets."""
+        """Apply the light design-system styling to the tab's surfaces."""
         def _repolish(w):
             s = w.style()
             s.unpolish(w); s.polish(w); w.update()
-        # Use direct QWidget selector (no objectName dependency) so it
-        # applies regardless of QSS cascade quirks.
-        if dt.current_theme() == "dark":
-            self.setStyleSheet(
-                f"LiveSessionTab {{ background: qradialgradient("
-                f"cx:0.85, cy:0.2, radius:0.9, fx:0.85, fy:0.2, "
-                f"stop:0 rgba(99, 125, 255, 0.12), "
-                f"stop:0.5 rgba(99, 125, 255, 0.03), "
-                f"stop:1 {dt.canvas_bg()}); }}"
-            )
-        else:
-            self.setStyleSheet(
-                f"LiveSessionTab {{ background: qradialgradient("
-                f"cx:0.85, cy:0.15, radius:0.9, fx:0.85, fy:0.15, "
-                f"stop:0 rgba(79, 70, 229, 0.06), "
-                f"stop:0.5 rgba(79, 70, 229, 0.02), "
-                f"stop:1 {dt.canvas_bg()}); }}"
-            )
+        self.setStyleSheet(f"LiveSessionTab {{ background: {dt.canvas_bg()}; }}")
         _repolish(self)
         self._restyle_toolbar()
         for card in (self._camera_card, self._session_card, self._eeg_card):

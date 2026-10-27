@@ -11,8 +11,8 @@ Prompts for:
 
 Returns a SessionConfig on accept() / None on reject().
 
-Visual language matches the rest of the Brain Battle app: dark panel, yellow
-accent (#637DFF), Courier-New monospace, 1 px hairline borders.
+Visual language matches the rest of the Brain Battle app: light panel, indigo
+accent (#3D4FD6), Courier-New monospace, 1 px hairline borders.
 """
 
 from __future__ import annotations
@@ -29,52 +29,52 @@ from session_storage import estimate_session_bytes, human_bytes as _human_bytes
 
 
 _STYLE = """
-QDialog { background-color: #0E0E12; }
-QLabel  { color: #ECEDEE; font-family: 'Inter', monospace; font-size: 11px; letter-spacing: 1px; }
-QLabel#title    { color: #637DFF; font-size: 14px; letter-spacing: 3px; }
-QLabel#subtitle { color: #A1A1AA; font-size: 10px; letter-spacing: 2px; }
-QLabel#field_label { color: #A1A1AA; font-size: 10px; letter-spacing: 2px; }
-QLabel#unit { color: #A1A1AA; font-size: 10px; letter-spacing: 1px; padding-left: 4px; }
+QDialog { background-color: #F6F7F9; }
+QLabel  { color: #15171C; font-family: 'Inter', monospace; font-size: 11px; letter-spacing: 1px; }
+QLabel#title    { color: #3D4FD6; font-size: 14px; letter-spacing: 3px; }
+QLabel#subtitle { color: #3A404B; font-size: 10px; letter-spacing: 2px; }
+QLabel#field_label { color: #3A404B; font-size: 10px; letter-spacing: 2px; }
+QLabel#unit { color: #3A404B; font-size: 10px; letter-spacing: 1px; padding-left: 4px; }
 
 QSpinBox, QDoubleSpinBox {
-    background-color: #0E0E12; border: 1px solid #2A2A30; color: #637DFF;
+    background-color: #F6F7F9; border: 1px solid #DFE2E8; color: #3D4FD6;
     font-family: 'Inter', monospace; font-size: 16px; letter-spacing: 2px;
     padding: 8px 10px; min-width: 90px;
 }
-QSpinBox:focus, QDoubleSpinBox:focus { border-color: #637DFF; }
+QSpinBox:focus, QDoubleSpinBox:focus { border-color: #3D4FD6; }
 QSpinBox::up-button, QSpinBox::down-button,
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
-    background-color: #1C1C21; border: 1px solid #2A2A30; width: 16px;
+    background-color: #FFFFFF; border: 1px solid #DFE2E8; width: 16px;
 }
 QSpinBox::up-button:hover, QSpinBox::down-button:hover,
 QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
-    background-color: #24242A;
+    background-color: #DFE2E8;
 }
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
     width: 0; height: 0;
     border-left: 4px solid transparent; border-right: 4px solid transparent;
-    border-bottom: 5px solid #A1A1AA;
+    border-bottom: 5px solid #3A404B;
 }
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
     width: 0; height: 0;
     border-left: 4px solid transparent; border-right: 4px solid transparent;
-    border-top: 5px solid #A1A1AA;
+    border-top: 5px solid #3A404B;
 }
 
 QPushButton {
-    background-color: #1C1C21; color: #ECEDEE; border: 1px solid #2A2A30;
+    background-color: #FFFFFF; color: #15171C; border: 1px solid #DFE2E8;
     padding: 10px 28px; font-family: 'Inter', monospace;
     font-size: 11px; letter-spacing: 2px;
 }
-QPushButton:hover { background-color: #24242A; color: #ffffff; border-color: #A1A1AA; }
+QPushButton:hover { background-color: #DFE2E8; color: #FFFFFF; border-color: #3A404B; }
 QPushButton#primary {
-    background-color: #1F2538; color: #637DFF; border: 1px solid #637DFF;
+    background-color: #EEF0FD; color: #3D4FD6; border: 1px solid #3D4FD6;
 }
-QPushButton#primary:hover { background-color: #2a3010; }
+QPushButton#primary:hover { background-color: #2B3AA8; }
 
-QFrame#divider { background-color: #2A2A30; max-height: 1px; border: none; }
+QFrame#divider { background-color: #C9CED7; max-height: 1px; border: none; }
 QFrame#card {
-    background-color: #1C1C21; border: 1px solid #2A2A30;
+    background-color: #FFFFFF; border: 1px solid #DFE2E8;
 }
 """
 
@@ -167,15 +167,15 @@ class SessionSetupDialog(QDialog):
         # Summary label — updates live
         self.summary = QLabel("")
         self.summary.setStyleSheet(
-            "color:#A1A1AA; font-size:10px; letter-spacing:1px; "
-            "padding-top:6px; border-top:1px solid #2A2A30;"
+            "color:#3A404B; font-size:10px; letter-spacing:1px; "
+            "padding-top:6px; border-top:1px solid #DFE2E8;"
         )
         card_l.addWidget(self.summary)
 
         # Estimated disk usage — updates live with the duration/source counts.
         self.estimate = QLabel("")
         self.estimate.setStyleSheet(
-            "color:#A1A1AA; font-size:10px; letter-spacing:1px;"
+            "color:#3A404B; font-size:10px; letter-spacing:1px;"
         )
         card_l.addWidget(self.estimate)
         root.addWidget(card)

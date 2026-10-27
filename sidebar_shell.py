@@ -1,25 +1,38 @@
 """
 sidebar_shell.py
 ────────────────
-Left-sidebar navigation shell, theme-aware.
+Left-sidebar navigation shell (docs/DESIGN.md "App structure"). Light-only; no
+theme toggle.
 
-What's new in v4:
-  · Theme toggle (sun/moon) at the bottom of the sidebar
-  · 28 px icons with more breathing room between items
-  · Re-styles on theme change via dt.on_theme_change()
-  · Quieter brand block — smaller, less visually dominant
+Layout: a 232 px sidebar — logo, the nav items (Sessions, New recording,
+Review & Label), then at the bottom a recordings-folder card (name + free-space
+bar + "N GB free") and Settings. A page can request that the sidebar collapse
+to a 72 px icon rail while it's active (Review & Label does, to give the
+player room). The app opens on the first page (Sessions).
 """
-
 from __future__ import annotations
 
-from PyQt6.QtCore    import Qt, QPropertyAnimation, pyqtSignal, QSize
+import os
+import shutil
+
+from PyQt6.QtCore    import Qt, pyqtSignal, QSize
 from PyQt6.QtGui     import QIcon
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QStackedWidget,
-    QSizePolicy, QFrame,
+    QSizePolicy, QFrame, QProgressBar,
 )
 
 import design_tokens as dt
+
+SIDEBAR_WIDTH   = 232
+SIDEBAR_RAIL    = 72
+
+
+def _human_gb(n_bytes: float) -> str:
+    gb = n_bytes / (1024 ** 3)
+    if gb >= 100:
+        return f"{gb:.0f} GB"
+    return f"{gb:.1f} GB"
 
 
 class SidebarItem(QPushButton):
@@ -31,7 +44,7 @@ class SidebarItem(QPushButton):
         self.setObjectName("sidebarItem")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setFixedHeight(46)
+        self.setMinimumHeight(44)   # DESIGN: ≥44 px targets
         self._expanded = True
         self._apply_text()
         self._refresh_icon()
@@ -42,12 +55,14 @@ class SidebarItem(QPushButton):
         self._refresh_icon()
 
     def _apply_text(self) -> None:
-        self.setText(f"    {self.label_text}" if self._expanded else "")
+        # Escape '&' so Qt doesn't treat it as a mnemonic ("Review & Label").
+        shown = self.label_text.replace("&", "&&")
+        self.setText(f"   {shown}" if self._expanded else "")
+        self.setToolTip("" if self._expanded else self.label_text)
 
     def _refresh_icon(self) -> None:
         color = dt.accent() if self.isChecked() else dt.text_secondary()
-        pm = dt.icon_pixmap(self.icon_name, color=color, size=22)
-        self.setIcon(QIcon(pm))
+        self.setIcon(QIcon(dt.icon_pixmap(self.icon_name, color=color, size=22)))
         self.setIconSize(QSize(22, 22))
 
     def nextCheckState(self):
@@ -58,221 +73,142 @@ class SidebarItem(QPushButton):
 class SidebarShell(QWidget):
     page_changed = pyqtSignal(int)
 
-    def __init__(self, parent=None):
+    def __init__(self, capture_dir: str | None = None, parent=None):
         super().__init__(parent)
+        self._capture_dir = capture_dir
         self._items: list[SidebarItem] = []
+        self._collapse_flags: list[bool] = []
         self._expanded = True
         self._build()
-        dt.on_theme_change(self._restyle)
 
+    # ── construction ──
     def _build(self) -> None:
         root = QHBoxLayout(self); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
 
         self._sidebar = QWidget(); self._sidebar.setObjectName("sidebar")
-        self._sidebar.setFixedWidth(220)
-        sl = QVBoxLayout(self._sidebar); sl.setContentsMargins(0, 20, 0, 12); sl.setSpacing(4)
+        self._sidebar.setFixedWidth(SIDEBAR_WIDTH)
+        self._sidebar.setStyleSheet(dt.qss_sidebar())
+        sl = QVBoxLayout(self._sidebar); sl.setContentsMargins(0, 18, 0, 12); sl.setSpacing(4)
 
-        # Brand row
+        # Brand
         brand = QWidget()
-        bl = QHBoxLayout(brand); bl.setContentsMargins(20, 0, 20, 16); bl.setSpacing(10)
-        self._brand_icon = QLabel(); self._brand_icon.setFixedSize(20, 20)
+        bl = QHBoxLayout(brand); bl.setContentsMargins(20, 0, 20, 14); bl.setSpacing(10)
+        self._brand_icon = QLabel()
+        self._brand_icon.setPixmap(dt.icon_pixmap("brain", color=dt.accent(), size=22))
+        self._brand_icon.setFixedSize(22, 22)
         bl.addWidget(self._brand_icon)
         self._brand_label = QLabel("Brain Battle")
+        self._brand_label.setStyleSheet(
+            f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
+            f"font-size: {dt.SIZE_LG}px; font-weight: 700;")
         bl.addWidget(self._brand_label); bl.addStretch()
         sl.addWidget(brand)
 
-        self._sep_top = QFrame(); self._sep_top.setFixedHeight(1)
-        sl.addWidget(self._sep_top); sl.addSpacing(10)
+        sep = QFrame(); sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background: {dt.border()}; margin: 0 16px;")
+        sl.addWidget(sep); sl.addSpacing(8)
 
-        # Nav items container
-        self._nav_container = QVBoxLayout()
-        self._nav_container.setContentsMargins(0, 0, 0, 0); self._nav_container.setSpacing(2)
-        sl.addLayout(self._nav_container)
+        # Primary nav items container
+        self._nav = QVBoxLayout(); self._nav.setContentsMargins(0, 0, 0, 0); self._nav.setSpacing(2)
+        sl.addLayout(self._nav)
         sl.addStretch()
 
-        # Footer: theme toggle
-        self._theme_btn = QPushButton()
-        self._theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._theme_btn.setFixedHeight(40)
-        self._theme_btn.clicked.connect(self._toggle_theme)
-        sl.addWidget(self._theme_btn)
+        # Recordings-folder card (name + free-space bar + "N GB free")
+        self._folder_card = self._build_folder_card()
+        sl.addWidget(self._folder_card)
 
-        # Collapse toggle below it
-        self._collapse_btn = QPushButton()
-        self._collapse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._collapse_btn.setFixedHeight(36)
-        self._collapse_btn.clicked.connect(self.toggle)
-        sl.addWidget(self._collapse_btn)
+        # Settings + extra bottom items container
+        self._bottom_nav = QVBoxLayout(); self._bottom_nav.setContentsMargins(0, 0, 0, 0); self._bottom_nav.setSpacing(2)
+        sl.addLayout(self._bottom_nav)
 
         root.addWidget(self._sidebar)
-
         self._stack = QStackedWidget()
+        self._stack.setStyleSheet(f"QStackedWidget {{ background: {dt.canvas_bg()}; }}")
         root.addWidget(self._stack, 1)
 
-        self._restyle()
+    def _build_folder_card(self) -> QWidget:
+        card = QFrame(); card.setObjectName("folderCard")
+        card.setStyleSheet(
+            f"QFrame#folderCard {{ background: {dt.card_bg_hover()}; "
+            f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_MD}px; "
+            f"margin: 0 10px; }}")
+        v = QVBoxLayout(card); v.setContentsMargins(12, 10, 12, 10); v.setSpacing(6)
+        self._folder_name = QLabel("Recordings folder")
+        self._folder_name.setStyleSheet(
+            f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
+            f"font-size: {dt.SIZE_XS}px; font-weight: 600; border: none;")
+        v.addWidget(self._folder_name)
+        self._free_bar = QProgressBar(); self._free_bar.setFixedHeight(5)
+        self._free_bar.setTextVisible(False)
+        self._free_bar.setStyleSheet(
+            f"QProgressBar {{ background: {dt.border()}; border: none; border-radius: 2px; }}"
+            f"QProgressBar::chunk {{ background: {dt.accent()}; border-radius: 2px; }}")
+        v.addWidget(self._free_bar)
+        self._free_label = QLabel("")
+        self._free_label.setStyleSheet(
+            f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
+            f"font-size: {dt.SIZE_CAPTION}px; border: none;")
+        v.addWidget(self._free_label)
+        self.refresh_folder_card()
+        return card
 
-    def _restyle(self) -> None:
-        def _repolish(w):
-            s = w.style(); s.unpolish(w); s.polish(w); w.update()
-
-        # Sidebar background — use inline style on the widget itself
-        # (direct selector) to avoid objectName cascade issues on theme switch.
-        if dt.current_theme() == "dark":
-            self._sidebar.setStyleSheet(
-                f"QWidget {{ background: qlineargradient("
-                f"x1:0, y1:0, x2:0, y2:1, "
-                f"stop:0 rgba(21, 21, 25, 0.98), "
-                f"stop:1 rgba(17, 17, 20, 0.98)); "
-                f"border-right: 1px solid {dt.border()}; }}"
-                + self._sidebar_item_qss()
-            )
+    def refresh_folder_card(self) -> None:
+        """Show the capture folder's name + REAL free space."""
+        d = self._capture_dir
+        if d and os.path.isdir(d):
+            self._folder_name.setText(os.path.basename(os.path.abspath(d)) or d)
+            try:
+                u = shutil.disk_usage(d)
+                used_frac = int(round((u.used / u.total) * 100)) if u.total else 0
+                self._free_bar.setValue(max(0, min(100, used_frac)))
+                self._free_label.setText(f"{_human_gb(u.free)} free")
+            except OSError:
+                self._free_label.setText("free space unknown")
         else:
-            self._sidebar.setStyleSheet(
-                f"QWidget {{ background: {dt.sidebar_bg()}; "
-                f"border-right: 1px solid {dt.border()}; }}"
-                + self._sidebar_item_qss()
-            )
-        _repolish(self._sidebar)
-        self._stack.setStyleSheet(f"QStackedWidget {{ background: {dt.canvas_bg()}; }}")
-        _repolish(self._stack)
-        self._brand_icon.setPixmap(dt.icon_pixmap("brain", color=dt.accent(), size=20))
-        self._brand_label.setStyleSheet(
-            f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
-            f"font-size: {dt.SIZE_MD}px; font-weight: 700; letter-spacing: {dt.LS_TIGHT};"
-        )
-        self._sep_top.setStyleSheet(f"background: {dt.border()}; margin: 0 16px;")
-        for item in self._items:
-            _repolish(item)
-            item._refresh_icon()
-        self._refresh_theme_btn()
-        self._refresh_collapse_btn()
+            self._folder_name.setText("Recordings folder")
+            self._free_bar.setValue(0)
+            self._free_label.setText("not set")
 
-    def _sidebar_item_qss(self) -> str:
-        return f"""
-            QPushButton#sidebarItem {{
-                background: transparent; border: none;
-                color: {dt.text_secondary()};
-                padding: 13px 18px; text-align: left;
-                font-family: {dt.FONT_UI}; font-size: {dt.SIZE_MD}px;
-                font-weight: 500; border-radius: {dt.RADIUS_MD}px;
-                margin: 2px 10px;
-            }}
-            QPushButton#sidebarItem:hover {{
-                background: {dt.card_bg_hover()};
-                color: {dt.text_primary()};
-            }}
-            QPushButton#sidebarItem:checked {{
-                background: {dt.accent_ghost()};
-                color: {dt.accent()};
-                font-weight: 600;
-            }}
-        """
-
-    def _refresh_theme_btn(self) -> None:
-        is_dark = dt.current_theme() == "dark"
-        icon_name = "sun" if is_dark else "moon"
-        label = "Light mode" if is_dark else "Dark mode"
-        pm = dt.icon_pixmap(icon_name, color=dt.text_secondary(), size=18)
-        self._theme_btn.setIcon(QIcon(pm))
-        self._theme_btn.setIconSize(QSize(18, 18))
-        self._theme_btn.setText(f"  {label}" if self._expanded else "")
-        self._theme_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; "
-            f"color: {dt.text_secondary()}; "
-            f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; "
-            f"padding: 8px 22px; text-align: left; margin: 0 8px; "
-            f"border-radius: {dt.RADIUS_MD}px; }}"
-            f"QPushButton:hover {{ background: {dt.card_bg_hover()}; "
-            f"color: {dt.text_primary()}; }}"
-        )
-
-    def _refresh_collapse_btn(self) -> None:
-        self._collapse_btn.setText(
-            "    ◀  Collapse" if self._expanded else "    ▶"
-        )
-        self._collapse_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; "
-            f"color: {dt.text_tertiary()}; "
-            f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_XS}px; "
-            f"padding: 8px 22px; text-align: left; margin: 0 8px; "
-            f"border-radius: {dt.RADIUS_MD}px; }}"
-            f"QPushButton:hover {{ background: {dt.card_bg_hover()}; "
-            f"color: {dt.text_secondary()}; }}"
-        )
-
-    def _toggle_theme(self) -> None:
-        """Persist the new theme choice and ask for a restart.
-
-        Qt's stylesheet engine doesn't reliably re-evaluate every
-        objectName-based selector on live theme switch, so we take the
-        same approach as VS Code / Slack / Discord: save the preference
-        and ask the user to relaunch. The next launch reads the saved
-        theme and applies it cleanly from the start.
-        """
-        from PyQt6.QtWidgets import QMessageBox
-        import json, os
-        new_theme = "light" if dt.current_theme() == "dark" else "dark"
-
-        # Persist
-        pref_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), ".brain_battle_prefs.json"
-        )
-        try:
-            with open(pref_path, "w") as f:
-                json.dump({"theme": new_theme}, f)
-        except OSError as e:
-            # Only file I/O can fail here (literal dict of two ASCII strings
-            # is always serialisable); pref just won't persist this switch.
-            import logging
-            logging.getLogger(__name__).warning(
-                "could not save theme preference to %s: %s", pref_path, e)
-
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Theme saved")
-        msg.setText(
-            f"Switched to {new_theme.title()} Mode.\n\n"
-            "Please restart Brain Battle to apply the new theme."
-        )
-        msg.setIcon(QMessageBox.Icon.Information)
-        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-        msg.exec()
-
-    def add_page(self, icon_name: str, label: str, widget: QWidget) -> int:
+    # ── pages ──
+    def add_page(self, key: str, label: str, icon_name: str, widget: QWidget,
+                 collapse_on_active: bool = False, bottom: bool = False) -> int:
         item = SidebarItem(icon_name, label)
         idx = len(self._items)
-        item.clicked.connect(lambda: self.set_current_index(idx))
-        self._nav_container.addWidget(item)
+        item.clicked.connect(lambda _=False, i=idx: self.set_current_index(i))
+        (self._bottom_nav if bottom else self._nav).addWidget(item)
         self._items.append(item)
+        self._collapse_flags.append(collapse_on_active)
         self._stack.addWidget(widget)
         if idx == 0:
-            item.setChecked(True)
-            item._refresh_icon()
+            item.setChecked(True); item._refresh_icon()
         return idx
 
     def set_current_index(self, idx: int) -> None:
+        if not (0 <= idx < len(self._items)):
+            return
         for i, it in enumerate(self._items):
-            it.setChecked(i == idx)
-            it._refresh_icon()
+            it.setChecked(i == idx); it._refresh_icon()
         self._stack.setCurrentIndex(idx)
+        self._set_collapsed(self._collapse_flags[idx])
         self.page_changed.emit(idx)
 
     def current_index(self) -> int:
         return self._stack.currentIndex()
 
-    def toggle(self) -> None:
-        self._expanded = not self._expanded
-        target_w = 220 if self._expanded else 68
-        anim = QPropertyAnimation(self._sidebar, b"minimumWidth", self)
-        anim.setStartValue(self._sidebar.width()); anim.setEndValue(target_w)
-        anim.setDuration(dt.MOTION_NORMAL); anim.setEasingCurve(dt.EASE_EMPHASIS)
-        anim2 = QPropertyAnimation(self._sidebar, b"maximumWidth", self)
-        anim2.setStartValue(self._sidebar.width()); anim2.setEndValue(target_w)
-        anim2.setDuration(dt.MOTION_NORMAL); anim2.setEasingCurve(dt.EASE_EMPHASIS)
-        anim.start(); anim2.start()
-        self._sidebar.setFixedWidth(target_w)
-        self._brand_label.setVisible(self._expanded)
-        for item in self._items: item.setExpanded(self._expanded)
-        self._refresh_theme_btn(); self._refresh_collapse_btn()
+    def page_widget(self, idx: int) -> QWidget:
+        return self._stack.widget(idx)
+
+    # ── collapse to the 72 px icon rail ──
+    def _set_collapsed(self, collapsed: bool) -> None:
+        expanded = not collapsed
+        if expanded == self._expanded:
+            return
+        self._expanded = expanded
+        self._sidebar.setFixedWidth(SIDEBAR_WIDTH if expanded else SIDEBAR_RAIL)
+        self._brand_label.setVisible(expanded)
+        self._folder_card.setVisible(expanded)
+        for it in self._items:
+            it.setExpanded(expanded)
 
 
-__all__ = ["SidebarShell", "SidebarItem"]
+__all__ = ["SidebarShell", "SidebarItem", "SIDEBAR_WIDTH", "SIDEBAR_RAIL"]

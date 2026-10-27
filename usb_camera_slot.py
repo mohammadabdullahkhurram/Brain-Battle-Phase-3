@@ -90,18 +90,18 @@ class CameraPickerDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(420)
         self.setStyleSheet(
-            "QDialog { background-color: #0E0E12; }"
-            "QLabel { color: #ECEDEE; font-family: 'JetBrains Mono'; font-size: 11px; }"
-            "QListWidget { background-color: #0E0E12; border: 1px solid #2A2A30;"
-            "              color: #ECEDEE; font-family: 'JetBrains Mono'; font-size: 12px;"
+            "QDialog { background-color: #F6F7F9; }"
+            "QLabel { color: #15171C; font-family: 'JetBrains Mono'; font-size: 11px; }"
+            "QListWidget { background-color: #F6F7F9; border: 1px solid #DFE2E8;"
+            "              color: #15171C; font-family: 'JetBrains Mono'; font-size: 12px;"
             "              outline: none; }"
-            "QListWidget::item { padding: 8px 12px; border-bottom: 1px solid #24242A; }"
-            "QListWidget::item:selected { background-color: #1F2538; color: #637DFF;"
-            "                             border-left: 2px solid #637DFF; }"
-            "QPushButton { background-color: #1C1C21; color: #ECEDEE;"
-            "              border: 1px solid #2A2A30; padding: 8px 18px;"
+            "QListWidget::item { padding: 8px 12px; border-bottom: 1px solid #DFE2E8; }"
+            "QListWidget::item:selected { background-color: #EEF0FD; color: #3D4FD6;"
+            "                             border-left: 2px solid #3D4FD6; }"
+            "QPushButton { background-color: #FFFFFF; color: #15171C;"
+            "              border: 1px solid #DFE2E8; padding: 8px 18px;"
             "              font-family: 'JetBrains Mono'; font-size: 11px; letter-spacing: 1px; }"
-            "QPushButton:hover { background-color: #24242A; border-color: #A1A1AA; }"
+            "QPushButton:hover { background-color: #DFE2E8; border-color: #3A404B; }"
         )
         self._claimed = claimed_indices or set()
         self._selected: Optional[CameraDevice] = None
@@ -111,7 +111,7 @@ class CameraPickerDialog(QDialog):
     def _build(self) -> None:
         root = QVBoxLayout(self); root.setContentsMargins(18, 14, 18, 14); root.setSpacing(10)
         hdr = QLabel("AVAILABLE CAMERAS")
-        hdr.setStyleSheet("color: #637DFF; font-size: 10px; letter-spacing: 3px;"
+        hdr.setStyleSheet("color: #3D4FD6; font-size: 10px; letter-spacing: 3px;"
                           " font-family: 'JetBrains Mono';")
         root.addWidget(hdr)
         self._list = QListWidget()
@@ -186,7 +186,7 @@ class USBCameraSlot(QFrame):
         self._last_fps: float = 0.0
         self._rec_failed: bool = False
         self._build()
-        dt.on_theme_change(self._restyle)
+        self._restyle()
 
     # ── UI ──
     def _build(self) -> None:
@@ -400,7 +400,7 @@ class USBCameraSlot(QFrame):
         self._fps_lbl.setText("")
         self._status_lbl.setText("NO SOURCE")
         self._status_lbl.setStyleSheet(
-            f"color: #2A2A30; font-size: 9px; letter-spacing: 1px;"
+            f"color: #C9CED7; font-size: 9px; letter-spacing: 1px;"
             f" font-family: 'JetBrains Mono';"
         )
         self._dot.setStyleSheet(f"color: {_TEXT_DIM}; font-size: 11px;")
@@ -408,7 +408,7 @@ class USBCameraSlot(QFrame):
         self._connect_btn.setText("CONNECT")
         self._connect_btn.setEnabled(self._device is not None)
         self._connect_btn.setStyleSheet(
-            "background-color: #1F2538; color: #637DFF; border: 1px solid #637DFF;"
+            "background-color: #EEF0FD; color: #3D4FD6; border: 1px solid #3D4FD6;"
             " font-family: 'JetBrains Mono'; font-size: 10px; padding: 0 12px;"
         )
         self._pick_btn.setEnabled(True)
