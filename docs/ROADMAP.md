@@ -111,8 +111,9 @@ whoever picks up the item, not a contract.
 > work in Phases 3–6** — screens, copy, vocabulary, tokens, layout. If code
 > and DESIGN.md disagree, ask; don't guess. The items below are the build
 > breakdown; DESIGN.md is what they must look and read like. Playback approach
-> for the merged Review & Label screen: decided by the Phase 3 step-1 playback
-> proposal (see the git history / the proposal doc).
+> for the merged Review & Label screen: **Option C (PyAV, app-driven decode)**,
+> recommended in `docs/PLAYBACK_PROPOSAL.md` — the only option correct on the
+> drifting camera, and it collapses today's two playback stacks into one.
 
 - **Sessions home screen** — cards for every session in the storage folder
   (date, boxers, rounds, duration, status badge Recorded/Labelled/Exported),
