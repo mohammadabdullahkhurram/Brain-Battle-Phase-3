@@ -2568,6 +2568,8 @@ if __name__ == "__main__":
         log.debug("theme prefs not loaded (normal on first run): %r", e)
 
     app = QApplication(sys.argv); app.setApplicationName("Brain Battle")
+    from fonts import register_fonts
+    register_fonts()   # bundled Inter; falls back to the system font if absent
     def _excepthook(exc_type, exc_value, exc_tb):
         log.critical("UNHANDLED EXCEPTION", exc_info=(exc_type, exc_value, exc_tb))
     sys.excepthook = _excepthook
