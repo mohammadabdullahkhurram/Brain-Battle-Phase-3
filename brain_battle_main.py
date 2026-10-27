@@ -33,6 +33,7 @@ from vlc_module import VLCVideoSlot, SyncPlaybackController
 from export_module import FullSessionExportWorker, LabelsExporter, ExportProgressDialog
 from labels_config import LABELS as PREDEFINED_LABELS, next_colour, save as save_labels
 from version import __version__
+import session_history
 
 _INT32_MAX = 2_147_483_647
 
@@ -1135,6 +1136,10 @@ class SyncReviewTab(QWidget):
         # same axis as the EEG's t_session_seconds, for the co-registered file.
         markers = self._read_markers_for_export()
         worker = FullSessionExportWorker(zip_path=save_path, zip_name=zip_name, video_paths=video_paths, offset_secs=offset_secs, eeg_paths=eeg_paths, labels=[], sync_offsets_rows=sync_rows, global_duration=self.sync_result.global_duration, merge_video=True, phase_markers=markers, parent=self)
+        if self._session_root:
+            session_history.log_event(
+                self._session_root, session_history.EVENT_EXPORT_CREATED,
+                {"name": zip_name, "to": save_path})
         ExportProgressDialog(worker, parent=self).exec()
 
     def _request_label_tab(self):
@@ -1256,6 +1261,9 @@ class SyncReviewTab(QWidget):
 
         found = len(side_cams[:2]) + len(pov_cams[:2]) + len(muse_csvs[:2])
         if found:
+            session_history.log_event(
+                str(root), session_history.EVENT_OPENED_FOR_REVIEW,
+                {"files": found})
             msg = f"LOADED  {found} FILES  FROM  {root.name}"
             if self._phase_markers:
                 msg += f"  ·  {len(self._phase_markers)} MARKERS"
@@ -2220,6 +2228,7 @@ class LabellingTab(QWidget):
         marker.removed.connect(self._update_label_count)
         marker.removed.connect(self._rebuild_timeline_markers)
         marker.removed.connect(self._autosave_labels)
+        marker.removed.connect(lambda m=marker: self._log_label_removed(m))
         self.placed_layout.insertWidget(self.placed_layout.count()-1, marker); self._update_label_count()
         # Mirror the label onto the timeline strip as a coloured tick
         try:
@@ -2227,6 +2236,23 @@ class LabellingTab(QWidget):
         except Exception as e:
             log.debug("timeline marker mirror failed: %r", e)
         self._autosave_labels()
+        if self._session_root:
+            session_history.log_event(
+                self._session_root, session_history.EVENT_LABELS_ADDED,
+                {"label": marker.label_name, "t_seconds": round(ts, 3),
+                 "who": marker.boxer})
+
+    def _log_label_removed(self, marker):
+        """Log one labels_removed event per user removal (skip phase markers,
+        which are read-only session boundaries, not user labels)."""
+        if getattr(marker, "is_phase", False) or not self._session_root:
+            return
+        if getattr(self, "_restoring", False):
+            return   # clearing/restoring is not a user action
+        session_history.log_event(
+            self._session_root, session_history.EVENT_LABELS_REMOVED,
+            {"label": marker.label_name, "t_seconds": marker.t_seconds,
+             "who": marker.boxer})
 
     def _rebuild_timeline_markers(self):
         """Re-derive ticks from the current PLACED LABELS list. Called
@@ -2352,6 +2378,7 @@ class LabellingTab(QWidget):
                 marker.removed.connect(self._update_label_count)
                 marker.removed.connect(self._rebuild_timeline_markers)
                 marker.removed.connect(self._autosave_labels)
+                marker.removed.connect(lambda m=marker: self._log_label_removed(m))
                 self.placed_layout.insertWidget(self.placed_layout.count() - 1, marker)
                 try:
                     self.tl_slider.add_marker(t, color, name)
@@ -2387,7 +2414,13 @@ class LabellingTab(QWidget):
         if not labels: QMessageBox.information(self, "No labels", "Place some labels before exporting."); return
         path, _ = QFileDialog.getSaveFileName(self, "Export labels", "labels.csv", "CSV (*.csv)")
         if path:
-            try: LabelsExporter.export(labels, path); QMessageBox.information(self, "Exported", f"Saved {len(labels)} labels to:\n{path}")
+            try:
+                LabelsExporter.export(labels, path)
+                if self._session_root:
+                    session_history.log_event(
+                        self._session_root, session_history.EVENT_LABELS_EXPORTED,
+                        {"count": len(labels), "to": path})
+                QMessageBox.information(self, "Exported", f"Saved {len(labels)} labels to:\n{path}")
             except Exception as e: QMessageBox.critical(self, "Export failed", str(e))
 
 
@@ -2458,6 +2491,8 @@ class BrainBattleApp(QMainWindow):
         for s in found:
             try:
                 mark_session_interrupted(s.root)
+                session_history.log_event(
+                    s.root, session_history.EVENT_RECORDING_INTERRUPTED)
             except Exception as e:
                 log.warning("could not flag interrupted session %s: %s", s.root, e)
         recent = found[0]
@@ -2474,6 +2509,8 @@ class BrainBattleApp(QMainWindow):
         box.exec()
         if box.clickedButton() is open_btn:
             try:
+                session_history.log_event(
+                    recent.root, session_history.EVENT_RECORDING_RECOVERED)
                 self._shell.set_current_index(1)   # Review tab
                 self.sync_tab.load_session_folder(recent.root)
             except Exception as e:

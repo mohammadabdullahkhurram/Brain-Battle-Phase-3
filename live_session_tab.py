@@ -64,6 +64,7 @@ from session_storage      import (
 from circular_timer       import CircularTimer
 from sync_beep            import SyncBeep
 from log_setup            import attach_session_log
+import session_history
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
@@ -494,6 +495,11 @@ class LiveSessionTab(QWidget):
             self._layout.set_capture_origin(self._session_t0, self._session_t0_unix)
         except Exception as e:
             log.error("could not record capture origin in manifest: %s", e)
+        cfg = self._controller.config
+        session_history.log_event(
+            self._layout.root, session_history.EVENT_RECORDING_STARTED,
+            {"rounds": cfg.num_rounds, "round_sec": cfg.round_sec,
+             "break_sec": cfg.break_sec, "baseline_sec": cfg.baseline_sec})
         # Continuous folder is built by create_session
         cont_root = self._layout.continuous_dir()
         # Cameras: one MP4 per slot for the entire session
@@ -602,6 +608,8 @@ class LiveSessionTab(QWidget):
         self._btn_stop.setVisible(False); self._btn_start.setVisible(True)
         self._next_lbl.setText("")
         if self._layout is not None:
+            session_history.log_event(
+                self._layout.root, session_history.EVENT_RECORDING_FINISHED)
             self.session_saved.emit(str(self._layout.root))
             QTimer.singleShot(6000, self._reset_status_badge)
 
