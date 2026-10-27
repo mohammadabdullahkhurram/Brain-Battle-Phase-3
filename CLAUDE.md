@@ -142,6 +142,15 @@ All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
   (slow encoder → frames dropped + counted, invariant still holds), ffmpeg
   pipe broken (that camera stops with `record_error` + consistent partial, the
   other finishes), and the ffmpeg/encoder pre-flight.
+- `test_history_log.py` — the append-only `history.jsonl` (Phase 3): field
+  shape, tolerant reader (skips a truncated last line), SIGKILL mid-write
+  still reads, and six real hooks (recording start/finish, opened_for_review,
+  labels add/remove/export) driven headlessly.
+- `test_light_theme.py` — light-only guard: fails if any dark-theme token,
+  theme toggle, `set/current/on_theme_change`, or `_apply_theme` survives, and
+  checks the core surfaces are actually light.
+- `test_layout_fit.py` — every shell page fits the content area at 1440×900
+  and 1280×800 (nothing clipped).
 
 (The audio-era `test_seek_alignment.py` and `test_xcorr_confidence.py` were
 deleted in Step 4 with the xcorr feature they guarded.)
@@ -312,7 +321,7 @@ simultaneously and share `phase_markers.csv` time.
 |---|---|---|
 | `brain_battle_main.py` | 2168 | Entry point + `SyncReviewTab`, `LabellingTab`, `MainEditorSyncWorker`, `BrainBattleApp` shell |
 | `eeg_module.py` | ~1600 | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` + `EEGReviewWidget` (both pyqtgraph) |
-| `design_tokens.py` | 741 | Theme system (dark/light), QSS factories |
+| `design_tokens.py` | ~440 | **Light-only** design system (docs/DESIGN.md tokens) + QSS factories. No dark theme / no theme switching. |
 | `live_session_tab.py` | 584 | Live Monitor tab — capture orchestration, emits `session_saved(session_root)` |
 | `export_module.py` | ~600 | `VideoExportWorker` (ffmpeg quad-grid), `LabelsExporter`, `build_coregistered_eeg` (both boxers on one axis), `FullSessionExportWorker` (zip), progress dialog |
 | `usb_camera_slot.py` | 479 | One camera slot widget (preview + record state) |
@@ -320,7 +329,9 @@ simultaneously and share `phase_markers.csv` time.
 | `vlc_module.py` | 391 | `VLCVideoSlot`, `SyncPlaybackController` — labelling-tab playback |
 | `usb_camera.py` | ~700 | `USBCameraThread` (cv2 capture) + `FrameEncoder` — crash-safe fragmented H.264 via a per-camera ffmpeg subprocess (bounded queue + writer thread, drop counter, row-per-frame sidecar); no audio track |
 | `eeg_plot_pg.py` | 276 | pyqtgraph live EEG plot (the fast path the live widget uses) |
-| `sidebar_shell.py` | 274 | Sidebar navigation shell (replaced QTabWidget) |
+| `sidebar_shell.py` | ~230 | New DESIGN shell: 232px sidebar (Sessions / New recording / Review & Label / folder card / Settings), collapses to a 72px rail on Review & Label; app opens on Sessions |
+| `session_history.py` | ~155 | Append-only `history.jsonl` per recording (who did what, when) — flush+fsync, tolerant reader |
+| `fonts.py` | ~65 | Registers the bundled Inter font (`assets/fonts/`, SIL OFL); falls back to the system font |
 | `session_controller.py` | 241 | Pure-logic phase state machine (IDLE→BASELINE→ROUND↔BREAK→DONE), 1 Hz QTimer |
 | `session_setup_dialog.py` | 225 | Rounds/durations config dialog |
 | `session_storage.py` | 218 | On-disk session layout, manifest, `phase_markers.csv` writer |

@@ -178,20 +178,21 @@ whoever picks up the item, not a contract.
   `usb_camera.py` (`USBCameraThread.__init__` defaults), `labels_config.py`,
   `sync_beep.py`, `session_setup_dialog.py` (default durations).
 
-- **Light-mode-only design system**: remove dark tokens, theme toggle,
-  hex string-replacement theming and prefs file; large targets, WCAG AA
-  contrast, never colour-only meaning, plain-language labels and errors,
-  helpful empty states.
-  *Why:* the dark/light theming today works by string-replacing hex colors
-  through each tab's `_apply_theme()` method, requires an app restart to
-  actually apply (`SidebarShell._toggle_theme`'s own comment explains why),
-  and the new target audience doesn't need a theme choice at all — one
-  simpler, accessible light design replaces it.
-  *Files:* `design_tokens.py` (strip the dark palette, `set_theme`/
-  `on_theme_change`, the four-surface-level dark treatments), `sidebar_shell.py`
-  (`_toggle_theme`, theme button, `.brain_battle_prefs.json` handling),
-  every tab's `_apply_theme`/`_restyle` method (`brain_battle_main.py`,
-  `live_session_tab.py`, `usb_camera_slot.py`, `eeg_module.py`, etc.).
+- ~~**Light-mode-only design system**~~ **DONE (Phase 3 step 2).**
+  `design_tokens` is rebuilt light-only from DESIGN.md; the dark palette, theme
+  toggle, `set/current/on_theme_change`, prefs file, and every `_apply_theme`
+  hex-replacement map are gone (guarded by `tests/test_light_theme.py`). Inter
+  is bundled (`assets/fonts/`, `fonts.register_fonts`). The existing tabs were
+  light-converted so they stay readable. **Also DONE in step 2: the new shell
+  scaffold** — `sidebar_shell` rebuilt to DESIGN "App structure" (232px
+  sidebar + folder card with real free space, collapses to 72px on
+  Review & Label, opens on Sessions), with the existing screens wired behind
+  it (Sessions/Settings placeholders; New recording = Live Monitor;
+  Review & Label = the Review screen + a temporary link to the old Labelling
+  screen). `tools/render_screens.py` renders every page at 1440×900 / 1280×800.
+  **Still TODO (later Phase 3 steps):** the actual Sessions home list, the
+  guided Record flow, and the real merged Review & Label screen (the items
+  above/below this one) — the placeholders mark where they land.
 
 ### New scope from `docs/DESIGN.md` (approved 2026-10-27)
 
