@@ -393,6 +393,65 @@ screens above; see DESIGN.md for the exact copy/layout.
 
 ---
 
+## Phase 7 — Team & cloud (future, not scheduled)
+
+The owner's longer-term goals. Not scheduled; captured here so earlier phases
+don't paint us into a corner. **Constraint for ALL earlier phases: keep each
+recording folder fully self-contained** (video + sidecars + EEG + markers +
+manifest + `labels.json` + `history.jsonl` + any moments/questionnaire data all
+inside the one dated folder) so a recording can later be uploaded or synced as
+a single unit without hunting for pieces elsewhere.
+
+- **Shared storage across every copy of the app.**
+  *Why:* the real workflow is split across people and machines — one team
+  records, others label, others analyse — so local-only storage can't work;
+  everyone needs the same sessions, labels, and history. Planned split: **small
+  data** (accounts, labels, history, questionnaires, analyst notes) in a
+  **hosted database with built-in sign-in**; **video** (1–2 GB/session) in
+  separate **file/object storage**. **BLOCKER before choosing any provider:**
+  check with the university's data protection officer / ethics approval —
+  boxers' names + brain data + questionnaire answers are **personal data under
+  GDPR**, so EU or university-provided hosting may be required. Don't commit to
+  a vendor before that clears.
+
+- **Simple accounts for everyone who gets the app; roles Recorder, Labeller,
+  Analyst, Admin.**
+  *Why:* shared storage needs identity (who did what, who may do what), and the
+  roles map directly to the workflow. Also lets `history.jsonl`'s `user_source:
+  "os"` placeholder become a real account id.
+
+- **Per-recording history shared across the team** (who recorded, who labelled,
+  who opened for analysis, who exported).
+  *Why:* with many people touching a session, "who changed what, when" has to
+  be visible to everyone, not just on the one laptop. Builds directly on the
+  local append-only `history.jsonl` from Phase-3 Part B (sync those events up).
+
+- **Pre-round and post-round questionnaires for both boxers inside the app**
+  (today these are Google Forms).
+  *Why:* the questionnaire answers are part of the synchrony dataset and should
+  attach to the right recording/round automatically instead of living in a
+  separate Google Sheet to be matched up by hand. *Idea to evaluate:* a short
+  phone form opened via a **QR code on the recording screen**, answers attached
+  to the recording and round automatically.
+
+- **Analysis mode: a READ-ONLY mode of the Review & Label screen** (same
+  player/timeline; label controls hidden, existing labels locked), plus:
+  per-analyst **notes/bookmarks pinned to moments** (a separate layer that
+  never edits labels), **questionnaire answers shown on the timeline** per
+  boxer per round, simple **per-round summaries** (e.g. punch counts per
+  boxer), and **export for R/Python**.
+  *Why:* analysts need to explore a frozen, labelled session and add their own
+  interpretation without any risk of changing the labelling team's work.
+
+- **"Labelling finished" step that freezes labels before analysis; per-labeller
+  label sets so two labellers never overwrite each other** (also enables
+  inter-rater agreement checks).
+  *Why:* analysis must run on a stable label set, and two people labelling the
+  same session must not clobber each other — separate per-labeller sets both
+  prevent that and make agreement measurable.
+
+---
+
 ## Deferred until hardware works
 
 These cannot be closed by writing more code — they need a working camera
