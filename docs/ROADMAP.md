@@ -107,6 +107,13 @@ whoever picks up the item, not a contract.
 
 ## Phase 3 — Structure and design
 
+> **`docs/DESIGN.md` (approved 2026-10-27) is the source of truth for ALL UI
+> work in Phases 3–6** — screens, copy, vocabulary, tokens, layout. If code
+> and DESIGN.md disagree, ask; don't guess. The items below are the build
+> breakdown; DESIGN.md is what they must look and read like. Playback approach
+> for the merged Review & Label screen: decided by the Phase 3 step-1 playback
+> proposal (see the git history / the proposal doc).
+
 - **Sessions home screen** — cards for every session in the storage folder
   (date, boxers, rounds, duration, status badge Recorded/Labelled/Exported),
   search/sort, "Show in Finder", one-click open.
@@ -184,6 +191,51 @@ whoever picks up the item, not a contract.
   (`_toggle_theme`, theme button, `.brain_battle_prefs.json` handling),
   every tab's `_apply_theme`/`_restyle` method (`brain_battle_main.py`,
   `live_session_tab.py`, `usb_camera_slot.py`, `eeg_module.py`, etc.).
+
+### New scope from `docs/DESIGN.md` (approved 2026-10-27)
+
+These came out of the approved mockups and are build requirements for the
+screens above; see DESIGN.md for the exact copy/layout.
+
+- **Boxer names + manifest-based session discovery, and recording-folder
+  naming `YYYY-MM-DD HH-MM <A name> vs <B name>`.**
+  *Why:* the Sessions list, every screen title, and the folder name show the
+  boxers' names (DESIGN §1, §3–6). Names are entered at setup and stored in
+  the manifest; the folder name includes them (filesystem-sanitized).
+  Sessions must be **discovered by their manifest, not by a `"Brain Battle "`
+  folder prefix**, since the prefix is changing — update the Phase-2 crash
+  scanner accordingly.
+  *Files:* `session_storage.py` (`_session_folder_name`, name sanitization,
+  manifest boxer fields, `scan_interrupted_sessions` prefix check),
+  `session_setup_dialog.py` / the new setup screen.
+
+- **Headband battery + per-sensor contact quality** on the Connect and
+  Recording screens.
+  *Why:* DESIGN §2/§4 show battery % and a Good/Weak-contact chip per sensor
+  (Left ear/forehead etc. ← TP9/AF7/AF8/TP10), with plain-language fix tips.
+  Battery from Muse telemetry if available; contact quality computed from the
+  signal (e.g. per-channel variance/railing).
+  *Files:* `eeg_module.py` (`_MuseDirectReader` telemetry + a per-channel
+  quality metric, `EEGLiveWidget`), the Connect/Recording screens.
+
+- **"Mark this moment" during recording** → stored in the session → shown as
+  unnamed labels to be named in Review & Label.
+  *Why:* DESIGN §4/§6 — the operator marks moments live (M key) and names
+  them later. Needs a place in the session for timestamped unnamed marks.
+  *Files:* `live_session_tab.py` / Recording screen, `session_storage.py`
+  (store marks, e.g. in the manifest or a `moments.csv`), the merged
+  Review & Label screen (surface them as unnamed labels).
+
+- **Sessions status model** (Interrupted / Needs labelling / Labelled /
+  Exported), computed from the manifest + `labels.json` + export presence.
+  *Why:* DESIGN §1 status badges + filter chips.
+  *Files:* `session_storage.py` (a `session_status(root)` helper), the
+  Sessions home screen.
+
+- **Labels gain `who` = A | B | Both and point/duration ("lasts a while")
+  types** — this REFINES the existing Phase 4 label items below (the `boxer`
+  and `end_t_seconds` fields already reserved in `labels.json` get filled; the
+  Review & Label UI adds the who-picker and duration placement per DESIGN §6).
 
 ---
 

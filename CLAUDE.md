@@ -34,8 +34,11 @@ tab, and an export pipeline. ~11k lines across 24 .py files.
 
 ## Product direction
 
-Full plan and reasoning: `docs/ROADMAP.md` — the single source of what's
-planned next. Summary of where the product is headed:
+**`docs/DESIGN.md` (approved 2026-10-27) is the source of truth for ALL UI
+work** — the actual screens, copy, vocabulary, tokens, and layout from the
+approved mockups. If code and DESIGN.md disagree, ask; don't guess.
+`docs/ROADMAP.md` is the build plan/sequencing; DESIGN.md is what it must look
+and read like. Summary of where the product is headed:
 
 - **Audience is non-technical researchers and research assistants**, not
   developers. UI copy should be plain language, no jargon ("alignment",
