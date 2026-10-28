@@ -2376,7 +2376,10 @@ class SessionsPlaceholder(QWidget):
         super().__init__(parent)
         import design_tokens as dt
         self._capture_dir = capture_dir
-        self.setStyleSheet(f"background: {dt.canvas_bg()};")
+        # Scope the background to this widget's class so it does NOT cascade
+        # to child labels (a bare `background:` makes every QLabel paint a
+        # grey/canvas box behind its text).
+        self.setStyleSheet(f"SessionsPlaceholder {{ background: {dt.canvas_bg()}; }}")
         root = QVBoxLayout(self); root.setContentsMargins(40, 36, 40, 36); root.setSpacing(0)
         header = QHBoxLayout()
         htext = QVBoxLayout(); htext.setSpacing(4)
@@ -2444,7 +2447,8 @@ class SettingsPlaceholder(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         import design_tokens as dt
-        self.setStyleSheet(f"background: {dt.canvas_bg()};")
+        # Scope to the class so the background never cascades to child labels.
+        self.setStyleSheet(f"SettingsPlaceholder {{ background: {dt.canvas_bg()}; }}")
         root = QVBoxLayout(self); root.setContentsMargins(40, 36, 40, 36); root.setSpacing(0)
         root.addWidget(_h1("Settings"))
         root.addWidget(_sub("These settings apply to your next recording. The "

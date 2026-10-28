@@ -132,28 +132,54 @@ class SidebarShell(QWidget):
             f"QFrame#folderCard {{ background: {dt.card_bg_hover()}; "
             f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_MD}px; "
             f"margin: 0 10px; }}")
-        v = QVBoxLayout(card); v.setContentsMargins(12, 10, 12, 10); v.setSpacing(6)
-        self._folder_name = QLabel("Recordings folder")
+        v = QVBoxLayout(card); v.setContentsMargins(12, 10, 12, 10); v.setSpacing(5)
+        # Caption
+        cap = QLabel("Recordings folder")
+        cap.setStyleSheet(
+            f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
+            f"font-size: {dt.SIZE_CAPTION}px; font-weight: 600; border: none;")
+        v.addWidget(cap)
+        # Folder name
+        self._folder_name = QLabel("—")
         self._folder_name.setStyleSheet(
-            f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
-            f"font-size: {dt.SIZE_XS}px; font-weight: 600; border: none;")
+            f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
+            f"font-size: {dt.SIZE_SM}px; font-weight: 600; border: none;")
         v.addWidget(self._folder_name)
+        # Free-space bar (colour = status)
         self._free_bar = QProgressBar(); self._free_bar.setFixedHeight(5)
         self._free_bar.setTextVisible(False)
-        self._free_bar.setStyleSheet(
-            f"QProgressBar {{ background: {dt.border()}; border: none; border-radius: 2px; }}"
-            f"QProgressBar::chunk {{ background: {dt.accent()}; border-radius: 2px; }}")
         v.addWidget(self._free_bar)
+        # "<n> GB free · <status text>"  (status in text, not colour only)
         self._free_label = QLabel("")
         self._free_label.setStyleSheet(
             f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
             f"font-size: {dt.SIZE_CAPTION}px; border: none;")
+        self._free_label.setWordWrap(True)
         v.addWidget(self._free_label)
         self.refresh_folder_card()
         return card
 
+    def _disk_status(self, free_bytes: int):
+        """Classify free space against a default session's estimated size.
+        Returns (key, status_text, bar_colour). green normally; amber when
+        free < 3× a default session; red when free < 1×."""
+        from session_storage import estimate_session_bytes
+        from session_controller import SessionConfig
+        est = estimate_session_bytes(SessionConfig(), n_cameras=4, n_eeg=2)
+        if free_bytes < est:
+            return ("full", "almost full", dt.record_red())
+        if free_bytes < 3 * est:
+            return ("low", "getting low", dt.warning_color())
+        return ("ok", "plenty of space", dt.success_color())
+
+    def _set_bar_colour(self, colour: str) -> None:
+        self._free_bar.setStyleSheet(
+            f"QProgressBar {{ background: {dt.border()}; border: none; border-radius: 2px; }}"
+            f"QProgressBar::chunk {{ background: {colour}; border-radius: 2px; }}")
+
     def refresh_folder_card(self) -> None:
-        """Show the capture folder's name + REAL free space."""
+        """Show the capture folder's name + REAL free space + a plain-language
+        status (colour AND text)."""
         d = self._capture_dir
         if d and os.path.isdir(d):
             self._folder_name.setText(os.path.basename(os.path.abspath(d)) or d)
@@ -161,13 +187,18 @@ class SidebarShell(QWidget):
                 u = shutil.disk_usage(d)
                 used_frac = int(round((u.used / u.total) * 100)) if u.total else 0
                 self._free_bar.setValue(max(0, min(100, used_frac)))
-                self._free_label.setText(f"{_human_gb(u.free)} free")
+                _key, status_text, colour = self._disk_status(u.free)
+                self._set_bar_colour(colour)
+                self._free_label.setText(f"{_human_gb(u.free)} free · {status_text}")
             except OSError:
+                self._set_bar_colour(dt.text_tertiary())
+                self._free_bar.setValue(0)
                 self._free_label.setText("free space unknown")
         else:
-            self._folder_name.setText("Recordings folder")
+            self._folder_name.setText("not set")
+            self._set_bar_colour(dt.text_tertiary())
             self._free_bar.setValue(0)
-            self._free_label.setText("not set")
+            self._free_label.setText("no folder yet")
 
     # ── pages ──
     def add_page(self, key: str, label: str, icon_name: str, widget: QWidget,

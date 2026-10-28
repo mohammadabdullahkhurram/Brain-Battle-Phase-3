@@ -197,6 +197,10 @@ def qss_app() -> str:
             font-family: {FONT_UI};
             font-size: {SIZE_MD}px;
         }}
+        /* Labels are transparent by default so text never paints its own
+           (grey, palette-Window) box on a card. A label that wants a
+           background sets one in its own stylesheet, which overrides this. */
+        QLabel {{ background: transparent; }}
         QToolTip {{
             background-color: {p.surface};
             color: {p.text_primary};
