@@ -322,7 +322,9 @@ def _generate_eeg_band(muse_dir, device_name, boxer_letter, rng, t0_unix,
 
 def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: int = 60,
                           break_sec: int = 20, baseline_sec: int = 20, seed: int = 0,
-                          interrupted: bool = False) -> dict:
+                          interrupted: bool = False,
+                          boxer_a: str | None = None, boxer_b: str | None = None,
+                          started_at=None) -> dict:
     """Build one complete demo session folder. Returns a summary dict
     (session root, per-camera + per-band generation parameters, markers,
     total duration, interrupted flag) — used both by main()'s printed
@@ -338,7 +340,11 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
 
     base_dir = out or _default_capture_root()
     os.makedirs(base_dir, exist_ok=True)
-    layout = create_session(base_dir, cfg)   # REAL writer: folder + continuous/ + initial manifest
+    # REAL writer: folder (named by boxers) + continuous/ + initial manifest
+    layout = create_session(
+        base_dir, cfg, started_at=started_at,
+        boxer_a={"name": boxer_a, "headband": "MuseS-7538"} if boxer_a else None,
+        boxer_b={"name": boxer_b, "headband": "MuseS-7564"} if boxer_b else None)
 
     t0_monotonic = time.monotonic()
     t0_unix = time.time()
@@ -416,7 +422,85 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
         "eeg_bands": eeg_bands,
         "markers": markers,
         "seed": seed,
+        "boxer_a": boxer_a,
+        "boxer_b": boxer_b,
     }
+
+
+# ─── Library (a folder of sessions covering every status) ───────────────────────
+
+def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
+    """Fill `out` with ~5 short (~20 s) sessions covering every Sessions-screen
+    status: interrupted, needs-labelling, labelled, exported, plus one with no
+    boxer names. Deterministic for a given seed. Dated across recent days so
+    the list has variety."""
+    import datetime as _dt
+    import json as _json
+    import session_storage as _ss
+    import session_history as _sh
+
+    base = out or _default_capture_root()
+    os.makedirs(base, exist_ok=True)
+    short = dict(rounds=1, round_sec=10, break_sec=0, baseline_sec=4)  # ~14 s
+
+    # Distinct recent timestamps so the list shows varied dates/times.
+    now = _dt.datetime.now().replace(microsecond=0)
+    def when(days_ago, hour, minute):
+        return (now - _dt.timedelta(days=days_ago)).replace(hour=hour, minute=minute, second=0)
+
+    results = []
+
+    # 1) interrupted
+    r = generate_demo_session(out=base, seed=seed, interrupted=True,
+                              boxer_a="Sam", boxer_b="Alex",
+                              started_at=when(4, 14, 5), **short)
+    _ss.mark_session_interrupted(r["root"])
+    _sh.log_event(r["root"], _sh.EVENT_RECORDING_INTERRUPTED)
+    r["status"] = "interrupted"; results.append(r)
+
+    # 2) needs labelling (clean, no labels)
+    r = generate_demo_session(out=base, seed=seed + 1, boxer_a="Mia", boxer_b="Noor",
+                              started_at=when(3, 9, 30), **short)
+    _sh.log_event(r["root"], _sh.EVENT_RECORDING_FINISHED)
+    r["status"] = "needs labelling"; results.append(r)
+
+    # 3) labelled (labels.json with a few labels)
+    r = generate_demo_session(out=base, seed=seed + 2, boxer_a="Leo", boxer_b="Kai",
+                              started_at=when(2, 18, 15), **short)
+    _write_demo_labels(r["root"], [("JAB", 3.0), ("CROSS", 6.5), ("BLOCK", 9.0)])
+    _sh.log_event(r["root"], _sh.EVENT_LABELS_ADDED, {"label": "JAB"})
+    r["status"] = "labelled"; results.append(r)
+
+    # 4) exported (labelled + export_created in history)
+    r = generate_demo_session(out=base, seed=seed + 3, boxer_a="Ivy", boxer_b="Zoe",
+                              started_at=when(1, 11, 45), **short)
+    _write_demo_labels(r["root"], [("HOOK", 4.0), ("CLINCH", 7.0)])
+    _sh.log_event(r["root"], _sh.EVENT_EXPORT_CREATED, {"name": "Ivy_vs_Zoe.zip"})
+    r["status"] = "exported"; results.append(r)
+
+    # 5) no names (needs labelling, nameless row)
+    r = generate_demo_session(out=base, seed=seed + 4,
+                              started_at=when(0, 16, 20), **short)
+    _sh.log_event(r["root"], _sh.EVENT_RECORDING_FINISHED)
+    r["status"] = "needs labelling (no names)"; results.append(r)
+
+    return results
+
+
+def _write_demo_labels(session_root, labels):
+    """Write a minimal labels.json (schema matches brain_battle_main)."""
+    import json as _json
+    data = {
+        "schema_version": 1,
+        "time_axis": "labelling_playhead_offset0",
+        "labels": [
+            {"t_seconds": float(t), "label": name, "color": "#3D4FD6",
+             "boxer": None, "end_t_seconds": None}
+            for name, t in labels
+        ],
+    }
+    with open(os.path.join(session_root, "labels.json"), "w", encoding="utf-8") as f:
+        _json.dump(data, f, indent=2)
 
 
 # ─── CLI ────────────────────────────────────────────────────────────────────────
@@ -435,16 +519,30 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="generate a session that looks like the app crashed mid-round: "
                         "no SESSION_END marker, last phase has no end time, "
                         "EEG and video cut off early")
+    p.add_argument("--boxer-a", default=None, help="Boxer A name (folder + manifest)")
+    p.add_argument("--boxer-b", default=None, help="Boxer B name (folder + manifest)")
+    p.add_argument("--library", action="store_true",
+                   help="fill --out with ~5 short sessions covering every status "
+                        "(interrupted, needs labelling, labelled, exported, no-name)")
     return p
 
 
 def main(argv=None):
     args = _build_arg_parser().parse_args(argv)
+
+    if args.library:
+        rows = generate_library(out=args.out, seed=args.seed)
+        print(f"Demo library created ({len(rows)} sessions):")
+        for r in rows:
+            print(f"  [{r['status']:<26}] {os.path.basename(r['root'])}")
+        return 0
+
     try:
         result = generate_demo_session(
             out=args.out, rounds=args.rounds, round_sec=args.round_sec,
             break_sec=args.break_sec, baseline_sec=args.baseline_sec,
             seed=args.seed, interrupted=args.interrupted,
+            boxer_a=args.boxer_a, boxer_b=args.boxer_b,
         )
     except ValueError as e:
         print(f"Invalid session config: {e}", file=sys.stderr)

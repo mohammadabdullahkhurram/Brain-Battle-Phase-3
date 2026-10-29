@@ -44,6 +44,12 @@ from version import __version__
 # ─── Directory naming ─────────────────────────────────────────────────────────
 
 _SAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
+# Illegal on Windows (and '/' on macOS): the above + ASCII control chars.
+_ILLEGAL_FS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WIN_RESERVED = {"CON", "PRN", "AUX", "NUL",
+                 *(f"COM{i}" for i in range(1, 10)),
+                 *(f"LPT{i}" for i in range(1, 10))}
+_NAME_MAXLEN = 40   # per boxer name, to keep folder names sane
 
 
 def _safe(name: str) -> str:
@@ -51,12 +57,59 @@ def _safe(name: str) -> str:
     return _SAFE_CHARS.sub('-', name).strip()
 
 
-def _session_folder_name(started_at: _dt.datetime) -> str:
-    """
-    'Brain Battle 2026-04-17 14-32-05' — colon-free so it works on Windows.
-    """
-    ts = started_at.strftime("%Y-%m-%d %H-%M-%S")
-    return f"Brain Battle {ts}"
+def sanitize_name(name: str, maxlen: int = _NAME_MAXLEN) -> str:
+    """Make a boxer name safe to put in a folder name on macOS AND Windows:
+    drop filesystem-illegal chars and control chars, collapse whitespace, trim
+    trailing dots/spaces (Windows), avoid reserved device names, cap length.
+    Emoji and ordinary Unicode are kept (valid on both filesystems)."""
+    if not name:
+        return ""
+    s = _ILLEGAL_FS.sub(" ", str(name))
+    s = re.sub(r"\s+", " ", s).strip()
+    s = s.strip(". ")                       # Windows: no trailing dot/space
+    if s.upper() in _WIN_RESERVED:
+        s = f"_{s}"
+    return s[:maxlen].strip()
+
+
+def _session_folder_name(started_at: _dt.datetime,
+                         boxer_a_name: Optional[str] = None,
+                         boxer_b_name: Optional[str] = None) -> str:
+    """'2026-04-17 14-32 Sam vs Alex' (colon-free so it works on Windows), or
+    just '2026-04-17 14-32' when no names are given. One or both names
+    sanitized."""
+    ts = started_at.strftime("%Y-%m-%d %H-%M")
+    a = sanitize_name(boxer_a_name or "")
+    b = sanitize_name(boxer_b_name or "")
+    if a and b:
+        return f"{ts} {a} vs {b}"
+    if a:
+        return f"{ts} {a}"
+    if b:
+        return f"{ts} {b}"
+    return ts
+
+
+def _unique_dir(base_dir: Path, name: str) -> Path:
+    """`base_dir/name`, or `name (2)`, `name (3)`… if it already exists. Never
+    renames or reuses an existing folder."""
+    cand = base_dir / name
+    if not cand.exists():
+        return cand
+    i = 2
+    while (base_dir / f"{name} ({i})").exists():
+        i += 1
+    return base_dir / f"{name} ({i})"
+
+
+def _norm_boxer(b) -> dict:
+    """Normalise a boxer arg (name str, or {name, headband} dict, or None) to
+    {'name': str|None, 'headband': str|None}."""
+    if b is None:
+        return {"name": None, "headband": None}
+    if isinstance(b, dict):
+        return {"name": (b.get("name") or None), "headband": (b.get("headband") or None)}
+    return {"name": (str(b) or None), "headband": None}
 
 
 # ─── Data ─────────────────────────────────────────────────────────────────────
@@ -92,6 +145,11 @@ class SessionLayout:
     # Measured per-source first-sample time (Unix), so each source's startup
     # latency is recorded, not assumed. Keyed by source id (e.g. "EEG_01").
     source_starts:        dict = field(default_factory=dict)
+    # Boxers: {"A": {"name", "headband"}, "B": {...}} — names shown everywhere
+    # in the UI, headband = the Muse-S device each boxer wears.
+    boxers:               dict = field(default_factory=lambda: {
+                              "A": {"name": None, "headband": None},
+                              "B": {"name": None, "headband": None}})
 
     # ---- folder resolution ---------------------------------------------------
 
@@ -167,6 +225,7 @@ class SessionLayout:
             "version":        __version__,
             "started_at":     self.started_at.isoformat(timespec="seconds"),
             "started_unix":   self.started_at.timestamp(),
+            "boxers":         self.boxers,
             "capture_clock":  {
                 "t0_monotonic": self.capture_t0_monotonic,
                 "t0_unix":      self.capture_t0_unix,
@@ -184,18 +243,27 @@ class SessionLayout:
 
 def create_session(base_dir: str | os.PathLike,
                    config: SessionConfig,
-                   started_at: Optional[_dt.datetime] = None) -> SessionLayout:
+                   started_at: Optional[_dt.datetime] = None,
+                   boxer_a=None, boxer_b=None) -> SessionLayout:
     """
-    Build the Brain Battle <timestamp>/ tree for a v2.x continuous session:
+    Build the '<date time> <A> vs <B>/' tree for a v2.x continuous session:
     the root, continuous/ (+ Muse data/), and an initial manifest — created
     eagerly so disk-full / permission failures surface immediately. Camera
     subfolders are created lazily by the recording code (see NOTE below).
+
+    `boxer_a`/`boxer_b` are each a name string or a {"name", "headband"} dict;
+    names drive the folder name and are stored in the manifest. On a folder-name
+    collision (same minute + names) a " (2)", " (3)"… suffix is appended; an
+    existing folder is never renamed or reused.
     """
     started_at = started_at or _dt.datetime.now()
-    root = Path(base_dir) / _session_folder_name(started_at)
-    root.mkdir(parents=True, exist_ok=False)  # fail loud on duplicate timestamps
+    a, b = _norm_boxer(boxer_a), _norm_boxer(boxer_b)
+    base_name = _session_folder_name(started_at, a["name"], b["name"])
+    root = _unique_dir(Path(base_dir), base_name)
+    root.mkdir(parents=True, exist_ok=False)  # fail loud on a genuine race
 
-    layout = SessionLayout(root=root, started_at=started_at, config=config)
+    layout = SessionLayout(root=root, started_at=started_at, config=config,
+                           boxers={"A": a, "B": b})
 
     # Continuous recording folder — one MP4 per camera + one CSV per Muse-S
     # for the entire session, from baseline through final round end.
@@ -256,6 +324,18 @@ def is_interrupted_session(session_root: str | os.PathLike) -> bool:
     return not _has_session_end(root)
 
 
+def _session_dirs(base: Path):
+    """Yield immediate subfolders that ARE sessions — identified by the
+    presence of session_manifest.json, NOT by any folder-name prefix (folder
+    names now carry boxer names). A folder with a present-but-unreadable
+    manifest still counts (so the UI can surface it)."""
+    if not base.is_dir():
+        return
+    for child in sorted(base.iterdir()):
+        if child.is_dir() and (child / "session_manifest.json").is_file():
+            yield child
+
+
 def scan_interrupted_sessions(base_dir: str | os.PathLike) -> list["SessionLayoutInfo"]:
     """Find capture sessions under base_dir that look interrupted (crashed
     mid-recording) and have not yet been flagged. Returns a list of
@@ -264,9 +344,7 @@ def scan_interrupted_sessions(base_dir: str | os.PathLike) -> list["SessionLayou
     out: list[SessionLayoutInfo] = []
     if not base.is_dir():
         return out
-    for child in base.iterdir():
-        if not child.is_dir() or not child.name.startswith("Brain Battle "):
-            continue
+    for child in _session_dirs(base):
         if is_interrupted_session(child):
             m = _read_manifest(child) or {}
             out.append(SessionLayoutInfo(

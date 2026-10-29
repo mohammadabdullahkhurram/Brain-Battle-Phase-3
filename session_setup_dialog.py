@@ -21,7 +21,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QSpinBox, QDoubleSpinBox, QPushButton,
-    QFrame, QWidget,
+    QFrame, QWidget, QLineEdit,
 )
 
 from session_controller import SessionConfig, BASELINE_DURATION_SEC
@@ -42,6 +42,11 @@ QSpinBox, QDoubleSpinBox {
     padding: 8px 10px; min-width: 90px;
 }
 QSpinBox:focus, QDoubleSpinBox:focus { border-color: #3D4FD6; }
+QLineEdit {
+    background-color: #FFFFFF; border: 1px solid #C9CED7; color: #15171C;
+    font-family: 'Inter'; font-size: 13px; padding: 7px 10px; border-radius: 8px;
+}
+QLineEdit:focus { border-color: #3D4FD6; }
 QSpinBox::up-button, QSpinBox::down-button,
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
     background-color: #FFFFFF; border: 1px solid #DFE2E8; width: 16px;
@@ -115,6 +120,18 @@ class SessionSetupDialog(QDialog):
 
         divider = QFrame(); divider.setObjectName("divider"); divider.setFixedHeight(1)
         root.addWidget(divider)
+
+        # Boxer names (optional; drive the folder name + manifest).
+        names = QGridLayout(); names.setHorizontalSpacing(18); names.setVerticalSpacing(10)
+        self.edit_boxer_a = QLineEdit(); self.edit_boxer_a.setPlaceholderText("optional")
+        self.edit_boxer_b = QLineEdit(); self.edit_boxer_b.setPlaceholderText("optional")
+        self.edit_boxer_a.setMinimumHeight(36); self.edit_boxer_b.setMinimumHeight(36)
+        names.addWidget(self._field_label("BOXER A NAME"), 0, 0)
+        names.addWidget(self.edit_boxer_a,                 0, 1)
+        names.addWidget(self._field_label("BOXER B NAME"), 1, 0)
+        names.addWidget(self.edit_boxer_b,                 1, 1)
+        names.setColumnStretch(1, 1)
+        root.addLayout(names)
 
         # Config card
         card = QFrame(); card.setObjectName("card")
@@ -245,6 +262,12 @@ class SessionSetupDialog(QDialog):
             break_sec    = int(self.spin_break.value()),
             baseline_sec = int(self.spin_baseline.value()),
         )
+
+    def boxer_a_name(self) -> str:
+        return self.edit_boxer_a.text().strip()
+
+    def boxer_b_name(self) -> str:
+        return self.edit_boxer_b.text().strip()
 
 
 __all__ = ["SessionSetupDialog"]

@@ -375,6 +375,8 @@ class LiveSessionTab(QWidget):
                                  n_cameras=cam_connected, n_eeg=eeg_connected)
         if dlg.exec() != dlg.DialogCode.Accepted: return
         cfg = dlg.value()
+        boxer_a, boxer_b = self._boxers_for_session(
+            dlg.boxer_a_name(), dlg.boxer_b_name())
         try: self._controller.configure(cfg)
         except ValueError as e:
             QMessageBox.warning(self, "Invalid session", str(e)); return
@@ -403,7 +405,8 @@ class LiveSessionTab(QWidget):
             log.warning("disk-space pre-flight failed (%s) — proceeding", e)
 
         try:
-            self._layout = create_session(base_dir, cfg)
+            self._layout = create_session(base_dir, cfg,
+                                          boxer_a=boxer_a, boxer_b=boxer_b)
             log.info("session created at %s", self._layout.root)
             attach_session_log(self._layout.root)
         except Exception as e:
@@ -416,6 +419,25 @@ class LiveSessionTab(QWidget):
         self._path_lbl.setText(self._layout.root.name)
         self._path_lbl.setVisible(True)
         self._controller.start()
+
+    def _boxers_for_session(self, a_name: str, b_name: str):
+        """Build the per-boxer {name, headband} dicts for the manifest. Each
+        boxer's headband is the connected Muse-S mapped to that boxer (falling
+        back to the known default device mapping)."""
+        from eeg_module import BOXER_LABELS
+        band = {"A": None, "B": None}
+        for dev_name, label in BOXER_LABELS.items():   # known defaults
+            if label.endswith("A"): band["A"] = dev_name
+            elif label.endswith("B"): band["B"] = dev_name
+        for w in (self.eeg_widget_1, self.eeg_widget_2):   # prefer connected
+            dev = getattr(w, "_connected_device", None)
+            if dev and dev.get("name"):
+                lbl = BOXER_LABELS.get(dev["name"], "")
+                if lbl.endswith("A"): band["A"] = dev["name"]
+                elif lbl.endswith("B"): band["B"] = dev["name"]
+        a = {"name": (a_name or None), "headband": band["A"]}
+        b = {"name": (b_name or None), "headband": band["B"]}
+        return a, b
 
     def _check_disk_space(self, base_dir, cfg, n_cameras, n_eeg) -> bool:
         """Return True to proceed with recording, False to abort. Blocks (with
