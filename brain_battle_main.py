@@ -75,18 +75,6 @@ def _atomic_write_json(path, data) -> None:
         raise
 
 
-def _friendly_when(iso: str) -> str:
-    """Turn a manifest 'started_at' ISO string into a plain, readable
-    date+time for the crash-recovery prompt. Falls back to the raw string."""
-    if not iso:
-        return "an earlier session"
-    try:
-        dt = _dt.datetime.fromisoformat(iso)
-        return dt.strftime("%A %d %B %Y at %H:%M")
-    except (ValueError, TypeError):
-        return iso
-
-
 def _clamp_ms(ms) -> int:
     try:
         ms = float(ms)
@@ -2367,71 +2355,6 @@ def _sub(text):
     return lbl
 
 
-class SessionsPlaceholder(QWidget):
-    """Temporary Sessions home (DESIGN §1). The real session list lands in the
-    next step; for now this shows the DESIGN empty state with working
-    'New recording' and 'Show folder in Finder' buttons."""
-
-    def __init__(self, capture_dir, on_new_recording, parent=None):
-        super().__init__(parent)
-        import design_tokens as dt
-        self._capture_dir = capture_dir
-        # Scope the background to this widget's class so it does NOT cascade
-        # to child labels (a bare `background:` makes every QLabel paint a
-        # grey/canvas box behind its text).
-        self.setStyleSheet(f"SessionsPlaceholder {{ background: {dt.canvas_bg()}; }}")
-        root = QVBoxLayout(self); root.setContentsMargins(40, 36, 40, 36); root.setSpacing(0)
-        header = QHBoxLayout()
-        htext = QVBoxLayout(); htext.setSpacing(4)
-        htext.addWidget(_h1("Sessions"))
-        htext.addWidget(_sub("Every recording in your recordings folder. "
-                             "Open one to watch it back and add labels."))
-        header.addLayout(htext); header.addStretch()
-        show_btn = QPushButton("Show folder in Finder")
-        show_btn.setStyleSheet(dt.qss_secondary_button()); show_btn.setMinimumHeight(44)
-        show_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        show_btn.clicked.connect(self._show_in_finder)
-        new_btn = QPushButton("New recording")
-        new_btn.setStyleSheet(dt.qss_primary_button()); new_btn.setMinimumHeight(44)
-        new_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        new_btn.clicked.connect(on_new_recording)
-        header.addWidget(show_btn); header.addSpacing(10); header.addWidget(new_btn)
-        root.addLayout(header)
-        root.addSpacing(28)
-
-        empty = QFrame(); empty.setObjectName("emptyCard")
-        empty.setStyleSheet(f"QFrame#emptyCard {{ background: {dt.card_bg()}; "
-                            f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_LG}px; }}")
-        ev = QVBoxLayout(empty); ev.setContentsMargins(40, 60, 40, 60)
-        ev.setAlignment(Qt.AlignmentFlag.AlignCenter); ev.setSpacing(10)
-        icon = QLabel(); icon.setPixmap(dt.icon_pixmap("home", color=dt.text_tertiary(), size=40))
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet("border: none; background: transparent;")
-        ev.addWidget(icon)
-        t = QLabel("Sessions list arrives in the next step")
-        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        t.setStyleSheet(f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
-                        f"font-size: {dt.SIZE_LG}px; font-weight: 600; border: none; background: transparent;")
-        ev.addWidget(t)
-        t2 = QLabel("No recordings yet. Press New recording to make your first one.")
-        t2.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        t2.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                         f"font-size: {dt.SIZE_MD}px; border: none; background: transparent;")
-        ev.addWidget(t2)
-        root.addWidget(empty, 1)
-
-    def _show_in_finder(self):
-        import subprocess, sys as _sys
-        d = self._capture_dir
-        try:
-            os.makedirs(d, exist_ok=True)
-            if _sys.platform == "darwin": subprocess.Popen(["open", d])
-            elif _sys.platform == "win32": os.startfile(d)  # noqa
-            else: subprocess.Popen(["xdg-open", d])
-        except Exception as e:
-            log.warning("could not open recordings folder: %s", e)
-
-
 class SettingsPlaceholder(QWidget):
     """Temporary Settings (DESIGN §7). Lists the planned sections; the real
     controls land in a later step."""
@@ -2542,8 +2465,10 @@ class BrainBattleApp(QMainWindow):
         self.sync_tab  = SyncReviewTab(); self.sync_tab._app_ref = self
         self.label_tab = LabellingTab()
         self._review_page = ReviewAndLabelPage(self.sync_tab, self.label_tab)
-        self._sessions_page = SessionsPlaceholder(
-            capture_dir, on_new_recording=self._go_to_new_recording)
+        from sessions_tab import SessionsTab
+        self._sessions_page = SessionsTab(capture_dir)
+        self._sessions_page.new_recording.connect(self._go_to_new_recording)
+        self._sessions_page.open_session.connect(self._open_session_in_review)
         self._settings_page = SettingsPlaceholder()
 
         self.IDX_SESSIONS = self._shell.add_page("sessions", "Sessions", "home", self._sessions_page)
@@ -2563,62 +2488,34 @@ class BrainBattleApp(QMainWindow):
         # After a recording is saved, land on Review & Label with it loaded.
         self.live_tab.session_saved.connect(self._on_session_saved)
 
+        # Refresh the Sessions library whenever the user navigates to it.
+        self._shell.page_changed.connect(self._on_page_changed)
+
         root.addWidget(self._shell, 1)
         self._shell.set_current_index(self.IDX_SESSIONS)   # app opens on Sessions
 
-        # After the window is up, check for a recording that was interrupted
-        # (crashed mid-session) last time and offer to open it.
-        QTimer.singleShot(0, self._check_for_interrupted_sessions)
+        # Populate the Sessions library once the window is up. Any recording
+        # that was interrupted (crashed mid-session) last time is surfaced by
+        # the interrupted banner at the top of that screen — there is no
+        # separate recovery popup anymore.
+        QTimer.singleShot(0, self._sessions_page.refresh)
+
+    def _on_page_changed(self, idx):
+        if idx == self.IDX_SESSIONS:
+            self._sessions_page.refresh()
 
     def _go_to_new_recording(self):
         self._shell.set_current_index(self.IDX_RECORD)
 
-    def _on_session_saved(self, session_root):
+    def _open_session_in_review(self, session_root):
         self.sync_tab.load_session_folder(session_root)
         self._shell.set_current_index(self.IDX_REVIEW)
 
-    def _check_for_interrupted_sessions(self):
-        """Scan the capture folder for sessions that never finished and, if
-        any are found, flag them (so we don't ask again) and offer to open the
-        most recent one. Never raises — a recovery prompt must not block launch."""
-        try:
-            from session_storage import scan_interrupted_sessions, mark_session_interrupted
-            from live_session_tab import _default_capture_root
-            found = scan_interrupted_sessions(_default_capture_root())
-        except Exception as e:
-            log.warning("interrupted-session scan failed: %s", e)
-            return
-        if not found:
-            return
-        # Flag every detected interrupted session so none of them re-prompt,
-        # then ask about the most recent.
-        for s in found:
-            try:
-                mark_session_interrupted(s.root)
-                session_history.log_event(
-                    s.root, session_history.EVENT_RECORDING_INTERRUPTED)
-            except Exception as e:
-                log.warning("could not flag interrupted session %s: %s", s.root, e)
-        recent = found[0]
-        when = _friendly_when(recent.started_at)
-        box = QMessageBox(self)
-        box.setWindowTitle("Recording interrupted")
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setText(
-            f"A recording from {when} was interrupted.\n\n"
-            f"Everything recorded up to that point has been kept."
-        )
-        open_btn = box.addButton("Open it", QMessageBox.ButtonRole.AcceptRole)
-        box.addButton("Not now", QMessageBox.ButtonRole.RejectRole)
-        box.exec()
-        if box.clickedButton() is open_btn:
-            try:
-                session_history.log_event(
-                    recent.root, session_history.EVENT_RECORDING_RECOVERED)
-                self.sync_tab.load_session_folder(recent.root)
-                self._shell.set_current_index(self.IDX_REVIEW)
-            except Exception as e:
-                log.warning("could not open interrupted session %s: %s", recent.root, e)
+    def _on_session_saved(self, session_root):
+        self.sync_tab.load_session_folder(session_root)
+        self._shell.set_current_index(self.IDX_REVIEW)
+        # Keep the library current for the next time Sessions is shown.
+        self._sessions_page.refresh()
 
     def _restyle_app(self):
         """Apply the light global stylesheet once."""
@@ -2647,6 +2544,8 @@ if __name__ == "__main__":
         try: window.live_tab.shutdown()
         except Exception: pass
         try: window.sync_tab.shutdown()
+        except Exception: pass
+        try: window._sessions_page.shutdown()
         except Exception: pass
     app.aboutToQuit.connect(_cleanup)
     sys.exit(app.exec())

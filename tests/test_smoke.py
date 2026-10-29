@@ -156,11 +156,12 @@ def part2_construct_tabs_and_shell(app):
     print("── 2. headless construction of tabs + app shell")
     import brain_battle_main as bbm
     from live_session_tab import LiveSessionTab
+    from sessions_tab import SessionsTab
 
     for name, ctor in (("LiveSessionTab", LiveSessionTab),
                        ("SyncReviewTab", bbm.SyncReviewTab),
                        ("LabellingTab", bbm.LabellingTab),
-                       ("SessionsPlaceholder", lambda: bbm.SessionsPlaceholder("/tmp", lambda: None)),
+                       ("SessionsTab", lambda: SessionsTab("/tmp")),
                        ("SettingsPlaceholder", bbm.SettingsPlaceholder)):
         try:
             w = ctor()
