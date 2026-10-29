@@ -379,6 +379,27 @@ def mark_session_interrupted(session_root: str | os.PathLike) -> bool:
         return False
 
 
+def dismiss_interrupted(session_root) -> bool:
+    """Flag `interrupted_dismissed: true` so the Sessions interrupted banner
+    never shows this recording again (atomic write). Returns True on success."""
+    root = Path(session_root)
+    m = _read_manifest(root)
+    if m is None:
+        return False
+    m["interrupted_dismissed"] = True
+    tmp = root / "session_manifest.json.tmp"
+    try:
+        tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, root / "session_manifest.json")
+        return True
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return False
+
+
 @dataclass
 class SessionLayoutInfo:
     """Lightweight descriptor for a session folder found on disk (used by
@@ -386,6 +407,158 @@ class SessionLayoutInfo:
     root:         str
     started_at:   str      # ISO string from the manifest, for display
     started_unix: float
+
+
+# ─── Sessions listing + status (for the Sessions screen) ──────────────────────
+
+STATUS_INTERRUPTED     = "interrupted"
+STATUS_EXPORTED        = "exported"
+STATUS_LABELLED        = "labelled"
+STATUS_NEEDS_LABELLING = "needs_labelling"
+STATUS_UNREADABLE      = "unreadable"
+
+
+def _labels_count(root: Path) -> int:
+    p = root / "labels.json"
+    if not p.is_file():
+        return 0
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        labs = data.get("labels", []) if isinstance(data, dict) else []
+        return len([x for x in labs if isinstance(x, dict)])
+    except (OSError, ValueError):
+        return 0
+
+
+def _history_has_export(root: Path) -> bool:
+    p = root / "history.jsonl"
+    if not p.is_file():
+        return False
+    try:
+        for ln in p.read_text(encoding="utf-8").splitlines():
+            ln = ln.strip()
+            if not ln:
+                continue
+            try:
+                obj = json.loads(ln)
+            except ValueError:
+                continue
+            if isinstance(obj, dict) and obj.get("event") == "export_created":
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def _last_marker_tsession(root: Path):
+    p = root / "phase_markers.csv"
+    if not p.is_file():
+        return None
+    import csv as _csv
+    last = None
+    try:
+        with open(p, encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                try:
+                    last = float(row.get("t_session_seconds", ""))
+                except (TypeError, ValueError):
+                    continue
+    except OSError:
+        return None
+    return last
+
+
+@dataclass
+class SessionInfo:
+    root:          str
+    name:          str              # folder basename
+    started_at:    str              # ISO from manifest ("" if unreadable)
+    started_unix:  float
+    boxer_a:       Optional[str]
+    boxer_b:       Optional[str]
+    rounds:        int
+    planned_sec:   int
+    stopped_sec:   Optional[float]  # where an interrupted recording stopped
+    status:        str
+    labels_count:  int
+    interrupted:   bool
+    dismissed:     bool
+    readable:      bool
+
+
+def session_info(root) -> SessionInfo:
+    """Classify one session folder for the Sessions screen. Never raises; an
+    unreadable manifest yields a 'unreadable' row rather than being hidden."""
+    root = Path(root)
+    name = root.name
+    m = _read_manifest(root)
+    if m is None:
+        return SessionInfo(str(root), name, "", 0.0, None, None, 0, 0, None,
+                           STATUS_UNREADABLE, 0, False, False, False)
+    boxers = m.get("boxers") or {}
+    a = (boxers.get("A") or {}).get("name")
+    b = (boxers.get("B") or {}).get("name")
+    cfg = m.get("config") or {}
+    rounds = int(cfg.get("num_rounds") or 0)
+    planned = int((cfg.get("baseline_sec", 0) or 0)
+                  + rounds * (cfg.get("round_sec", 0) or 0)
+                  + max(0, rounds - 1) * (cfg.get("break_sec", 0) or 0))
+    interrupted = m.get("interrupted") is True
+    dismissed = m.get("interrupted_dismissed") is True
+    labels = _labels_count(root)
+    if interrupted:
+        status = STATUS_INTERRUPTED
+    elif _history_has_export(root):
+        status = STATUS_EXPORTED
+    elif labels >= 1:
+        status = STATUS_LABELLED
+    else:
+        status = STATUS_NEEDS_LABELLING
+    stopped = _last_marker_tsession(root) if interrupted else None
+    return SessionInfo(str(root), name, m.get("started_at", "") or "",
+                       float(m.get("started_unix") or 0.0), a, b, rounds,
+                       planned, stopped, status, labels, interrupted, dismissed, True)
+
+
+def list_sessions(base_dir) -> list[SessionInfo]:
+    """All sessions under base_dir (discovered by manifest presence), newest
+    first. Reads small files only — safe to call off the UI thread."""
+    out = [session_info(d) for d in _session_dirs(Path(base_dir))]
+    out.sort(key=lambda s: (s.started_unix, s.name), reverse=True)
+    return out
+
+
+def flag_new_interrupted(base_dir) -> int:
+    """Flag any not-yet-flagged interrupted sessions (crashed, no SESSION_END)
+    so their status + the banner are correct. Logs one recording_interrupted
+    history event each. Returns how many were flagged."""
+    n = 0
+    for info in scan_interrupted_sessions(base_dir):   # unflagged interrupted
+        if mark_session_interrupted(info.root):
+            n += 1
+            try:
+                import session_history
+                session_history.log_event(
+                    info.root, session_history.EVENT_RECORDING_INTERRUPTED)
+            except Exception:
+                pass
+    return n
+
+
+def folder_size_bytes(root) -> int:
+    """Total size of all files under a session folder (for the footer). The
+    walk is slow-ish on big sessions — call it off the UI thread."""
+    total = 0
+    try:
+        for dp, _dn, fn in os.walk(root):
+            for f in fn:
+                try:
+                    total += os.path.getsize(os.path.join(dp, f))
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return total
 
 
 # ─── Disk-space estimate ────────────────────────────────────────────────────────
@@ -425,8 +598,13 @@ def human_bytes(n: float) -> str:
 
 
 __all__ = [
-    "SessionLayout", "PhaseRecord", "SessionLayoutInfo", "create_session",
-    "is_interrupted_session", "scan_interrupted_sessions",
-    "mark_session_interrupted", "session_total_seconds", "estimate_session_bytes",
+    "SessionLayout", "PhaseRecord", "SessionLayoutInfo", "SessionInfo",
+    "create_session", "sanitize_name",
+    "is_interrupted_session", "scan_interrupted_sessions", "flag_new_interrupted",
+    "mark_session_interrupted", "dismiss_interrupted",
+    "session_info", "list_sessions", "folder_size_bytes",
+    "session_total_seconds", "estimate_session_bytes",
     "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",
+    "STATUS_INTERRUPTED", "STATUS_EXPORTED", "STATUS_LABELLED",
+    "STATUS_NEEDS_LABELLING", "STATUS_UNREADABLE",
 ]
