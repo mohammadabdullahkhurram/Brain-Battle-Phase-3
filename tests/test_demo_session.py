@@ -56,6 +56,9 @@ def test_layout_and_sidecars_and_eeg():
         check("continuous/Muse data exists", os.path.isdir(os.path.join(cont, "Muse data")))
         check("phase_markers.csv exists", os.path.isfile(os.path.join(root, "phase_markers.csv")))
         check("session_manifest.json exists", os.path.isfile(os.path.join(root, "session_manifest.json")))
+        with open(os.path.join(root, "session_manifest.json"), encoding="utf-8") as f:
+            _man = json.load(f)
+        check("demo manifest carries demo:true", _man.get("demo") is True, str(_man.get("demo")))
         check("4 cameras generated", len(result["cameras"]) == 4, str(len(result["cameras"])))
         check("2 EEG bands generated", len(result["eeg_bands"]) == 2, str(len(result["eeg_bands"])))
 
@@ -235,11 +238,34 @@ def test_marker_label_format():
               f"new={a_new!r} old={a_old!r} want={want!r}")
 
 
+def test_generator_safety():
+    """The CLI must never default a demo into the real recordings folder."""
+    from tools.generate_demo_session import _build_arg_parser, _refuse_real_folder
+    from live_session_tab import _default_capture_root
+
+    # --out is required
+    raised = False
+    try:
+        _build_arg_parser().parse_args(["--seed", "1"])
+    except SystemExit:
+        raised = True
+    check("CLI requires --out", raised)
+
+    real = _default_capture_root()
+    check("refuses the real recordings folder without --force",
+          _refuse_real_folder(real, False) is not None)
+    check("allows the real folder with --force",
+          _refuse_real_folder(real, True) is None)
+    other = os.path.join(tempfile.gettempdir(), "bb_demo_elsewhere")
+    check("allows any other folder", _refuse_real_folder(other, False) is None)
+
+
 if __name__ == "__main__":
     test_layout_and_sidecars_and_eeg()
     test_review_tab_loads_and_aligns()
     test_interrupted_session()
     test_marker_label_format()
+    test_generator_safety()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

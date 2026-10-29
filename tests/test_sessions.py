@@ -112,6 +112,9 @@ def test_discovery():
           f"{exported.labels_count if exported else None}")
     noname = next((r for r in rows if r.readable and not r.boxer_a and not r.boxer_b), None)
     check("discovery: a no-name session exists and is readable", noname is not None)
+    check("discovery: demo sessions carry the demo flag",
+          all(r.demo for r in rows if r.readable),
+          f"{sum(1 for r in rows if r.readable and r.demo)}/{sum(1 for r in rows if r.readable)}")
     check("discovery: newest-first ordering (started_unix descending)",
           all(rows[i].started_unix >= rows[i + 1].started_unix for i in range(len(rows) - 1)
               if rows[i].readable and rows[i + 1].readable))

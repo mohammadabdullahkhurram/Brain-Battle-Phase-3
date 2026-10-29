@@ -150,6 +150,10 @@ class SessionLayout:
     boxers:               dict = field(default_factory=lambda: {
                               "A": {"name": None, "headband": None},
                               "B": {"name": None, "headband": None}})
+    # True only for sessions written by tools/generate_demo_session.py, so the
+    # Sessions screen can badge demo data and nobody mistakes it for a real
+    # recording.
+    demo:                 bool = False
 
     # ---- folder resolution ---------------------------------------------------
 
@@ -226,6 +230,7 @@ class SessionLayout:
             "started_at":     self.started_at.isoformat(timespec="seconds"),
             "started_unix":   self.started_at.timestamp(),
             "boxers":         self.boxers,
+            "demo":           self.demo,
             "capture_clock":  {
                 "t0_monotonic": self.capture_t0_monotonic,
                 "t0_unix":      self.capture_t0_unix,
@@ -244,7 +249,7 @@ class SessionLayout:
 def create_session(base_dir: str | os.PathLike,
                    config: SessionConfig,
                    started_at: Optional[_dt.datetime] = None,
-                   boxer_a=None, boxer_b=None) -> SessionLayout:
+                   boxer_a=None, boxer_b=None, demo: bool = False) -> SessionLayout:
     """
     Build the '<date time> <A> vs <B>/' tree for a v2.x continuous session:
     the root, continuous/ (+ Muse data/), and an initial manifest — created
@@ -263,7 +268,7 @@ def create_session(base_dir: str | os.PathLike,
     root.mkdir(parents=True, exist_ok=False)  # fail loud on a genuine race
 
     layout = SessionLayout(root=root, started_at=started_at, config=config,
-                           boxers={"A": a, "B": b})
+                           boxers={"A": a, "B": b}, demo=bool(demo))
 
     # Continuous recording folder — one MP4 per camera + one CSV per Muse-S
     # for the entire session, from baseline through final round end.
@@ -484,6 +489,7 @@ class SessionInfo:
     interrupted:   bool
     dismissed:     bool
     readable:      bool
+    demo:          bool = False
 
 
 def session_info(root) -> SessionInfo:
@@ -517,7 +523,8 @@ def session_info(root) -> SessionInfo:
     stopped = _last_marker_tsession(root) if interrupted else None
     return SessionInfo(str(root), name, m.get("started_at", "") or "",
                        float(m.get("started_unix") or 0.0), a, b, rounds,
-                       planned, stopped, status, labels, interrupted, dismissed, True)
+                       planned, stopped, status, labels, interrupted, dismissed, True,
+                       demo=m.get("demo") is True)
 
 
 def list_sessions(base_dir) -> list[SessionInfo]:

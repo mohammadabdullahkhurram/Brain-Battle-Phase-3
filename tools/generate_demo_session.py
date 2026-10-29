@@ -342,7 +342,7 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     os.makedirs(base_dir, exist_ok=True)
     # REAL writer: folder (named by boxers) + continuous/ + initial manifest
     layout = create_session(
-        base_dir, cfg, started_at=started_at,
+        base_dir, cfg, started_at=started_at, demo=True,
         boxer_a={"name": boxer_a, "headband": "MuseS-7538"} if boxer_a else None,
         boxer_b={"name": boxer_b, "headband": "MuseS-7564"} if boxer_b else None)
 
@@ -508,8 +508,12 @@ def _write_demo_labels(session_root, labels):
 def _build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--out", default=None, help="output base dir "
-                   "(default: BRAIN_BATTLE_CAPTURE_DIR or the app's own Captures/ folder)")
+    p.add_argument("--out", default=None, required=True, help="output base dir "
+                   "(REQUIRED — a demo must never land in your real recordings "
+                   "folder by default)")
+    p.add_argument("--force", action="store_true",
+                   help="allow --out to be the configured recordings folder "
+                        "(refused without this, so demo data isn't mistaken for real)")
     p.add_argument("--rounds", type=int, default=2)
     p.add_argument("--round-sec", type=int, default=60)
     p.add_argument("--break-sec", type=int, default=20)
@@ -527,8 +531,27 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _refuse_real_folder(out: str, force: bool) -> str | None:
+    """Return an error message if `out` is the configured recordings folder and
+    --force was not given; else None. Keeps demo data out of real recordings."""
+    try:
+        real = os.path.abspath(_default_capture_root())
+        if os.path.abspath(out) == real and not force:
+            return (f"Refusing to write a demo into your recordings folder "
+                    f"({real}). Pass a different --out, or --force if you really "
+                    f"mean it.")
+    except Exception:
+        pass
+    return None
+
+
 def main(argv=None):
     args = _build_arg_parser().parse_args(argv)
+
+    err = _refuse_real_folder(args.out, args.force)
+    if err:
+        print(err, file=sys.stderr)
+        return 2
 
     if args.library:
         rows = generate_library(out=args.out, seed=args.seed)

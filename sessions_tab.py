@@ -179,6 +179,27 @@ def _boxer_badge(letter, name):
     return lbl
 
 
+def _no_names_badge():
+    """Shown instead of two '—' badges when a recording has no boxer names."""
+    lbl = QLabel("No names")
+    lbl.setStyleSheet(
+        f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
+        f"font-size: {dt.SIZE_SM}px; font-style: italic; background: transparent;")
+    return lbl
+
+
+def _demo_badge():
+    """Small 'Demo' chip (icon + text) so demo data is never mistaken for a
+    real recording."""
+    chip = QLabel("● Demo")
+    chip.setStyleSheet(
+        f"background: {dt._Palette.warning_bg}; color: #6B3205; "
+        f"border: 1px solid {dt.warning_color()}; border-radius: {dt.RADIUS_SM}px; "
+        f"padding: 2px 7px; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_XS}px; "
+        f"font-weight: 700;")
+    return chip
+
+
 class SessionsTab(QWidget):
     open_session  = pyqtSignal(str)
     new_recording = pyqtSignal()
@@ -452,10 +473,15 @@ class SessionsTab(QWidget):
         rec.addWidget(d); rec.addWidget(t)
         recw = QWidget(); recw.setLayout(rec); recw.setFixedWidth(self._COL["recorded"])
         h.addWidget(recw)
-        # Boxers
+        # Boxers (single "No names" when both are missing, not two dashes)
         bx = QHBoxLayout(); bx.setSpacing(6)
-        bx.addWidget(_boxer_badge("A", info.boxer_a))
-        bx.addWidget(_boxer_badge("B", info.boxer_b))
+        if not info.boxer_a and not info.boxer_b:
+            bx.addWidget(_no_names_badge())
+        else:
+            bx.addWidget(_boxer_badge("A", info.boxer_a))
+            bx.addWidget(_boxer_badge("B", info.boxer_b))
+        if info.demo:
+            bx.addWidget(_demo_badge())
         bx.addStretch()
         bxw = QWidget(); bxw.setLayout(bx); h.addWidget(bxw, 1)
         # Length
