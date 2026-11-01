@@ -124,58 +124,30 @@ def test_layout_and_sidecars_and_eeg():
 
 # ─── 4: headless Review-tab load + ALIGN matches generated start delays ────
 
-def test_review_tab_loads_and_aligns():
+def test_review_tab_loads():
+    """The merged Review & Label screen opens a v3 demo on one playhead."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    try:
-        import vlc  # noqa: F401
-    except Exception:
-        import types
-        sys.modules["vlc"] = types.ModuleType("vlc")
     from PyQt6.QtWidgets import QApplication
     QApplication.instance() or QApplication(sys.argv)
-    import brain_battle_main as bbm
+    import review_label_tab as rl
 
     with tempfile.TemporaryDirectory() as tmp:
         result = generate_demo_session(out=tmp, rounds=1, round_sec=10,
                                        break_sec=3, baseline_sec=3, seed=2)
-        tab = bbm.SyncReviewTab()
+        tab = rl.ReviewLabelTab()
         try:
             tab.load_session_folder(result["root"])
-            check("SyncReviewTab.load_session_folder: no exception", True)
-            check("SyncReviewTab: capture_clock read from manifest",
-                  tab._capture_t0_unix is not None)
-
-            # Camera order in result["cameras"] matches _SLOT_SPECS order,
-            # which is also the order SourceRows 0-3 are populated in.
-            generated_starts = [c["start_offset_sec"] for c in result["cameras"]]
-            check("SyncReviewTab: measured cam_starts match generated start offsets",
-                  all(abs(a - b) < 1e-6 for a, b in zip(tab._cam_starts, generated_starts)),
-                  f"loaded={tab._cam_starts} generated={generated_starts}")
-
-            tab._align()
-            check("ALIGN: produced a sync_result", tab.sync_result is not None)
-
-            axis_shift = max(generated_starts)
-            # _align()/_clamp_ms truncate via int(), not round() — match that.
-            expected_seek_ms = [int((axis_shift - s) * 1000) for s in generated_starts]
-            check("ALIGN: per-camera seeks match axis_shift - start_offset",
-                  tab._residuals_ms == expected_seek_ms,
-                  f"got={tab._residuals_ms} want={expected_seek_ms}")
-
-            check("ALIGN: loaded markers from phase_markers.csv",
-                  len(tab._phase_markers) == len(result["markers"]),
-                  f"{len(tab._phase_markers)} vs {len(result['markers'])}")
+            check("ReviewLabelTab.load_session_folder: no exception", True)
+            check("single-clock player built with a sane duration",
+                  tab._player is not None and tab._duration > 0, f"{tab._duration:.1f}s")
+            check("phase markers loaded from phase_markers.csv",
+                  len(tab._phases) == len(result["markers"]),
+                  f"{len(tab._phases)} vs {len(result['markers'])}")
+            # the one playhead drives everything — seeking sets player.t
+            tab._seek(1.0)
+            check("seek sets the shared playhead", abs(tab._player.t - 1.0) < 1e-6,
+                  f"{tab._player.t}")
         finally:
-            # SyncReviewTab.shutdown() stops loader/sync threads but not the
-            # VLC media players themselves (brain_battle_main.py) — stop them
-            # explicitly here so libVLC's async decode threads aren't still
-            # touching files after this function's tempdir is removed.
-            for p in tab.media_players:
-                if p is not None:
-                    try:
-                        p.stop()
-                    except Exception:
-                        pass
             tab.shutdown()
 
 
@@ -221,19 +193,18 @@ def test_marker_label_format():
         check("generated markers use underscore form (ROUND_1_START)",
               labels == expected, str(labels))
 
-    # The one structural parser of marker labels (_MarkerStrip._abbrev) must
-    # produce the same abbreviation for BOTH the new underscore form and the
-    # legacy space form, so sessions recorded either way read correctly.
-    from brain_battle_main import _MarkerStrip
+    # The merged screen's marker parser (review_label_tab.friendly_phase) must
+    # read BOTH the new underscore form and the legacy space form.
+    from review_label_tab import friendly_phase
     pairs = [
-        ("ROUND_1_START", "ROUND 1_START", "R1"),
-        ("BREAK_2_START", "BREAK 2_START", "B2"),
-        ("BASELINE_START", "BASELINE_START", "BL"),
-        ("SESSION_END", "SESSION_END", "END"),
+        ("ROUND_1_START", "ROUND 1_START", "Round 1"),
+        ("BREAK_2_START", "BREAK 2_START", "Break"),
+        ("BASELINE_START", "BASELINE_START", "Rest before round 1"),
+        ("SESSION_END", "SESSION_END", "Finished"),
     ]
     for new_form, old_form, want in pairs:
-        a_new, a_old = _MarkerStrip._abbrev(new_form), _MarkerStrip._abbrev(old_form)
-        check(f"_abbrev accepts both forms of {new_form}",
+        a_new, a_old = friendly_phase(new_form), friendly_phase(old_form)
+        check(f"friendly_phase reads both forms of {new_form}",
               a_new == want and a_old == want,
               f"new={a_new!r} old={a_old!r} want={want!r}")
 
@@ -262,7 +233,7 @@ def test_generator_safety():
 
 if __name__ == "__main__":
     test_layout_and_sidecars_and_eeg()
-    test_review_tab_loads_and_aligns()
+    test_review_tab_loads()
     test_interrupted_session()
     test_marker_label_format()
     test_generator_safety()

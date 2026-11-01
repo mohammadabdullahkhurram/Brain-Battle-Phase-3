@@ -333,26 +333,6 @@ class VideoExportWorker(QThread):
 
 # --- 2. Labels CSV export ----------------------------------------------------
 
-class LabelsExporter:
-    """
-    Synchronous (non-threaded) labels CSV writer.
-    Called from the main thread — fast enough not to need a worker.
-    """
-
-    @staticmethod
-    def export(labels: list[dict], output_path: str):
-        """
-        labels: list of dicts with keys: timestamp_sec, timestamp_str, label, color
-        """
-        with open(output_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=["timestamp_sec", "timestamp_str", "label", "color"],
-            )
-            writer.writeheader()
-            writer.writerows(labels)
-
-
 # --- Co-registered EEG (both boxers on one shared axis) ----------------------
 
 _EEG_CHANNELS = ["TP9", "AF7", "AF8", "TP10", "AUX"]
@@ -423,51 +403,57 @@ def build_coregistered_eeg(eeg_dfs, phase_markers, sr: int = 256):
     return pd.DataFrame(out)
 
 
-# --- 3. Full session zip export worker ---------------------------------------
 
-class FullSessionExportWorker(QThread):
-    """
-    Packages everything into a named zip:
-      merged_video.mp4   — quad-grid merged video (optional, skipped if no ffmpeg)
-      labels.csv         — all placed labels with timestamps
-      sync_offsets.csv   — source offsets from sync engine
-      eeg/eeg_01.csv     — EEG recording files
-      eeg/eeg_02.csv
-      videos/            — original video files (copied)
-      README.txt
-    """
+# =====================================================================
+#  v2 "Export for analysis" (merged Review & Label screen, DESIGN §6)
+# =====================================================================
+#
+# One button → a small dialog → a zip with the analysis-ready bundle:
+#   labels.csv            — placed labels, v2 columns
+#   events.csv            — phase markers + labels on one timeline
+#   eeg_coregistered.csv  — both boxers' EEG on one t_session axis
+#   eeg/                  — raw per-band EEG CSVs
+#   videos/               — camera MP4s + their .timestamps.csv sidecars
+#   session_manifest.json, phase_markers.csv, history.jsonl, README.txt
+#   combined_2x2.mp4      — optional (off by default; slow)
 
+_LABELS_V2_COLUMNS = ["id", "label", "who", "kind", "t_start", "t_end",
+                      "color", "created_by", "created_at"]
+
+
+def _write_labels_csv_v2(labels, path):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=_LABELS_V2_COLUMNS)
+        w.writeheader()
+        for lab in labels:
+            w.writerow({k: ("" if lab.get(k) is None else lab.get(k)) for k in _LABELS_V2_COLUMNS})
+
+
+def _write_events_csv(labels, phase_markers, path):
+    import labels_store
+    rows = labels_store.events_timeline(labels, phase_markers)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["t_start", "t_end", "source", "who", "label"])
+        w.writeheader()
+        w.writerows(rows)
+
+
+class SessionExportWorker(QThread):
+    """Builds the analysis bundle zip from a session folder + the placed
+    labels. Everything is read straight from the recording on disk, so the zip
+    is self-describing (manifest + history + sidecars included)."""
     progress = pyqtSignal(int, str)
     finished = pyqtSignal(str)
     error    = pyqtSignal(str)
 
-    def __init__(
-        self,
-        zip_path:        str,
-        zip_name:        str,
-        video_paths:     list[str],
-        offset_secs:     list[float],
-        eeg_paths:       list[str],
-        labels:          list[dict],
-        sync_offsets_rows: list[dict],
-        global_duration: float,
-        merge_video:     bool = True,
-        phase_markers:   list = None,
-        parent=None,
-    ):
+    def __init__(self, session_root, labels, phase_markers, zip_path,
+                 merge_video=False, parent=None):
         super().__init__(parent)
-        self.zip_path           = zip_path
-        self.zip_name           = zip_name
-        self.video_paths        = video_paths
-        self.offset_secs        = offset_secs
-        self.eeg_paths          = eeg_paths
-        self.labels             = labels
-        self.sync_offsets_rows  = sync_offsets_rows
-        self.global_duration    = global_duration
-        self.merge_video        = merge_video
-        # (t_session_seconds, phase_id, label) on the raw session axis — for
-        # the co-registered EEG output.
-        self.phase_markers      = phase_markers or []
+        self.root = session_root
+        self.labels = labels or []
+        self.phase_markers = phase_markers or []
+        self.zip_path = zip_path
+        self.merge_video = merge_video
 
     def run(self):
         try:
@@ -476,216 +462,231 @@ class FullSessionExportWorker(QThread):
             self.error.emit(str(exc))
 
     def _run(self):
-        self.progress.emit(2, "Preparing export...")
-
+        root = self.root
+        self.progress.emit(3, "Preparing export…")
         with tempfile.TemporaryDirectory() as tmp:
-            files_to_zip: list[tuple[str, str]] = []
+            files: list[tuple[str, str]] = []
 
-            # Merged video
-            merged_path = None
-            if self.merge_video and self.video_paths and _find_ffmpeg():
-                merged_path = os.path.join(tmp, "merged_video.mp4")
-                self.progress.emit(5, f"Merging video ({_HW_ENCODER}) — this may take a while...")
+            lp = os.path.join(tmp, "labels.csv")
+            _write_labels_csv_v2(self.labels, lp); files.append((lp, "labels.csv"))
+            ep = os.path.join(tmp, "events.csv")
+            _write_events_csv(self.labels, self.phase_markers, ep); files.append((ep, "events.csv"))
 
-                done = {"ok": False, "err": ""}
+            # raw EEG
+            self.progress.emit(15, "Adding brain recordings…")
+            muse = os.path.join(root, "continuous", "Muse data")
+            eeg_paths = []
+            if os.path.isdir(muse):
+                for fn in sorted(os.listdir(muse)):
+                    if fn.endswith(".csv"):
+                        p = os.path.join(muse, fn)
+                        eeg_paths.append(p); files.append((p, f"eeg/{fn}"))
 
-                worker = VideoExportWorker(
-                    video_paths=self.video_paths,
-                    offset_secs=self.offset_secs,
-                    output_path=merged_path,
-                    global_duration=self.global_duration,
-                )
-
-                def on_prog(pct, msg):
-                    self.progress.emit(5 + int(pct * 0.80), msg)
-
-                def on_done(path):
-                    done["ok"] = True
-
-                def on_err(msg):
-                    done["err"] = msg
-
-                worker.progress.connect(on_prog)
-                worker.finished.connect(on_done)
-                worker.error.connect(on_err)
-                worker.start()
-                worker.wait()
-
-                if done["ok"] and os.path.exists(merged_path):
-                    files_to_zip.append((merged_path, "merged_video.mp4"))
-                else:
-                    self.progress.emit(85, f"Video merge skipped: {done['err'][:60]}")
-            else:
-                self.progress.emit(85, "Skipping video merge...")
-
-            # Labels CSV
-            self.progress.emit(86, "Writing labels CSV...")
-            labels_path = os.path.join(tmp, "labels.csv")
-            LabelsExporter.export(self.labels, labels_path)
-            files_to_zip.append((labels_path, "labels.csv"))
-
-            # Sync offsets CSV
-            self.progress.emit(88, "Writing sync offsets...")
-            offsets_path = os.path.join(tmp, "sync_offsets.csv")
-            if self.sync_offsets_rows:
-                with open(offsets_path, "w", newline="") as f:
-                    writer = csv.DictWriter(
-                        f,
-                        fieldnames=["source", "offset_sec", "method",
-                                    "confidence", "is_reference"],
-                    )
-                    writer.writeheader()
-                    writer.writerows(self.sync_offsets_rows)
-                files_to_zip.append((offsets_path, "sync_offsets.csv"))
-
-            # EEG files
-            self.progress.emit(90, "Adding EEG files...")
-            for i, eeg_path in enumerate(self.eeg_paths):
-                if eeg_path and os.path.exists(eeg_path):
-                    files_to_zip.append((eeg_path, f"eeg/eeg_{i+1:02d}.csv"))
-
-            # Co-registered EEG — both boxers on one shared t_session axis + markers
-            self.progress.emit(91, "Building co-registered EEG...")
-            coreg_bands = 0
+            # co-registered EEG
+            self.progress.emit(25, "Building co-registered EEG…")
             try:
-                import pandas as _pd
-                dfs = [_pd.read_csv(p) for p in self.eeg_paths
-                       if p and os.path.exists(p)]
+                import pandas as pd
+                dfs = [pd.read_csv(p) for p in eeg_paths]
                 coreg = build_coregistered_eeg(dfs, self.phase_markers)
                 if coreg is not None:
-                    coreg_bands = sum(1 for d in dfs
-                                      if "t_session_seconds" in d.columns)
-                    coreg_path = os.path.join(tmp, "eeg_coregistered.csv")
-                    coreg.to_csv(coreg_path, index=False)
-                    files_to_zip.append((coreg_path, "eeg_coregistered.csv"))
+                    cp = os.path.join(tmp, "eeg_coregistered.csv")
+                    coreg.to_csv(cp, index=False)
+                    files.append((cp, "eeg_coregistered.csv"))
             except Exception as e:
                 log.warning("co-registered EEG build failed: %r", e)
 
-            # Original videos
-            self.progress.emit(92, "Adding original videos...")
-            for i, vpath in enumerate(self.video_paths):
-                if vpath and os.path.exists(vpath):
-                    ext = os.path.splitext(vpath)[1]
-                    files_to_zip.append((vpath, f"videos/video_{i+1:02d}{ext}"))
+            # videos + sidecars
+            self.progress.emit(40, "Adding camera files…")
+            video_paths = []
+            cont = os.path.join(root, "continuous")
+            for sub in ("Side Cams", "POV Cams"):
+                d = os.path.join(cont, sub)
+                if not os.path.isdir(d):
+                    continue
+                for fn in sorted(os.listdir(d)):
+                    p = os.path.join(d, fn)
+                    if fn.endswith(".mp4"):
+                        video_paths.append(p); files.append((p, f"videos/{fn}"))
+                    elif fn.endswith(".timestamps.csv"):
+                        files.append((p, f"videos/{fn}"))
+
+            # optional combined 2x2 video
+            if self.merge_video and video_paths and _find_ffmpeg():
+                self.progress.emit(45, f"Making combined 2×2 video ({_HW_ENCODER})…")
+                merged = os.path.join(tmp, "combined_2x2.mp4")
+                starts = []
+                for vp in video_paths:
+                    side = os.path.splitext(vp)[0] + ".timestamps.csv"
+                    first = 0.0
+                    try:
+                        with open(side, encoding="utf-8") as f:
+                            r = csv.DictReader(f)
+                            row = next(r, None)
+                            if row:
+                                first = float(row["t_session_seconds"])
+                    except Exception:
+                        pass
+                    starts.append(first)
+                base = min(starts) if starts else 0.0
+                offsets = [s - base for s in starts]
+                done = {"ok": False}
+                vw = VideoExportWorker(video_paths=video_paths, offset_secs=offsets,
+                                       output_path=merged, global_duration=0.0)
+                vw.progress.connect(lambda pct, msg: self.progress.emit(45 + int(pct * 0.35), msg))
+                vw.finished.connect(lambda _p: done.__setitem__("ok", True))
+                vw.error.connect(lambda m: log.warning("combined video failed: %s", m))
+                vw.start(); vw.wait()
+                if done["ok"] and os.path.exists(merged):
+                    files.append((merged, "combined_2x2.mp4"))
+
+            # manifest, markers, history
+            self.progress.emit(85, "Adding manifest + history…")
+            for fn in ("session_manifest.json", "phase_markers.csv", "history.jsonl"):
+                p = os.path.join(root, fn)
+                if os.path.isfile(p):
+                    files.append((p, fn))
 
             # README
-            self.progress.emit(95, "Writing README...")
-            created = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            readme_lines = [
-                "Brain Battle — Session Export",
-                f"Name:            {self.zip_name}",
-                f"Created:         {created}",
-                f"Global duration: {self.global_duration:.3f}s",
-                f"Videos:          {len([v for v in self.video_paths if v])}",
-                f"EEG files:       {len([e for e in self.eeg_paths if e])}",
-                f"Labels placed:   {len(self.labels)}",
-                f"Video encoder:   {_HW_ENCODER}",
-                "",
-                "Contents:",
-                "  merged_video.mp4     — quad-grid synced video",
-                "  labels.csv           — event labels with timestamps",
-                "  sync_offsets.csv     — per-source alignment (method=capture_clock)",
-                "  eeg/                 — raw per-band EEG CSV recordings",
-                "  eeg_coregistered.csv — BOTH boxers' EEG on one shared t_session axis",
-                "  videos/              — original camera files",
-                "",
-                "eeg_coregistered.csv:",
-                "  One row per time point on a uniform 256 Hz t_session_seconds grid.",
-                "  Columns: t_session_seconds, <chan>_01 (boxer 1), <chan>_02 (boxer 2),",
-                "  phase_id, phase_label (active phase), marker (phase-boundary rows).",
-                "  NaN = that band had no sample at that time.",
-                "",
-                "  *** UNVERIFIED between-brain alignment ***",
-                "  Each band's position on the shared axis comes from the capture-time",
-                "  clock (muselsl wall-clock timestamps + BLE latency). That clock",
-                "  SOURCE has NOT been confirmed against a real Muse band, so the",
-                "  relative between-brain timing here is measured-but-hardware-unverified.",
-                "  Confirm against a known simultaneous physical event before trusting",
-                "  sub-second between-brain synchrony. See project CLAUDE.md 'Deferred work'.",
-            ]
-            readme_path = os.path.join(tmp, "README.txt")
-            with open(readme_path, "w") as f:
-                f.write("\n".join(readme_lines))
-            files_to_zip.append((readme_path, "README.txt"))
+            self.progress.emit(90, "Writing README…")
+            rp = os.path.join(tmp, "README.txt")
+            with open(rp, "w", encoding="utf-8") as f:
+                f.write(_export_readme(root, len(self.labels)))
+            files.append((rp, "README.txt"))
 
-            # Write zip
-            self.progress.emit(97, "Writing zip file...")
+            # zip
+            self.progress.emit(95, "Writing zip…")
             with zipfile.ZipFile(self.zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                for disk_path, arcname in files_to_zip:
-                    zf.write(disk_path, arcname)
+                for disk, arc in files:
+                    zf.write(disk, arc)
+
+        try:
+            import session_history
+            session_history.log_event(root, session_history.EVENT_EXPORT_CREATED,
+                                      {"name": os.path.basename(self.zip_path)})
+        except Exception as e:
+            log.warning("could not log export_created: %r", e)
 
         self.progress.emit(100, "Export complete.")
         self.finished.emit(self.zip_path)
 
 
-# --- 4. Export progress dialog -----------------------------------------------
+def _export_readme(root, n_labels):
+    created = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return "\n".join([
+        "Brain Battle — analysis export",
+        f"Recording:  {os.path.basename(root)}",
+        f"Created:    {created}",
+        f"Labels:     {n_labels}",
+        "",
+        "Contents:",
+        "  labels.csv            placed labels (id, label, who, kind, t_start,",
+        "                        t_end, color, created_by, created_at). Times are",
+        "                        seconds on the recording's shared clock.",
+        "  events.csv            phase markers + labels on one timeline",
+        "                        (t_start, t_end, source[phase|label], who, label).",
+        "  eeg_coregistered.csv  both boxers' EEG on one t_session_seconds grid.",
+        "  eeg/                  raw per-band EEG recordings.",
+        "  videos/               camera MP4s + their .timestamps.csv sidecars",
+        "                        (one row per frame: frame time on the shared clock).",
+        "  session_manifest.json, phase_markers.csv, history.jsonl",
+        "  combined_2x2.mp4      the four cameras in one frame (only if requested).",
+        "",
+        "*** UNVERIFIED between-brain EEG alignment ***",
+        "  Each band's position on the shared clock comes from the capture-time",
+        "  timestamps, whose source has not been confirmed against a real Muse",
+        "  band. Confirm against a known simultaneous event before trusting",
+        "  sub-second between-brain synchrony.",
+    ])
 
-class ExportProgressDialog(QDialog):
-    """
-    Modal dialog that shows export progress.
-    Runs FullSessionExportWorker and displays progress bar + status.
-    """
 
-    def __init__(self, worker: FullSessionExportWorker, parent=None):
+class ExportOptionsDialog(QDialog):
+    """Light dialog: what's included, an optional slow combined video, where to
+    save. Runs the export inline with a progress bar."""
+
+    def __init__(self, session_root, labels, phase_markers, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Exporting...")
-        self.setMinimumWidth(420)
+        import design_tokens as dt
+        from PyQt6.QtWidgets import QCheckBox
+        from PyQt6.QtCore import Qt
+        self._root = session_root
+        self._labels = labels
+        self._phases = phase_markers
+        self._worker = None
+        self.setWindowTitle("Export for analysis")
         self.setModal(True)
-        self.setStyleSheet("""
-            QDialog { background-color: #0E0E12; }
-            QLabel  { color: #ECEDEE; font-family: 'Inter'; font-size: 12px; }
-            QProgressBar {
-                background: #0E0E12; border: 1px solid #2A2A30; height: 6px;
-                text-align: center; color: transparent;
-            }
-            QProgressBar::chunk { background: #637DFF; }
-            QPushButton {
-                background: #1C1C21; border: 1px solid #2A2A30; color: #ECEDEE;
-                font-family: 'Inter'; font-size: 11px; padding: 7px 20px;
-            }
-        """)
+        self.setMinimumWidth(460)
+        self.setStyleSheet(f"QDialog {{ background: {dt.canvas_bg()}; }}")
 
-        self._worker = worker
-        layout = QVBoxLayout(self)
-        layout.setSpacing(14)
-        layout.setContentsMargins(20, 20, 20, 20)
+        default_name = os.path.basename(os.path.abspath(session_root)) + ".zip"
+        self._dest = os.path.join(os.path.dirname(os.path.abspath(session_root)), default_name)
 
-        self._status = QLabel("Preparing...")
-        layout.addWidget(self._status)
+        v = QVBoxLayout(self); v.setContentsMargins(24, 20, 24, 18); v.setSpacing(12)
+        title = QLabel("Export for analysis")
+        title.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
+                            f"font-size: {dt.SIZE_LG}px; font-weight: 700;")
+        v.addWidget(title)
+        incl = QLabel("The export is a single .zip containing:\n"
+                      "  • labels.csv and events.csv\n"
+                      "  • both boxers' brain activity on one timeline (eeg_coregistered.csv)\n"
+                      "  • the raw brain recordings and camera videos with their timing files\n"
+                      "  • the recording details, round markers, and history")
+        incl.setStyleSheet(f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
+                           f"font-size: {dt.SIZE_SM}px;")
+        v.addWidget(incl)
+        self._merge_cb = QCheckBox("Also make a combined video of all four cameras (slow)")
+        self._merge_cb.setChecked(False)
+        self._merge_cb.setStyleSheet(f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
+                                     f"font-size: {dt.SIZE_SM}px;")
+        v.addWidget(self._merge_cb)
 
-        self._bar = QProgressBar()
-        self._bar.setRange(0, 100)
-        self._bar.setValue(0)
-        layout.addWidget(self._bar)
+        dest_row = QHBoxLayout()
+        self._dest_lbl = QLabel(self._dest)
+        self._dest_lbl.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_MONO}; "
+                                     f"font-size: {dt.SIZE_XS}px;")
+        change = QPushButton("Change…"); change.setMinimumHeight(34)
+        change.setStyleSheet(dt.qss_secondary_button()); change.clicked.connect(self._pick_dest)
+        dest_row.addWidget(QLabel("Save to:")); dest_row.addWidget(self._dest_lbl, 1); dest_row.addWidget(change)
+        v.addLayout(dest_row)
 
-        self._close_btn = QPushButton("CLOSE")
-        self._close_btn.setEnabled(False)
-        self._close_btn.clicked.connect(self.accept)
-        layout.addWidget(self._close_btn)
-
-        worker.progress.connect(self._on_progress)
-        worker.finished.connect(self._on_finished)
-        worker.error.connect(self._on_error)
-        worker.start()
-
-    def _on_progress(self, pct: int, msg: str):
-        self._bar.setValue(pct)
-        self._status.setText(msg)
-
-    def _on_finished(self, path: str):
-        self._bar.setValue(100)
-        self._status.setText(f"Done  v\n{path}")
-        self._status.setStyleSheet(
-            "color: #22c55e; font-family: 'Inter'; font-size: 12px;"
-        )
-        self._close_btn.setEnabled(True)
-
-    def _on_error(self, msg: str):
-        # 800 chars, not 120 — the message now carries the tail of ffmpeg's
-        # stderr, and truncating it would hide the actual failure reason.
+        self._status = QLabel("")
         self._status.setWordWrap(True)
-        self._status.setText(f"Error: {msg[:800]}")
-        self._status.setStyleSheet(
-            "color: #ef4444; font-family: 'Inter'; font-size: 12px;"
-        )
-        self._close_btn.setEnabled(True)
+        self._status.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px;")
+        v.addWidget(self._status)
+        self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0); self._bar.setVisible(False)
+        v.addWidget(self._bar)
+
+        btns = QHBoxLayout(); btns.addStretch()
+        self._cancel = QPushButton("Cancel"); self._cancel.setMinimumHeight(40)
+        self._cancel.setStyleSheet(dt.qss_secondary_button()); self._cancel.clicked.connect(self.reject)
+        self._go = QPushButton("Export"); self._go.setMinimumHeight(40)
+        self._go.setStyleSheet(dt.qss_primary_button()); self._go.clicked.connect(self._start)
+        btns.addWidget(self._cancel); btns.addWidget(self._go)
+        v.addLayout(btns)
+
+    def _pick_dest(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Save export", self._dest, "Zip (*.zip)")
+        if path:
+            self._dest = path if path.endswith(".zip") else path + ".zip"
+            self._dest_lbl.setText(self._dest)
+
+    def _start(self):
+        self._go.setEnabled(False); self._merge_cb.setEnabled(False)
+        self._bar.setVisible(True)
+        self._worker = SessionExportWorker(self._root, self._labels, self._phases,
+                                           self._dest, merge_video=self._merge_cb.isChecked())
+        self._worker.progress.connect(lambda pct, msg: (self._bar.setValue(pct), self._status.setText(msg)))
+        self._worker.finished.connect(self._on_done)
+        self._worker.error.connect(self._on_error)
+        self._worker.start()
+
+    def _on_done(self, path):
+        import design_tokens as dt
+        self._status.setText(f"Saved ✓  {path}")
+        self._status.setStyleSheet(f"color: {dt.success_color()}; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px;")
+        self._cancel.setText("Done")
+
+    def _on_error(self, msg):
+        import design_tokens as dt
+        self._status.setText(f"Export failed: {msg[:400]}")
+        self._status.setStyleSheet(f"color: {dt.error_color()}; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px;")
+        self._go.setEnabled(True); self._merge_cb.setEnabled(True)

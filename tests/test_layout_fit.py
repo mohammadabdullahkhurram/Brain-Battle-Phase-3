@@ -40,8 +40,9 @@ _failures = []
 SIZES = [(1440, 900), (1280, 800)]
 TOL = 2   # px tolerance for rounding / sub-pixel borders
 
-# Known-to-overflow pages, fixed in the merge step (DESIGN §6).
-KNOWN_OVERFLOW = {"Review & Label", "Old labelling screen"}
+# Every page must now fit — the merged Review & Label screen (DESIGN §6) has no
+# exemption; the old Review/Labelling overflows went away with those screens.
+KNOWN_OVERFLOW = set()
 
 
 def check(name, cond, detail=""):
@@ -118,26 +119,11 @@ def test_pages_fit():
                 _app.processEvents()
             page = win._shell.page_widget(idx)
             ov = _overflows(win, page)
-            if label in KNOWN_OVERFLOW:
-                check(f"[{W}x{H}] '{label}' is a KNOWN overflow (merge-step fix)",
-                      len(ov) >= 1, f"{len(ov)} overflowing widgets (expected > 0)")
-            else:
-                check(f"[{W}x{H}] '{label}' has nothing clipped",
-                      len(ov) == 0, f"overflows: {ov[:4]}")
-
-        # The old Labelling screen (reachable via the temporary link) is also a
-        # known overflow — check it explicitly.
-        win._shell.set_current_index(win.IDX_REVIEW)
-        win._review_page._stack.setCurrentIndex(1)  # old Labelling
-        for _ in range(4):
-            _app.processEvents()
-        ov = _overflows(win, win._review_page)
-        check(f"[{W}x{H}] 'Old labelling screen' is a KNOWN overflow",
-              len(ov) >= 1, f"{len(ov)} overflowing widgets (expected > 0)")
-        win._review_page._stack.setCurrentIndex(0)
+            check(f"[{W}x{H}] '{label}' has nothing clipped",
+                  len(ov) == 0, f"overflows: {ov[:4]}")
 
     try:
-        win.live_tab.shutdown(); win.sync_tab.shutdown()
+        win.live_tab.shutdown(); win._review_page.shutdown()
     except Exception:
         pass
 
