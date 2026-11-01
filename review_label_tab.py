@@ -272,17 +272,27 @@ class TimelineStrip(QWidget):
             self.seek_requested.emit(self._t_at(e.position().x()))
 
     def paintEvent(self, e):
-        p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p = QPainter(self)
+        try:
+            self._paint(p)
+        finally:
+            p.end()
+
+    def _paint(self, p):
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         W = self.width()
-        pr, pround, pbreak = dt.phase_colors()
-        colmap = {"baseline": pr, "round": pround, "break": pbreak, "done": pr}
+        pal = dt._p()
+        # each phase token → (background, foreground) per DESIGN
+        colmap = {"baseline": pal.phase_rest, "round": pal.phase_round,
+                  "break": pal.phase_break, "done": pal.phase_rest}
+        default = pal.phase_rest
         # phases row
         if self.phases:
             bounds = list(self.phases) + [(self.duration, "", "")]
             for i in range(len(self.phases)):
                 t0 = self.phases[i][0]; t1 = bounds[i + 1][0]
                 pid = self.phases[i][1]
-                bg, fg = colmap.get(pid, pr)
+                bg, fg = colmap.get(pid, default)
                 x0, x1 = self._x(t0), self._x(t1)
                 p.setBrush(QColor(bg)); p.setPen(Qt.PenStyle.NoPen)
                 p.drawRoundedRect(QRectF(x0, 2, max(1, x1 - x0 - 1), self._PHASE_H - 4), 4, 4)
@@ -317,7 +327,6 @@ class TimelineStrip(QWidget):
         px = self._x(self.playhead)
         p.setPen(QPen(QColor(dt.accent()), 1.5))
         p.drawLine(int(px), 0, int(px), self.height())
-        p.end()
 
 
 # ── brain activity card ─────────────────────────────────────────────────────────
