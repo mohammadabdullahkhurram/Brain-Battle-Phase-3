@@ -63,8 +63,9 @@ python3 brain_battle_main.py
 ```
 
 System binaries required: `ffmpeg` (per-camera H.264 **recording**, plus
-export/probing — recording is now blocked at pre-flight without it) and VLC
-(review playback via python-vlc). Captures land in `Captures/` next to the
+export/probing — recording is now blocked at pre-flight without it). Review &
+Label playback is in-process via **PyAV** (`av`, bundles its own ffmpeg) — no
+VLC / python-vlc dependency anymore. Captures land in `Captures/` next to the
 source (override with `BRAIN_BATTLE_CAPTURE_DIR`).
 
 ## Demo session
@@ -101,7 +102,7 @@ computed seeks match the generator's own start delays exactly).
 
 ## Tests (`tests/` — plain scripts, `python3 tests/<name>.py`, nonzero exit on failure)
 
-All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
+All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
 
 - `test_smoke.py` — the "loads and stands up" floor and **acceptance gate for
   deletions/refactors**: fresh-subprocess import of every first-party module
@@ -501,12 +502,11 @@ works," since they can't be closed by writing more code.
 
 ## Conventions & gotchas
 
-- Review playback uses **python-vlc** with a vmem→QPainter pipeline on macOS
-  and HWND on Windows (`SyncReviewTab._load_video*`); labelling playback uses
-  `vlc_module.VLCVideoSlot`. Careful with native-surface z-order hacks
-  (`make_opaque_toolbar`, deferred `raise_()`).
-- Theme changes restyle by string-replacing hex colors in child stylesheets
-  (`_apply_theme`) — new hardcoded colors must be added to those maps.
+- Review & Label playback is in-process via **PyAV** (`pyav_player.py`): one
+  `t_session_seconds` playhead, decode off the UI thread, no VLC/Qt-Multimedia
+  players and no native-surface z-order hacks.
+- Light mode only — there is no theme machinery (no dark palette, no
+  `_apply_theme`); `test_light_theme.py` guards that it stays gone.
 - `session_controller.py` is deliberately Qt-optional (headless-testable).
 - `phase_markers.csv` labels look like `BASELINE_START`, `ROUND_1_START`,
   `BREAK_1_START`, `SESSION_END`; `t_session_seconds` is monotonic time since

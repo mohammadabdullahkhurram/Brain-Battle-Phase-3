@@ -377,14 +377,19 @@ screens above; see DESIGN.md for the exact copy/layout.
   shells out to it per camera for crash-safe H.264, and the pre-flight blocks
   recording without it) — a non-technical user won't `brew install ffmpeg`, so
   ship the binary in the bundle and point `usb_camera`/`export_module` at the
-  bundled path. VLC/libVLC bundling for review playback is the same class of
-  problem to resolve here.
+  bundled path. Review playback no longer needs VLC — PyAV (`av`) bundles its
+  own ffmpeg libraries and ships in the pip wheel, so there is nothing extra to
+  bundle for playback.
+  **`tools/` and `tests/` are NOT shipped in the packaged app** — they are
+  developer-only (the demo generator, headless test scripts) and must be
+  excluded from the py2app/PyInstaller bundle.
   *Why:* today the app only runs via `python3 brain_battle_main.py` inside
   a hand-built Python environment — not realistic for the target
   non-technical researcher/assistant audience.
   *Files:* new `setup.py`/PyInstaller spec files, a build script/CI config
   (none exist yet), `version.py` (build metadata); ffmpeg-path resolution in
-  `usb_camera.py`/`export_module.py` to prefer the bundled binary.
+  `usb_camera.py`/`export_module.py` to prefer the bundled binary; bundle
+  include/exclude lists that drop `tools/` and `tests/`.
 
 - **Rewrite README for non-technical users.**
   *Why:* the current `README.md` is written for a developer audience (pip

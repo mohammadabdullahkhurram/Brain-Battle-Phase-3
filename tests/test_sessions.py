@@ -164,8 +164,11 @@ def test_filter_sort():
           len(st.filter_sort_sessions(rows, query="sam")) == 1)
     check("search: by boxer name 'Leo' → 1",
           len(st.filter_sort_sessions(rows, query="Leo")) == 1)
-    check("search: by ISO date '2026-10-27' → 1",
-          len(st.filter_sort_sessions(rows, query="2026-10-27")) == 1)
+    # dates are relative to now, so derive a real one from the library
+    some_date = next(r.started_at[:10] for r in rows if r.started_at)
+    want = sum(1 for r in rows if (r.started_at or "")[:10] == some_date)
+    check(f"search: by ISO date {some_date} → {want}",
+          len(st.filter_sort_sessions(rows, query=some_date)) == want)
     check("search: no match → 0",
           len(st.filter_sort_sessions(rows, query="zzzzz")) == 0)
 

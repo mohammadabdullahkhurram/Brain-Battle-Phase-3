@@ -27,10 +27,12 @@ pip install -r requirements.txt
 
 **System dependencies:**
 
-- `ffmpeg` on PATH — audio extraction for sync, export encoding, stream probing
+- `ffmpeg` on PATH — per-camera H.264 recording, export encoding, stream probing
   (`brew install ffmpeg` on macOS)
-- **VLC** (the desktop app, which provides libVLC) — synced review playback via
-  `python-vlc`
+
+Review & Label playback is handled in-process by PyAV (`av`, a pip wheel that
+bundles its own ffmpeg libraries), so **no VLC install is required** — the old
+`python-vlc` dependency is gone.
 
 Hardware for a full capture: 2× Muse-S headbands (pre-mapped: `MuseS-7538` =
 BOXER A, `MuseS-7564` = BOXER B), 2× side cameras (any UVC-capable DSLR over
@@ -146,13 +148,16 @@ axis. See `CLAUDE.md`'s "Deferred work" section and `docs/ROADMAP.md`.
 | `eeg_module.py` | Muse-S BLE scan/connect/stream, ring buffer, CSV recorder, `EEGLiveWidget` + `EEGReviewWidget` (both pyqtgraph) |
 | `eeg_plot_pg.py` | pyqtgraph waveform/band-power plot widgets shared by live + review |
 
-**Sync, playback, export**
+**Review & Label, playback, export**
 
 | Module | Purpose |
 |---|---|
-| `sync_engine.py` | `SourceOffset`/`SyncResult` dataclasses used by the sync/export path (the rest of the module — audio cross-correlation — is dormant, dead code; see `docs/ROADMAP.md`) |
-| `vlc_module.py` | `VLCVideoSlot`, `SyncPlaybackController` — labelling-tab playback |
-| `export_module.py` | Quad-grid ffmpeg merge (validated hardware encoder with libx264 fallback), labels CSV, session ZIP |
+| `review_label_tab.py` | The merged Review & Label screen (DESIGN §6): one PyAV playhead drives the 2×2 video grid, both brain traces, the timeline, and labelling |
+| `pyav_player.py` | `PyAVCamera` / `MultiCamDecoder` / `DecodeWorker` / `PlayerController` — app-driven single-clock decode (one `t_session_seconds` playhead) |
+| `labels_store.py` | labels.json v2 store (schema, v1 migration, undo/redo, events timeline) |
+| `label_vocab.py` | The shared team label list (`label_list.json` in the recordings folder) |
+| `contact_quality.py` | Per-sensor EEG contact-quality heuristic (plain-language) |
+| `export_module.py` | `SessionExportWorker` + `ExportOptionsDialog` (analysis bundle zip), `VideoExportWorker` (optional 2×2 merge), `build_coregistered_eeg` |
 | `sync_utils/infobox.py` | Tiny message-box helper |
 
 **Labels**
@@ -198,19 +203,20 @@ model — `baseline/`, `Round 1/`, … — is gone.)
   `TP9,AF7,AF8,TP10,AUX,timestamps` at 256 Hz (`timestamps` = Unix-epoch
   floats). The review widgets look columns up by name, so externally recorded
   muselsl CSVs (`timestamps` first, `Right AUX`) also load.
-- **Labels CSV** — `timestamp_sec, timestamp_str, label, color`.
-- **`sync_offsets.csv`** — `source, offset_sec, method, confidence,
-  is_reference` per video/EEG source; `method` is always `capture_clock` and
-  `confidence` is always the honest sentinel `n/a (capture_clock)` — there is
-  no correlation score under this alignment method.
-- **Export ZIP** — `merged_video.mp4` (2×2 quad grid), `labels.csv`,
-  `sync_offsets.csv`, `eeg/eeg_0N.csv`, `eeg_coregistered.csv` (both boxers on
-  one shared time axis), `videos/video_0N.*` (originals), `README.txt`.
+- **`labels.json`** (v2) — `{schema_version:2, time_axis:"t_session_seconds",
+  labels:[{id, label, who A|B|Both, kind point|duration, t_start, t_end, color,
+  created_by, created_at}]}`. v1 files are migrated automatically on open
+  (original kept as `labels.json.v1.bak`).
+- **Export ZIP** (Export for analysis) — `labels.csv` (v2 columns),
+  `events.csv` (phases + labels on one timeline), `eeg_coregistered.csv` (both
+  boxers on one shared axis), `eeg/` (raw bands), `videos/` (camera MP4s + their
+  `.timestamps.csv` sidecars), `session_manifest.json`, `phase_markers.csv`,
+  `history.jsonl`, `README.txt`, and optionally `combined_2x2.mp4`.
 
 ## Testing
 
 Plain scripts, no framework; each exits nonzero on failure. All need `ffmpeg`
-on PATH and stub `python-vlc` only when libVLC is absent.
+on PATH; playback/decoding uses PyAV (`av`), no VLC.
 
 ```bash
 python3 tests/test_smoke.py          # import/construct floor — gate for deletions/refactors:
