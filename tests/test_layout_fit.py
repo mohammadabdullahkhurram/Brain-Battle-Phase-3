@@ -1,18 +1,15 @@
 """
-Strict layout-fit guard (Phase 3): at 1440×900 and 1280×800, no visible widget
-on a page may be clipped — its rect (mapped to the window) must lie inside the
-window, and inside its nearest scroll viewport (so nothing is cut off at the
-right edge or hidden under a fixed bar).
+Strict layout-fit guard: at 1440×900, 1280×800 AND the minimum window size,
+no visible widget on a page may be clipped — its rect (mapped to the window)
+must lie inside the window, and inside its nearest scroll viewport (so nothing
+is cut off at the right edge or hidden under a fixed bar).
 
 Legitimate vertical scrolling is allowed: a widget inside a vertical scroll
-area may extend below the viewport (you scroll to it). What's NOT allowed is a
-widget running off the window, or off the right of its scroll viewport
-(horizontal cut-off), or below the window when it is NOT in a scroll area.
-
-Known failures (to be fixed in the Review & Label merge step) are the Review
-screen and the old Labelling screen — EEG panes under the play bar, BAND POWER
-cut off at 1280. Those are asserted to STILL overflow (so this test reminds us
-to flip them to strict once they're fixed); every other page must be clean.
+area may extend below the viewport (you scroll to it), and a visible scrollbar
+is scroll chrome, not an overflow. What's NOT allowed is a widget running off
+the window, or off the right of its scroll viewport (horizontal cut-off), or
+below the window when it is NOT in a scroll area. Every page must be clean at
+all three sizes — there are no exemptions.
 
 Run:  python3 tests/test_layout_fit.py   (nonzero exit on any failure)
 """
@@ -37,7 +34,9 @@ _app = QApplication.instance() or QApplication(sys.argv)
 import brain_battle_main as bbm
 
 _failures = []
-SIZES = [(1440, 900), (1280, 800)]
+# 1440×900 and 1280×800 (DESIGN targets) plus the app's actual minimum window
+# size — at the minimum, pages may scroll vertically but must never clip.
+SIZES = [(1440, 900), (1280, 800), bbm.MIN_WINDOW]
 TOL = 2   # px tolerance for rounding / sub-pixel borders
 
 # Every page must now fit — the merged Review & Label screen (DESIGN §6) has no
@@ -69,6 +68,11 @@ def _overflows(win, page):
     out = []
     for w in page.findChildren(QWidget):
         if not w.isVisible() or w.width() <= 0 or w.height() <= 0:
+            continue
+        # Scrollbars are scroll-area chrome, not content: a visible vertical
+        # scrollbar legitimately sits at the viewport edge (the page scrolls
+        # rather than clips). Don't treat it as an overflow.
+        if "ScrollBar" in w.__class__.__name__:
             continue
         reg = w.visibleRegion()
         if reg.isEmpty():

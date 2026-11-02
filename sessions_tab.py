@@ -205,7 +205,7 @@ class SessionsTab(QWidget):
     new_recording = pyqtSignal()
 
     # column widths (px); the Boxers column stretches
-    _COL = dict(recorded=140, length=180, labels=70, status=150, actions=190)
+    _COL = dict(recorded=128, length=158, labels=58, status=138, actions=172)
 
     def __init__(self, capture_dir, parent=None):
         super().__init__(parent)

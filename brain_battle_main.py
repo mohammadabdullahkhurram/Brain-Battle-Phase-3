@@ -117,11 +117,42 @@ class SettingsPlaceholder(QWidget):
         root.addWidget(foot)
 
 
+MIN_WINDOW = (1180, 720)   # smallest usable window (below the 1280×800 DESIGN
+#                            target, for the owner's smaller laptop); the Review
+#                            page pins its transport and scrolls vertically.
+
+
 class BrainBattleApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"Brain Battle  v{__version__}")
-        self.setMinimumSize(1280, 800); self.resize(1440, 900); self._build()
+        self.setMinimumSize(*MIN_WINDOW)
+        self._restore_or_fill_window()
+        self._build()
+
+    def _restore_or_fill_window(self):
+        """First launch fills the available screen; after that we remember the
+        last window size/position."""
+        from PyQt6.QtCore import QSettings
+        s = QSettings("Constructor University", "Brain Battle")
+        geo = s.value("window/geometry")
+        if geo is not None:
+            self.restoreGeometry(geo)
+            return
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            self.setGeometry(screen.availableGeometry())
+        else:
+            self.resize(1440, 900)
+
+    def closeEvent(self, event):
+        try:
+            from PyQt6.QtCore import QSettings
+            QSettings("Constructor University", "Brain Battle").setValue(
+                "window/geometry", self.saveGeometry())
+        except Exception:
+            pass
+        super().closeEvent(event)
 
     def _build(self):
         from sidebar_shell import SidebarShell
