@@ -105,65 +105,67 @@ computed seeks match the generator's own start delays exactly).
 All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
 
 - `test_smoke.py` — the "loads and stands up" floor and **acceptance gate for
-  deletions/refactors**: fresh-subprocess import of every first-party module
-  (dynamic discovery), import-time `_HW_ENCODER` == post-import detection
-  (the check that would have caught the four-commit videotoolbox NameError
-  bug), headless construction of all three tabs + app shell, session-timeline
-  order, `__version__` in the window title. Run this before and after any
-  module deletion (J/K) or structural change (H).
-- `test_capture_clock.py` — the capture-clock alignment (v3): reconciliation
-  arithmetic (`t_session = unix − t0`), two-band relative skew, marker/EEG
-  co-registration, manifest bridge round-trip, the real EEG reader flush path,
-  the review-tab alignment (video seek = axis_shift − start, all three
-  co-register) — which owns the D′ seek-formula invariant since the audio
-  seek test was retired — and the co-registered EEG export (both bands on one
-  axis, between-brain skew + markers preserved, CSV round-trip).
-- `test_ring_buffer.py` — `_RingBuffer` chronological ordering, including
-  the over-capacity write branch (latent bug fixed in `0de80f2`).
+  deletions/refactors**: fresh-subprocess import of every first-party module,
+  import-time `_HW_ENCODER` == post-import detection, headless construction of
+  the tabs (LiveSessionTab, ReviewLabelTab, SessionsTab) + app shell,
+  `__version__` in the window title. Run before and after any deletion/refactor.
+- `test_player.py` — the PyAV single-clock player: frame-for-t correctness vs a
+  ground-truth decode (incl. the drift camera's last frame), real-time pacing
+  (±2% over ~10 s), scrub coalescing (50 seeks → a couple of decodes), paint fps.
+- `test_review_tab.py` — the merged screen's label side: fast labels-first open
+  (<0.5 s, media in the background), duration flow + Esc, undo/redo, keyboard
+  focus rules, autosave + history, seeded vocabulary.
+- `test_labels_v2.py` — `labels_store` v2 schema, v1→v2 migration (+ `.v1.bak`),
+  undo/redo, events timeline.
+- `test_label_vocab.py` — the shared `label_list.json` (seed from DESIGN
+  defaults, round-trip, tolerant load).
+- `test_contact_quality.py` — the per-sensor heuristic (flat/clipped/noisy/good)
+  and its plain-language summary.
+- `test_export.py` — the analysis bundle: zip contents (labels.csv v2,
+  events.csv, eeg_coregistered.csv, raw EEG + videos with sidecars, manifest,
+  history, README) and events.csv ordering.
+- `test_flash_sync.py` — verify-only: at every phase marker of a 12-min demo the
+  white flash is within one frame period (≤34 ms) across the four tiles.
+- `test_no_placeholders.py` — acceptance gate: no placeholder/temporary UI copy,
+  no EEG channel codes or "UPLOAD" text, only the Settings placeholder survives.
+- `test_capture_clock.py` — capture-clock reconciliation arithmetic, two-band
+  relative skew, marker/EEG co-registration, manifest bridge round-trip, the
+  real EEG reader flush path, and the co-registered EEG export.
 - `test_demo_session.py` — `tools/generate_demo_session.py` end to end: sidecar
-  row counts == MP4 frame counts (incl. the deliberately drifting camera), EEG
-  CSV columns/sample rate, a headless `SyncReviewTab.load_session_folder` +
-  ALIGN pass whose computed seeks match the generator's own start delays, the
-  `--interrupted` fixture (no `SESSION_END`, last phase left open), and the
-  `ROUND_1_START` marker-token form (both forms accepted by the loader).
-- `test_eeg_streaming.py` — the streamed EEG recorder (Phase 2): drives the
-  real `_MuseDirectReader` write path in a subprocess, SIGKILLs it
-  mid-recording, and asserts the CSV still parses, has the right columns,
-  monotonic timestamps, and everything up to the last flush.
-- `test_labels_autosave.py` — `LabellingTab` label autosave/restore:
-  place → `<session>/labels.json` → reopen restores; removal rewrites;
-  phase markers excluded; EXPORT LABELS CSV still works.
-- `test_crash_recovery.py` — `session_storage` interrupted-session detection /
-  marking (no fabricated `SESSION_END`, no re-nag) and the
-  `LiveSessionTab._check_disk_space` proceed/warn/block branches (QMessageBox
-  + `shutil.disk_usage` stubbed).
-- `test_video_recording.py` — crash-safe fragmented-H.264 recording through the
-  REAL file-backed `USBCameraThread`: SIGKILL mid-record (MP4 still plays,
-  sidecar rows == ffprobe frames within the last fragment), back-pressure
-  (slow encoder → frames dropped + counted, invariant still holds), ffmpeg
-  pipe broken (that camera stops with `record_error` + consistent partial, the
-  other finishes), and the ffmpeg/encoder pre-flight.
-- `test_history_log.py` — the append-only `history.jsonl` (Phase 3): field
-  shape, tolerant reader (skips a truncated last line), SIGKILL mid-write
-  still reads, and six real hooks (recording start/finish, opened_for_review,
-  labels add/remove/export) driven headlessly.
-- `test_light_theme.py` — light-only guard: fails if any dark-theme token,
-  theme toggle, `set/current/on_theme_change`, or `_apply_theme` survives, and
-  checks the core surfaces are actually light.
-- `test_layout_fit.py` — every shell page fits the content area at 1440×900
-  and 1280×800 (nothing clipped).
-
-(The audio-era `test_seek_alignment.py` and `test_xcorr_confidence.py` were
-deleted in Step 4 with the xcorr feature they guarded.)
-
-Broader end-to-end suites from the fix sessions (31-check acceptance, hybrid
-audio/no-audio sync, export error-text, real-VLC playback smoke) were
-session-local scratchpad scripts and are NOT checked in — the checked-in
-suites above are the durable safety net.
+  rows == MP4 frames (incl. the drift camera), EEG columns/rate, a headless
+  `ReviewLabelTab.load_session_folder`, the `--interrupted` fixture, marker-token
+  forms, `demo:true` manifests, and the generator's refuse-real-folder guard.
+- `test_sessions.py` — Sessions discovery/status/search/filter/sort, the
+  interrupted banner + dismissal persistence, off-UI-thread scanning, demo
+  badges, and the strict layout at both sizes.
+- `test_ring_buffer.py` / `test_eeg_streaming.py` / `test_video_recording.py` /
+  `test_crash_recovery.py` / `test_history_log.py` — ring-buffer ordering; the
+  streamed EEG recorder under SIGKILL; crash-safe H.264 recording; interrupted-
+  session detection + disk-space branches; the append-only history log + its
+  hooks (recording start/finish, opened_for_review, labels add/remove, driven
+  through ReviewLabelTab).
+- `test_light_theme.py` — light-only guard (no dark tokens / theme machinery).
+- `test_layout_fit.py` — every shell page fits (nothing clipped) at 1440×900,
+  1280×800 AND the minimum window size; a visible scrollbar is chrome, not an
+  overflow.
 
 ## Project status
 
-**IN PROGRESS — unified capture-time clock** on the long-lived `develop`
+**Current state (Phase 3, `develop` = `3.0.0-dev`).** The unified capture-time
+clock shipped and the app was rebuilt onto the three DESIGN screens. Review &
+Label is one merged PyAV-driven screen (single `t_session_seconds` playhead);
+labels are `labels.json` v2 with undo/redo and a shared vocabulary; Sessions is
+the home library; export produces an analysis bundle. The old Review/Labelling
+tabs, VLC, audio-xcorr (`sync_engine.py`), and `labels_config.py` are gone. What
+remains hardware-blocked is the eyes-on-glass/real-signal verification (deferred
+items below). The historical step-by-step narrative that follows is kept for
+context — where it names `SyncReviewTab`/`LabellingTab`/`vlc_module`/
+`sync_engine`, those are the now-removed predecessors of `review_label_tab.py` +
+`pyav_player.py`.
+
+---
+
+**History — unified capture-time clock** on the long-lived `develop`
 branch (`main` stays the stable baseline; develop merges to main only when a
 version is verified and ready to ship). Goal: one monotonic capture-time
 reference stamped on every source so alignment is MEASURED (tens-of-ms target
@@ -318,29 +320,40 @@ simultaneously and share `phase_markers.csv` time.
 
 ## Module map
 
-| File | Lines | Purpose |
-|---|---|---|
-| `brain_battle_main.py` | 2168 | Entry point + `SyncReviewTab`, `LabellingTab`, `MainEditorSyncWorker`, `BrainBattleApp` shell |
-| `eeg_module.py` | ~1600 | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` + `EEGReviewWidget` (both pyqtgraph) |
-| `design_tokens.py` | ~440 | **Light-only** design system (docs/DESIGN.md tokens) + QSS factories. No dark theme / no theme switching. |
-| `live_session_tab.py` | 584 | Live Monitor tab — capture orchestration, emits `session_saved(session_root)` |
-| `export_module.py` | ~600 | `VideoExportWorker` (ffmpeg quad-grid), `LabelsExporter`, `build_coregistered_eeg` (both boxers on one axis), `FullSessionExportWorker` (zip), progress dialog |
-| `usb_camera_slot.py` | 479 | One camera slot widget (preview + record state) |
-| `sync_engine.py` | 465 | `SourceOffset`/`SyncResult` dataclasses (ACTIVELY USED) + `SyncWorker` QThread (unused) |
-| `vlc_module.py` | 391 | `VLCVideoSlot`, `SyncPlaybackController` — labelling-tab playback |
-| `usb_camera.py` | ~700 | `USBCameraThread` (cv2 capture) + `FrameEncoder` — crash-safe fragmented H.264 via a per-camera ffmpeg subprocess (bounded queue + writer thread, drop counter, row-per-frame sidecar); no audio track |
-| `eeg_plot_pg.py` | 276 | pyqtgraph live EEG plot (the fast path the live widget uses) |
-| `sidebar_shell.py` | ~230 | New DESIGN shell: 232px sidebar (Sessions / New recording / Review & Label / folder card / Settings), collapses to a 72px rail on Review & Label; app opens on Sessions |
-| `session_history.py` | ~155 | Append-only `history.jsonl` per recording (who did what, when) — flush+fsync, tolerant reader |
-| `fonts.py` | ~65 | Registers the bundled Inter font (`assets/fonts/`, SIL OFL); falls back to the system font |
-| `session_controller.py` | 241 | Pure-logic phase state machine (IDLE→BASELINE→ROUND↔BREAK→DONE), 1 Hz QTimer |
-| `session_setup_dialog.py` | 225 | Rounds/durations config dialog |
-| `session_storage.py` | 218 | On-disk session layout, manifest, `phase_markers.csv` writer |
-| `circular_timer.py` | 192 | Circular countdown dial |
-| `usb_camera_panel.py` | 158 | 2×2 grid of camera slots, start/stop recording fan-out |
-| `sync_beep.py` | 125 | Round-start beep |
-| `labels_config.py` | 71 | Label palette persistence (`labels_data.json`) |
-| `sync_utils/infobox.py` | 20 | Tiny message-box helper |
+Current architecture: three DESIGN screens behind a light sidebar shell —
+**Sessions** (home library), **New recording** (capture), **Review & Label**
+(one merged screen) — plus Settings. Review & Label playback is app-driven on a
+single `t_session_seconds` playhead via **PyAV** (`pyav_player.py`): there is no
+VLC, no Qt-Multimedia, and no audio-xcorr. Labels are `labels.json` v2
+(`labels_store.py`) with a shared team vocabulary (`label_vocab.py`); export is
+an analysis bundle (`export_module.SessionExportWorker`).
+
+| File | Purpose |
+|---|---|
+| `brain_battle_main.py` | Entry point, `BrainBattleApp` shell (window sizing + QSettings), `SettingsPlaceholder` |
+| `review_label_tab.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, jargon-free brain card, timeline, labelling |
+| `pyav_player.py` | `PyAVCamera` / `MultiCamDecoder` / `DecodeWorker` / `PlayerController` — single-clock decode off the UI thread |
+| `labels_store.py` | `labels.json` v2 (schema, v1 migration, undo/redo, events timeline) |
+| `label_vocab.py` | Shared team label list (`label_list.json` in the recordings folder) |
+| `contact_quality.py` | Per-sensor EEG contact-quality heuristic (plain language) |
+| `sessions_tab.py` | Sessions home library (discovery, status, search/filter/sort, interrupted banner, background scan + sizing) |
+| `eeg_module.py` | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` (pyqtgraph) |
+| `eeg_plot_pg.py` | pyqtgraph live EEG plots (plain sensor names, no channel codes) |
+| `design_tokens.py` | **Light-only** design system (docs/DESIGN.md tokens) + QSS factories |
+| `live_session_tab.py` | New-recording/capture orchestration, emits `session_saved(session_root)` |
+| `export_module.py` | `SessionExportWorker` + `ExportOptionsDialog` (analysis zip), `VideoExportWorker` (optional 2×2 merge), `build_coregistered_eeg` |
+| `session_storage.py` | On-disk layout, manifest (boxers, capture_clock, demo flag), `phase_markers.csv`, Sessions discovery/classification |
+| `session_history.py` | Append-only `history.jsonl` per recording — flush+fsync, tolerant reader |
+| `usb_camera.py` | `USBCameraThread` (cv2) + `FrameEncoder` — crash-safe fragmented H.264 per-camera ffmpeg subprocess + row-per-frame sidecar; no audio |
+| `usb_camera_slot.py` / `usb_camera_panel.py` | One camera slot widget / 2×2 grid + start-stop fan-out |
+| `sidebar_shell.py` | DESIGN shell: 232px sidebar, collapses to a 72px rail on Review & Label; app opens on Sessions |
+| `session_controller.py` | Pure-logic phase state machine (headless-testable), 1 Hz QTimer |
+| `session_setup_dialog.py` | Rounds/durations + boxer-name config dialog |
+| `circular_timer.py` | Circular countdown dial · `sync_beep.py` round-start beep · `fonts.py` bundled Inter · `sync_utils/infobox.py` message-box helper |
+
+(Removed with the merged screen: `vlc_module.py`, `sync_engine.py`,
+`labels_config.py` + `labels_data.json`, and `brain_battle_main`'s old
+`SyncReviewTab` / `LabellingTab` / `MainEditorSyncWorker` / `EEGReviewWidget`.)
 
 ## Issue backlog
 
