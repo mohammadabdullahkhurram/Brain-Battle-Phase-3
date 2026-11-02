@@ -71,6 +71,12 @@ _CHAN_COLORS = {
     "AF8":  "#f97316",
 }
 _CHANNELS = ["TP9", "AF7", "TP10", "AF8"]
+# Plain-language sensor names shown on the plots — channel codes (TP9 etc.)
+# are data keys only and never appear in the UI (DESIGN vocabulary).
+_CHAN_DISPLAY = {
+    "TP9": "Left ear", "AF7": "Left forehead",
+    "AF8": "Right forehead", "TP10": "Right ear",
+}
 
 
 def _ch_pen(ch: str, width: float = 1.2) -> pg.functions.mkPen:
@@ -134,7 +140,7 @@ class WaveformPlot(QWidget):
             # Using setParentItem alone (without addItem) avoids pyqtgraph's
             # grid-layout double-placement warning.
             txt = pg.LabelItem(
-                text=ch, color=_CHAN_COLORS[ch], size="10pt", bold=True,
+                text=_CHAN_DISPLAY.get(ch, ch), color=_CHAN_COLORS[ch], size="10pt", bold=True,
             )
             txt.setParentItem(p.graphicsItem())
             txt.anchor(itemPos=(0, 0), parentPos=(0, 0), offset=(8, 4))
@@ -230,7 +236,7 @@ class BandPowerPlot(QWidget):
 
             # Channel label anchored inside the plot viewbox.
             txt = pg.LabelItem(
-                text=ch, color=_CHAN_COLORS[ch], size="10pt", bold=True,
+                text=_CHAN_DISPLAY.get(ch, ch), color=_CHAN_COLORS[ch], size="10pt", bold=True,
             )
             txt.setParentItem(p.graphicsItem())
             txt.anchor(itemPos=(0, 0), parentPos=(0, 0), offset=(8, 4))

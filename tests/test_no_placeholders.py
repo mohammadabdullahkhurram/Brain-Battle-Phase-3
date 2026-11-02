@@ -68,6 +68,32 @@ def test_no_stray_placeholder_copy():
           "; ".join(f"{r}:{i} {ph!r}" for r, i, ph, _ in offenders))
 
 
+# EEG channel codes + the old "UPLOAD CSV" placeholder must never be shown in
+# the UI (DESIGN vocabulary: plain sensor names only). We flag channel codes
+# only inside widget-text calls, so data-key usages (dict keys, column names)
+# don't false-positive.
+_CHANNEL_CODES = ["TP9", "AF7", "AF8", "TP10"]
+_DISPLAY_CALL = re.compile(
+    r'(QLabel|setText|setToolTip|setWindowTitle|LabelItem|addLabel|setPlaceholderText)\s*\(')
+
+
+def test_no_channel_codes_or_upload_in_ui():
+    offenders = []
+    for fn in _app_files():
+        rel = os.path.relpath(fn, ROOT)
+        for i, line in enumerate(open(fn, encoding="utf-8").read().splitlines(), 1):
+            low = line.lower()
+            if "upload csv" in low:
+                offenders.append((rel, i, "UPLOAD CSV", line.strip()[:80]))
+            # a channel code inside a widget-text call = jargon shown to users
+            if _DISPLAY_CALL.search(line):
+                for code in _CHANNEL_CODES:
+                    if re.search(rf'["\']{code}["\']', line):
+                        offenders.append((rel, i, code, line.strip()[:80]))
+    check("no EEG channel codes or UPLOAD text in the UI", not offenders,
+          "; ".join(f"{r}:{i} {c!r}" for r, i, c, _ in offenders))
+
+
 def test_only_settings_placeholder_class():
     found = {}
     for fn in _app_files():
@@ -83,6 +109,7 @@ def test_only_settings_placeholder_class():
 
 if __name__ == "__main__":
     test_no_stray_placeholder_copy()
+    test_no_channel_codes_or_upload_in_ui()
     test_only_settings_placeholder_class()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
