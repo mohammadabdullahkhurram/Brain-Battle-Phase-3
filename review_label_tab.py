@@ -29,7 +29,7 @@ import time
 
 import numpy as np
 
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QRect, QRectF, QEvent, QThread
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QPointF, QRect, QRectF, QEvent, QThread
 from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QFont, QPolygonF
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -359,11 +359,10 @@ class BrainTrace(QWidget):
                 scale = max(1.0, 3.0 * float(np.std(seg)))
                 xs = (t - (self._play - 5.0)) / 10.0 * W
                 ys = y_mid - np.clip(seg / scale, -1, 1) * (band_h * 0.42)
-                poly = QPolygonF([QPoint(0, 0)] * 0)
                 poly = QPolygonF()
                 step = max(1, n // (W + 1))
                 for k in range(0, n, step):
-                    poly.append(QPoint(int(xs[k]), int(ys[k])))
+                    poly.append(QPointF(float(xs[k]), float(ys[k])))
                 p.setPen(QPen(col, 1.0)); p.setBrush(Qt.BrushStyle.NoBrush)
                 p.drawPolyline(poly)
             else:
@@ -419,10 +418,9 @@ class BrainActivityCard(QFrame):
         for name, col in zip(CH_NAMES, CH_COLORS):
             dot = QLabel("●"); dot.setStyleSheet(f"color: {col}; font-size: 10px;")
             lab = QLabel(name)
-            lab.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
             lab.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
                               f"font-size: {dt.SIZE_XS}px;")
-            leg.addWidget(dot); leg.addWidget(lab); leg.addSpacing(4)
+            leg.addWidget(dot); leg.addWidget(lab); leg.addSpacing(6)
         leg.addStretch()
         v.addLayout(leg)
 
