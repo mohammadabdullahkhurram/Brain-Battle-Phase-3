@@ -137,6 +137,11 @@ def test_review_tab_loads():
         tab = rl.ReviewLabelTab()
         try:
             tab.load_session_folder(result["root"])
+            # labels/timeline are available immediately; the player loads in
+            # the background
+            check("phases available immediately after open (labels-first)",
+                  len(tab._phases) == len(result["markers"]))
+            tab.wait_loaded()
             check("ReviewLabelTab.load_session_folder: no exception", True)
             check("single-clock player built with a sane duration",
                   tab._player is not None and tab._duration > 0, f"{tab._duration:.1f}s")

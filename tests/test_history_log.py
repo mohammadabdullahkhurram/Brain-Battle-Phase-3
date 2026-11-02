@@ -121,6 +121,7 @@ def test_label_hooks():
     tab = rl.ReviewLabelTab()
     try:
         tab.load_session_folder(root)
+        tab.wait_loaded()
         point = next(e for e in tab._vocab if e["kind"] == "point")
         tab._seek(10.0); tab._place_from_vocab(point)
         tab._seek(20.0); tab._place_from_vocab(point)
@@ -167,6 +168,7 @@ def test_opened_for_review_hook():
     tab = rl.ReviewLabelTab()
     try:
         tab.load_session_folder(DEMO_ROOT)
+        tab.wait_loaded()
         events = [e["event"] for e in sh.read_history(DEMO_ROOT)]
         check("opened_for_review logged", "opened_for_review" in events, str(events[-3:]))
     finally:

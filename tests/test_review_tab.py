@@ -41,6 +41,7 @@ def _fresh_tab():
     import review_label_tab as rl
     tab = rl.ReviewLabelTab()
     tab.load_session_folder(DEMO_ROOT)
+    tab.wait_loaded()
     tab._seek(2.0)
     return tab
 
@@ -58,6 +59,34 @@ def _history_events():
 
 def _key(tab, key, mods=Qt.KeyboardModifier.NoModifier):
     return tab.handle_key(key, mods)
+
+
+def test_fast_open_labels_first():
+    """labels.json + the label list + timeline marks are available immediately
+    on Open; the (slow) video + brain data load in the background."""
+    import review_label_tab as rl
+    import labels_store, json, time as _t
+    # seed a few labels on disk so there is something to show at once
+    store = labels_store.LabelsStore()
+    for nm, t0 in (("Jab", 3.0), ("Cross", 5.0), ("Hook", 7.0)):
+        store.add(labels_store.new_label(nm, "A", labels_store.POINT, t0, created_by="x"))
+    store.save(os.path.join(DEMO_ROOT, "labels.json"))
+
+    tab = rl.ReviewLabelTab()
+    t0 = _t.perf_counter()
+    tab.load_session_folder(DEMO_ROOT)
+    elapsed = _t.perf_counter() - t0
+    check(f"Open returns fast (<0.5s), labels don't wait on media", elapsed < 0.5,
+          f"{elapsed*1000:.0f}ms")
+    check("labels present immediately after Open",
+          len(tab._store.labels) >= 3, str(len(tab._store.labels)))
+    check("timeline has the label marks immediately",
+          len(tab._strip.labels) >= 3, str(len(tab._strip.labels)))
+    check("media still loading in the background (player not ready yet)",
+          tab._player is None)
+    ok = tab.wait_loaded()
+    check("background media load completes", ok and tab._player is not None)
+    tab.shutdown()
 
 
 def test_vocabulary_seeded():
@@ -148,6 +177,7 @@ if __name__ == "__main__":
     DEMO_ROOT = generate_demo_session(out=tmp, rounds=1, round_sec=10,
                                       break_sec=3, baseline_sec=3, seed=5,
                                       boxer_a="Sam", boxer_b="Alex")["root"]
+    test_fast_open_labels_first()
     test_vocabulary_seeded()
     test_point_label_autosave_and_history()
     test_duration_flow_and_cancel()
