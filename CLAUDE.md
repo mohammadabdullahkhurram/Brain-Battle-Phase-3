@@ -505,6 +505,10 @@ works," since they can't be closed by writing more code.
 - Review & Label playback is in-process via **PyAV** (`pyav_player.py`): one
   `t_session_seconds` playhead, decode off the UI thread, no VLC/Qt-Multimedia
   players and no native-surface z-order hacks.
+- The per-phase white flash is NOT perfectly simultaneous across the four
+  cameras — each camera captures on its own phase, so the first frame at/after a
+  phase marker lands up to one frame period (~34 ms) apart. This is expected and
+  correct; `tests/test_flash_sync.py` asserts the spread stays within one frame.
 - Light mode only — there is no theme machinery (no dark palette, no
   `_apply_theme`); `test_light_theme.py` guards that it stays gone.
 - `session_controller.py` is deliberately Qt-optional (headless-testable).
