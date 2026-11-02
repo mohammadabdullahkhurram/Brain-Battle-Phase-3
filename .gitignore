@@ -4,7 +4,7 @@ __pycache__/
 *.pyo
 
 # macOS
-.DS_Store
+**/.DS_Store
 *.textClipping
 
 # Runtime-generated data
