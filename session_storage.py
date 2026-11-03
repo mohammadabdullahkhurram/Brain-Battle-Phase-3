@@ -432,6 +432,56 @@ def dismiss_interrupted(session_root) -> bool:
         return False
 
 
+def read_moments(session_root) -> list:
+    """The 'Mark this moment' entries recorded during capture (each a dict with
+    t_session_seconds), newest-last. [] if none / unreadable."""
+    m = _read_manifest(Path(session_root))
+    if not m:
+        return []
+    out = []
+    for e in (m.get("moments") or []):
+        if isinstance(e, dict) and "t_session_seconds" in e:
+            try:
+                out.append({"t_session_seconds": float(e["t_session_seconds"])})
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def consume_moment(session_root, t_session_seconds) -> bool:
+    """Remove the moment at (≈) `t_session_seconds` from the manifest once the
+    user has named it in Review (atomic temp+rename). Returns True if one was
+    removed."""
+    root = Path(session_root)
+    m = _read_manifest(root)
+    if not m:
+        return False
+    moments = m.get("moments") or []
+    target = round(float(t_session_seconds), 3)
+    kept, removed = [], False
+    for e in moments:
+        try:
+            t = round(float(e.get("t_session_seconds")), 3)
+        except (TypeError, ValueError, AttributeError):
+            kept.append(e); continue
+        if not removed and abs(t - target) < 1e-3:
+            removed = True
+        else:
+            kept.append(e)
+    if not removed:
+        return False
+    m["moments"] = kept
+    tmp = root / "session_manifest.json.tmp"
+    try:
+        tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, root / "session_manifest.json")
+        return True
+    except OSError:
+        try: tmp.unlink()
+        except OSError: pass
+        return False
+
+
 @dataclass
 class SessionLayoutInfo:
     """Lightweight descriptor for a session folder found on disk (used by
@@ -644,6 +694,7 @@ __all__ = [
     "create_session", "sanitize_name",
     "is_interrupted_session", "scan_interrupted_sessions", "flag_new_interrupted",
     "mark_session_interrupted", "dismiss_interrupted",
+    "read_moments", "consume_moment",
     "session_info", "list_sessions", "folder_size_bytes",
     "session_total_seconds", "estimate_session_bytes",
     "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",

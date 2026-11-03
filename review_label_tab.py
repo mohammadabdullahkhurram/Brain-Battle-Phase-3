@@ -34,6 +34,7 @@ from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QFont, QPolygonF
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
     QScrollArea, QSizePolicy, QLineEdit, QButtonGroup, QToolTip, QApplication,
+    QDialog,
 )
 
 import design_tokens as dt
@@ -649,6 +650,7 @@ class ReviewLabelTab(QWidget):
         self._who = "A"
         self._names = {"A": None, "B": None}
         self._pending_duration = None
+        self._moments = []           # unnamed "Mark this moment" marks from recording
         self._created_by = _getuser()
         self._focus_getter = None
         self._loader = None
@@ -867,8 +869,12 @@ class ReviewLabelTab(QWidget):
                 session_history.log_event(root, session_history.EVENT_LABELS_MIGRATED)
             except Exception:
                 pass
+        # Unnamed "Mark this moment" marks recorded during capture — shown as
+        # moments to name here (DESIGN §4/§6).
+        import session_storage
+        self._moments = session_storage.read_moments(root)
         self._refresh_placed()
-        self._strip.set_session(self._duration, self._phases, self._store.labels)
+        self._strip.set_session(self._duration, self._phases, self._timeline_labels())
         mins = max(1, round(self._duration / 60)) if self._duration else 0
         self._subtitle.setText(self._subtitle_text(mins, rounds, a, b))
         self._brain.set_loading()
@@ -923,7 +929,7 @@ class ReviewLabelTab(QWidget):
         self._player.frames_ready.connect(self._on_frames)
         self._player.playhead_changed.connect(self._on_playhead)
         self._player.state_changed.connect(self._on_state)
-        self._strip.set_session(self._duration, self._phases, self._store.labels)
+        self._strip.set_session(self._duration, self._phases, self._timeline_labels())
         names = [f"Boxer A{(' · ' + self._names['A']) if self._names['A'] else ''}",
                  f"Boxer B{(' · ' + self._names['B']) if self._names['B'] else ''}"]
         self._brain.load(ordered, names)
@@ -1089,7 +1095,45 @@ class ReviewLabelTab(QWidget):
     def _after_change(self, added=None, removed=None):
         self._autosave_and_history(added, removed)
         self._refresh_placed()
-        self._strip.set_labels(self._store.labels)
+        self._strip.set_labels(self._timeline_labels())
+
+    # ---- marked moments (unnamed until named here) ----
+    def _moment_pseudo_labels(self):
+        """Moments rendered as unnamed point labels to be named here."""
+        out = []
+        for i, mo in enumerate(self._moments):
+            out.append({"id": f"moment:{i}", "label": "Marked moment — click to name",
+                        "who": "Both", "kind": "point",
+                        "t_start": float(mo["t_session_seconds"]), "t_end": None,
+                        "color": dt.record_red(), "moment": True})
+        return out
+
+    def _timeline_labels(self):
+        return list(self._store.labels) + self._moment_pseudo_labels()
+
+    def _name_moment(self, moment_pseudo):
+        t = float(moment_pseudo["t_start"])
+        dlg = _MomentNameDialog(self._vocab, self._names, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted or dlg.result_entry is None:
+            return
+        entry, who = dlg.result_entry, dlg.result_who
+        lab = labels_store.new_label(
+            label=entry["name"], who=who,
+            kind=label_vocab.DURATION if entry.get("kind") == label_vocab.DURATION
+            else label_vocab.POINT,
+            t_start=t, t_end=None, color=entry.get("color", "#3D4FD6"),
+            created_by=self._created_by)
+        self._store.add(lab)
+        # consume the moment from the manifest so it isn't offered again
+        if self._root:
+            try:
+                import session_storage
+                session_storage.consume_moment(self._root, t)
+            except Exception:
+                pass
+        self._moments = [m for m in self._moments
+                         if abs(float(m["t_session_seconds"]) - t) >= 1e-3]
+        self._after_change(added=lab)
 
     def _autosave_and_history(self, added=None, removed=None):
         if not self._root:
@@ -1120,12 +1164,20 @@ class ReviewLabelTab(QWidget):
             if it.widget():
                 it.widget().deleteLater()
         labels = sorted(self._store.labels, key=lambda x: x.get("created_at", ""), reverse=True)
-        self._placed_head.setText(f"Placed labels ({len(labels)})")
+        moments = self._moment_pseudo_labels()
+        self._placed_head.setText(f"Placed labels ({len(labels)})"
+                                  + (f" · {len(moments)} moment(s) to name" if moments else ""))
+        # Moments to name first (they need attention), then placed labels.
+        for mo in moments:
+            self._placed_layout.insertWidget(self._placed_layout.count() - 1,
+                                             self._placed_row(mo))
         for lab in labels:
             self._placed_layout.insertWidget(self._placed_layout.count() - 1,
                                              self._placed_row(lab))
 
     def _placed_row(self, lab):
+        if lab.get("moment"):
+            return self._moment_row(lab)
         row = QFrame()
         row.setStyleSheet(f"QFrame {{ background: {dt.surface()}; border: 1px solid {dt.border()}; "
                           f"border-radius: {dt.RADIUS_SM}px; }}")
@@ -1145,6 +1197,26 @@ class ReviewLabelTab(QWidget):
         def _seek_to(_e, ts=lab["t_start"]):
             self._seek(ts)
         row.mousePressEvent = _seek_to
+        return row
+
+    def _moment_row(self, mo):
+        """A 'Marked moment — click to name' row (DESIGN §6)."""
+        row = QFrame()
+        row.setStyleSheet(
+            f"QFrame {{ background: {dt._p().warning_bg}; border: 1px solid {dt.warning_color()}; "
+            f"border-radius: {dt.RADIUS_SM}px; }}")
+        h = QHBoxLayout(row); h.setContentsMargins(8, 5, 6, 5); h.setSpacing(6)
+        t = QLabel(_fmt_time(mo["t_start"]))
+        t.setStyleSheet(f"color: {dt._p().warning_text}; font-family: {dt.FONT_MONO}; "
+                        f"font-size: {dt.SIZE_XS}px;")
+        name = QLabel("Marked moment — click to name")
+        name.setStyleSheet(f"color: {dt._p().warning_text}; font-family: {dt.FONT_UI}; "
+                           f"font-size: {dt.SIZE_SM}px; font-weight: 600;")
+        h.addWidget(t); h.addWidget(name, 1)
+        row.setCursor(Qt.CursorShape.PointingHandCursor)
+        def _click(_e, m=mo):
+            self._seek(m["t_start"]); self._name_moment(m)
+        row.mousePressEvent = _click
         return row
 
     # ---- keyboard ----
@@ -1209,6 +1281,70 @@ class ReviewLabelTab(QWidget):
             except Exception:
                 pass
             self._player = None
+
+
+class _MomentNameDialog(QDialog):
+    """Name a marked moment (DESIGN §6): pick who did it, then the label. The
+    chosen label turns the moment into a normal label."""
+
+    def __init__(self, vocab, names, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Name this moment")
+        self.setMinimumWidth(360)
+        self.setStyleSheet(f"QDialog {{ background: {dt.canvas_bg()}; }}")
+        self.result_entry = None
+        self.result_who = "Both"
+        v = QVBoxLayout(self); v.setContentsMargins(18, 16, 18, 16); v.setSpacing(10)
+        lbl = QLabel("Who did it?")
+        lbl.setStyleSheet(f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
+                          f"font-size: {dt.SIZE_SM}px; font-weight: 700;")
+        v.addWidget(lbl)
+        who_row = QHBoxLayout(); who_row.setSpacing(6)
+        self._who_btns = {}
+        for which in ("A", "B", "Both"):
+            text = (f"A · {names.get('A')}" if which == "A" and names.get("A")
+                    else f"B · {names.get('B')}" if which == "B" and names.get("B")
+                    else (which if which == "Both" else f"Boxer {which}"))
+            b = QPushButton(text); b.setCheckable(True); b.setMinimumHeight(38)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.clicked.connect(lambda _c=False, w=which: self._set_who(w))
+            self._who_btns[which] = b; who_row.addWidget(b)
+        v.addLayout(who_row)
+        lbl2 = QLabel("What happened?")
+        lbl2.setStyleSheet(lbl.styleSheet())
+        v.addWidget(lbl2)
+        grid = QGridLayout(); grid.setSpacing(6)
+        for i, entry in enumerate(vocab):
+            btn = QPushButton(f"{entry.get('key', i + 1)}  {entry['name']}")
+            btn.setMinimumHeight(38); btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            col = entry.get("color", "#3D4FD6")
+            btn.setStyleSheet(
+                f"QPushButton {{ text-align: left; padding-left: 10px; background: {dt.surface()}; "
+                f"color: {dt.text_primary()}; border: 1px solid {dt.border_strong()}; "
+                f"border-left: 4px solid {col}; border-radius: {dt.RADIUS_SM}px; "
+                f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; }}"
+                f"QPushButton:hover {{ border-color: {dt.accent()}; }}")
+            btn.clicked.connect(lambda _c=False, e=entry: self._pick(e))
+            grid.addWidget(btn, i // 2, i % 2)
+        v.addLayout(grid)
+        self._set_who("Both")
+
+    def _set_who(self, which):
+        self.result_who = which
+        for w, b in self._who_btns.items():
+            b.setChecked(w == which)
+            if w == which:
+                line, soft, text = (dt.boxer_colors(w) if w in ("A", "B")
+                                    else (dt.accent(), dt.accent_ghost(), dt.accent()))
+                b.setStyleSheet(f"QPushButton {{ background: {soft}; color: {text}; "
+                                f"border: 1px solid {line}; border-radius: {dt.RADIUS_SM}px; "
+                                f"font-weight: 700; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; }}")
+            else:
+                b.setStyleSheet(dt.qss_secondary_button())
+
+    def _pick(self, entry):
+        self.result_entry = entry
+        self.accept()
 
 
 def _getuser() -> str:
