@@ -80,8 +80,8 @@ from session_controller import SessionConfig, Phase, _build_timeline  # noqa: E4
 from session_storage import create_session, PhaseRecord  # noqa: E402
 from usb_camera import FrameEncoder, preflight_recording  # noqa: E402
 from usb_camera_panel import _SLOT_SPECS  # noqa: E402
-from eeg_module import _MuseDirectReader, BOXER_LABELS  # noqa: E402
-from live_session_tab import _muse_friendly, _default_capture_root  # noqa: E402
+from eeg_module import _MuseDirectReader, boxer_labels, muse_friendly as _muse_friendly  # noqa: E402
+from app_settings import default_capture_root as _default_capture_root  # noqa: E402
 
 # PyQt requires a live Python reference to the QApplication singleton or it
 # can be garbage-collected even though QApplication.instance() still reports
@@ -404,7 +404,7 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
                      r["phase"].value) for r in phase_records]
 
     eeg_bands = []
-    for eeg_idx, (device_name, boxer_label) in enumerate(BOXER_LABELS.items(), start=1):
+    for eeg_idx, (device_name, boxer_label) in enumerate(boxer_labels().items(), start=1):
         boxer_letter = boxer_label.replace("BOXER ", "")
         info = _generate_eeg_band(
             muse_dir, device_name, boxer_letter, rng, t0_unix,

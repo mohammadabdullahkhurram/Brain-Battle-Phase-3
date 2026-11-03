@@ -894,8 +894,8 @@ class ReviewLabelTab(QWidget):
         muse = os.path.join(root, "continuous", "Muse data")
         plan = {}
         try:
-            from eeg_module import BOXER_LABELS
-            from live_session_tab import _muse_friendly
+            from eeg_module import boxer_labels, muse_friendly as _muse_friendly
+            BOXER_LABELS = boxer_labels()
         except Exception:
             BOXER_LABELS, _muse_friendly = {}, (lambda x: x)
         files = sorted(f for f in os.listdir(muse)) if os.path.isdir(muse) else []

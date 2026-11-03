@@ -142,11 +142,28 @@ class _RingBuffer:
         self._n_written = 0
 
 
-# Known Muse IDs → boxer labels
-BOXER_LABELS = {
-    "MuseS-7538": "BOXER A",
-    "MuseS-7564": "BOXER B",
-}
+# Muse IDs → boxer labels. The mapping is no longer hard-coded here — it comes
+# from the app settings store (Settings screen edits it), so a researcher can
+# reassign bands without touching source. `boxer_labels()` is the drop-in
+# replacement for the old module-level BOXER_LABELS dict.
+def boxer_labels() -> dict:
+    """{device_name: "BOXER A"/"BOXER B"} from the saved headband mapping."""
+    try:
+        import app_settings
+        return app_settings.boxer_labels()
+    except Exception:
+        return {}
+
+
+def muse_friendly(raw: str) -> str:
+    """'MuseS-7538' → 'Muse S 7538' for display + filenames. (Moved here from
+    the old live_session_tab so review/export/the demo generator share it.)"""
+    return (raw or "Muse").replace("MuseS-", "Muse S ").replace(
+        "Muse-S-", "Muse S ").replace("-", " ")
+
+
+# Legacy alias kept for any external import of the private name.
+_muse_friendly = muse_friendly
 
 # ─── Exclusive device registry ────────────────────────────────────────────────
 # Maps device_name → owning EEGLiveWidget. Prevents two blocks sharing a device.
@@ -881,10 +898,11 @@ class DevicePickerDialog(QDialog):
         self._status.setText(
             f"Found {len(devices)} device(s). Select one then click CONNECT."
         )
+        labels = boxer_labels()
         for d in devices:
             name = d.get("name", "Unknown")
             addr = d.get("address", "")
-            boxer = BOXER_LABELS.get(name, "")
+            boxer = labels.get(name, "")
             in_use = name in self.exclude_names
             text = f"  {name}   {addr}"
             if boxer:
@@ -1117,7 +1135,7 @@ class EEGLiveWidget(QFrame):
             if self._connected_device and self._connected_device["name"] != name:
                 _release_device(self._connected_device["name"], self)
             self._connected_device = device
-            boxer = BOXER_LABELS.get(name, "")
+            boxer = boxer_labels().get(name, "")
             # Keep the title compact — EEG widgets live in a narrow right
             # rail in the new Live Monitor layout, so "MuseS-7538 [BOXER A]"
             # is already longer than fits. Use just "EEG 1 · A · 7538".
