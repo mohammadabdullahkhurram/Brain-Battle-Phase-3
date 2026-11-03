@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap, QPainter
 
-from live_session_tab import LiveSessionTab
+from record_flow import RecordFlow
 from version import __version__
 import session_history
 
@@ -146,6 +146,19 @@ class BrainBattleApp(QMainWindow):
             self.resize(1440, 900)
 
     def closeEvent(self, event):
+        # Confirm before quitting mid-recording (DESIGN §4 safety).
+        try:
+            if getattr(self, "record_flow", None) is not None and self.record_flow.is_recording():
+                reply = QMessageBox.question(
+                    self, "Quit while recording?",
+                    "A recording is in progress. Quit anyway? Everything recorded so "
+                    "far is kept, but the rest of the session will not happen.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No)
+                if reply != QMessageBox.StandardButton.Yes:
+                    event.ignore(); return
+        except Exception:
+            pass
         try:
             from PyQt6.QtCore import QSettings
             QSettings("Constructor University", "Brain Battle").setValue(
@@ -156,7 +169,7 @@ class BrainBattleApp(QMainWindow):
 
     def _build(self):
         from sidebar_shell import SidebarShell
-        from live_session_tab import _default_capture_root
+        from app_settings import default_capture_root
 
         self._restyle_app()   # apply the light global stylesheet once
 
@@ -164,12 +177,14 @@ class BrainBattleApp(QMainWindow):
         self.setCentralWidget(central)
         root = QVBoxLayout(central); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
 
-        capture_dir = _default_capture_root()
+        capture_dir = default_capture_root()
         self._shell = SidebarShell(capture_dir=capture_dir)
 
-        # The three DESIGN screens: Sessions (home) → New recording → Review &
-        # Label (one merged PyAV-driven screen), plus Settings.
-        self.live_tab  = LiveSessionTab()
+        # The three DESIGN screens: Sessions (home) → New recording (guided flow)
+        # → Review & Label (one merged PyAV-driven screen), plus Settings.
+        self.record_flow = RecordFlow()
+        self.record_flow.session_saved.connect(self._on_session_saved)
+        self.record_flow.exit_flow.connect(self._go_to_sessions)
         from review_label_tab import ReviewLabelTab
         self._review_page = ReviewLabelTab()
         self._review_page.back_to_sessions.connect(self._go_to_sessions)
@@ -180,7 +195,9 @@ class BrainBattleApp(QMainWindow):
         self._settings_page = SettingsPlaceholder()
 
         self.IDX_SESSIONS = self._shell.add_page("sessions", "Sessions", "home", self._sessions_page)
-        self.IDX_RECORD   = self._shell.add_page("record", "New recording", "plus-circle", self.live_tab)
+        # New recording opens the full-screen guided flow (no sidebar).
+        self.IDX_RECORD   = self._shell.add_page("record", "New recording", "plus-circle",
+                                                 self.record_flow, hide_sidebar=True)
         self.IDX_REVIEW   = self._shell.add_page("review", "Review & Label", "layers",
                                                  self._review_page, collapse_on_active=True)
         self.IDX_SETTINGS = self._shell.add_page("settings", "Settings", "settings",
@@ -193,10 +210,8 @@ class BrainBattleApp(QMainWindow):
             def currentIndex(self): return self._shell.current_index()
         self.tabs = _ShellTabShim(self._shell)
 
-        # After a recording is saved, land on Review & Label with it loaded.
-        self.live_tab.session_saved.connect(self._on_session_saved)
-
-        # Refresh the Sessions library whenever the user navigates to it.
+        # Refresh the Sessions library whenever the user navigates to it, and
+        # (re)enter the guided flow at step 1 when New recording is opened.
         self._shell.page_changed.connect(self._on_page_changed)
 
         root.addWidget(self._shell, 1)
@@ -211,6 +226,9 @@ class BrainBattleApp(QMainWindow):
     def _on_page_changed(self, idx):
         if idx == self.IDX_SESSIONS:
             self._sessions_page.refresh()
+        elif idx == self.IDX_RECORD:
+            # Entering New recording (re)starts the guided flow at step 1.
+            self.record_flow.start()
 
     def _go_to_new_recording(self):
         self._shell.set_current_index(self.IDX_RECORD)
@@ -252,7 +270,7 @@ if __name__ == "__main__":
         # Stop EEG streams + camera threads + loader threads before Qt
         # tears down widgets — prevents "QThread destroyed while still
         # running" crash on exit.
-        try: window.live_tab.shutdown()
+        try: window.record_flow.shutdown()
         except Exception: pass
         try: window._review_page.shutdown()
         except Exception: pass

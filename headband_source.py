@@ -15,10 +15,14 @@ from __future__ import annotations
 
 from typing import Optional
 
+import logging
+
 import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal, Qt
 
 import contact_quality as cq
+
+log = logging.getLogger(__name__)
 from eeg_module import _RingBuffer, _MuseDirectReader
 
 _CHANNELS = ["TP9", "AF7", "AF8", "TP10"]
@@ -118,7 +122,8 @@ class HeadbandSlot(QObject):
         try:
             self._reader.start_recording(path, origin_unix=origin_unix, append=append)
             self._recording = True
-        except Exception:
+        except Exception as e:
+            log.error("EEG start_recording failed for Boxer %s: %s", self.which, e)
             self._recording = False
 
     def stop_recording(self):

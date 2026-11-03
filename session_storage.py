@@ -154,6 +154,14 @@ class SessionLayout:
     # Sessions screen can badge demo data and nobody mistakes it for a real
     # recording.
     demo:                 bool = False
+    # "Mark this moment" during recording — each {t_session_seconds, unix_time}.
+    # Surfaced in Review & Label as unnamed labels the user names later.
+    moments:              list = field(default_factory=list)
+    # Clean early stop (operator pressed Stop and save) — NOT an interruption.
+    # Records where the recording was stopped so Sessions can show
+    # "Stopped at 9:41 of 12:00".
+    stopped_early:        bool = False
+    stopped_t_session:    Optional[float] = None
 
     # ---- folder resolution ---------------------------------------------------
 
@@ -187,6 +195,22 @@ class SessionLayout:
                            "round_num", "unix_time"])
             w.writerow([f"{t_session_sec:.3f}", phase_id, label,
                        round_num, f"{time.time():.3f}"])
+
+    def add_moment(self, t_session_sec: float) -> dict:
+        """Record a 'Mark this moment' at a session time. Stored in the manifest
+        (and surfaced in Review & Label as an unnamed label). Returns the entry."""
+        entry = {"t_session_seconds": round(float(t_session_sec), 3),
+                 "unix_time": round(time.time(), 3)}
+        self.moments.append(entry)
+        self._write_manifest()
+        return entry
+
+    def mark_stopped_early(self, t_session_sec: float) -> None:
+        """Flag that the operator stopped the recording early (cleanly). This is
+        NOT an interruption — a SESSION_END marker is still written."""
+        self.stopped_early = True
+        self.stopped_t_session = round(float(t_session_sec), 3)
+        self._write_manifest()
 
     # ---- capture-time clock bridge ------------------------------------------
 
@@ -231,6 +255,9 @@ class SessionLayout:
             "started_unix":   self.started_at.timestamp(),
             "boxers":         self.boxers,
             "demo":           self.demo,
+            "moments":        self.moments,
+            "stopped_early":  self.stopped_early,
+            "stopped_t_session": self.stopped_t_session,
             "capture_clock":  {
                 "t0_monotonic": self.capture_t0_monotonic,
                 "t0_unix":      self.capture_t0_unix,
@@ -520,7 +547,15 @@ def session_info(root) -> SessionInfo:
         status = STATUS_LABELLED
     else:
         status = STATUS_NEEDS_LABELLING
-    stopped = _last_marker_tsession(root) if interrupted else None
+    if interrupted:
+        stopped = _last_marker_tsession(root)
+    elif m.get("stopped_early") is True:
+        # Cleanly stopped early — show "Stopped at m:ss of m:ss", not interrupted.
+        stopped = m.get("stopped_t_session")
+        if stopped is None:
+            stopped = _last_marker_tsession(root)
+    else:
+        stopped = None
     return SessionInfo(str(root), name, m.get("started_at", "") or "",
                        float(m.get("started_unix") or 0.0), a, b, rounds,
                        planned, stopped, status, labels, interrupted, dismissed, True,

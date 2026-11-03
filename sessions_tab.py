@@ -71,7 +71,8 @@ def _human_time(info) -> str:
 def length_text(info) -> str:
     if not info.readable:
         return "—"
-    if info.status == ss.STATUS_INTERRUPTED and info.stopped_sec is not None:
+    # Interrupted (crash) OR cleanly stopped early both show how far they got.
+    if info.stopped_sec is not None:
         return f"Stopped at {_fmt_mmss(info.stopped_sec)} of {_fmt_mmss(info.planned_sec)}"
     mins = max(1, round(info.planned_sec / 60)) if info.planned_sec else 0
     rounds = info.rounds

@@ -202,9 +202,9 @@ def _sim_reader_cls():
             self._rec_start_mono = None
             self._battery_level = 82 if self._boxer == "A" else 76
 
-        def start_recording(self, path, origin_unix=None):
+        def start_recording(self, path, origin_unix=None, append=False):
             self._rec_start_mono = time.monotonic()
-            return super().start_recording(path, origin_unix=origin_unix)
+            return super().start_recording(path, origin_unix=origin_unix, append=append)
 
         def stop(self):
             self._sim_running = False

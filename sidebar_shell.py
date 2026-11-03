@@ -78,6 +78,7 @@ class SidebarShell(QWidget):
         self._capture_dir = capture_dir
         self._items: list[SidebarItem] = []
         self._collapse_flags: list[bool] = []
+        self._hide_flags: list[bool] = []
         self._expanded = True
         self._build()
 
@@ -202,13 +203,15 @@ class SidebarShell(QWidget):
 
     # ── pages ──
     def add_page(self, key: str, label: str, icon_name: str, widget: QWidget,
-                 collapse_on_active: bool = False, bottom: bool = False) -> int:
+                 collapse_on_active: bool = False, bottom: bool = False,
+                 hide_sidebar: bool = False) -> int:
         item = SidebarItem(icon_name, label)
         idx = len(self._items)
         item.clicked.connect(lambda _=False, i=idx: self.set_current_index(i))
         (self._bottom_nav if bottom else self._nav).addWidget(item)
         self._items.append(item)
         self._collapse_flags.append(collapse_on_active)
+        self._hide_flags.append(hide_sidebar)
         self._stack.addWidget(widget)
         if idx == 0:
             item.setChecked(True); item._refresh_icon()
@@ -220,7 +223,13 @@ class SidebarShell(QWidget):
         for i, it in enumerate(self._items):
             it.setChecked(i == idx); it._refresh_icon()
         self._stack.setCurrentIndex(idx)
-        self._set_collapsed(self._collapse_flags[idx])
+        # A full-screen page (the recording flow) hides the sidebar entirely;
+        # otherwise collapse-to-rail or full sidebar per the page's flag.
+        if self._hide_flags[idx]:
+            self._sidebar.setVisible(False)
+        else:
+            self._sidebar.setVisible(True)
+            self._set_collapsed(self._collapse_flags[idx])
         self.page_changed.emit(idx)
 
     def current_index(self) -> int:
