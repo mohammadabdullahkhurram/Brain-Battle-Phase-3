@@ -338,7 +338,8 @@ class _MuseDirectReader(QThread):
 
     # ── public API ────────────────────────────────────────────────────────────
 
-    def start_recording(self, path: str, origin_unix: Optional[float] = None) -> None:
+    def start_recording(self, path: str, origin_unix: Optional[float] = None,
+                        append: bool = False) -> None:
         """Begin STREAMING samples to a CSV at `path`. The header is written
         and fsync'd immediately, so the file is valid from t=0; each chunk
         received afterwards is appended by a background writer thread that
@@ -370,10 +371,14 @@ class _MuseDirectReader(QThread):
             # single row being written, never lose already-written rows. The
             # periodic flush()/fsync() below is then belt-and-braces (OS
             # buffer → disk for power-loss durability). Header fsync'd up front.
-            f = open(path, "w", buffering=1, newline="", encoding="utf-8")
-            f.write(",".join(cols) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+            # `append` (used when a headband reconnects mid-recording) keeps the
+            # same CSV and skips re-writing the header.
+            resume = append and os.path.isfile(path) and os.path.getsize(path) > 0
+            f = open(path, "a" if resume else "w", buffering=1, newline="", encoding="utf-8")
+            if not resume:
+                f.write(",".join(cols) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
         except OSError as e:
             log.error("[muse-direct] could not open EEG CSV %s: %s", path, e)
             self._record_path = None
