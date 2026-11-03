@@ -628,7 +628,9 @@ class SetupStep(QWidget):
 
         body = QHBoxLayout(); body.setSpacing(16)
 
-        # left: names + steppers + bell
+        # left: names + steppers + bell. Both columns ignore their width hint so
+        # the 3:2 stretch split is honoured and neither pushes the other
+        # off-screen (the phase list / notes would otherwise force extra width).
         left = _card()
         lv = QVBoxLayout(left); lv.setContentsMargins(18, 16, 18, 16); lv.setSpacing(12)
         names = QGridLayout(); names.setHorizontalSpacing(10); names.setVerticalSpacing(10)
@@ -661,16 +663,23 @@ class SetupStep(QWidget):
                                  f"font-size: {dt.SIZE_SM}px;")
         lv.addWidget(self._bell)
         lv.addStretch()
-        body.addWidget(left, 3)
+        body.addWidget(left, 1)
 
-        # right: what will happen
+        # right: "What will happen" — a fixed-width side panel (like the Review
+        # labels panel) so its wrapped text is bounded deterministically.
         right = _card()
+        right.setFixedWidth(360)
         rv = QVBoxLayout(right); rv.setContentsMargins(18, 16, 18, 16); rv.setSpacing(10)
         rv.addWidget(_body("What will happen", bold=True, size=dt.SIZE_MD))
         self._bar = PhaseBar()
         rv.addWidget(self._bar)
-        self._phase_list = QVBoxLayout(); self._phase_list.setSpacing(3)
-        rv.addLayout(self._phase_list)
+        # One multi-line label added directly to the card (a single wrapped
+        # label behaves; a nested sub-layout of labels mis-sizes on offscreen).
+        self._phase_lines = QLabel(""); self._phase_lines.setWordWrap(True)
+        self._phase_lines.setStyleSheet(
+            f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
+            f"font-size: {dt.SIZE_XS}px; line-height: 150%;")
+        rv.addWidget(self._phase_lines)
         self._autostop = _body("", size=dt.SIZE_XS, color=dt.text_tertiary())
         rv.addWidget(self._autostop)
         self._disk = _body("", size=dt.SIZE_SM)
@@ -679,7 +688,11 @@ class SetupStep(QWidget):
         self._saves_to = _body("", size=dt.SIZE_XS, color=dt.text_tertiary())
         rv.addWidget(self._saves_to)
         rv.addStretch()
-        body.addWidget(right, 2)
+        # Wrapped labels in a nested column must take the card width, never a
+        # wider hint (otherwise they push the card past the window edge).
+        for _lab in (self._autostop, self._disk, self._saves_to, self._hb_note):
+            _lab.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        body.addWidget(right, 0)
         root.addLayout(body, 1)
 
         bar = QHBoxLayout(); bar.setSpacing(12)
@@ -733,18 +746,15 @@ class SetupStep(QWidget):
         timeline = _build_timeline(cfg)
         segs = [(p.duration, p.phase.value) for p in timeline]
         self._bar.set_segments(segs)
-        # phase list with start times
-        while self._phase_list.count():
-            it = self._phase_list.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
+        # phase list with start times (one multi-line label)
         elapsed = 0
+        lines = []
         for p in timeline:
             name = {"baseline": "Rest before round 1", "round": f"Round {p.round_num}",
                     "break": "Break"}.get(p.phase.value, p.label)
-            self._phase_list.addWidget(_body(f"{_mmss(elapsed)}   {name} · {_mmss(p.duration)}",
-                                             size=dt.SIZE_XS, color=dt.text_tertiary()))
+            lines.append(f"{_mmss(elapsed)}   {name} · {_mmss(p.duration)}")
             elapsed += p.duration
+        self._phase_lines.setText("\n".join(lines))
         total = session_total_seconds(cfg)
         self._autostop.setText(f"Recording stops by itself at {_mmss(total)}. "
                                f"Total length {_mmss(total)}.")
