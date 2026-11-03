@@ -123,6 +123,15 @@ def list_cameras(max_probe: int = 8) -> list[CameraDevice]:
     platform-specific cost is a small startup delay which only happens when
     the operator opens the camera-picker UI.
     """
+    # Developer-only simulated cameras (BRAIN_BATTLE_SIMULATE) go through the
+    # exact same capture path below — only the device list + frame source are
+    # synthetic. No trace of this when the flag is unset.
+    try:
+        import simulation
+        if simulation.enabled():
+            return simulation.camera_devices()
+    except Exception:
+        pass
     backend = _preferred_backend()
     found: list[CameraDevice] = []
     for idx in range(max_probe):
@@ -440,6 +449,10 @@ class USBCameraThread(QThread):
         self._want_w    = width
         self._want_h    = height
         self._want_fps  = fps
+        # Preview frames are downscaled to at most this width BEFORE crossing
+        # the thread boundary (recording still gets the full-quality frame);
+        # keeps the Qt signal queue light with four live tiles. 0 → no cap.
+        self._preview_w = 0
 
         self._stop_flag:       bool = False
         self._recording:       bool = False
@@ -462,6 +475,11 @@ class USBCameraThread(QThread):
         self._last_drop_log:   float = 0.0
 
     # ── Public API (thread-safe; uses flags the run-loop polls) ──────────
+    def set_preview_width(self, w: int) -> None:
+        """Cap the width of preview frames emitted to the UI (0 = full size).
+        Recording is unaffected — the encoder always gets the full frame."""
+        self._preview_w = max(0, int(w))
+
     def stop(self) -> None:
         self._stop_flag = True
 
@@ -494,10 +512,23 @@ class USBCameraThread(QThread):
         (bounded-queue overflow). 0 is the healthy case."""
         return self._dropped_frames
 
+    def _open_capture(self):
+        """Open the capture device. Under BRAIN_BATTLE_SIMULATE a synthetic,
+        real-time-paced cv2.VideoCapture-compatible source is substituted — the
+        rest of run() (negotiation, encode, sidecar) is identical."""
+        try:
+            import simulation
+            if simulation.enabled():
+                return simulation.open_capture(
+                    self._dev, w=self._want_w, h=self._want_h, fps=self._want_fps)
+        except Exception:
+            pass
+        return cv2.VideoCapture(self._dev.index, self._dev.backend or _preferred_backend())
+
     # ── Thread body ──
     def run(self) -> None:  # noqa: C901 — single run-loop, hard to split further
         self.state_changed.emit("opening")
-        cap = cv2.VideoCapture(self._dev.index, self._dev.backend or _preferred_backend())
+        cap = self._open_capture()
         if not cap.isOpened():
             self.state_changed.emit(f"error: could not open camera {self._dev.index}")
             return
@@ -627,7 +658,14 @@ class USBCameraThread(QThread):
                 # the disk writer still gets every captured frame.
                 if (now - last_preview_emit) >= PREVIEW_INTERVAL_SEC:
                     last_preview_emit = now
-                    self.frame_ready.emit(frame)
+                    # Downscale the PREVIEW copy before it crosses the thread
+                    # boundary (recording above already got the full frame).
+                    pv = frame
+                    if self._preview_w and frame.shape[1] > self._preview_w:
+                        s = self._preview_w / float(frame.shape[1])
+                        pv = cv2.resize(frame, (self._preview_w,
+                                                max(1, int(frame.shape[0] * s))))
+                    self.frame_ready.emit(pv)
         finally:
             # Always stop recording (finalise ffmpeg + sidecar) and release the
             # device, even on exception — so no orphaned ffmpeg survives.

@@ -380,9 +380,12 @@ screens above; see DESIGN.md for the exact copy/layout.
   bundled path. Review playback no longer needs VLC — PyAV (`av`) bundles its
   own ffmpeg libraries and ships in the pip wheel, so there is nothing extra to
   bundle for playback.
-  **`tools/` and `tests/` are NOT shipped in the packaged app** — they are
-  developer-only (the demo generator, headless test scripts) and must be
-  excluded from the py2app/PyInstaller bundle.
+  **`tools/`, `tests/`, and `simulation.py` are NOT shipped in the packaged
+  app** — they are developer-only (the demo generator, headless test scripts,
+  and the `BRAIN_BATTLE_SIMULATE` simulated-camera/headband backend added in
+  the Phase-3 guided-recording step) and must be excluded from the
+  py2app/PyInstaller bundle. With the flag unset there is no trace of
+  simulation in the UI, so excluding the module is safe.
   *Why:* today the app only runs via `python3 brain_battle_main.py` inside
   a hand-built Python environment — not realistic for the target
   non-technical researcher/assistant audience.
