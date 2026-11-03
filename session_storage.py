@@ -680,6 +680,19 @@ def estimate_session_bytes(config: SessionConfig, n_cameras: int, n_eeg: int) ->
     return int(secs * (n_cameras * VIDEO_BYTES_PER_SEC + n_eeg * EEG_BYTES_PER_SEC))
 
 
+def disk_space_verdict(config: SessionConfig, n_cameras: int, n_eeg: int,
+                       free_bytes: int) -> str:
+    """Pure decision for the pre-flight disk check: 'blocked' when free space is
+    below the estimate, 'low' when below 2x it, else 'ok'. Shared by the setup
+    screen and the record flow so the UI copy and the gate never diverge."""
+    est = estimate_session_bytes(config, n_cameras, n_eeg)
+    if free_bytes < est:
+        return "blocked"
+    if free_bytes < 2 * est:
+        return "low"
+    return "ok"
+
+
 def human_bytes(n: float) -> str:
     """Human-readable byte size, e.g. 264_000_000 -> '264 MB'."""
     n = float(n)
@@ -696,7 +709,7 @@ __all__ = [
     "mark_session_interrupted", "dismiss_interrupted",
     "read_moments", "consume_moment",
     "session_info", "list_sessions", "folder_size_bytes",
-    "session_total_seconds", "estimate_session_bytes",
+    "session_total_seconds", "estimate_session_bytes", "disk_space_verdict",
     "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",
     "STATUS_INTERRUPTED", "STATUS_EXPORTED", "STATUS_LABELLED",
     "STATUS_NEEDS_LABELLING", "STATUS_UNREADABLE",

@@ -145,6 +145,14 @@ class CameraSlot(QObject):
         self.changed.emit()
 
     def _on_finished(self) -> None:
+        # A thread's finished signal can be delivered LATE — after we've already
+        # stopped it and started a replacement (e.g. rapid re-scans). Only clear
+        # the handle if the thread that finished is the one we currently hold;
+        # otherwise we'd null a reference to a live thread and orphan it (it then
+        # runs un-tracked and aborts the process when destroyed).
+        t = self.sender()
+        if t is not None and t is not self._thread:
+            return
         self._thread = None
         self.fps = 0.0
         if self.state != "error":

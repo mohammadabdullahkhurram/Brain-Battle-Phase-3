@@ -217,7 +217,7 @@ def test_marker_label_format():
 def test_generator_safety():
     """The CLI must never default a demo into the real recordings folder."""
     from tools.generate_demo_session import _build_arg_parser, _refuse_real_folder
-    from live_session_tab import _default_capture_root
+    from app_settings import default_capture_root as _default_capture_root
 
     # --out is required
     raised = False

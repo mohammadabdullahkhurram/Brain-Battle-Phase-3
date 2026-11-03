@@ -20,6 +20,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# Simulated devices so the New recording flow populates (step 1) fast and
+# deterministically instead of probing real hardware during a layout check.
+os.environ.setdefault("BRAIN_BATTLE_SIMULATE", "1")
+import tempfile
+os.environ.setdefault("BRAIN_BATTLE_CAPTURE_DIR", tempfile.mkdtemp(prefix="bb_layout_cap_"))
 try:
     import vlc  # noqa: F401
 except Exception:
@@ -127,7 +132,11 @@ def test_pages_fit():
                   len(ov) == 0, f"overflows: {ov[:4]}")
 
     try:
-        win.live_tab.shutdown(); win._review_page.shutdown()
+        win.record_flow.shutdown()
+        win._review_page.shutdown()
+        win._sessions_page.shutdown()   # stop the background scan thread too
+        for _ in range(4):
+            _app.processEvents()
     except Exception:
         pass
 

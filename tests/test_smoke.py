@@ -20,7 +20,7 @@ Covers:
   1b. export_module's import-time _HW_ENCODER equals what post-import
      detection returns — i.e. the import-time probe really ran and did not
      silently fall back.
-  2. Construct LiveSessionTab, ReviewLabelTab, SessionsTab, BrainBattleApp
+  2. Construct RecordFlow, ReviewLabelTab, SessionsTab, BrainBattleApp
      headless (no event pumping — no camera probing, no playback).
   3. Minimal pure-logic checks: session timeline phase order, config
      validation, __version__ surfaced in the window title.
@@ -155,11 +155,11 @@ def part1_fresh_process_imports():
 def part2_construct_tabs_and_shell(app):
     print("── 2. headless construction of tabs + app shell")
     import brain_battle_main as bbm
-    from live_session_tab import LiveSessionTab
+    from record_flow import RecordFlow
     from sessions_tab import SessionsTab
     from review_label_tab import ReviewLabelTab
 
-    for name, ctor in (("LiveSessionTab", LiveSessionTab),
+    for name, ctor in (("RecordFlow", RecordFlow),
                        ("ReviewLabelTab", ReviewLabelTab),
                        ("SessionsTab", lambda: SessionsTab("/tmp")),
                        ("SettingsPlaceholder", bbm.SettingsPlaceholder)):
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     part3_pure_logic(win)
     if win is not None:
         try:
-            win.live_tab.shutdown(); win._review_page.shutdown()
+            win.record_flow.shutdown(); win._review_page.shutdown()
         except Exception:
             pass
 

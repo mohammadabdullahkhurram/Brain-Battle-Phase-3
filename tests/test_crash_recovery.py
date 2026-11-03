@@ -7,13 +7,12 @@ Part A — crash recovery (pure session_storage logic):
   - marking a session writes `interrupted: true` into its manifest WITHOUT
     fabricating a SESSION_END marker, and a marked session is not re-detected.
 
-Part B — disk-space pre-flight (LiveSessionTab._check_disk_space):
+Part B — disk-space pre-flight (session_storage.disk_space_verdict, the pure
+decision shared by the setup screen and the record flow):
   - estimate scales with duration and source count,
-  - free >= 2x estimate proceeds silently,
-  - estimate <= free < 2x estimate warns (and honours the operator's choice),
-  - free < estimate blocks.
-Both QMessageBox and shutil.disk_usage are stubbed so the decision logic is
-exercised headlessly without modal dialogs or depending on real free space.
+  - free >= 2x estimate → "ok",
+  - estimate <= free < 2x estimate → "low" (warn),
+  - free < estimate → "blocked".
 
 Run:  python3 tests/test_crash_recovery.py   (nonzero exit on any failure)
 """
@@ -94,35 +93,6 @@ def test_crash_recovery():
 
 # ─── Part B: disk-space pre-flight ──────────────────────────────────────────
 
-class _FakeStdButton:
-    # ints so `Yes | No` (as the real code builds its button set) works
-    Yes = 1
-    No = 2
-
-
-class _FakeMsgBox:
-    StandardButton = _FakeStdButton
-    question_answer = _FakeStdButton.Yes
-    calls = {"critical": 0, "question": 0}
-
-    @staticmethod
-    def critical(*a, **k):
-        _FakeMsgBox.calls["critical"] += 1
-        return _FakeStdButton.Yes
-
-    @staticmethod
-    def question(*a, **k):
-        _FakeMsgBox.calls["question"] += 1
-        return _FakeMsgBox.question_answer
-
-
-class _FakeUsage:
-    def __init__(self, free):
-        self.total = free * 2
-        self.used = free
-        self.free = free
-
-
 def test_disk_estimate_scaling():
     base = SessionConfig(num_rounds=1, round_sec=60, break_sec=0, baseline_sec=0)
     longer = SessionConfig(num_rounds=2, round_sec=60, break_sec=0, baseline_sec=0)
@@ -136,54 +106,18 @@ def test_disk_estimate_scaling():
 
 
 def test_disk_space_thresholds():
-    import live_session_tab as lst
-    from live_session_tab import LiveSessionTab
-
-    tab = LiveSessionTab()
+    # The pre-flight decision is a pure function (session_storage.disk_space_verdict)
+    # shared by the setup screen and the record flow — test it directly, no Qt.
     cfg = SessionConfig(num_rounds=1, round_sec=60, break_sec=0, baseline_sec=0)
-    estimate = ss.estimate_session_bytes(cfg, n_cameras=4, n_eeg=2)
-
-    real_msgbox = lst.QMessageBox
-    real_disk_usage = shutil.disk_usage
-    lst.QMessageBox = _FakeMsgBox
-    try:
-        # 1) plenty of room -> proceed, no dialogs.
-        _FakeMsgBox.calls = {"critical": 0, "question": 0}
-        shutil.disk_usage = lambda p: _FakeUsage(estimate * 10)
-        proceed = tab._check_disk_space("/tmp", cfg, 4, 2)
-        check("free >> estimate: proceeds with no dialog",
-              proceed is True and _FakeMsgBox.calls == {"critical": 0, "question": 0},
-              str(_FakeMsgBox.calls))
-
-        # 2) between 1x and 2x -> warn; operator says Yes -> proceed.
-        _FakeMsgBox.calls = {"critical": 0, "question": 0}
-        _FakeMsgBox.question_answer = _FakeStdButton.Yes
-        shutil.disk_usage = lambda p: _FakeUsage(int(estimate * 1.5))
-        proceed = tab._check_disk_space("/tmp", cfg, 4, 2)
-        check("low space + Yes: warns then proceeds",
-              proceed is True and _FakeMsgBox.calls["question"] == 1
-              and _FakeMsgBox.calls["critical"] == 0, str(_FakeMsgBox.calls))
-
-        # 3) between 1x and 2x -> warn; operator says No -> abort.
-        _FakeMsgBox.calls = {"critical": 0, "question": 0}
-        _FakeMsgBox.question_answer = _FakeStdButton.No
-        shutil.disk_usage = lambda p: _FakeUsage(int(estimate * 1.5))
-        proceed = tab._check_disk_space("/tmp", cfg, 4, 2)
-        check("low space + No: warns then aborts",
-              proceed is False and _FakeMsgBox.calls["question"] == 1,
-              str(_FakeMsgBox.calls))
-
-        # 4) not even 1x -> block.
-        _FakeMsgBox.calls = {"critical": 0, "question": 0}
-        shutil.disk_usage = lambda p: _FakeUsage(int(estimate * 0.5))
-        proceed = tab._check_disk_space("/tmp", cfg, 4, 2)
-        check("free < estimate: blocks with a critical message",
-              proceed is False and _FakeMsgBox.calls["critical"] == 1
-              and _FakeMsgBox.calls["question"] == 0, str(_FakeMsgBox.calls))
-    finally:
-        lst.QMessageBox = real_msgbox
-        shutil.disk_usage = real_disk_usage
-        tab.shutdown()
+    est = ss.estimate_session_bytes(cfg, 4, 2)
+    check("free >> estimate: ok",
+          ss.disk_space_verdict(cfg, 4, 2, est * 10) == "ok")
+    check("estimate <= free < 2x estimate: low (warn)",
+          ss.disk_space_verdict(cfg, 4, 2, int(est * 1.5)) == "low")
+    check("free just below estimate: blocked",
+          ss.disk_space_verdict(cfg, 4, 2, int(est * 0.5)) == "blocked")
+    check("free exactly at estimate: not blocked (warns — no headroom)",
+          ss.disk_space_verdict(cfg, 4, 2, est) == "low")
 
 
 if __name__ == "__main__":

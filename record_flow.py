@@ -51,7 +51,7 @@ from camera_source import CameraSlot
 from session_controller import SessionController, SessionConfig, Phase, _build_timeline
 from session_storage import (
     create_session, SessionLayout, PhaseRecord, estimate_session_bytes,
-    human_bytes, session_total_seconds,
+    human_bytes, session_total_seconds, disk_space_verdict,
 )
 from sync_beep import SyncBeep
 from keep_awake import KeepAwake
@@ -763,13 +763,14 @@ class SetupStep(QWidget):
             self._disk.setText(""); self._start.setEnabled(True); return
         est = estimate_session_bytes(cfg, n_cam, n_eeg)
         est_h, free_h = human_bytes(est), human_bytes(free)
-        if free < est:
+        verdict = disk_space_verdict(cfg, n_cam, n_eeg, free)
+        if verdict == "blocked":
             self._disk.setText(f"✕ Not enough space — this session needs about {est_h}, "
                                f"but only {free_h} is free. Free up space or shorten the session.")
             self._disk.setStyleSheet(f"color: {dt.error_color()}; font-family: {dt.FONT_UI}; "
                                      f"font-size: {dt.SIZE_SM}px;")
             self._start.setEnabled(False)
-        elif free < 2 * est:
+        elif verdict == "low":
             self._disk.setText(f"! Low space — this session needs about {est_h}. "
                                f"Only {free_h} is free.")
             self._disk.setStyleSheet(f"color: {dt.warning_color()}; font-family: {dt.FONT_UI}; "
@@ -1270,14 +1271,16 @@ class RecordFlow(QWidget):
             free = shutil.disk_usage(base).free
         except OSError:
             return True
-        est = estimate_session_bytes(self._cfg, n_cam or len(self._cams), n_eeg)
-        if free < est:
+        cams = n_cam or len(self._cams)
+        est = estimate_session_bytes(self._cfg, cams, n_eeg)
+        verdict = disk_space_verdict(self._cfg, cams, n_eeg, free)
+        if verdict == "blocked":
             QMessageBox.critical(self, "Not enough disk space",
                                  f"This recording needs about {human_bytes(est)}, but only "
                                  f"{human_bytes(free)} is free. Free up space or shorten the "
                                  f"session, then try again.")
             return False
-        if free < 2 * est:
+        if verdict == "low":
             r = QMessageBox.question(self, "Low disk space",
                                      f"This recording needs about {human_bytes(est)}. Only "
                                      f"{human_bytes(free)} is free. Start anyway?",

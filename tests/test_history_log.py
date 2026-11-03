@@ -140,25 +140,26 @@ def test_label_hooks():
         tab.shutdown()
 
 
-# ─── 5. hooks: recording_started / recording_finished (LiveSessionTab) ───────
+# ─── 5. hooks: recording_started / recording_finished (RecordFlow) ───────────
 
 def test_recording_hooks():
-    from live_session_tab import LiveSessionTab
+    from record_flow import RecordFlow
     from session_storage import create_session
     from session_controller import SessionConfig
     with tempfile.TemporaryDirectory() as base:
-        tab = LiveSessionTab()
+        flow = RecordFlow()
         cfg = SessionConfig(num_rounds=1, round_sec=10, break_sec=0, baseline_sec=5)
-        tab._controller.configure(cfg)
-        tab._layout = create_session(base, cfg)
+        flow._cfg = cfg
+        flow._names = {"A": None, "B": None}
+        flow._layout = create_session(base, cfg)
         try:
-            tab._on_session_started()
-            tab._on_session_finished()
-            events = [e["event"] for e in sh.read_history(tab._layout.root)]
+            flow._on_session_started()   # no devices connected → just origin + history
+            flow._finish()               # writes SESSION_END + logs recording_finished
+            events = [e["event"] for e in sh.read_history(flow._layout.root)]
             check("recording_started logged", "recording_started" in events, str(events))
             check("recording_finished logged", "recording_finished" in events, str(events))
         finally:
-            tab.shutdown()
+            flow.shutdown()
 
 
 # ─── 6. hook: opened_for_review (merged Review & Label screen) ───────────────
