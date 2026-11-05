@@ -57,66 +57,6 @@ def _supplementary_qss():
         QComboBox:hover {{ border-color: {dt.accent()}; }}
     """
 
-APP_STYLE = ""  # Legacy placeholder — kept for compatibility with tests
-
-def _h1(text):
-    import design_tokens as dt
-    lbl = QLabel(text)
-    lbl.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
-                      f"font-size: 24px; font-weight: 700;")
-    return lbl
-
-
-def _sub(text):
-    import design_tokens as dt
-    lbl = QLabel(text); lbl.setWordWrap(True)
-    lbl.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                      f"font-size: {dt.SIZE_MD}px;")
-    return lbl
-
-
-class SettingsPlaceholder(QWidget):
-    """Temporary Settings (DESIGN §7). Lists the planned sections; the real
-    controls land in a later step."""
-
-    _SECTIONS = [
-        ("Recordings folder", "Where recordings are saved, with free space."),
-        ("Headbands", "Assign each headband to Boxer A / Boxer B."),
-        ("Video quality", "Standard 960×540, High 1280×720, or Light 640×360."),
-        ("Session defaults", "Rounds, round length, break, rest, and the round bell."),
-        ("Label list", "The shared set of labels the team places."),
-    ]
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        import design_tokens as dt
-        # Scope to the class so the background never cascades to child labels.
-        self.setStyleSheet(f"SettingsPlaceholder {{ background: {dt.canvas_bg()}; }}")
-        root = QVBoxLayout(self); root.setContentsMargins(40, 36, 40, 36); root.setSpacing(0)
-        root.addWidget(_h1("Settings"))
-        root.addWidget(_sub("These settings apply to your next recording. The "
-                            "controls arrive in a later step."))
-        root.addSpacing(24)
-        for title, desc in self._SECTIONS:
-            card = QFrame(); card.setObjectName("settingsCard")
-            card.setStyleSheet(f"QFrame#settingsCard {{ background: {dt.card_bg()}; "
-                               f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_LG}px; }}")
-            cv = QVBoxLayout(card); cv.setContentsMargins(20, 16, 20, 16); cv.setSpacing(4)
-            tl = QLabel(title)
-            tl.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
-                             f"font-size: {dt.SIZE_LG}px; font-weight: 600; border: none;")
-            dl = QLabel(desc)
-            dl.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                             f"font-size: {dt.SIZE_MD}px; border: none;")
-            cv.addWidget(tl); cv.addWidget(dl)
-            root.addWidget(card); root.addSpacing(12)
-        root.addStretch()
-        foot = QLabel(f"Brain Battle v{__version__} · Constructor University")
-        foot.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                           f"font-size: {dt.SIZE_SM}px;")
-        root.addWidget(foot)
-
-
 MIN_WINDOW = (1180, 720)   # smallest usable window (below the 1280×800 DESIGN
 #                            target, for the owner's smaller laptop); the Review
 #                            page pins its transport and scrolls vertically.
@@ -169,7 +109,7 @@ class BrainBattleApp(QMainWindow):
 
     def _build(self):
         from sidebar_shell import SidebarShell
-        from app_settings import default_capture_root
+        import app_settings
 
         self._restyle_app()   # apply the light global stylesheet once
 
@@ -177,7 +117,7 @@ class BrainBattleApp(QMainWindow):
         self.setCentralWidget(central)
         root = QVBoxLayout(central); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
 
-        capture_dir = default_capture_root()
+        capture_dir = app_settings.load().capture_dir_resolved()
         self._shell = SidebarShell(capture_dir=capture_dir)
 
         # The three DESIGN screens: Sessions (home) → New recording (guided flow)
@@ -192,7 +132,9 @@ class BrainBattleApp(QMainWindow):
         self._sessions_page = SessionsTab(capture_dir)
         self._sessions_page.new_recording.connect(self._go_to_new_recording)
         self._sessions_page.open_session.connect(self._open_session_in_review)
-        self._settings_page = SettingsPlaceholder()
+        from settings_tab import SettingsTab
+        self._settings_page = SettingsTab()
+        self._settings_page.capture_dir_changed.connect(self._on_capture_dir_changed)
 
         self.IDX_SESSIONS = self._shell.add_page("sessions", "Sessions", "home", self._sessions_page)
         # New recording opens the full-screen guided flow (no sidebar).
@@ -229,12 +171,21 @@ class BrainBattleApp(QMainWindow):
         elif idx == self.IDX_RECORD:
             # Entering New recording (re)starts the guided flow at step 1.
             self.record_flow.start()
+        elif idx == self.IDX_SETTINGS:
+            self._settings_page.refresh()
 
     def _go_to_new_recording(self):
         self._shell.set_current_index(self.IDX_RECORD)
 
     def _go_to_sessions(self):
         self._shell.set_current_index(self.IDX_SESSIONS)
+
+    def _on_capture_dir_changed(self, path):
+        """Settings' [Change folder…] — repoint the folder card + Sessions
+        library at the new recordings folder (existing recordings stay put;
+        the guided flow reloads app_settings on its own next start())."""
+        self._shell.set_capture_dir(path)
+        self._sessions_page.set_capture_dir(path)
 
     def _open_session_in_review(self, session_root):
         self._review_page.load_session_folder(session_root)
