@@ -1,13 +1,13 @@
 """
 render_screens.py — headless screenshots of every app page + every guided-flow
 step, into a gitignored screens/ folder for visual review (DESIGN: fits
-1440×900, usable at 1280×800).
+1440×900, usable at 1280×800, down to the app's minimum window).
 
 Runs with BRAIN_BATTLE_SIMULATE=1 so the Connect / Recording steps show live
 simulated cameras + headbands (one weak sensor on Boxer B), and points the
 capture dir + settings at throwaway temp paths so nothing lands in the real
 recordings folder. The short recording it makes to capture the Recording /
-Saved steps is deleted before exit.
+Saved steps (and the "Sessions with recordings" shot) is deleted before exit.
 
     python3 tools/render_screens.py [out_dir]
 
@@ -32,7 +32,9 @@ os.environ["BRAIN_BATTLE_CONFIG"] = _TMP_CFG
 from PyQt6.QtWidgets import QApplication
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "screens")
-SIZES = [(1440, 900), (1280, 800)]
+# DESIGN targets (1440×900, 1280×800) plus the app's actual minimum window —
+# the same three sizes test_layout_fit.py holds every screen to.
+DESIGN_SIZES = [(1440, 900), (1280, 800)]
 
 
 def _pump(app, secs):
@@ -47,24 +49,29 @@ def main():
     register_fonts()
     import brain_battle_main as bbm
 
+    sizes = DESIGN_SIZES + [bbm.MIN_WINDOW]
     os.makedirs(OUT, exist_ok=True)
     win = bbm.BrainBattleApp()
     saved = []
 
     def grab(name):
-        win.resize(*SIZES[0]); win.show()
+        win.resize(*sizes[0]); win.show()
         _pump(app, 0.3)
-        for w, h in SIZES:
+        for w, h in sizes:
             win.resize(w, h)
             _pump(app, 0.25)
             fn = os.path.join(OUT, f"{name}_{w}x{h}.png")
             win.grab().save(fn)
             saved.append(fn)
 
-    # ── shell pages ──
+    # ── Sessions, empty (no recordings yet) ──
     win.show()
-    for idx, name in ((win.IDX_SESSIONS, "01_sessions"),
-                      (win.IDX_REVIEW, "06_review-and-label"),
+    win._shell.set_current_index(win.IDX_SESSIONS)
+    _pump(app, 0.3)
+    grab("01a_sessions-empty")
+
+    # ── Review & Label / Settings (no session open yet, but both render) ──
+    for idx, name in ((win.IDX_REVIEW, "06_review-and-label"),
                       (win.IDX_SETTINGS, "07_settings")):
         win._shell.set_current_index(idx)
         _pump(app, 0.3)
@@ -103,8 +110,14 @@ def main():
     _pump(app, 0.8)
     grab("05_saved")
 
+    # ── Sessions, now with the recording just made ──
+    win._shell.set_current_index(win.IDX_SESSIONS)   # triggers an async rescan
+    _pump(app, 1.2)
+    grab("01b_sessions-with-recordings")
+
     try:
         win.record_flow.shutdown(); win._review_page.shutdown()
+        win._sessions_page.shutdown()
     except Exception:
         pass
     shutil.rmtree(_TMP_CAP, ignore_errors=True)

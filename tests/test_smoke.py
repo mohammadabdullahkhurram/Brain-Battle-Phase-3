@@ -20,8 +20,8 @@ Covers:
   1b. export_module's import-time _HW_ENCODER equals what post-import
      detection returns — i.e. the import-time probe really ran and did not
      silently fall back.
-  2. Construct RecordFlow, ReviewLabelTab, SessionsTab, BrainBattleApp
-     headless (no event pumping — no camera probing, no playback).
+  2. Construct RecordFlow, ReviewLabelTab, SessionsTab, SettingsTab,
+     BrainBattleApp headless (no event pumping — no camera probing, no playback).
   3. Minimal pure-logic checks: session timeline phase order, config
      validation, __version__ surfaced in the window title.
 
@@ -158,11 +158,12 @@ def part2_construct_tabs_and_shell(app):
     from record_flow import RecordFlow
     from sessions_tab import SessionsTab
     from review_label_tab import ReviewLabelTab
+    from settings_tab import SettingsTab
 
     for name, ctor in (("RecordFlow", RecordFlow),
                        ("ReviewLabelTab", ReviewLabelTab),
                        ("SessionsTab", lambda: SessionsTab("/tmp")),
-                       ("SettingsPlaceholder", bbm.SettingsPlaceholder)):
+                       ("SettingsTab", SettingsTab)):
         try:
             w = ctor()
             check(f"construct {name}", True)
@@ -223,6 +224,14 @@ if __name__ == "__main__":
     if stubbed:
         print("  (libVLC absent — construct checks use the vlc stub)")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    # Constructing SettingsTab/BrainBattleApp touches the recordings folder
+    # (free-space read, label_list.json seed) — point it at a throwaway temp
+    # dir so this headless construct check never writes into the real repo's
+    # Captures/.
+    import tempfile
+    os.environ.setdefault("BRAIN_BATTLE_CAPTURE_DIR", tempfile.mkdtemp(prefix="bb_smoke_cap_"))
+    os.environ.setdefault("BRAIN_BATTLE_CONFIG",
+                          os.path.join(tempfile.mkdtemp(prefix="bb_smoke_cfg_"), "settings.json"))
     from PyQt6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication(sys.argv)
 

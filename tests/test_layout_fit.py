@@ -76,8 +76,13 @@ def _overflows(win, page):
             continue
         # Scrollbars are scroll-area chrome, not content: a visible vertical
         # scrollbar legitimately sits at the viewport edge (the page scrolls
-        # rather than clips). Don't treat it as an overflow.
-        if "ScrollBar" in w.__class__.__name__:
+        # rather than clips). Don't treat it as an overflow. Qt's internal
+        # gutter CONTAINER for the bar (object name qt_scrollarea_vcontainer/
+        # hcontainer) is a plain QWidget, not something named "*ScrollBar*",
+        # so it needs its own exclusion — only shows up once a page actually
+        # needs to scroll (Settings is the first: DESIGN §7 is a long page).
+        if "ScrollBar" in w.__class__.__name__ or \
+                w.objectName() in ("qt_scrollarea_vcontainer", "qt_scrollarea_hcontainer"):
             continue
         reg = w.visibleRegion()
         if reg.isEmpty():

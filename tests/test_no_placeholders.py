@@ -1,13 +1,12 @@
 """
 Acceptance gate for the Phase-3 owner rule: by the end of Phase 3 there must be
-no placeholder / temporary / "coming later" wording or placeholder screens left
-in the shipped UI code — except the Settings screen, which is finished in a
-later step.
+ZERO placeholder / temporary / "coming later" wording and ZERO placeholder
+screens left in the shipped UI code — no exceptions (the Settings screen, the
+last one, shipped in Phase 3 step 7).
 
 It greps the first-party app modules (root *.py, excluding tests/ and the
 dev-only tools/) for distinctive placeholder UI copy, and for any class named
-*Placeholder, and lists what survives. The only thing allowed to survive is the
-Settings placeholder.
+*Placeholder, and lists what survives. Nothing is allowed to survive.
 
 Run:  python3 tests/test_no_placeholders.py
 """
@@ -37,10 +36,9 @@ PHRASES = [
     "to be added later", "not yet implemented", "coming in a future",
 ]
 
-# The one screen allowed to still be a placeholder (finished in a later step).
-ALLOWED_PLACEHOLDER_CLASSES = {"SettingsPlaceholder"}
-# The Settings copy legitimately says its controls "arrive in a later step".
-ALLOWED_PHRASE_LINES = {("brain_battle_main.py", "arrive in a later step")}
+# Zero exceptions now that Settings (the last placeholder screen) has shipped.
+ALLOWED_PLACEHOLDER_CLASSES: set = set()
+ALLOWED_PHRASE_LINES: set = set()
 
 
 def _app_files():
