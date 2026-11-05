@@ -38,6 +38,34 @@ DEFAULT_LABELS: list[dict] = [
 # UI words for the two kinds (DESIGN vocabulary — never show "point"/"duration").
 KIND_LABEL = {POINT: "Moment", DURATION: "Lasts a while"}
 
+# Colour palette the Settings label editor auto-picks from for [+ Add label]
+# (DESIGN.md "Design tokens" — the default labels' colours plus the remaining
+# named accents, so a new label never collides with an in-use colour until the
+# palette itself is exhausted).
+PALETTE: list[str] = [
+    "#3D4FD6", "#7C3AED", "#0F766E", "#B45309", "#4B5563", "#BE185D",
+    "#B91C1C", "#15171C", "#0E7490", "#C2410C", "#15803D", "#2B3AA8",
+]
+
+
+def next_color(existing: list[dict] | list[str]) -> str:
+    """First PALETTE colour not already used by `existing` (labels or plain
+    colour strings); cycles through the palette once all are taken."""
+    used = {(e.get("color") if isinstance(e, dict) else e or "").upper()
+            for e in existing}
+    for c in PALETTE:
+        if c.upper() not in used:
+            return c
+    return PALETTE[len(list(existing)) % len(PALETTE)]
+
+
+def renumber(labels: list[dict]) -> list[dict]:
+    """Reassign `key` = position + 1 (1-9) to match display order — the
+    order IS the number-key mapping (DESIGN §6 "press 1-8 to place")."""
+    for i, item in enumerate(labels):
+        item["key"] = i + 1
+    return labels
+
 
 def path(recordings_dir) -> str:
     return os.path.join(str(recordings_dir), FILENAME)
