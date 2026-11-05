@@ -105,7 +105,7 @@ whoever picks up the item, not a contract.
 
 ---
 
-## Phase 3 — Structure and design
+## Phase 3 — Structure and design — **DONE (2026-11-06)**
 
 > **`docs/DESIGN.md` (approved 2026-10-27) is the source of truth for ALL UI
 > work in Phases 3–6** — screens, copy, vocabulary, tokens, layout. If code
@@ -115,68 +115,48 @@ whoever picks up the item, not a contract.
 > recommended in `docs/PLAYBACK_PROPOSAL.md` — the only option correct on the
 > drifting camera, and it collapses today's two playback stacks into one.
 
-- **Sessions home screen** — cards for every session in the storage folder
-  (date, boxers, rounds, duration, status badge Recorded/Labelled/Exported),
-  search/sort, "Show in Finder", one-click open.
-  *Why:* there is no library view today — the app always jumps straight
-  into Live Monitor, and finding a past session means browsing the
-  filesystem by hand. This is the new entry point implied by the
-  Sessions → Record → Review & Label direction in `CLAUDE.md`.
-  *Files:* new module, e.g. `sessions_home_tab.py`; reads
-  `session_storage.py`'s on-disk layout and `session_manifest.json`;
-  `sidebar_shell.py` to register the new page as the default landing page.
+**All of Phase 3 is built and tested against the generated demo session +
+simulated devices** (hardware is still broken — see `CLAUDE.md`'s "Project
+situation"). Step 7 (this step) shipped the real Settings screen
+(`settings_tab.py`), which was the last placeholder screen — the Phase-3
+owner rule ("zero placeholder/temporary UI copy, zero placeholder screens")
+is now met with zero exceptions (`tests/test_no_placeholders.py`). See
+"DESIGN differences" below for the handful of places the build intentionally
+reads slightly differently than DESIGN.md's mockup text, and why.
 
-- **Record as a guided flow**: device checklist with green/red per camera
-  and headband → session setup with defaults → recording view with big
-  timer and phase name → done screen.
-  *Why:* today's Live Monitor is one dense screen combining camera grid,
-  EEG widgets, and session controls at once; `_on_start_clicked`'s own
-  pre-flight warnings (camera/EEG connection checks) already hint that
-  operators get this wrong without a guided checklist.
-  *Files:* `live_session_tab.py` (likely split into several guided-flow
-  screens/steps), `usb_camera_panel.py`, `eeg_module.py`
-  (`EEGLiveWidget` connection status), `session_setup_dialog.py`,
-  `circular_timer.py` (reused for the recording-view timer).
+- ~~**Sessions home screen**~~ **DONE.** `sessions_tab.py` — a table (DESIGN
+  §1's actual layout, not the cards this bullet originally sketched): date,
+  boxers, length, labels, status badge, search, status filter chips + counts,
+  sort, the interrupted banner, "Show in Finder", one-click open.
 
-- **Merge Review and Labelling into one "Review & Label" screen**, one
-  video stack, all on the capture-clock axis (fixes the hardcoded 0 offsets
-  in today's Labelling tab).
-  *Why:* the two tabs currently run two entirely different video-playback
-  stacks (python-vlc/vmem in `SyncReviewTab` vs. Qt Multimedia in
-  `vlc_module.VLCVideoSlot`) and two different, sometimes-inconsistent
-  alignment conventions — `LabellingTab._open_session_folder` hardcodes
-  `offset_sec=0.0` for every source, and even the Review→Label handoff
-  hardcodes EEG's offset to `0.0` instead of the Review tab's `axis_shift`.
-  One screen with one playback stack removes an entire class of skew bugs.
-  *Files:* `brain_battle_main.py` (`SyncReviewTab` + `LabellingTab` merge —
-  pick one of the two playback stacks and delete the other),
-  `vlc_module.py`, `sidebar_shell.py`.
+- ~~**Record as a guided flow**~~ **DONE.** `record_flow.py` (DESIGN §2-§5):
+  Connect devices → Set up session → Record → Saved, replacing the old Live
+  Monitor entirely (deleted, along with `session_setup_dialog.py` and the old
+  camera grid).
 
-- **Fix the Review layout not fitting a laptop screen.**
-  *Why:* observed eyes-on-glass on the demo session (2026-10-21) — on a
-  laptop display the Review tab's side-camera row is squeezed out of view and
-  the right edge is clipped, so the operator can't see all four cameras at
-  once. The current layout uses fixed heights (e.g. the 320 px EEG row, the
-  84 px control strip) and an `_AspectVideoArea` that sizes the 2×2 grid
-  purely off width, with no overall vertical budget — so on a short viewport
-  the video + EEG + controls don't fit. Fold this into the Review & Label
-  redesign above: give the merged screen a height-aware layout (scroll or
-  proportionally shrink panes) so everything fits at laptop resolutions.
-  *Files:* `brain_battle_main.py` (`SyncReviewTab._build`'s
-  `_AspectVideoArea`, the fixed-height EEG/controls rows; same for the merged
-  screen).
+- ~~**Merge Review and Labelling into one "Review & Label" screen**~~ **DONE.**
+  `review_label_tab.py` + `pyav_player.py` — one PyAV-driven screen on a single
+  `t_session_seconds` playhead (Option C from `docs/PLAYBACK_PROPOSAL.md`); the
+  old `SyncReviewTab`/`LabellingTab`/`vlc_module`/audio-xcorr (`sync_engine`'s
+  dead half) are gone.
 
-- **Settings screen**: storage folder, headband → Boxer A/B assignment
-  (replaces hardcoded `BOXER_LABELS`), video resolution/fps, default
-  durations, label vocabulary, round-bell on/off.
-  *Why:* `BOXER_LABELS = {"MuseS-7538": "BOXER A", "MuseS-7564": "BOXER B"}`
-  (`eeg_module.py`), the camera resolution/fps defaults (`usb_camera.py`),
-  the label palette (`labels_config.py`/`labels_data.json`), and the sync
-  beep are all hardcoded in source today — a non-technical researcher has no
-  way to change any of them without editing code.
-  *Files:* new `settings_tab.py`; `eeg_module.py` (`BOXER_LABELS`),
-  `usb_camera.py` (`USBCameraThread.__init__` defaults), `labels_config.py`,
-  `sync_beep.py`, `session_setup_dialog.py` (default durations).
+- ~~**Fix the Review layout not fitting a laptop screen**~~ **DONE** — folded
+  into the merged screen above; `tests/test_layout_fit.py` holds every screen
+  (including Settings, this step) to 1440×900 / 1280×800 / the app's minimum
+  window with nothing clipped.
+
+- ~~**Settings screen**~~ **DONE (Phase 3 step 7).** `settings_tab.py`
+  (DESIGN §7): recordings folder (name/path/free space, Change folder…/Show in
+  Finder, a `BRAIN_BATTLE_CAPTURE_DIR`-override note), headbands (known-device
+  dropdowns + BLE search, a same-headband guard), video quality (Standard/
+  High/Light — resolution AND bitrate now wired into the recorder, with the
+  "GB per hour" copy and the disk-space estimate both COMPUTED from that
+  bitrate, not hard-coded), session defaults + round bell + Test sound, and
+  the shared label list (add/rename/remove/reorder/recolour, `label_list.json`
+  in the recordings folder). Everything autosaves with a brief "✓ Saved"
+  confirmation. Replaces the old hard-coded `eeg_module.BOXER_LABELS`,
+  `usb_camera.py`'s fixed resolution/bitrate, and the Settings placeholder
+  (the last one — `tests/test_no_placeholders.py` now allows zero exceptions).
 
 - ~~**Light-mode-only design system**~~ **DONE (Phase 3 step 2).**
   `design_tokens` is rebuilt light-only from DESIGN.md; the dark palette, theme
@@ -189,18 +169,21 @@ whoever picks up the item, not a contract.
   Review & Label, opens on Sessions), with the existing screens wired behind
   it (Sessions/Settings placeholders; New recording = Live Monitor;
   Review & Label = the Review screen + a temporary link to the old Labelling
-  screen). `tools/render_screens.py` renders every page at 1440×900 / 1280×800.
-  **Still TODO (later Phase 3 steps):** the actual Sessions home list, the
-  guided Record flow, and the real merged Review & Label screen (the items
-  above/below this one) — the placeholders mark where they land.
+  screen). `tools/render_screens.py` renders every page at 1440×900 / 1280×800
+  / the app's minimum window (all three sizes now, as of step 7).
+  **All since DONE** — the Sessions home list, the guided Record flow, the real
+  merged Review & Label screen, and (step 7) the real Settings screen are all
+  built; nothing in this phase is still a placeholder.
 
-### New scope from `docs/DESIGN.md` (approved 2026-10-27)
+### New scope from `docs/DESIGN.md` (approved 2026-10-27) — **ALL DONE**
 
-These came out of the approved mockups and are build requirements for the
+These came out of the approved mockups and were build requirements for the
 screens above; see DESIGN.md for the exact copy/layout.
 
-- **Boxer names + manifest-based session discovery, and recording-folder
-  naming `YYYY-MM-DD HH-MM <A name> vs <B name>`.**
+- ~~**Boxer names + manifest-based session discovery, and recording-folder
+  naming `YYYY-MM-DD HH-MM <A name> vs <B name>`.**~~ **DONE** —
+  `session_storage._session_folder_name` + manifest boxer fields;
+  `record_flow.py`'s Set up step.
   *Why:* the Sessions list, every screen title, and the folder name show the
   boxers' names (DESIGN §1, §3–6). Names are entered at setup and stored in
   the manifest; the folder name includes them (filesystem-sanitized).
@@ -211,33 +194,50 @@ screens above; see DESIGN.md for the exact copy/layout.
   manifest boxer fields, `scan_interrupted_sessions` prefix check),
   `session_setup_dialog.py` / the new setup screen.
 
-- **Headband battery + per-sensor contact quality** on the Connect and
-  Recording screens.
-  *Why:* DESIGN §2/§4 show battery % and a Good/Weak-contact chip per sensor
-  (Left ear/forehead etc. ← TP9/AF7/AF8/TP10), with plain-language fix tips.
-  Battery from Muse telemetry if available; contact quality computed from the
-  signal (e.g. per-channel variance/railing).
-  *Files:* `eeg_module.py` (`_MuseDirectReader` telemetry + a per-channel
-  quality metric, `EEGLiveWidget`), the Connect/Recording screens.
+- ~~**Headband battery + per-sensor contact quality**~~ **DONE** — battery %
+  + Good/Weak-contact chips with plain-language fix tips on Connect and
+  Recording (`headband_source.py`, `contact_quality.py`, `record_flow.py`'s
+  `HeadbandView`).
 
-- **"Mark this moment" during recording** → stored in the session → shown as
-  unnamed labels to be named in Review & Label.
-  *Why:* DESIGN §4/§6 — the operator marks moments live (M key) and names
-  them later. Needs a place in the session for timestamped unnamed marks.
-  *Files:* `live_session_tab.py` / Recording screen, `session_storage.py`
-  (store marks, e.g. in the manifest or a `moments.csv`), the merged
-  Review & Label screen (surface them as unnamed labels).
+- ~~**"Mark this moment" during recording**~~ **DONE** — `record_flow.py`'s
+  `mark_moment`/`RecordingStep.show_moment`; surfaced as unnamed labels to
+  name in `review_label_tab.py`.
 
-- **Sessions status model** (Interrupted / Needs labelling / Labelled /
-  Exported), computed from the manifest + `labels.json` + export presence.
-  *Why:* DESIGN §1 status badges + filter chips.
-  *Files:* `session_storage.py` (a `session_status(root)` helper), the
-  Sessions home screen.
+- ~~**Sessions status model**~~ **DONE** — `session_storage.session_info`
+  (Interrupted / Needs labelling / Labelled / Exported) drives `sessions_tab.py`'s
+  status badges + filter chips.
 
-- **Labels gain `who` = A | B | Both and point/duration ("lasts a while")
-  types** — this REFINES the existing Phase 4 label items below (the `boxer`
-  and `end_t_seconds` fields already reserved in `labels.json` get filled; the
-  Review & Label UI adds the who-picker and duration placement per DESIGN §6).
+- ~~**Labels gain `who` = A | B | Both and point/duration types**~~ **DONE**
+  — `labels_store.py` v2 schema; the who-picker + duration placement in
+  `review_label_tab.py` (DESIGN §6).
+
+### DESIGN differences (intentional, as of Phase 3 step 7)
+
+Everywhere else the app matches DESIGN.md's screens/copy/vocabulary. These are
+the handful of places the build deliberately reads differently, and why:
+
+- **Sessions is a table, not cards.** DESIGN §1's actual column/row layout
+  (Recorded/Boxers/Length/Labels/Status/actions) is a table; "cards" in this
+  ROADMAP's original Phase-3 sketch predates DESIGN.md and was superseded.
+- **Settings' label-list rows have ↑/↓ reorder buttons**, which DESIGN §7's
+  row spec (key/swatch/name/kind/remove) doesn't list. Needed because the
+  order of the list IS the 1-9 number-key mapping (DESIGN §6) — without a way
+  to reorder, the key assignment would be fixed at creation order forever.
+- **Settings' "Saved" confirmation is inline text next to the title** (a
+  small "✓ Saved" that fades after ~1.5 s), not a toast/snackbar — DESIGN says
+  only "a brief, plain confirmation," not a specific widget; inline text
+  needed no new chrome and reads as part of the page.
+- **`BRAIN_BATTLE_CAPTURE_DIR` now always overrides a previously-saved custom
+  recordings folder**, not just the undecided-default case. DESIGN §7 says
+  the env override should "disable Change" and show it as "set outside the
+  app" — for that note to stay true after a user has already picked a folder
+  from Settings once, the env var has to keep winning, so
+  `AppSettings.capture_dir_resolved()` checks it first unconditionally.
+- **Settings' headband "same device" conflict is caught on assignment**, not
+  prevented from being selectable — DESIGN only states the constraint, not
+  the interaction; rejecting the change with an inline message (rather than
+  filtering the dropdown's contents) keeps both boxers' lists showing every
+  known device.
 
 ---
 

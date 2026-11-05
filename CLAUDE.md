@@ -126,8 +126,9 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
   history, README) and events.csv ordering.
 - `test_flash_sync.py` — verify-only: at every phase marker of a 12-min demo the
   white flash is within one frame period (≤34 ms) across the four tiles.
-- `test_no_placeholders.py` — acceptance gate: no placeholder/temporary UI copy,
-  no EEG channel codes or "UPLOAD" text, only the Settings placeholder survives.
+- `test_no_placeholders.py` — acceptance gate: ZERO placeholder/temporary UI
+  copy, no EEG channel codes or "UPLOAD" text, zero placeholder screens left
+  (the Settings placeholder shipped as a real screen in Phase 3 step 7).
 - `test_capture_clock.py` — capture-clock reconciliation arithmetic, two-band
   relative skew, marker/EEG co-registration, manifest bridge round-trip, the
   real EEG reader flush path, and the co-registered EEG export.
@@ -157,31 +158,50 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
   simulation text when `BRAIN_BATTLE_SIMULATE` is unset.
 - `test_app_settings.py` — the settings store (defaults, round-trip) and the
   `BOXER_LABELS` removal (now `eeg_module.boxer_labels()` from settings).
+- `test_settings_screen.py` — the real Settings screen (DESIGN §7): bitrate
+  computed (not hard-coded) into the GB/hour copy, the disk estimate, and the
+  recorder's own `-b:v`; known-headbands + the same-headband guard; every
+  section's autosave; the label-list editor (add/rename/remove/reorder/
+  recolour, keys renumbered 1..n); and a headless end-to-end — change
+  defaults/quality/label list in Settings, start a (simulated) recording, and
+  confirm Set up/the recorder/the disk estimate/Review & Label all reflect it.
 - `test_contact_log.py` — per-sensor contact log weak-period spans + the >30 s
   "worth checking" filter.
 
 ## Project status
 
-**Current state (Phase 3, `develop` = `3.0.0-dev`).** The unified capture-time
-clock shipped and the app was rebuilt onto the three DESIGN screens. Review &
+**Current state: Phase 3 COMPLETE (`develop` = `3.0.0-dev`).** The unified
+capture-time clock shipped and the app was rebuilt onto the four DESIGN
+screens — Sessions, New recording, Review & Label, and now Settings. Review &
 Label is one merged PyAV-driven screen (single `t_session_seconds` playhead);
 labels are `labels.json` v2 with undo/redo and a shared vocabulary; Sessions is
 the home library; export produces an analysis bundle. The old Review/Labelling
 tabs, VLC, audio-xcorr (`sync_engine.py`), and `labels_config.py` are gone. **New
-recording is now the guided flow** (`record_flow.py`, DESIGN §2–§5: Connect →
+recording is the guided flow** (`record_flow.py`, DESIGN §2–§5: Connect →
 Set up → Record → Saved), replacing the Live Monitor (`live_session_tab.py`,
 `session_setup_dialog.py`, the old camera grid — all removed). It records moments
 (M), prevents sleep, logs per-sensor contact quality, and stops cleanly early;
-moments surface in Review as unnamed labels. The headband→boxer mapping and
-session/bell/quality defaults moved from hard-coded source into an `app_settings`
-store (Settings-screen editing lands in the next step). Hardware is broken, so
+moments surface in Review as unnamed labels. **Settings is now the real screen**
+(`settings_tab.py`, DESIGN §7 — Phase 3 step 7, the final placeholder removed):
+recordings folder (Change folder…/Show in Finder, a `BRAIN_BATTLE_CAPTURE_DIR`
+override note), headbands (known-device dropdowns + BLE search, a same-headband
+guard), video quality (Standard/High/Light — resolution AND bitrate wired into
+the recorder, with the GB/hour copy and disk-space estimate both computed from
+that bitrate), session defaults + round bell + Test sound, and the shared label
+list (add/rename/remove/reorder/recolour). Everything autosaves with a brief
+"✓ Saved" confirmation and applies to the next recording. The former hard-coded
+`eeg_module.BOXER_LABELS` and `usb_camera.py`'s fixed resolution/bitrate are
+gone — all of it now lives in the `app_settings` store. Hardware is broken, so
 the whole flow is built + tested against **simulated** devices driven through the
 real capture paths (`simulation.py`, `BRAIN_BATTLE_SIMULATE`, dev-only, not
 shipped). What remains hardware-blocked is the eyes-on-glass/real-signal
-verification (deferred items below). The historical step-by-step narrative that follows is kept for
-context — where it names `SyncReviewTab`/`LabellingTab`/`vlc_module`/
-`sync_engine`, those are the now-removed predecessors of `review_label_tab.py` +
-`pyav_player.py`.
+verification (deferred items below) — see `docs/ROADMAP.md`'s Phase 3 "DESIGN
+differences" note for the handful of places this build intentionally reads
+differently than DESIGN.md's mockup text. Phase 4 (Labelling) is next, gated on
+owner approval per the working agreement. The historical step-by-step narrative
+that follows is kept for context — where it names `SyncReviewTab`/
+`LabellingTab`/`vlc_module`/`sync_engine`, those are the now-removed
+predecessors of `review_label_tab.py` + `pyav_player.py`.
 
 ---
 
@@ -340,10 +360,11 @@ simultaneously and share `phase_markers.csv` time.
 
 ## Module map
 
-Current architecture: three DESIGN screens behind a light sidebar shell —
+Current architecture: four DESIGN screens behind a light sidebar shell —
 **Sessions** (home library), **New recording** (a full-screen guided flow,
-`record_flow.py`), **Review & Label** (one merged screen) — plus Settings.
-Review & Label playback is app-driven on a single `t_session_seconds` playhead
+`record_flow.py`), **Review & Label** (one merged screen), and **Settings**
+(`settings_tab.py`). Review & Label playback is app-driven on a single
+`t_session_seconds` playhead
 via **PyAV** (`pyav_player.py`): there is no VLC, no Qt-Multimedia, and no
 audio-xcorr. Labels are `labels.json` v2 (`labels_store.py`) with a shared team
 vocabulary (`label_vocab.py`); export is an analysis bundle
@@ -354,7 +375,8 @@ shipped).
 
 | File | Purpose |
 |---|---|
-| `brain_battle_main.py` | Entry point, `BrainBattleApp` shell (window sizing + QSettings), `SettingsPlaceholder` |
+| `brain_battle_main.py` | Entry point, `BrainBattleApp` shell (window sizing + QSettings, page wiring) |
+| `settings_tab.py` | The real Settings screen (DESIGN §7): recordings folder, headbands, video quality, session defaults + bell, shared label-list editor; autosaves with a "✓ Saved" confirmation |
 | `review_label_tab.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, jargon-free brain card, timeline, labelling |
 | `pyav_player.py` | `PyAVCamera` / `MultiCamDecoder` / `DecodeWorker` / `PlayerController` — single-clock decode off the UI thread |
 | `labels_store.py` | `labels.json` v2 (schema, v1 migration, undo/redo, events timeline) |
@@ -367,7 +389,7 @@ shipped).
 | `record_flow.py` | The guided New-recording flow (DESIGN §2–§5): Connect → Set up → Record → Saved; owns the device slots + SessionController; emits `session_saved` / `exit_flow` |
 | `camera_source.py` | `CameraSlot` — one camera for the flow (wraps `USBCameraThread`: preview, fps, recording/dropped/encoder state) |
 | `headband_source.py` | `HeadbandSlot` — one boxer's headband (wraps `_MuseDirectReader`: connection, battery, per-sensor contact, live trace, reconnect/append) |
-| `app_settings.py` | User-config store: headband→Boxer A/B mapping (replaces hard-coded `BOXER_LABELS`), session defaults, round bell, video quality, capture dir |
+| `app_settings.py` | User-config store: headband→Boxer A/B mapping + known-headbands list (replaces hard-coded `BOXER_LABELS`), session defaults, round bell, video quality (resolution + bitrate), capture dir (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set) |
 | `simulation.py` | **Dev-only, not shipped** — `BRAIN_BATTLE_SIMULATE` simulated cameras + headbands through the real capture paths; failure injection (missing camera, headband drop) |
 | `contact_log.py` | Per-sensor contact-quality log written during recording + weak-period summary for Saved/Review |
 | `keep_awake.py` | Prevent sleep while recording (caffeinate / SetThreadExecutionState) |
