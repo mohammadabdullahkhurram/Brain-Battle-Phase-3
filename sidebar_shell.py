@@ -161,12 +161,15 @@ class SidebarShell(QWidget):
         return card
 
     def _disk_status(self, free_bytes: int):
-        """Classify free space against a default session's estimated size.
-        Returns (key, status_text, bar_colour). green normally; amber when
-        free < 3× a default session; red when free < 1×."""
-        from session_storage import estimate_session_bytes
+        """Classify free space against a default session's estimated size
+        (at the currently-chosen video quality). Returns (key, status_text,
+        bar_colour). green normally; amber when free < 3× a default session;
+        red when free < 1×."""
+        from session_storage import estimate_session_bytes, video_bytes_per_sec_for_mbps
         from session_controller import SessionConfig
-        est = estimate_session_bytes(SessionConfig(), n_cameras=4, n_eeg=2)
+        import app_settings
+        vbps = video_bytes_per_sec_for_mbps(app_settings.load().video_mbps())
+        est = estimate_session_bytes(SessionConfig(), n_cameras=4, n_eeg=2, video_bytes_per_sec=vbps)
         if free_bytes < est:
             return ("full", "almost full", dt.record_red())
         if free_bytes < 3 * est:
@@ -177,6 +180,12 @@ class SidebarShell(QWidget):
         self._free_bar.setStyleSheet(
             f"QProgressBar {{ background: {dt.border()}; border: none; border-radius: 2px; }}"
             f"QProgressBar::chunk {{ background: {colour}; border-radius: 2px; }}")
+
+    def set_capture_dir(self, capture_dir: str) -> None:
+        """Settings' [Change folder…] changed the active recordings folder —
+        update the folder card without rebuilding the sidebar."""
+        self._capture_dir = capture_dir
+        self.refresh_folder_card()
 
     def refresh_folder_card(self) -> None:
         """Show the capture folder's name + REAL free space + a plain-language

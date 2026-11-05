@@ -30,13 +30,24 @@ from session_controller import SessionConfig
 
 SCHEMA_VERSION = 1
 
-# Record video-quality presets (DESIGN §7). (width, height, fps, ~GB per hour
-# per camera for the Settings copy). "standard" is today's hard-coded default.
+# Record video-quality presets (DESIGN §7): (width, height, fps, target H.264
+# bitrate in Mbps). "standard" is today's default (960x540@30, 5 Mbps — see
+# usb_camera.py's REC_BITRATE rationale). The Settings screen's "about X GB
+# per hour per camera" copy and the disk-space estimate are both COMPUTED
+# from `mbps` (gb_per_hour / session_storage.video_bytes_per_sec_for_mbps),
+# never hard-coded, so the three stay in lock-step as quality changes.
 VIDEO_QUALITY = {
-    "standard": {"label": "Standard", "w": 960,  "h": 540, "fps": 30, "gb_per_hour": 2.2},
-    "high":     {"label": "High",     "w": 1280, "h": 720, "fps": 30, "gb_per_hour": 4.0},
-    "light":    {"label": "Light",    "w": 640,  "h": 360, "fps": 30, "gb_per_hour": 1.0},
+    "standard": {"label": "Standard", "w": 960,  "h": 540, "fps": 30, "mbps": 5.0,
+                 "recommended": True},
+    "high":     {"label": "High",     "w": 1280, "h": 720, "fps": 30, "mbps": 8.0},
+    "light":    {"label": "Light",    "w": 640,  "h": 360, "fps": 30, "mbps": 2.5},
 }
+
+
+def gb_per_hour(mbps: float) -> float:
+    """Decimal GB/hour for one camera at this nominal bitrate (Settings
+    copy) — Mbit/s -> GB/hour: mbps * 3600s / 8 bits-per-byte / 1000."""
+    return float(mbps) * 3600 / 8 / 1000
 
 # Default headband → Boxer mapping (the former eeg_module.BOXER_LABELS values).
 _DEFAULT_HEADBANDS = {"A": "MuseS-7538", "B": "MuseS-7564"}
@@ -83,6 +94,9 @@ def default_capture_root() -> str:
 class AppSettings:
     capture_dir:      Optional[str] = None          # None → default_capture_root()
     headbands:        dict = field(default_factory=lambda: dict(_DEFAULT_HEADBANDS))
+    # Device names seen on a previous BLE scan/connection (Settings' "known
+    # headbands" dropdown), independent of the current A/B assignment.
+    known_headbands:  list = field(default_factory=lambda: list(_DEFAULT_HEADBANDS.values()))
     session_defaults: dict = field(default_factory=lambda: {
         "num_rounds": 3, "round_sec": 180, "break_sec": 60, "baseline_sec": 60})
     round_bell:       bool = True
@@ -90,6 +104,13 @@ class AppSettings:
 
     # ---- derived accessors ----
     def capture_dir_resolved(self) -> str:
+        """BRAIN_BATTLE_CAPTURE_DIR, if set, always wins — it's "set outside
+        the app" (Settings §7), so it overrides even a folder the user
+        previously picked from Settings. Otherwise the user's saved choice,
+        else the default Captures/ root."""
+        env = os.environ.get("BRAIN_BATTLE_CAPTURE_DIR")
+        if env:
+            return env
         return self.capture_dir or default_capture_root()
 
     def session_config(self) -> SessionConfig:
@@ -118,6 +139,23 @@ class AppSettings:
     def video_dims(self) -> tuple[int, int, int]:
         q = VIDEO_QUALITY.get(self.video_quality, VIDEO_QUALITY["standard"])
         return int(q["w"]), int(q["h"]), int(q["fps"])
+
+    def video_mbps(self) -> float:
+        q = VIDEO_QUALITY.get(self.video_quality, VIDEO_QUALITY["standard"])
+        return float(q["mbps"])
+
+    def known_headband_names(self) -> list:
+        """Known device names for the Settings dropdowns: remembered scans
+        plus whatever is currently assigned, de-duplicated, order preserved."""
+        out = []
+        for name in list(self.known_headbands or []) + list((self.headbands or {}).values()):
+            if name and name not in out:
+                out.append(name)
+        return out
+
+    def remember_headband(self, name: str) -> None:
+        if name and name not in (self.known_headbands or []):
+            self.known_headbands = list(self.known_headbands or []) + [name]
 
     # ---- persistence ----
     def to_json(self) -> dict:
@@ -151,6 +189,9 @@ def load(path: Optional[str] = None) -> AppSettings:
     if isinstance(hb, dict):
         s.headbands = {"A": hb.get("A") or _DEFAULT_HEADBANDS["A"],
                        "B": hb.get("B") or _DEFAULT_HEADBANDS["B"]}
+    kh = data.get("known_headbands")
+    if isinstance(kh, list):
+        s.known_headbands = [str(x) for x in kh if isinstance(x, str) and x]
     sd = data.get("session_defaults")
     if isinstance(sd, dict):
         s.session_defaults.update({k: sd[k] for k in
@@ -170,7 +211,21 @@ def boxer_labels() -> dict:
     return load().boxer_labels()
 
 
+def remember_headband(name: str) -> None:
+    """Record a device name seen on a BLE scan/connection into the saved
+    settings' "known headbands" list (Settings dropdowns remember devices
+    across launches). No-op for an empty name; idempotent for a repeat."""
+    if not name:
+        return
+    s = load()
+    before = list(s.known_headbands or [])
+    s.remember_headband(name)
+    if s.known_headbands != before:
+        s.save()
+
+
 __all__ = [
     "AppSettings", "load", "config_path", "default_capture_root",
-    "boxer_labels", "VIDEO_QUALITY", "SCHEMA_VERSION",
+    "boxer_labels", "remember_headband", "VIDEO_QUALITY", "gb_per_hour",
+    "SCHEMA_VERSION",
 ]

@@ -58,15 +58,18 @@ log = logging.getLogger(__name__)
 
 # ─── Recording encoder config ──────────────────────────────────────────────────
 #
-# Target bitrate for the 960×540 H.264 recording. 540p30 boxing footage is
-# high-motion (fast exchanges, moving bodies); 4 Mbps shows visible blocking on
-# the hardest frames, 6 Mbps is clean but ~50% larger. 5 Mbps is the balance —
-# visibly clean at this resolution while staying ~0.6 MB/s per camera (~2.4 MB/s
-# across four), well inside the pre-flight disk estimate. -maxrate/-bufsize cap
-# the peaks so a burst of motion can't blow past the plan.
-REC_BITRATE       = "5M"
-REC_MAXRATE       = "6M"
-REC_BUFSIZE       = "10M"
+# Default/fallback target bitrate for the H.264 recording, used when no
+# explicit bitrate is given (e.g. direct FrameEncoder/USBCameraThread use in
+# tests). 540p30 boxing footage is high-motion (fast exchanges, moving
+# bodies); 4 Mbps shows visible blocking on the hardest frames, 6 Mbps is
+# clean but ~50% larger. 5 Mbps is the balance — visibly clean at 960x540
+# while staying ~0.6 MB/s per camera. The Settings video-quality level
+# (app_settings.VIDEO_QUALITY) picks the ACTUAL bitrate per recording;
+# -maxrate/-bufsize (1.2x / 2x the chosen bitrate) cap the peaks so a burst of
+# motion can't blow past the plan.
+REC_BITRATE_MBPS  = 5.0
+REC_MAXRATE_FACTOR = 1.2
+REC_BUFSIZE_FACTOR = 2.0
 # Bounded hand-off queue (capture thread → encoder writer thread). ~2 s at
 # 30 fps: long enough to ride out a brief encoder hiccup, short enough that a
 # genuinely stalled encoder drops frames instead of ballooning memory.
@@ -175,11 +178,13 @@ def _resolve_encoder() -> str:
         return "libx264"
 
 
-def _encoder_rate_args(encoder: str) -> list[str]:
-    """Encoder-specific rate-control flags around the shared target bitrate.
+def _encoder_rate_args(encoder: str, bitrate_mbps: float = REC_BITRATE_MBPS) -> list[str]:
+    """Encoder-specific rate-control flags around the given target bitrate.
     (The encoder NAME comes from export_module's probe; only these recorder
     rate flags live here — the detection is not duplicated.)"""
-    rate = ["-b:v", REC_BITRATE, "-maxrate", REC_MAXRATE, "-bufsize", REC_BUFSIZE]
+    b = float(bitrate_mbps)
+    rate = ["-b:v", f"{b:g}M", "-maxrate", f"{b * REC_MAXRATE_FACTOR:g}M",
+            "-bufsize", f"{b * REC_BUFSIZE_FACTOR:g}M"]
     if encoder == "libx264":
         # ultrafast keeps 4 software encodes cheap on a laptop; zerolatency
         # avoids frame reordering/lookahead so capture isn't held up.
@@ -233,12 +238,14 @@ class FrameEncoder:
 
     def __init__(self, path, width: int, height: int, fps: float,
                  clock: Optional[tuple[float, float]] = None,
-                 encoder: Optional[str] = None):
+                 encoder: Optional[str] = None,
+                 bitrate_mbps: float = REC_BITRATE_MBPS):
         self.path = str(path)
         self._w = int(width)
         self._h = int(height)
         self._fps = float(fps)
         self._clock = clock
+        self._bitrate_mbps = float(bitrate_mbps)
         # Explicit encoder name skips the export_module probe (used by the demo
         # generator's worker processes, which resolve it once in the parent).
         self._want_encoder = encoder
@@ -267,7 +274,7 @@ class FrameEncoder:
              "-pix_fmt", "yuv420p",
              "-fps_mode", "passthrough",
              "-g", str(max(1, int(round(self._fps))))]       # keyframe ~every 1 s
-            + _encoder_rate_args(self._encoder)
+            + _encoder_rate_args(self._encoder, self._bitrate_mbps)
             + ["-movflags", "+frag_keyframe+empty_moov+default_base_moof",
                "-frag_duration", "500000",
                self.path]
@@ -434,6 +441,7 @@ class USBCameraThread(QThread):
 
     def __init__(self, device: CameraDevice,
                  width: int = 960, height: int = 540, fps: int = 30,
+                 bitrate_mbps: float = REC_BITRATE_MBPS,
                  parent: QObject | None = None):
         # Default 960×540 (qHD, 16:9). This is ~56% the pixel count of 720p
         # but visually nearly indistinguishable on the small preview tiles
@@ -449,6 +457,7 @@ class USBCameraThread(QThread):
         self._want_w    = width
         self._want_h    = height
         self._want_fps  = fps
+        self._bitrate_mbps = float(bitrate_mbps)
         # Preview frames are downscaled to at most this width BEFORE crossing
         # the thread boundary (recording still gets the full-quality frame);
         # keeps the Qt signal queue light with four live tiles. 0 → no cap.
@@ -687,7 +696,7 @@ class USBCameraThread(QThread):
     # (docs/ARCHITECTURE_AND_EVALUATION.md §1.6).
 
     def _start_recording_encoder(self, path, fw, fh, fps, clock) -> None:
-        enc = FrameEncoder(path, fw, fh, fps, clock)
+        enc = FrameEncoder(path, fw, fh, fps, clock, bitrate_mbps=self._bitrate_mbps)
         if not enc.start():
             self.state_changed.emit("error: could not start video encoder")
             self.record_error.emit(

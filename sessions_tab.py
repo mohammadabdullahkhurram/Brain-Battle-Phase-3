@@ -385,6 +385,12 @@ class SessionsTab(QWidget):
         return f
 
     # ---- data flow ----
+    def set_capture_dir(self, capture_dir: str) -> None:
+        """Settings' [Change folder…] changed the active recordings folder —
+        point future scans at it and refresh immediately."""
+        self._capture_dir = capture_dir
+        self.refresh()
+
     def refresh(self):
         """Rescan the folder (off the UI thread) and rebuild the list."""
         if self._scan_worker is not None and self._scan_worker.isRunning():

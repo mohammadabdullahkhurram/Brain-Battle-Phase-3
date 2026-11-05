@@ -65,10 +65,12 @@ class CameraSlot(QObject):
     def start(self) -> None:
         if self.device is None or self._thread is not None:
             return
-        w, h, fps = app_settings.load().video_dims()
+        settings = app_settings.load()
+        w, h, fps = settings.video_dims()
         self.rec_failed = False
         self.state = "opening"; self.state_detail = ""
-        t = USBCameraThread(self.device, width=w, height=h, fps=fps, parent=self)
+        t = USBCameraThread(self.device, width=w, height=h, fps=fps,
+                           bitrate_mbps=settings.video_mbps(), parent=self)
         t.set_preview_width(PREVIEW_WIDTH)
         t.frame_ready.connect(self._on_frame)
         t.state_changed.connect(self._on_state)

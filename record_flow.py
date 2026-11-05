@@ -52,6 +52,7 @@ from session_controller import SessionController, SessionConfig, Phase, _build_t
 from session_storage import (
     create_session, SessionLayout, PhaseRecord, estimate_session_bytes,
     human_bytes, session_total_seconds, disk_space_verdict,
+    video_bytes_per_sec_for_mbps,
 )
 from sync_beep import SyncBeep
 from keep_awake import KeepAwake
@@ -771,9 +772,10 @@ class SetupStep(QWidget):
             free = shutil.disk_usage(base).free
         except OSError:
             self._disk.setText(""); self._start.setEnabled(True); return
-        est = estimate_session_bytes(cfg, n_cam, n_eeg)
+        vbps = video_bytes_per_sec_for_mbps(self.flow._settings.video_mbps())
+        est = estimate_session_bytes(cfg, n_cam, n_eeg, vbps)
         est_h, free_h = human_bytes(est), human_bytes(free)
-        verdict = disk_space_verdict(cfg, n_cam, n_eeg, free)
+        verdict = disk_space_verdict(cfg, n_cam, n_eeg, free, vbps)
         if verdict == "blocked":
             self._disk.setText(f"✕ Not enough space — this session needs about {est_h}, "
                                f"but only {free_h} is free. Free up space or shorten the session.")
@@ -1282,8 +1284,9 @@ class RecordFlow(QWidget):
         except OSError:
             return True
         cams = n_cam or len(self._cams)
-        est = estimate_session_bytes(self._cfg, cams, n_eeg)
-        verdict = disk_space_verdict(self._cfg, cams, n_eeg, free)
+        vbps = video_bytes_per_sec_for_mbps(self._settings.video_mbps())
+        est = estimate_session_bytes(self._cfg, cams, n_eeg, vbps)
+        verdict = disk_space_verdict(self._cfg, cams, n_eeg, free, vbps)
         if verdict == "blocked":
             QMessageBox.critical(self, "Not enough disk space",
                                  f"This recording needs about {human_bytes(est)}, but only "

@@ -656,13 +656,30 @@ def folder_size_bytes(root) -> int:
 # ─── Disk-space estimate ────────────────────────────────────────────────────────
 
 # Per-source write rates for the pre-flight size estimate. The video rate is
-# now derived from the recorder's actual target bitrate (usb_camera.REC_BITRATE
-# = 5 Mbps per camera, capped at -maxrate 6 Mbps) rather than measured from
-# low-motion demo footage — so it holds for real boxing footage, which H.264
-# rate control drives toward that target regardless of scene complexity. The
-# EEG rate was measured from the 256 Hz CSV (same structure for real + demo).
+# derived from the recorder's actual target bitrate (Settings' video-quality
+# mbps, see `video_bytes_per_sec_for_mbps` below — Standard = 5 Mbps per
+# camera, capped at -maxrate 1.2x) rather than measured from low-motion demo
+# footage — so it holds for real boxing footage, which H.264 rate control
+# drives toward that target regardless of scene complexity. The EEG rate was
+# measured from the 256 Hz CSV (same structure for real + demo).
+# VIDEO_BYTES_PER_SEC below is the Standard-quality default used when a
+# caller doesn't pass an explicit per-quality rate.
 VIDEO_BYTES_PER_SEC = 700_000   # ~5-6 Mbps H.264 target, bytes/s, with headroom
 EEG_BYTES_PER_SEC   = 25_000    # ~22.5 KB/s/band measured + headroom
+
+# Peak-rate headroom above the nominal bitrate: the recorder's -maxrate/
+# -bufsize caps (usb_camera.py) let a burst of motion run above the nominal
+# target, so the estimate budgets +12% — this is exactly what produces
+# VIDEO_BYTES_PER_SEC above from the default 5 Mbps (5_000_000/8*1.12 = 700_000).
+VIDEO_RATE_HEADROOM = 1.12
+
+
+def video_bytes_per_sec_for_mbps(mbps: float) -> int:
+    """Bytes/sec estimate for one camera at a given nominal H.264 bitrate
+    (Settings' video-quality mbps), including the recorder's peak headroom —
+    the single place the Settings copy, the disk estimate, and the recorder's
+    own rate-control flags all derive from, so they can't drift apart."""
+    return int(float(mbps) * 1_000_000 / 8 * VIDEO_RATE_HEADROOM)
 
 
 def session_total_seconds(config: SessionConfig) -> int:
@@ -673,19 +690,22 @@ def session_total_seconds(config: SessionConfig) -> int:
             + max(0, config.num_rounds - 1) * config.break_sec)
 
 
-def estimate_session_bytes(config: SessionConfig, n_cameras: int, n_eeg: int) -> int:
-    """Estimated on-disk size of a session given its configured duration and
-    the number of recording cameras / EEG bands."""
+def estimate_session_bytes(config: SessionConfig, n_cameras: int, n_eeg: int,
+                           video_bytes_per_sec: int = VIDEO_BYTES_PER_SEC) -> int:
+    """Estimated on-disk size of a session given its configured duration, the
+    number of recording cameras / EEG bands, and the per-camera video rate
+    (pass `video_bytes_per_sec_for_mbps(settings.video_mbps())` for the
+    currently-chosen video quality; defaults to the Standard rate)."""
     secs = session_total_seconds(config)
-    return int(secs * (n_cameras * VIDEO_BYTES_PER_SEC + n_eeg * EEG_BYTES_PER_SEC))
+    return int(secs * (n_cameras * video_bytes_per_sec + n_eeg * EEG_BYTES_PER_SEC))
 
 
 def disk_space_verdict(config: SessionConfig, n_cameras: int, n_eeg: int,
-                       free_bytes: int) -> str:
+                       free_bytes: int, video_bytes_per_sec: int = VIDEO_BYTES_PER_SEC) -> str:
     """Pure decision for the pre-flight disk check: 'blocked' when free space is
     below the estimate, 'low' when below 2x it, else 'ok'. Shared by the setup
     screen and the record flow so the UI copy and the gate never diverge."""
-    est = estimate_session_bytes(config, n_cameras, n_eeg)
+    est = estimate_session_bytes(config, n_cameras, n_eeg, video_bytes_per_sec)
     if free_bytes < est:
         return "blocked"
     if free_bytes < 2 * est:
@@ -711,6 +731,7 @@ __all__ = [
     "session_info", "list_sessions", "folder_size_bytes",
     "session_total_seconds", "estimate_session_bytes", "disk_space_verdict",
     "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",
+    "video_bytes_per_sec_for_mbps", "VIDEO_RATE_HEADROOM",
     "STATUS_INTERRUPTED", "STATUS_EXPORTED", "STATUS_LABELLED",
     "STATUS_NEEDS_LABELLING", "STATUS_UNREADABLE",
 ]
