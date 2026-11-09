@@ -153,6 +153,11 @@ def main():
 
         win._docs_page._search_box.setText("Reconnect")
         _pump(app, 0.2)
+        # Open the first result so the content shows the page scrolled to the
+        # match with every "Reconnect" highlighted (the results list, count and
+        # section stay visible in the left pane).
+        win._docs_page._open_first_result()
+        _pump(app, 0.2)
         grab("08c_docs-search-results")
         win._docs_page._search_box.setText("")
 
