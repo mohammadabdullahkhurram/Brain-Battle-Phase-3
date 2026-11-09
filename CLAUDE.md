@@ -204,6 +204,10 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
   confirm Set up/the recorder/the disk estimate/Review & Label all reflect it.
 - `test_contact_log.py` — per-sensor contact log weak-period spans + the >30 s
   "worth checking" filter.
+- `test_round_bell.py` — `assets/sounds/round_bell.wav`'s duration/true-peak/
+  loudness; `SessionController.beep_requested` fires at baseline + every round
+  start and never on a break; Settings' Test sound plays the bundled file; a
+  missing WAV stays silent instead of crashing; the credits entry exists.
 - `test_docs.py` — the in-app Documentation tab + `docs/` content (Phase 3
   step D1): every `nav.yml` page exists and renders; every image/diagram it
   references exists; internal links/anchors resolve; diagram freshness

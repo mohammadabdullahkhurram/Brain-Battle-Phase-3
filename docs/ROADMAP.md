@@ -421,6 +421,11 @@ the handful of places the build deliberately reads differently, and why:
   `docs/contributing/` and the raw `.mmd` diagram sources aren't referenced by
   any page and don't need to ship, just `nav.yml` + the Markdown + the
   rendered `.png`/`.svg` the pages actually link to).
+  **Also bundle `assets/sounds/`** — `sync_beep.py` plays
+  `assets/sounds/round_bell.wav` at runtime (see
+  [credits](project/credits.md)); only the processed WAV needs to ship, not
+  `assets/sounds/source/` or `tools/make_round_bell.py` (developer-only, like
+  the rest of `tools/`).
 
 - **Rewrite README for non-technical users.**
   *Why:* the current `README.md` is written for a developer audience (pip

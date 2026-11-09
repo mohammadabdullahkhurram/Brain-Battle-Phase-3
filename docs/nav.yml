@@ -163,3 +163,6 @@ sections:
       - id: planning-documents
         title: Planning documents
         file: project/planning-documents.md
+      - id: credits
+        title: Credits & licences
+        file: project/credits.md

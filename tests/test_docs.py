@@ -183,6 +183,7 @@ _KNOWN_PHRASES = {
     "history": "grounding items",
     "glossary": "Photoplethysmography",
     "planning-documents": "left as-written",
+    "credits": "high-shelf cut",
 }
 
 

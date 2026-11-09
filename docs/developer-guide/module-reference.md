@@ -20,7 +20,7 @@ commit (see [CLAUDE.md's "Documentation is part of every change"](../contributin
 | **Playback** | `pyav_player` |
 | **Data & storage** | `session_storage` · `labels_store` · `label_vocab` · `session_history` · `export_module` |
 | **Support** | `app_settings` · `design_tokens` · `fonts` · `log_setup` · `version` · `simulation` |
-| **Tools** (`tools/`, not shipped) | `generate_demo_session` · `render_diagrams` · `render_screens` |
+| **Tools** (`tools/`, not shipped) | `generate_demo_session` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its
 entry says otherwise. The modules that spawn threads or subprocesses are
@@ -216,11 +216,14 @@ at stop).
 driven by `SessionController` ticks. **Called by:** `record_flow`.
 
 ### `sync_beep.py`
-`SyncBeep(QObject)` plays the round-start bell; `ensure_beep_wav` synthesises the
-WAV if absent. **Called by:** `record_flow` (round start) and `settings_tab`
-(Test sound). **Gotcha:** the name is historical — the beep is now purely a round
-bell, not a sync aid (the audio-xcorr engine it once fed is gone; see
-[ADR-0002](../decisions/adr-0002-remove-audio-xcorr.md)).
+`SyncBeep(QObject)` plays `assets/sounds/round_bell.wav` (a real boxing-bell
+recording — see [credits](../project/credits.md)) through `QSoundEffect`;
+`bundled_bell_path` resolves the WAV's path regardless of cwd. **Called by:**
+`record_flow` (round start) and `settings_tab` (Test sound). **Gotcha:** the
+name is historical — the beep is now purely a round bell, not a sync aid (the
+audio-xcorr engine it once fed is gone; see
+[ADR-0002](../decisions/adr-0002-remove-audio-xcorr.md)). A missing/unplayable
+WAV logs a warning and leaves `play()` a no-op — never raises.
 
 ---
 
@@ -360,6 +363,14 @@ Drives the app under `BRAIN_BATTLE_SIMULATE=1` to produce screenshots: a review
 dump into `screens/`, and (`--docs`) the curated `docs/images/*.png` pointed at a
 cleanly-named "Brain Battle Data" folder with no sim/demo artefacts. Guarded by
 several `tests/test_docs.py` checks.
+
+### `tools/make_round_bell.py`
+Turns the raw Freesound recording (`assets/sounds/source/`) into
+`assets/sounds/round_bell.wav`: mono downmix, trim-to-onset, high-pass +
+high-shelf EQ, trim-to-ring-length + fade-out, then two-pass `loudnorm` to a
+documented LUFS/true-peak target. Every setting is a named constant in the
+script so it can be re-run after changing one. See
+[credits](../project/credits.md). Covered by `tests/test_round_bell.py`.
 
 ---
 

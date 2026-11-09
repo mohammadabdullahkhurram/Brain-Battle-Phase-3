@@ -44,9 +44,12 @@ changes):
 
 Four steppers — **Rounds**, **Round length**, **Break between rounds**,
 **Rest before round 1** — plus **"Ring a bell when each round starts"** and
-a **Test sound** button that plays the actual bell. These pre-fill the Set
-up step of every [new recording](new-recording.md); each recording can still
-adjust them for that session only.
+a **Test sound** button that plays the actual bell: a real boxing-bell
+recording (one clean strike with its natural ring, about two seconds), not a
+synthesized tone. When it's on, it rings once at the start of the rest
+before round 1 and once at the start of each round — never during a break.
+These pre-fill the Set up step of every [new recording](new-recording.md);
+each recording can still adjust them for that session only.
 
 ## Label list
 

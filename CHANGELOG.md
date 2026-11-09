@@ -5,6 +5,31 @@ The "Phase 2.N" headings below are historical dev-log numbering, kept as
 history — they do not track the release version. `develop` is `3.0.0-dev`; the
 3.x dev-log entries are at the top.
 
+## 3.0.0-dev · Round bell: a real boxing-bell sound
+
+The round bell is no longer a generated 1 kHz tone — it's a real boxing-bell
+recording:
+
+- **`assets/sounds/round_bell.wav`** — "Boxing Bell.wav" by Benboncan
+  (Freesound #66951, CC-BY 4.0), processed by the new
+  **`tools/make_round_bell.py`** (mono downmix, trim-to-onset, high-pass +
+  high-shelf EQ, trim-to-ring-length + fade-out, two-pass loudness
+  normalisation to ~−20 LUFS / true peak ≤ −3 dBTP, 44.1 kHz/16-bit/mono).
+  The untouched source is kept at `assets/sounds/source/`. See the new
+  [Credits & licences](docs/project/credits.md) page for the full attribution
+  (and the bundled Inter font's).
+- **`sync_beep.py`** — `SyncBeep` now plays this WAV through `QSoundEffect`
+  instead of synthesizing a tone; a missing/unplayable file logs a warning
+  and stays silent rather than raising. Same trigger moments as before (the
+  rest period before round 1, every round start, never a break), the same
+  Settings on/off toggle, and the same Test sound button.
+- Docs: `docs/user-guide/settings.md` describes the actual sound and when it
+  rings; `docs/developer-guide/module-reference.md` covers `sync_beep.py`'s
+  new playback path and `tools/make_round_bell.py`; `docs/ROADMAP.md`'s
+  Phase 6 packaging item now also calls for bundling `assets/sounds/`.
+- Tests: new `tests/test_round_bell.py` (WAV specs, bell-timing-by-phase,
+  Test sound, missing-file safety, the credits entry).
+
 ## 3.0.0-dev · D3 follow-up — doc-drift cleanup
 
 Clean up the three doc-drift items D3 surfaced on its "Known issues & tech debt"

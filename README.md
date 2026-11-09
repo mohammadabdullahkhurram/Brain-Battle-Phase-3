@@ -46,6 +46,10 @@ app** (the Documentation screen in the sidebar renders the same Markdown):
 
 The `docs/` tree is the authoritative, maintained description of the app.
 
+The round bell is "Boxing Bell.wav" by [Benboncan](https://freesound.org/people/Benboncan/sounds/66951/)
+(CC-BY 4.0); see [Credits & licences](docs/project/credits.md) for this and
+the bundled Inter font.
+
 ## Current status
 
 **Phase 3 and the documentation are complete** (`develop` = `3.0.0-dev`; `main` =
