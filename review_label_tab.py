@@ -822,7 +822,7 @@ class ReviewLabelTab(QWidget):
         undo.setCursor(Qt.CursorShape.PointingHandCursor)
         undo.setStyleSheet(dt.qss_secondary_button()); undo.clicked.connect(self.undo)
         v.addWidget(undo)
-        helpl = QLabel("Space play / pause · ← → one frame · 1–8 place a label · "
+        helpl = QLabel("Space play / pause · ← → one frame · 1–9 place a label · "
                        "Tab switch boxer · ⌘Z undo")
         helpl.setWordWrap(True)
         helpl.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "

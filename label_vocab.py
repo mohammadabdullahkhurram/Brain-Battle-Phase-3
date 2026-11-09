@@ -5,7 +5,7 @@ The shared label list for the whole team, stored as `label_list.json` in the
 recordings folder (so a shared folder shares one vocabulary, per DESIGN §7).
 Seeded from the DESIGN.md default palette on first use.
 
-Each entry: {"key": 1-8, "name": str, "color": "#RRGGBB", "kind": "point" |
+Each entry: {"key": 1-9, "name": str, "color": "#RRGGBB", "kind": "point" |
 "duration"}. "point" = a Moment; "duration" = Lasts a while (press to start,
 press again to end). Removing a label from this list does NOT touch labels
 already placed — those keep their own stored name and colour (see
@@ -61,7 +61,7 @@ def next_color(existing: list[dict] | list[str]) -> str:
 
 def renumber(labels: list[dict]) -> list[dict]:
     """Reassign `key` = position + 1 (1-9) to match display order — the
-    order IS the number-key mapping (DESIGN §6 "press 1-8 to place")."""
+    order IS the number-key mapping (DESIGN §6 "press 1-9 to place")."""
     for i, item in enumerate(labels):
         item["key"] = i + 1
     return labels
