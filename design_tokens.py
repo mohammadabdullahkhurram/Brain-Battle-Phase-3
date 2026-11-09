@@ -508,6 +508,11 @@ ICON_SVGS = {
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
         'stroke="{c}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
         '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
+    "folder":
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        'stroke="{c}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M4 20a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 2.5h7a2 2 0 0 1 2 2V18'
+        'a2 2 0 0 1-2 2Z"/></svg>',
 }
 
 

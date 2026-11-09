@@ -42,6 +42,7 @@ except Exception:
 from PyQt6.QtCore import QPoint, QRect
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QAbstractScrollArea, QMainWindow,
+    QLabel, QPushButton, QFrame,
 )
 
 _app = QApplication.instance() or QApplication(sys.argv)
@@ -311,6 +312,51 @@ def test_layout_strict():
         win.close()
 
 
+# ── 7. no row control's text is clipped (folder button regression) ────────────
+
+def _clipped_text_controls(page):
+    """Row controls whose own box is narrower than the text/icon they must show.
+
+    A control is clipped when its laid-out width is smaller than the width its
+    content needs (sizeHint). Catches the old "Show in Finde" text button that
+    didn't fit its actions cell; an icon-only button (no text) can't clip.
+    """
+    bad = []
+    for row in page.findChildren(QFrame):
+        if row.objectName() != "sessionRow":
+            continue
+        for w in row.findChildren(QWidget):
+            if not isinstance(w, (QLabel, QPushButton)):
+                continue
+            if not w.isVisible() or w.width() <= 0:
+                continue
+            text = w.text() if hasattr(w, "text") else ""
+            if not text:
+                continue  # icon-only / empty controls can't clip text
+            need = w.sizeHint().width()
+            if w.width() + 1 < need:
+                bad.append((w.__class__.__name__, repr(text),
+                            w.width(), need))
+    return bad
+
+
+def test_row_controls_not_clipped():
+    rows = ss.list_sessions(BASE_LIB)
+    for W, H in [(1440, 900), (1280, 800), (1180, 720)]:
+        win = QMainWindow()
+        tab = st.SessionsTab(BASE_LIB)
+        win.setCentralWidget(tab)
+        win.resize(W, H)
+        win.show()
+        tab._on_scanned(rows)
+        for _ in range(5):
+            _app.processEvents()
+        bad = _clipped_text_controls(tab)
+        check(f"row controls: no clipped text at {W}x{H}",
+              len(bad) == 0, f"clipped: {bad[:4]}")
+        win.close()
+
+
 if __name__ == "__main__":
     from tools.generate_demo_session import generate_library
     BASE_LIB = tempfile.mkdtemp(prefix="bb_base_")
@@ -322,6 +368,7 @@ if __name__ == "__main__":
     test_banner_and_dismissal()
     test_performance_200()
     test_layout_strict()
+    test_row_controls_not_clipped()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

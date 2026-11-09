@@ -518,9 +518,13 @@ class SessionsTab(QWidget):
         h.addWidget(badge)
         # Actions
         act = QHBoxLayout(); act.setSpacing(6)
-        finder = QPushButton("Show in Finder"); finder.setMinimumHeight(32)
+        finder = QPushButton()
+        finder.setIcon(QIcon(dt.icon_pixmap("folder", color=dt.text_secondary(), size=18)))
+        finder.setFixedSize(32, 32)
+        finder.setToolTip("Show in Finder")
+        finder.setAccessibleName("Show in Finder")
         finder.setCursor(Qt.CursorShape.PointingHandCursor)
-        finder.setStyleSheet(_small_secondary())
+        finder.setStyleSheet(_small_secondary() + " QPushButton { padding: 0; }")
         finder.clicked.connect(lambda _c=False, r=info.root: reveal_in_finder(r))
         act.addWidget(finder)
         if info.readable:
