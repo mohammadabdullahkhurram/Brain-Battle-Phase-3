@@ -270,6 +270,11 @@ class SearchHit:
     snippet: str
     score: int
     section: str = ""
+    # Offset + length of the matched query WITHIN `snippet` (so the UI can bold
+    # exactly the match). -1 when the hit was title/heading-only (no body match
+    # to point at inside the snippet).
+    match_start: int = -1
+    match_len: int = 0
 
 
 def build_search_index(nav: Nav, docs_dir: str = DOCS_DIR) -> dict[str, dict]:
@@ -285,18 +290,43 @@ def build_search_index(nav: Nav, docs_dir: str = DOCS_DIR) -> dict[str, dict]:
     return index
 
 
-def _snippet(body: str, query: str, width: int = 60) -> str:
+def _snippet(body: str, query: str, width: int = 60) -> tuple[str, int, int]:
+    """A short context window around the first occurrence of `query` in `body`.
+
+    Returns (snippet, match_start, match_len) where match_start/len locate the
+    query inside the returned snippet string (so the UI can bold exactly the
+    match). The window is trimmed to whole words — it never starts or ends in
+    the middle of a word — and ellipsised when it doesn't reach the body's
+    edges. For a title/heading-only hit (query not in the body) match_start is
+    -1 and the snippet is just the body's opening words.
+    """
     low = body.lower()
     i = low.find(query.lower())
     if i < 0:
         collapsed = " ".join(body.split())
-        return collapsed[:width]
+        # trim to a whole word rather than cutting mid-word at `width`
+        if len(collapsed) > width:
+            cut = collapsed.rfind(" ", 0, width)
+            collapsed = (collapsed[:cut] if cut > 0 else collapsed[:width]) + "…"
+        return collapsed, -1, 0
     start = max(0, i - width // 2)
     end = min(len(body), i + len(query) + width // 2)
-    collapsed = " ".join(body[start:end].split())
-    prefix = "…" if start > 0 else ""
-    suffix = "…" if end < len(body) else ""
-    return f"{prefix}{collapsed}{suffix}"
+    # Grow each edge outward to the nearest whitespace so no partial word shows
+    # (but never past the match itself).
+    if start > 0:
+        while start < i and not body[start - 1].isspace():
+            start += 1
+    if end < len(body):
+        while end > i + len(query) and not body[end].isspace():
+            end -= 1
+    window = body[start:end]
+    prefix = "… " if start > 0 else ""
+    suffix = " …" if end < len(body) else ""
+    collapsed = " ".join(window.split())
+    snippet = f"{prefix}{collapsed}{suffix}"
+    # Locate the match inside the final (collapsed, ellipsised) snippet.
+    m = snippet.lower().find(query.lower())
+    return snippet, m, (len(query) if m >= 0 else 0)
 
 
 def search(index: dict[str, dict], query: str) -> list[SearchHit]:
@@ -313,10 +343,11 @@ def search(index: dict[str, dict], query: str) -> list[SearchHit]:
         if not (title_hit or heading_hit or body_hit):
             continue
         score = 3 if title_hit else (2 if heading_hit else 1)
-        snippet = _snippet(entry["body"], q)
+        snippet, m_start, m_len = _snippet(entry["body"], q)
         hits.append(SearchHit(page_id=page_id, title=entry["title"],
                               snippet=snippet, score=score,
-                              section=entry.get("section", "")))
+                              section=entry.get("section", ""),
+                              match_start=m_start, match_len=m_len))
     hits.sort(key=lambda h: (-h.score, h.title.lower()))
     return hits
 

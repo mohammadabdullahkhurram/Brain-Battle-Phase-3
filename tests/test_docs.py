@@ -228,6 +228,147 @@ def test_no_result_for_missing_page_section():
           hits and all(h.section for h in hits), str([(h.page_id, h.section) for h in hits]))
 
 
+# ─── 5b-ii. snippet trimming + results row structure ────────────────────────
+
+def test_snippet_word_boundaries_and_match():
+    """`_snippet` trims to whole words and reports the match offset within the
+    snippet so the UI can bold exactly the matched text."""
+    body = ("alpha bravo charlie delta echo foxtrot golf hotel india juliet "
+            "kilo lima mike november oscar papa quebec romeo sierra tango")
+    query = "november"
+    snip, ms, ml = docs_nav._snippet(body, query)
+    check("snippet reports the match offset", ms >= 0 and ml == len(query),
+          f"ms={ms} ml={ml}")
+    check("the reported offset actually points at the query",
+          snip[ms:ms + ml].lower() == query.lower(), repr(snip))
+    core = snip
+    if core.startswith("… "):
+        core = core[2:]
+    if core.endswith(" …"):
+        core = core[:-2]
+    words = set(body.split())
+    check("snippet starts on a word boundary (no partial leading word)",
+          core.split()[0] in words, repr(snip))
+    check("snippet ends on a word boundary (no partial trailing word)",
+          core.split()[-1] in words, repr(snip))
+
+
+def test_result_rows_show_title_section_and_bold_match():
+    """Each result row carries structured data (title / section / snippet with
+    the match located) for the rich-text delegate — the title is rendered
+    bold, the section beneath it, then the snippet with the match bold."""
+    from docs_tab import DocsTab, _RESULT_ROLE
+    tab = DocsTab()
+    tab._search_box.setText("Reconnect")
+    n = tab._results_list.count()
+    check("the search produced result rows", n > 0, str(n))
+    for i in range(n):
+        it = tab._results_list.item(i)
+        data = it.data(_RESULT_ROLE)
+        check(f"result {i} carries structured fields",
+              isinstance(data, dict) and data.get("title") and "section" in data,
+              str(data))
+        # a body match points at the query inside the snippet
+        ms, ml = data.get("match_start", -1), data.get("match_len", 0)
+        if ms >= 0:
+            sn = data["snippet"]
+            check(f"result {i} match offset points at the query",
+                  sn[ms:ms + ml].lower() == "reconnect", repr(sn))
+
+
+def test_results_list_no_horizontal_scroll():
+    from docs_tab import DocsTab
+    from PyQt6.QtWidgets import QMainWindow
+    tab = DocsTab()
+    win = QMainWindow(); win.setCentralWidget(tab); win.resize(1180, 720); win.show()
+    for _ in range(3):
+        _app.processEvents()
+    tab._search_box.setText("session")
+    for _ in range(3):
+        _app.processEvents()
+    sb = tab._results_list.horizontalScrollBar()
+    check("results list never shows a horizontal scrollbar",
+          not sb.isVisible() and sb.maximum() == 0,
+          f"visible={sb.isVisible()} max={sb.maximum()}")
+    win.close()
+
+
+# ─── 5b-iii. scaled images reserve only their displayed height ───────────────
+
+def test_image_height_matches_displayed_size():
+    """A screenshot scaled down to the column must reserve only its *displayed*
+    height, not its full intrinsic height (which left a large gap below it and
+    made search land on blank space). Each image fragment gets an explicit
+    width AND height, proportional to the source aspect ratio."""
+    from docs_tab import DocsTab
+    from PyQt6.QtWidgets import QMainWindow
+    from PyQt6.QtGui import QTextDocument
+    tab = DocsTab()
+    win = QMainWindow(); win.setCentralWidget(tab); win.resize(1280, 800); win.show()
+    for _ in range(4):
+        _app.processEvents()
+    nav = docs_nav.load_nav()
+    img_page = next((p for p in nav.all_pages()
+                     if docs_nav.extract_images(docs_nav.read_page(p))), None)
+    check("there is at least one page with an image to check", img_page is not None)
+    if img_page is None:
+        win.close(); return
+    tab.open_page(img_page.id)
+    for _ in range(3):
+        _app.processEvents()
+    doc = tab._browser.document()
+    block = doc.begin(); checked = 0
+    while block.isValid():
+        it = block.begin()
+        while not it.atEnd():
+            frag = it.fragment()
+            if frag.isValid() and frag.charFormat().isImageFormat():
+                imf = frag.charFormat().toImageFormat()
+                src = tab._browser._img_src.get(imf.name())
+                if src is not None and src.width() > 0:
+                    checked += 1
+                    check(f"{imf.name()}: explicit width set",
+                          imf.width() > 0, str(imf.width()))
+                    check(f"{imf.name()}: explicit height set",
+                          imf.height() > 0, str(imf.height()))
+                    expected_h = round(src.height() * imf.width() / src.width())
+                    check(f"{imf.name()}: reserved height == displayed height (±1)",
+                          abs(imf.height() - expected_h) <= 1,
+                          f"fmt={imf.height()} expected={expected_h}")
+            it += 1
+        block = block.next()
+    check("at least one image fragment was checked", checked > 0, str(checked))
+    win.close()
+
+
+def test_search_match_scrolled_into_view():
+    """Opening a body-match result scrolls so the match sits near the top of the
+    viewport (roughly the upper third), not off-screen or in a blank gap."""
+    from docs_tab import DocsTab
+    from PyQt6.QtWidgets import QMainWindow
+    tab = DocsTab()
+    win = QMainWindow(); win.setCentralWidget(tab); win.resize(1280, 800); win.show()
+    for _ in range(4):
+        _app.processEvents()
+    # A phrase that appears well down a long page so the view must scroll.
+    tab._search_box.setText("Reconnect")
+    for _ in range(3):
+        _app.processEvents()
+    tab._open_first_result()
+    for _ in range(3):
+        _app.processEvents()
+    sels = tab._browser.extraSelections()
+    check("the opened page has the query highlighted", len(sels) > 0)
+    if sels:
+        rect = tab._browser.cursorRect(sels[0].cursor)
+        vh = tab._browser.viewport().height()
+        check("the match is visible on screen", 0 <= rect.top() <= vh,
+              f"top={rect.top()} vh={vh}")
+        check("the match sits in roughly the upper half (not jammed to the bottom)",
+              rect.top() <= vh * 0.6, f"top={rect.top()} vh={vh}")
+    win.close()
+
+
 # ─── 5c. no horizontal overflow inside the content column ───────────────────
 
 def test_no_horizontal_overflow():
@@ -421,6 +562,11 @@ if __name__ == "__main__":
     test_search_highlighting()
     test_search_ux()
     test_no_result_for_missing_page_section()
+    test_snippet_word_boundaries_and_match()
+    test_result_rows_show_title_section_and_bold_match()
+    test_results_list_no_horizontal_scroll()
+    test_image_height_matches_displayed_size()
+    test_search_match_scrolled_into_view()
     test_no_horizontal_overflow()
     test_diagram_text_is_readable()
     test_docs_images_have_no_temp_folder_name()

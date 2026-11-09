@@ -69,6 +69,77 @@ class _NoFocusDelegate(QStyledItemDelegate):
         super().paint(painter, option, index)
 
 
+# Role on a results item carrying its structured fields (title / section /
+# snippet / match offsets) for the rich-text results delegate.
+_RESULT_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+
+
+class _ResultDelegate(QStyledItemDelegate):
+    """Renders one search result as rich text: the page title in bold, the
+    section muted beneath it, then the snippet with the matched query in bold.
+    Wraps to the list's width (so no horizontal scrollbar is ever needed) and
+    paints DESIGN's hover/selected row backgrounds itself."""
+
+    PAD_X = 10
+    PAD_Y = 8
+
+    def __init__(self, list_widget):
+        super().__init__(list_widget)
+        self._list = list_widget
+
+    def _text_width(self) -> int:
+        vp = self._list.viewport().width()
+        return max(60, vp - 2 * self.PAD_X)
+
+    def _doc(self, index) -> QTextDocument:
+        import html as _html
+        data = index.data(_RESULT_ROLE) or {}
+        title = _html.escape(data.get("title", ""))
+        section = _html.escape(data.get("section", ""))
+        snippet = data.get("snippet", "")
+        ms = data.get("match_start", -1)
+        ml = data.get("match_len", 0)
+        if ms is not None and ms >= 0 and ml > 0:
+            body = (_html.escape(snippet[:ms])
+                    + "<b>" + _html.escape(snippet[ms:ms + ml]) + "</b>"
+                    + _html.escape(snippet[ms + ml:]))
+        else:
+            body = _html.escape(snippet)
+        html_str = (
+            f'<div style="font-family:{dt.FONT_UI}; font-size:{dt.SIZE_SM}px; '
+            f'color:{dt.text_secondary()};">'
+            f'<span style="font-weight:700; color:{dt.text_primary()};">{title}</span><br/>'
+            f'<span style="color:{dt.text_tertiary()}; font-size:{dt.SIZE_XS}px;">{section}</span><br/>'
+            f'<span>{body}</span></div>')
+        doc = QTextDocument()
+        doc.setDefaultStyleSheet("b { font-weight: 700; }")
+        doc.setHtml(html_str)
+        doc.setTextWidth(self._text_width())
+        return doc
+
+    def paint(self, painter, option, index):
+        painter.save()
+        rect = option.rect
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        if selected or hovered:
+            painter.setRenderHint(painter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(dt.accent_ghost() if selected else dt.card_bg_hover()))
+            painter.drawRoundedRect(rect.adjusted(2, 1, -2, -1),
+                                    dt.RADIUS_SM, dt.RADIUS_SM)
+        doc = self._doc(index)
+        painter.translate(rect.left() + self.PAD_X, rect.top() + self.PAD_Y)
+        doc.drawContents(painter)
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        from PyQt6.QtCore import QSize
+        doc = self._doc(index)
+        return QSize(self._text_width() + 2 * self.PAD_X,
+                     int(doc.size().height()) + 2 * self.PAD_Y)
+
+
 class _ContentBrowser(QTextBrowser):
     """QTextBrowser whose images scale to the current content width.
 
@@ -103,22 +174,80 @@ class _ContentBrowser(QTextBrowser):
         avail = self.viewport().width() - int(doc.documentMargin() * 2) - 8
         return max(120, min(MAX_IMG_WIDTH, avail))
 
-    def _display_pixmap(self, pm: QPixmap) -> QPixmap:
+    def _display_size(self, pm: QPixmap) -> tuple[int, int]:
+        """Width/height a source pixmap displays at in the current column,
+        preserving aspect ratio and never exceeding the target width."""
         target = self._target_width()
         if pm.width() > target:
-            return pm.scaledToWidth(target, Qt.TransformationMode.SmoothTransformation)
+            h = max(1, round(pm.height() * target / pm.width()))
+            return target, h
+        return pm.width(), pm.height()
+
+    def _display_pixmap(self, pm: QPixmap) -> QPixmap:
+        w, _h = self._display_size(pm)
+        if w < pm.width():
+            return pm.scaledToWidth(w, Qt.TransformationMode.SmoothTransformation)
         return pm
+
+    def _source_pixmap(self, url_str: str) -> QPixmap | None:
+        """Full-size source pixmap for an image URL as written in the Markdown,
+        cached. Resolves relative URLs against the document base URL and loads
+        from disk, so it works whether or not Qt's lazy loadResource has run."""
+        pm = self._img_src.get(url_str)
+        if pm is not None:
+            return pm
+        url = QUrl(url_str)
+        local_url = self.document().baseUrl().resolved(url) if url.isRelative() else url
+        path = local_url.toLocalFile()
+        if path and os.path.isfile(path):
+            pm = QPixmap(path)
+            if not pm.isNull():
+                self._img_src[url_str] = pm
+                return pm
+        return None
 
     def loadResource(self, rtype, url: QUrl):
         if rtype == int(QTextDocument.ResourceType.ImageResource):
-            local_url = self.document().baseUrl().resolved(url) if url.isRelative() else url
-            path = local_url.toLocalFile()
-            if path and os.path.isfile(path):
-                pm = QPixmap(path)
-                if not pm.isNull():
-                    self._img_src[url.toString()] = pm
-                    return self._display_pixmap(pm)
+            pm = self._source_pixmap(url.toString())
+            if pm is not None:
+                return self._display_pixmap(pm)
         return super().loadResource(rtype, url)
+
+    def _apply_image_sizes(self) -> None:
+        """Pin each image fragment's QTextImageFormat to its *displayed* width
+        AND height. Without an explicit height Qt reserves the image's full
+        intrinsic height even when the pixmap it draws is scaled down — leaving
+        a large empty gap below every scaled screenshot (and making a search
+        match scroll land on that blank space). Setting both dimensions makes
+        the reserved box match what's drawn.
+
+        Two-pass (collect fragment positions, then mutate) for the same
+        iterator-safety reason as `_style_code_runs`."""
+        from PyQt6.QtGui import QTextImageFormat
+        doc = self.document()
+        plan: list[tuple[int, int, int]] = []    # (position, width, height)
+        block = doc.begin()
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                frag = it.fragment()
+                if frag.isValid() and frag.charFormat().isImageFormat():
+                    name = frag.charFormat().toImageFormat().name()
+                    pm = self._source_pixmap(name)
+                    if pm is not None and not pm.isNull():
+                        w, h = self._display_size(pm)
+                        plan.append((frag.position(), w, h))
+                it += 1
+            block = block.next()
+        if not plan:
+            return
+        cursor = QTextCursor(doc)
+        for pos, w, h in plan:
+            cursor.setPosition(pos)
+            cursor.setPosition(pos + 1, QTextCursor.MoveMode.KeepAnchor)
+            fmt = QTextImageFormat(cursor.charFormat().toImageFormat())
+            fmt.setWidth(w); fmt.setHeight(h)
+            cursor.mergeCharFormat(fmt)
 
     def _rescale_images(self) -> None:
         if not self._img_src:
@@ -127,6 +256,7 @@ class _ContentBrowser(QTextBrowser):
         for url_str, pm in self._img_src.items():
             doc.addResource(QTextDocument.ResourceType.ImageResource,
                             QUrl(url_str), self._display_pixmap(pm))
+        self._apply_image_sizes()
         doc.markContentsDirty(0, doc.characterCount())
 
     def resizeEvent(self, ev):
@@ -324,7 +454,10 @@ class DocsTab(QWidget):
         self._results_list = QListWidget()
         self._results_list.setWordWrap(True)
         self._results_list.setStyleSheet(_nav_qss())
-        self._results_list.setItemDelegate(_NoFocusDelegate(self._results_list))
+        self._results_list.setItemDelegate(_ResultDelegate(self._results_list))
+        self._results_list.setMouseTracking(True)   # hover styling
+        self._results_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)   # results wrap; never scroll sideways
         self._results_list.itemClicked.connect(self._on_result_clicked)
         self._left_stack.addWidget(self._results_list)
         left_col.addWidget(self._left_stack)
@@ -385,6 +518,7 @@ class DocsTab(QWidget):
         self._browser.setMarkdown(text)
         _apply_typography(self._browser)
         _style_code_runs(self._browser)
+        self._browser._apply_image_sizes()
         self._breadcrumb.setText(f"{page.section} / {page.title}")
         self._highlight_nav_item(page_id)
         if anchor:
@@ -434,11 +568,22 @@ class DocsTab(QWidget):
         while block.isValid():
             if block.blockFormat().headingLevel() > 0:
                 if docs_nav.slugify(block.text()) == slug:
-                    cursor = QTextCursor(block)
-                    self._browser.setTextCursor(cursor)
-                    self._browser.ensureCursorVisible()
+                    self._reveal_cursor(QTextCursor(block))
                     return
             block = block.next()
+
+    def _reveal_cursor(self, cursor: QTextCursor) -> None:
+        """Scroll so `cursor` sits roughly a third of the way down the
+        viewport — close to the top so there's context above and the match
+        reads as "here", but not jammed against the very top edge. Replaces a
+        bare ensureCursorVisible(), which only guarantees the match is on
+        screen *somewhere* (often the very bottom, or — before the image-height
+        fix — inside a blank gap)."""
+        self._browser.setTextCursor(cursor)
+        rect = self._browser.cursorRect(cursor)
+        vbar = self._browser.verticalScrollBar()
+        target = self._browser.viewport().height() // 3
+        vbar.setValue(vbar.value() + rect.top() - target)
 
     # ── events ──
     def eventFilter(self, obj, event):
@@ -491,9 +636,15 @@ class DocsTab(QWidget):
         self._last_hits = hits
         self._results_list.clear()
         for hit in hits:
-            label = f"{hit.title}\n{hit.section}  ·  {hit.snippet}"
-            it = QListWidgetItem(label)
+            # Plain text() kept for accessibility/fallback; the delegate renders
+            # the rich (bold title / section / bold match) version from _RESULT_ROLE.
+            it = QListWidgetItem(f"{hit.title} · {hit.section} · {hit.snippet}")
             it.setData(Qt.ItemDataRole.UserRole, hit.page_id)
+            it.setData(_RESULT_ROLE, {
+                "title": hit.title, "section": hit.section,
+                "snippet": hit.snippet,
+                "match_start": hit.match_start, "match_len": hit.match_len,
+            })
             self._results_list.addItem(it)
         n = len(hits)
         if n:
@@ -541,8 +692,7 @@ class DocsTab(QWidget):
             selections.append(sel)
         self._browser.setExtraSelections(selections)
         if selections:
-            self._browser.setTextCursor(selections[0].cursor)
-            self._browser.ensureCursorVisible()
+            self._reveal_cursor(selections[0].cursor)
 
 
 __all__ = ["DocsTab"]
