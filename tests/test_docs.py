@@ -150,6 +150,39 @@ _KNOWN_PHRASES = {
     "loading-the-data": "merge_asof",
     "limitations": "buzzer test",
     "personal-data": "data protection",
+    # Developer guide (D3)
+    "architecture": "zoom levels",
+    "module-reference": "grouped overview",
+    "key-flows": "seek coalescing",
+    "threading-model": "never blocks",
+    "design-system": "Light mode only",
+    "testing-strategy": "acceptance gates",
+    "simulation-and-demo": "failure injection",
+    "setup-and-workflow": "owner-approval",
+    "how-to-recipes": "honesty gates",
+    "known-issues": "listed, not fixed",
+    # Decisions / ADRs (D3)
+    "decisions": "Michael Nygard",
+    "adr-0001": "capture-time timestamping",
+    "adr-0002": "audio cross-correlation",
+    "adr-0003": "background writer thread",
+    "adr-0004": "crash-safe fragmented",
+    "adr-0005": "drift camera",
+    "adr-0006": "between-boxer analysis",
+    "adr-0007": "theme toggle",
+    "adr-0008": "nothing to click",
+    "adr-0009": "self-describing",
+    "adr-0010": "one place to look",
+    "adr-0011": "device boundary",
+    "adr-0012": "QSvgRenderer",
+    # Project (D3)
+    "goals": "Community Impact Project",
+    "status": "working agreement",
+    "roadmap": "per-round clip",
+    "version-history": "continuous take",
+    "history": "grounding items",
+    "glossary": "Photoplethysmography",
+    "planning-documents": "left as-written",
 }
 
 
@@ -188,18 +221,24 @@ def test_search_ux():
     check("search box has a clear (×) button", tab._search_box.isClearButtonEnabled())
 
     # Typing a query shows a result count and swaps the left pane to results.
+    # The exact count is corpus-dependent (more pages → more matches), so derive
+    # the expected number from the search index rather than hard-coding it.
+    _nav = docs_nav.load_nav()
+    _idx = docs_nav.build_search_index(_nav)
+    n_expected = len(docs_nav.search(_idx, "Reconnect"))
+    check("'Reconnect' matches more than one page", n_expected >= 2, str(n_expected))
     tab._search_box.setText("Reconnect")
     check("searching switches the left pane to the results list",
           tab._left_stack.currentWidget() is tab._results_list)
-    check("a result count is shown", tab._result_count.text().startswith("2 results for"),
+    check("a result count is shown",
+          tab._result_count.text().startswith(f"{n_expected} results for"),
           tab._result_count.text())
     check("the count line is visible while searching", not tab._result_count.isHidden())
     # Every result row names its section and page title.
     rows = [tab._results_list.item(i).text() for i in range(tab._results_list.count())]
-    check("there are 2 results for 'Reconnect'", len(rows) == 2, str(rows))
+    check(f"there are {n_expected} results for 'Reconnect'", len(rows) == n_expected, str(rows))
     check("each result row shows its section",
-          all(" · " in r and ("User guide" in r or "Getting started" in r) for r in rows),
-          str(rows))
+          all(" · " in r for r in rows), str(rows))
 
     # Enter opens the first result, scrolled to the match, with it highlighted.
     first_id = tab._last_hits[0].page_id
@@ -420,7 +459,9 @@ def _diagram_declared_font_px(mmd_text: str):
 
 
 def _svg_viewbox_width(svg_text: str):
-    m = re.search(r'viewBox="[\d.]+ [\d.]+ ([\d.]+)', svg_text)
+    # The min-x/min-y can be negative (Mermaid sequence diagrams place actor
+    # boxes at negative coordinates), so allow a leading '-' on the first two.
+    m = re.search(r'viewBox="-?[\d.]+ -?[\d.]+ ([\d.]+)', svg_text)
     return float(m.group(1)) if m else None
 
 

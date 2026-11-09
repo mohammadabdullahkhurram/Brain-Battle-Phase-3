@@ -64,3 +64,102 @@ sections:
       - id: personal-data
         title: Personal data note
         file: research-and-data/personal-data.md
+
+  - title: Developer guide
+    pages:
+      - id: architecture
+        title: Architecture overview
+        file: developer-guide/architecture.md
+      - id: module-reference
+        title: Module reference
+        file: developer-guide/module-reference.md
+      - id: key-flows
+        title: Key flows
+        file: developer-guide/key-flows.md
+      - id: threading-model
+        title: Threading model
+        file: developer-guide/threading-model.md
+      - id: design-system
+        title: Design system & UI conventions
+        file: developer-guide/design-system.md
+      - id: testing-strategy
+        title: Testing strategy
+        file: developer-guide/testing-strategy.md
+      - id: simulation-and-demo
+        title: Simulation & demo generator
+        file: developer-guide/simulation-and-demo.md
+      - id: setup-and-workflow
+        title: Developer setup & workflow
+        file: developer-guide/setup-and-workflow.md
+      - id: how-to-recipes
+        title: How-to recipes
+        file: developer-guide/how-to-recipes.md
+      - id: known-issues
+        title: Known issues & tech debt
+        file: developer-guide/known-issues.md
+
+  - title: Decisions (ADRs)
+    pages:
+      - id: decisions
+        title: Decisions overview
+        file: decisions/index.md
+      - id: adr-0001
+        title: ADR-0001 Capture-time clock
+        file: decisions/adr-0001-capture-time-clock.md
+      - id: adr-0002
+        title: ADR-0002 Remove audio cross-correlation
+        file: decisions/adr-0002-remove-audio-xcorr.md
+      - id: adr-0003
+        title: ADR-0003 Stream EEG to disk
+        file: decisions/adr-0003-eeg-streamed-to-disk.md
+      - id: adr-0004
+        title: ADR-0004 Crash-safe H.264
+        file: decisions/adr-0004-crash-safe-h264.md
+      - id: adr-0005
+        title: ADR-0005 PyAV playback
+        file: decisions/adr-0005-pyav-playback.md
+      - id: adr-0006
+        title: ADR-0006 Labels v2 schema
+        file: decisions/adr-0006-labels-v2.md
+      - id: adr-0007
+        title: ADR-0007 Light-only design
+        file: decisions/adr-0007-light-only-design.md
+      - id: adr-0008
+        title: ADR-0008 Merged Review & Label
+        file: decisions/adr-0008-merged-review-label.md
+      - id: adr-0009
+        title: ADR-0009 Folder naming
+        file: decisions/adr-0009-folder-naming.md
+      - id: adr-0010
+        title: ADR-0010 App settings store
+        file: decisions/adr-0010-app-settings-store.md
+      - id: adr-0011
+        title: ADR-0011 Simulated devices
+        file: decisions/adr-0011-simulated-devices.md
+      - id: adr-0012
+        title: ADR-0012 In-app docs
+        file: decisions/adr-0012-in-app-docs.md
+
+  - title: Project
+    pages:
+      - id: goals
+        title: Goals & research context
+        file: project/goals.md
+      - id: status
+        title: Current status
+        file: project/status.md
+      - id: roadmap
+        title: Roadmap
+        file: project/roadmap.md
+      - id: version-history
+        title: Version history
+        file: project/version-history.md
+      - id: history
+        title: Project history
+        file: project/history.md
+      - id: glossary
+        title: Glossary
+        file: project/glossary.md
+      - id: planning-documents
+        title: Planning documents
+        file: project/planning-documents.md
