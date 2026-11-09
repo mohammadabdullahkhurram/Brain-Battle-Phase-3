@@ -31,14 +31,43 @@ sys.path.insert(0, ROOT)
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["BRAIN_BATTLE_SIMULATE"] = "1"
-_TMP_CAP = tempfile.mkdtemp(prefix="bb_render_cap_")
-_TMP_CFG = os.path.join(tempfile.mkdtemp(prefix="bb_render_cfg_"), "settings.json")
-os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = _TMP_CAP
-os.environ["BRAIN_BATTLE_CONFIG"] = _TMP_CFG
-
-from PyQt6.QtWidgets import QApplication
 
 DOCS_MODE = "--docs" in sys.argv
+
+# The committed doc images must show a realistic recordings folder — a plain,
+# human-readable name, no throwaway temp-folder names (e.g. "bb_render_cap_ab12").
+# So docs mode points the app at a cleanly-named folder and configures it the
+# normal way (a saved setting), NOT via BRAIN_BATTLE_CAPTURE_DIR — the env
+# override would make Settings show its "set outside the app" note, which a
+# real user wouldn't see. `tests/test_docs.py` asserts this name is clean.
+DOCS_RECORDINGS_DIR = "/private/tmp/Brain Battle Data"
+
+_TMP_CFG = os.path.join(tempfile.mkdtemp(prefix="bb_render_cfg_"), "settings.json")
+os.environ["BRAIN_BATTLE_CONFIG"] = _TMP_CFG
+
+if DOCS_MODE:
+    # A normal saved-setting recordings folder, cleanly named, no env override.
+    shutil.rmtree(DOCS_RECORDINGS_DIR, ignore_errors=True)
+    os.makedirs(DOCS_RECORDINGS_DIR, exist_ok=True)
+    with open(_TMP_CFG, "w", encoding="utf-8") as _f:
+        import json as _json
+        _json.dump({"capture_dir": DOCS_RECORDINGS_DIR}, _f)
+    _TMP_CAP = DOCS_RECORDINGS_DIR
+    # Fill it with a small demo library so the Sessions image shows several
+    # real statuses (Needs labelling, Labelled, Exported, Interrupted). Run
+    # the generator as an isolated SUBPROCESS: it uses a ProcessPoolExecutor,
+    # whose spawned workers would otherwise re-import this module (and its
+    # QApplication setup). --force bypasses the generator's refuse-real-folder
+    # guard (the configured folder here is this very temp folder).
+    import subprocess as _sp
+    _gen = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generate_demo_session.py")
+    _sp.run([sys.executable, _gen, "--out", DOCS_RECORDINGS_DIR, "--library", "--force"],
+            check=True)
+else:
+    _TMP_CAP = tempfile.mkdtemp(prefix="bb_render_cap_")
+    os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = _TMP_CAP
+
+from PyQt6.QtWidgets import QApplication
 _out_args = [a for a in sys.argv[1:] if not a.startswith("--")]
 OUT = _out_args[0] if _out_args else (
     os.path.join(ROOT, "docs", "images") if DOCS_MODE else os.path.join(ROOT, "screens"))
