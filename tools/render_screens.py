@@ -10,7 +10,11 @@ simulated-device scenario two ways:
       A CURATED subset — one screenshot per screen, at 1280×800 only — into
       docs/images/ with doc-friendly filenames, for the User guide / Quick
       tour pages. These ARE committed (small, compressed PNGs), unlike the
-      screens/ dump.
+      screens/ dump. Docs mode also strips dev/sim artefacts a real user would
+      never see: the simulated camera's "SIM CAM N" overlay becomes a neutral
+      text-free picture, and the demo-library "Demo" badges are cleared from
+      the fixture manifests (see _install_text_free_camera /
+      _strip_demo_flag_from_fixtures).
 
 Runs with BRAIN_BATTLE_SIMULATE=1 so the Connect / Recording steps show live
 simulated cameras + headbands (one weak sensor on Boxer B), and points the
@@ -45,7 +49,60 @@ DOCS_RECORDINGS_DIR = "/private/tmp/Brain Battle Data"
 _TMP_CFG = os.path.join(tempfile.mkdtemp(prefix="bb_render_cfg_"), "settings.json")
 os.environ["BRAIN_BATTLE_CONFIG"] = _TMP_CFG
 
+
+def _install_text_free_camera():
+    """Docs mode only: replace the simulated camera's burned-in "SIM CAM N"
+    label + clock overlay with a neutral, text-free picture, so a committed
+    doc screenshot of the live camera preview doesn't show a dev/sim artefact
+    a real user would never see. Patches simulation.SimCapture only — no app
+    code changes. (The screens/ review dump keeps the labels: there they help
+    identify which tile is which.)"""
+    import numpy as np
+    import simulation as sim
+
+    def _neutral_render(self, n):
+        import cv2
+        # A soft vertical gradient reads as a camera view rather than a flat
+        # rectangle; brightness varies a little per camera index for variety.
+        base = 26 + (self._index % 4) * 6
+        col = np.linspace(base, base + 44, self._h).astype(np.uint8)
+        img = np.repeat(col[:, None, None], self._w, axis=1)
+        img = np.repeat(img, 3, axis=2).copy()
+        # A slow highlight bar gives motion between frames — still no text.
+        bar_x = int((n * 5) % self._w)
+        cv2.rectangle(img, (bar_x, 0), (bar_x + 36, self._h), (70, 80, 150), -1)
+        return img
+
+    sim.SimCapture._render = _neutral_render
+
+
+def _strip_demo_flag_from_fixtures(folder):
+    """Docs mode only: clear `demo: true` in every session manifest under
+    `folder`, so the committed Sessions screenshot shows ordinary recordings
+    rather than ones wearing the in-app "Demo" badge. The app still badges real
+    demo data (see sessions_tab); these render-tool fixtures simply aren't demo
+    data once rewritten. Render-tool-only — the app's manifest read/write path
+    is untouched."""
+    import json
+    for name in os.listdir(folder):
+        mf = os.path.join(folder, name, "session_manifest.json")
+        if not os.path.isfile(mf):
+            continue
+        try:
+            with open(mf, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            continue
+        if data.get("demo"):
+            data["demo"] = False
+            tmp = mf + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, mf)
+
+
 if DOCS_MODE:
+    _install_text_free_camera()
     # A normal saved-setting recordings folder, cleanly named, no env override.
     shutil.rmtree(DOCS_RECORDINGS_DIR, ignore_errors=True)
     os.makedirs(DOCS_RECORDINGS_DIR, exist_ok=True)
@@ -63,6 +120,9 @@ if DOCS_MODE:
     _gen = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generate_demo_session.py")
     _sp.run([sys.executable, _gen, "--out", DOCS_RECORDINGS_DIR, "--library", "--force"],
             check=True)
+    # The library generator stamps every session demo:true; clear it so the
+    # committed Sessions screenshot doesn't show "Demo" badges (a dev artefact).
+    _strip_demo_flag_from_fixtures(DOCS_RECORDINGS_DIR)
 else:
     _TMP_CAP = tempfile.mkdtemp(prefix="bb_render_cap_")
     os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = _TMP_CAP

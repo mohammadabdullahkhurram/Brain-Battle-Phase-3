@@ -27,6 +27,10 @@ in your recordings folder. Open one to watch it back and add labels."
 | Status | See the table below |
 | (actions) | A folder icon to show the recording in Finder, and an Open/Label button |
 
+A recording made with practice/demo data (not a real capture) carries a small
+**Demo** badge next to the boxer names, so it's never mistaken for a real
+session.
+
 ## Status meanings
 
 | Status | When it's shown |

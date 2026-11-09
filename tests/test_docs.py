@@ -477,6 +477,20 @@ def test_docs_images_have_no_temp_folder_name():
           'BRAIN_BATTLE_CAPTURE_DIR"] = DOCS_RECORDINGS_DIR' not in src)
 
 
+def test_docs_images_have_no_sim_or_demo_artefacts():
+    """Committed doc screenshots must not show dev/sim artefacts a real user
+    never sees — the simulated camera's 'SIM CAM' overlay or the in-app 'Demo'
+    badge. Enforced at the source: render_screens.py --docs installs a
+    text-free camera and clears the demo flag from its fixture manifests."""
+    src_path = os.path.join(ROOT, "tools", "render_screens.py")
+    with open(src_path, "r", encoding="utf-8") as f:
+        src = f.read()
+    check("docs mode installs a text-free camera (no 'SIM CAM' overlay)",
+          "_install_text_free_camera()" in src)
+    check("docs mode strips the 'Demo' flag from its fixtures",
+          "_strip_demo_flag_from_fixtures(DOCS_RECORDINGS_DIR)" in src)
+
+
 # ─── 6. Help buttons route correctly ───────────────────────────────────────
 
 def test_help_buttons_route_to_docs():
@@ -570,6 +584,7 @@ if __name__ == "__main__":
     test_no_horizontal_overflow()
     test_diagram_text_is_readable()
     test_docs_images_have_no_temp_folder_name()
+    test_docs_images_have_no_sim_or_demo_artefacts()
     test_help_buttons_route_to_docs()
     test_docs_layout_fit()
     test_placeholder_gate_does_not_scan_docs()
