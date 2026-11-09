@@ -50,9 +50,10 @@ the list of labels your team uses.
 
 ## How the pieces fit together
 
-```
-Boxer A, Boxer B  →  headbands + cameras  →  Brain Battle app  →  recordings folder  →  Review & Label  →  exported analysis bundle
-```
+The two boxers wear headbands and are filmed by four cameras; everything
+feeds the Brain Battle app, which writes each session to your recordings
+folder. From there you review and label it, and — when you're ready — export
+an analysis bundle.
 
 ![Context diagram: boxers and hardware feed the app, which writes to a recordings folder; a researcher reviews and labels there, producing an exported analysis bundle.](../diagrams/context.png)
 

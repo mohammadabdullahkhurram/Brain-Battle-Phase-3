@@ -269,6 +269,7 @@ class SearchHit:
     title: str
     snippet: str
     score: int
+    section: str = ""
 
 
 def build_search_index(nav: Nav, docs_dir: str = DOCS_DIR) -> dict[str, dict]:
@@ -277,6 +278,7 @@ def build_search_index(nav: Nav, docs_dir: str = DOCS_DIR) -> dict[str, dict]:
         text = read_page(page, docs_dir)
         index[page.id] = {
             "title": page.title,
+            "section": page.section,
             "headings": [h.text for h in extract_headings(text)],
             "body": plain_text(text),
         }
@@ -313,7 +315,8 @@ def search(index: dict[str, dict], query: str) -> list[SearchHit]:
         score = 3 if title_hit else (2 if heading_hit else 1)
         snippet = _snippet(entry["body"], q)
         hits.append(SearchHit(page_id=page_id, title=entry["title"],
-                              snippet=snippet, score=score))
+                              snippet=snippet, score=score,
+                              section=entry.get("section", "")))
     hits.sort(key=lambda h: (-h.score, h.title.lower()))
     return hits
 

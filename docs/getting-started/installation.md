@@ -22,16 +22,20 @@ attached.
 
 ## macOS
 
-1. Install [Homebrew](https://brew.sh) if you don't have it.
-2. Install ffmpeg:
-   ```bash
-   brew install ffmpeg
-   ```
-3. From the repository root, install the Python packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Continue to [Verify the install](#verify-the-install) below.
+Install [Homebrew](https://brew.sh) if you don't have it, then install
+ffmpeg:
+
+```bash
+brew install ffmpeg
+```
+
+From the repository root, install the Python packages:
+
+```bash
+pip install -r requirements.txt
+```
+
+Then continue to [Verify the install](#verify-the-install) below.
 
 ## Windows
 
@@ -41,11 +45,14 @@ attached.
    [ffmpeg.org download page](https://ffmpeg.org/download.html) has
    Windows builds; after extracting, add the `bin` folder to your system
    `PATH` environment variable.
-3. From the repository root, install the Python packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Continue to [Verify the install](#verify-the-install) below.
+
+From the repository root, install the Python packages:
+
+```bash
+pip install -r requirements.txt
+```
+
+Then continue to [Verify the install](#verify-the-install) below.
 
 Windows camera capture uses the DirectShow backend automatically
 (`usb_camera.py` picks the right OpenCV backend per platform) — nothing to
@@ -53,23 +60,26 @@ configure by hand.
 
 ## Verify the install
 
-1. Confirm ffmpeg is on your `PATH`:
-   ```bash
-   ffmpeg -version
-   ```
-   If this prints a version banner, you're set. If it says "command not
-   found," ffmpeg isn't installed or isn't on `PATH` — recording is blocked
-   without it (the app checks this itself before every recording and tells
-   you plainly if it's missing).
-2. Launch the app:
-   ```bash
-   python3 brain_battle_main.py
-   ```
-   It should open on the **Sessions** screen, empty, titled "Brain Battle" —
-   that confirms PyQt6 and the rest of `requirements.txt` installed
-   correctly.
+First, confirm ffmpeg is on your `PATH`:
 
-If step 2 opens the app, installation is done — continue to
+```bash
+ffmpeg -version
+```
+
+If this prints a version banner, you're set. If it says "command not found,"
+ffmpeg isn't installed or isn't on `PATH` — recording is blocked without it
+(the app checks this itself before every recording and tells you plainly if
+it's missing).
+
+Then launch the app:
+
+```bash
+python3 brain_battle_main.py
+```
+
+It should open on the **Sessions** screen, empty, titled "Brain Battle" —
+that confirms PyQt6 and the rest of `requirements.txt` installed correctly.
+If the app opens, installation is done — continue to
 [First run](first-run.md).
 
 ## Troubleshooting the install
