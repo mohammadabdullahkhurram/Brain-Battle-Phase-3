@@ -241,15 +241,32 @@ the handful of places the build deliberately reads differently, and why:
 
 ---
 
-## Phase 4 — Labelling
+## Phase 4 — Labelling — **DELIVERED (as part of the Phase 3 Review & Label build)**
 
-- **Every label tied to a boxer (A/B).**
+> **All five items below shipped inside the Phase 3 Review & Label merge, not
+> as a separate phase.** Where an item's *Files:* line names
+> `brain_battle_main.py` (`LabelMarker`/`_place_label`/`get_labels`/
+> `SyncPlaybackController`/`TimelineWithMarkers`), `vlc_module.py`,
+> `labels_config.py` or `labels_data.json`, those are the now-removed
+> predecessors — the delivered work lives in **`review_label_tab.py`**
+> (transport: frame step, 0.25×/0.5×, undo/redo, editable placed-labels list),
+> **`labels_store.py`** (`labels.json` v2: `who` A/B/Both, `kind`
+> point/duration, numeric `t_start`/`t_end`, undo/redo) and **`label_vocab.py`**
+> (one shared `label_list.json` stored in the recordings folder, not committed
+> to the repo). The edit surface is the **Settings** label-list editor. Guarded
+> by `tests/test_labels_v2.py`, `tests/test_label_vocab.py`, and
+> `tests/test_review_tab.py`.
+
+- **Every label tied to a boxer (A/B).** **DONE** — `labels_store` labels carry
+  `who ∈ {A, B, Both}`; the CSV export includes it.
   *Why:* `LabelMarker`/`_place_label`/`get_labels()` carry no boxer field
   today — any between-boxer analysis needs to know whose event it is.
   *Files:* `brain_battle_main.py` (`LabelMarker`, `_place_label`,
   `get_labels`), `export_module.py` (`LabelsExporter`'s CSV columns).
 
-- **Point events and duration events (start/end).**
+- **Point events and duration events (start/end).** **DONE** — `kind` is
+  `point` (t_end null) or `duration` (start + end); Clinch & Referee stop are
+  duration by default, placed by pressing the number to start and again to end.
   *Why:* labels are points-only today (`timestamp_sec` with no end); a
   punch is naturally a point but a clinch, knockdown, or stoppage is
   naturally a duration — forcing everything into a point loses information.
@@ -258,7 +275,9 @@ the handful of places the build deliberately reads differently, and why:
   `export_module.py` (`LabelsExporter` CSV schema).
 
 - **One shared label vocabulary per project stored with sessions, not next
-  to the code; remove committed `labels_data.json`.**
+  to the code; remove committed `labels_data.json`.** **DONE** — `label_vocab`
+  stores one `label_list.json` in the recordings folder; `labels_config.py`
+  and the committed `labels_data.json` were deleted.
   *Why:* `labels_data.json` is currently committed to the repo and silently
   overrides `labels_config.py`'s defaults for every machine that checks the
   repo out — one developer's custom palette (`MOVEMNET_WITH_CONTACT` [sic],
@@ -268,7 +287,9 @@ the handful of places the build deliberately reads differently, and why:
   Settings screen (Phase 3) as the new edit surface.
 
 - **Frame stepping, 0.25×/0.5× playback, undo/redo, editable list of
-  placed labels.**
+  placed labels.** **DONE** — all in `review_label_tab.py`: ← → step one
+  frame, a 0.25×/0.5×/1× speed control, ⌘Z/⇧⌘Z undo/redo, and a "Placed
+  labels" list (click a row to jump to it, ✕ to delete).
   *Why:* precise event placement (e.g. the exact frame of first contact)
   needs finer transport control than today's PLAY/PAUSE-only controls and
   the Space-bar toggle offer.
@@ -276,7 +297,9 @@ the handful of places the build deliberately reads differently, and why:
   `SyncPlaybackController`), `vlc_module.py`.
 
 - **Labels stored as numbers on the `t_session_seconds` axis** (no
-  HH:MM:SS string round-trip).
+  HH:MM:SS string round-trip). **DONE** — `labels_store` keeps `t_start`/
+  `t_end` as rounded floats on the `t_session_seconds` axis; no string
+  round-trip.
   *Why:* `_place_label`/`get_labels`/`_rebuild_timeline_markers` currently
   format timestamps to an `HH:MM:SS.mmm` string and parse them back by
   splitting on `:` — a lossy, fragile round-trip for no benefit once labels
