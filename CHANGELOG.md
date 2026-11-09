@@ -2,7 +2,37 @@
 
 **Current release: v2.1.0** (authoritative source: `version.py` `__version__`).
 The "Phase 2.N" headings below are historical dev-log numbering, kept as
-history — they do not track the release version.
+history — they do not track the release version. `develop` is `3.0.0-dev`; the
+3.x dev-log entries are at the top.
+
+## 3.0.0-dev · Documentation D1 + accuracy review
+
+**In-app Documentation (step D1 of 3).** New **Documentation** screen
+(`docs_tab.py` + `docs_nav.py`, sidebar item above Settings) renders the
+Markdown under `docs/` at runtime via Qt's own `QTextDocument.setMarkdown`
+(no QtWebEngine) — nav tree, always-visible search with highlighting, and
+back/forward. Help (?) buttons on Sessions, every New-recording step, Review &
+Label and Settings open that screen's page directly. `docs/nav.yml` lists only
+finished pages; D1 shipped *Getting started* and *User guide* (11 pages).
+Diagrams are Mermaid source rendered to `.svg` (GitHub) + `.png` (what the
+Markdown references), screenshots are generated via `tools/render_screens.py`.
+Covered by `tests/test_docs.py`.
+
+**Documentation accuracy review (this change).** Verified every `nav.yml` page
+against the code and corrected `review-and-label.md`: label number keys are
+**1–9** (not 1–8), added the **Redo** shortcut (⇧⌘Z / Ctrl+Shift+Z), documented
+that clicking a placed label jumps to it, the exact "A · \<name\>" who-button
+wording, and the "Marked moment — click to name" row wording; flagged the
+brain-activity trace as not-yet-verified-on-hardware. The other ten pages were
+checked and found accurate. **CLAUDE.md** was rewritten to describe the present
+(current screens, file count, next work = docs D2/D3 then Phase 5) with its
+long historical narrative — the unified capture-time clock build, the prior
+functional-fixes/cleanup phase, the grounding backlog, and the v1→v2 migration
+— moved to **`docs/project/history.md`**; its Deferred-work list was rewritten
+to the current architecture (closing the removed labelling-tab / VLC-drift /
+`sync_engine` items, keeping the hardware-blocked EEG-clock and eyes-on-glass
+checks). **ROADMAP.md** Phase 4 (Labelling) is marked delivered as part of the
+Phase 3 Review & Label build. No code behaviour changed — docs only.
 
 ## Phase 2.17 · Second-Muse picker + 2-min disconnect fix
 
