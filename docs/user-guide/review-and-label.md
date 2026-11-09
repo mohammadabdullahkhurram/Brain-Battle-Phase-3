@@ -19,6 +19,9 @@ the length and round count, an autosave status ("✓ All labels saved"), and
   per boxer: a badge and name, a plain-language contact-quality line, and a
   trace with the current playhead fixed in the centre (the trace scrolls
   under it, rather than a moving playhead on a fixed trace).
+  *Not yet verified on hardware:* no brain recording from a real sparring
+  session has been reviewed here yet — see the [FAQ](faq.md) on trusting
+  early brain-activity data.
 - **Timeline** — a read-only Phases row (rest/round/break, automatic — you
   never set these by hand), then one lane each for Boxer A, Boxer B, and
   Both, showing point ticks and duration bars for placed labels, then the
@@ -31,25 +34,30 @@ the length and round count, an autosave status ("✓ All labels saved"), and
 
 The right-hand **Labels** panel is two steps:
 
-1. **"1 · Who did it?"** — choose **A**, **B**, or **Both**.
+1. **"1 · Who did it?"** — choose the boxer. The buttons read **"A · \<Boxer
+   A name\>"**, **"B · \<Boxer B name\>"**, and **Both** (they fall back to
+   **Boxer A** / **Boxer B** when no name was set).
 2. **"2 · What happened?"** — a two-column grid of your team's labels (see
    [Settings](settings.md) → Label list), each with a colour swatch and a
-   number key 1–8. **"Click or press the number. It is placed at the
-   current moment."**
+   number key **1–9** (the list can hold more than nine labels; only the
+   first nine get a number-key shortcut). Click a label, or press its number,
+   and it is placed at the current moment.
 
 Most labels are instant points. A few ("lasts a while" labels — Clinch and
 Referee stop by default) are durations: "press the number when it starts,
 again when it ends (Esc cancels)."
 
 **Placed labels** lists everything placed so far, newest first — time, who,
-label, and a delete button per row — plus an **Undo** button above it for
-the last action.
+label, and a delete (✕) button per row — plus an **Undo** button below it
+for the last action. **Click any row to jump the playhead to that label's
+moment.**
 
 ## Moments marked during recording
 
-If you pressed **M** / **Mark this moment** while recording, those show up
-here as unnamed labels, ready to be given a who/what the same way as any
-other label.
+If you pressed **M** / **Mark this moment** while recording, each one shows
+up at the top of the Placed labels list as a highlighted **"Marked moment —
+click to name"** row. Click it to jump there and give it a who/what the same
+way as any other label.
 
 ## Keyboard shortcuts
 
@@ -57,9 +65,10 @@ other label.
 |---|---|
 | Space | Play / pause |
 | ← → | Step back / forward one frame |
-| 1–8 | Place a label (starts/ends a duration label if it's that kind) |
+| 1–9 | Place a label (starts/ends a duration label if it's that kind) |
 | Tab | Switch boxer (A / B / Both) |
-| ⌘Z | Undo |
+| ⌘Z (Ctrl+Z on Windows) | Undo |
+| ⇧⌘Z (Ctrl+Shift+Z on Windows) | Redo |
 | Esc | Cancel an in-progress duration label |
 
 ## When you're done
