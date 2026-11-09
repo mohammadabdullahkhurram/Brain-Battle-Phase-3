@@ -13,7 +13,25 @@ Brain Battle is a Community Impact Project developed at Constructor University
 Bremen. It records EEG from two boxers (Muse-S over Bluetooth) alongside up to
 four camera angles, aligns everything onto one global timeline, lets a reviewer
 place event labels (punches, rounds, stoppages), and exports the full
-time-aligned dataset for analysis. It is a PyQt6 app, ~11k lines of Python.
+time-aligned dataset for analysis. It is a PyQt6 app, ~13k lines of Python.
+
+---
+
+## Documentation
+
+Full documentation lives under [`docs/`](docs/) and is also readable **inside the
+app** (the Documentation screen in the sidebar renders the same Markdown). Start
+here:
+
+- **[Getting started](docs/getting-started/overview.md)** — what it is, install, first run, a quick tour.
+- **[User guide](docs/user-guide/sessions.md)** — how to use each screen (Sessions, New recording, Review & Label, Export, Settings), troubleshooting, FAQ.
+- **[Research & data](docs/research-and-data/recording-folder.md)** — the recording folder, every file format, timing & accuracy, loading the data in Python/R.
+- **[Developer guide](docs/developer-guide/architecture.md)** — architecture, a reference entry per module, key flows, the threading model, testing, and how to extend it.
+- **[Decisions (ADRs)](docs/decisions/index.md)** — why the app is built the way it is.
+- **[Project](docs/project/goals.md)** — goals & research context, current status, roadmap, version history, glossary.
+
+The `docs/` tree is the authoritative, maintained description of the app; the
+sections below this point are a quick orientation and may lag it.
 
 ---
 
@@ -52,30 +70,29 @@ python3 brain_battle_main.py
 - Logging: console at INFO; every capture session also gets a DEBUG-level
   `session_*.log` inside its own folder (see `log_setup.py`).
 
-## Workflow — three tabs
+## Workflow — three screens
 
 ```
-LIVE MONITOR  →  REVIEW  →  LABELLING  →  Export
+SESSIONS  →  NEW RECORDING  →  REVIEW & LABEL  →  Export
 ```
 
-1. **Live Monitor** — connect cameras and headbands, START SESSION, configure
-   rounds/breaks/baseline. The controller runs an automated loop
-   (baseline → round → break → …) with sync beeps at each round start.
-   Recording is **one continuous take** per source for the whole session;
-   phase transitions are written as timestamps to `phase_markers.csv`, not as
-   separate files.
-2. **Review** — auto-loads the finished session (or use OPEN SESSION
-   FOLDER for a past one). ALIGN reads the sources' alignment — see
-   [Synchronisation](#synchronisation) — then all four videos play in lockstep
-   with both EEG traces following the playhead. Phase markers appear as
-   colour-coded chips on the timeline.
-3. **Labelling** — load the session (OPEN SESSION FOLDER), place event labels
-   at the playhead from a configurable palette (keys `1`–`9` select+place,
-   `Space` toggles play/pause). Phase markers auto-load as read-only entries.
-4. **Export** — from the Review tab: a ZIP with a quad-grid merged MP4
-   (hardware-encoded where a working encoder is detected), original videos,
-   EEG CSVs, a co-registered EEG file (both boxers on one shared time axis),
-   labels CSV, and per-source sync offsets.
+The app is three screens plus Settings, behind a light sidebar (see the
+[User guide](docs/user-guide/sessions.md) for the detail):
+
+1. **Sessions** — the home library of every recording; the app opens here. Open
+   one to watch it back.
+2. **New recording** — a full-screen guided flow: Connect devices → Set up
+   session → Record → Saved. Records one continuous take per source; phase
+   transitions are written to `phase_markers.csv`.
+3. **Review & Label** — one merged screen on a single `t_session_seconds`
+   playhead: the 2×2 video grid, both brain-activity traces, the timeline, and
+   labelling. Alignment is automatic (see [Synchronisation](#synchronisation)) —
+   there is nothing to click to "sync". **Export for analysis** produces a
+   self-contained bundle.
+
+> The old separate Review and Labelling tabs, the Live Monitor, VLC, and
+> audio-xcorr sync are gone — see the [Decisions](docs/decisions/index.md) and
+> [Project history](docs/project/history.md).
 
 ## Synchronisation
 
@@ -111,6 +128,12 @@ Labelling tab's own video transport is not yet converted onto this shared
 axis. See `CLAUDE.md`'s "Deferred work" section and `docs/ROADMAP.md`.
 
 ## Architecture
+
+> The authoritative, maintained architecture and per-module reference is the
+> **[Developer guide](docs/developer-guide/architecture.md)** and its
+> [module reference](docs/developer-guide/module-reference.md). The tables below
+> are a quick sketch and may name modules that have since been removed or
+> renamed — trust the docs over this section.
 
 **Shell & design**
 

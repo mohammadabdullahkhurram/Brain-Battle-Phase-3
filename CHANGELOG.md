@@ -5,6 +5,54 @@ The "Phase 2.N" headings below are historical dev-log numbering, kept as
 history — they do not track the release version. `develop` is `3.0.0-dev`; the
 3.x dev-log entries are at the top.
 
+## 3.0.0-dev · Documentation D3 — Developer guide, Decisions, Project
+
+**The documentation is now complete.** D3 adds the three developer-facing
+sections and the rule + tests that keep the docs current from here on.
+
+- **Developer guide (10 pages):** architecture (context/container/component
+  diagrams), a reference entry for every `.py` module (31 root modules + the
+  `tools/`, with a tests summary table), seven key flows as sequence diagrams
+  (recording start→stop, crash recovery, open-in-review, the playback clock,
+  label→autosave→undo, export, a Settings change reaching the next recording),
+  the threading model (including the camera-thread teardown crash and its fix),
+  the design system & UI conventions, the testing strategy, simulation mode + the
+  demo generator, developer setup & workflow, how-to recipes, and known
+  issues/tech debt.
+- **Decisions (ADRs):** an index plus 12 ADRs in Nygard format — capture-time
+  clock, removing audio cross-correlation, EEG streamed to disk, crash-safe
+  H.264, PyAV playback, labels v2, light-only design, the merged Review & Label
+  screen, folder naming, the app settings store, simulated devices, and in-app
+  docs — each with the dates and reasons from git history and the planning docs.
+- **Project:** goals & research context (Constructor University CIP; supervisor
+  Prof. Jakob Fruchtmann; author Mohammad Abdullah Khurram), current status,
+  roadmap summary (incl. Phases 6–7), version history (v1→v2→v3), a glossary, and
+  a "Planning documents" page surfacing DESIGN/ROADMAP/PLAYBACK_PROPOSAL/
+  ARCHITECTURE_AND_EVALUATION/history in the app. `history.md` is now a Project
+  page. The remaining "coming in a later documentation step" links were replaced
+  with real links, and `README.md` now points at the docs.
+
+**Docs stay current (owner rule).** `CLAUDE.md` and `docs/contributing/docs-guide.md`
+now carry a prominent "Documentation is part of every change" checklist (user
+guide on UI/wording changes, file-formats on any recording/export file change,
+module reference on module changes, a new ADR per significant decision,
+re-rendered diagrams, a CHANGELOG entry). A change isn't done until its docs are.
+
+**Honesty test.** New `tests/test_developer_docs.py`: every `.py` file has a
+module-reference entry and no entry names a deleted file; every ADR is in the
+index and `nav.yml`; every section page is in `nav.yml`; no "later documentation
+step" text remains; and the CHANGELOG's top entry matches `version.py`. Added 14
+diagrams (3 architecture + 7 sequence + threads/component/container), 30 new
+pages to `nav.yml`, and their known-phrase search tests; relaxed the search-UX
+count to be corpus-derived and the diagram viewBox parse to accept Mermaid
+sequence diagrams' negative origin.
+
+**Found while documenting (listed, not fixed):** `ROADMAP.md` Phase 5 still lists
+deleting `sync_engine.py`, which is already removed; `sync_beep.py`'s docstring
+still references that deleted engine; `README.md` still described the old
+three-tab architecture (now points at the docs instead). Tracked in the Developer
+guide's "Known issues & tech debt" page.
+
 ## 3.0.0-dev · Documentation D2 — Research & data + review fixes
 
 **New docs section: Research & data** (six pages, for analysts and
