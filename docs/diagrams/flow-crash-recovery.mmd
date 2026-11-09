@@ -1,0 +1,14 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}, 'sequence': {'actorMargin': 40, 'width': 140, 'boxMargin': 8, 'mirrorActors': false}}}%%
+sequenceDiagram
+    participant App as BrainBattleApp
+    participant St as session_storage
+    participant Se as SessionsTab
+    participant U as User
+    App->>St: scan_interrupted_sessions()
+    St-->>App: folders with no SESSION_END
+    App->>St: mark_session_interrupted()
+    App->>Se: show interrupted banner
+    Se->>U: "A recording was interrupted"
+    U->>Se: Dismiss
+    Se->>St: dismiss_interrupted()
+    Note over St: manifest flag set<br/>banner won't return

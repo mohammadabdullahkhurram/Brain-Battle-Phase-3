@@ -1,0 +1,16 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}, 'sequence': {'actorMargin': 35, 'width': 130, 'boxMargin': 8, 'mirrorActors': false}}}%%
+sequenceDiagram
+    participant T as QTimer (~60 Hz)
+    participant PC as PlayerController
+    participant DW as DecodeWorker
+    participant MD as MultiCamDecoder
+    participant RL as ReviewLabelTab
+    T->>PC: tick
+    PC->>PC: t = t0 + speed × (now − wall0)
+    PC->>DW: request(t)
+    Note over DW: only the latest t<br/>is kept (coalescing)
+    DW->>MD: decode_all(t)
+    MD-->>DW: {i: frame}
+    DW-->>RL: frames_ready(t, images)
+    PC-->>RL: playhead_changed(t)
+    RL->>RL: move EEG + timeline to t

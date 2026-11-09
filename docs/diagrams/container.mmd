@@ -1,0 +1,27 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TB
+    subgraph HW["Hardware (local)"]
+        CAMS["4 USB cameras<br/>(UVC)"]
+        BANDS["2 Muse-S headbands<br/>(Bluetooth LE)"]
+    end
+
+    subgraph PROC["Brain Battle app process (one laptop)"]
+        UI["UI thread<br/>(PyQt6 screens)"]
+        CAMTH["4 camera threads<br/>USBCameraThread"]
+        FFMPEG["4 ffmpeg subprocesses<br/>(fragmented H.264)"]
+        EEGTH["2 headband threads<br/>_MuseDirectReader"]
+        PLAY["decode thread<br/>(PyAV, review only)"]
+    end
+
+    FOLDER[("Recordings folder<br/>one folder per session")]
+    DOCS[("docs/ folder<br/>nav.yml + Markdown + PNG")]
+
+    CAMS --> CAMTH
+    BANDS --> EEGTH
+    CAMTH --> FFMPEG
+    FFMPEG --> FOLDER
+    EEGTH --> FOLDER
+    UI --> FOLDER
+    FOLDER --> PLAY
+    PLAY --> UI
+    DOCS --> UI

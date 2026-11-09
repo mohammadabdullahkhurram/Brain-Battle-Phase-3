@@ -1,0 +1,25 @@
+%%{init: {'themeVariables': {'fontSize': '18px'}}}%%
+flowchart TB
+    UI["UI thread<br/>all PyQt6 widgets · never blocks"]
+
+    subgraph REC["During a recording"]
+        direction TB
+        CT["USBCameraThread ×4<br/>capture → queue"]
+        FE["ffmpeg ×4<br/>encode H.264"]
+        MR["_MuseDirectReader ×4<br/>BLE read + CSV writer"]
+        CT -- "frames (queue)" --> FE
+    end
+
+    subgraph REV["During review"]
+        direction TB
+        DW["DecodeWorker<br/>decode (PyAV)"]
+        ML["_MediaLoadWorker<br/>open media once"]
+    end
+
+    UI -- start/stop --> CT
+    UI -- start/stop --> MR
+    CT -. signals .-> UI
+    MR -. signals .-> UI
+    UI -- request(t) --> DW
+    DW -. frames_ready .-> UI
+    ML -. media_loaded .-> UI

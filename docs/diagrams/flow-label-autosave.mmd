@@ -1,0 +1,15 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}, 'sequence': {'actorMargin': 40, 'width': 135, 'boxMargin': 8, 'mirrorActors': false}}}%%
+sequenceDiagram
+    participant U as User
+    participant RL as ReviewLabelTab
+    participant LS as LabelsStore
+    participant D as session folder
+    U->>RL: press a number key at t
+    RL->>LS: add(new_label)
+    LS->>LS: record inverse op (undo)
+    RL->>D: save labels.json
+    RL->>D: append history.jsonl
+    RL->>U: "All labels saved"
+    U->>RL: Undo (⌘Z)
+    RL->>LS: undo()
+    RL->>D: save labels.json
