@@ -241,6 +241,28 @@ already does for you — the PNG is pixel-faithful to what Mermaid intends, and
 `QImage`/`QPixmap` already load PNG natively with zero special-casing. GitHub
 still gets the full `.svg` for zoomable viewing; the app gets the `.png`.
 
+### Diagram size (must stay readable in the app)
+
+The in-app Documentation tab scales every image down to the reading column
+(~720 px at most; narrower on a small window — see "Reading column &
+typography" below). A diagram that's wide on screen gets scaled down a lot,
+and its label text shrinks with it. So keep diagrams **narrow**:
+
+- **Declare a base font size** in the diagram's init directive so its on-screen
+  size is predictable: `%%{init: {'themeVariables': {'fontSize': '16px'}}}%%`.
+- **Keep the rendered width small.** Displayed label size ≈
+  `fontSize × 720 / svg-viewBox-width`. For 16 px labels to display at ≥ 12 px,
+  the SVG viewBox must be ≤ ~960 px wide. `tests/test_docs.py`
+  (`test_diagram_text_is_readable`) enforces ≥ 12 px and fails otherwise.
+- **Prefer vertical (`flowchart TB`/`TD`) over wide `LR`** layouts, wrap long
+  node labels with `<br/>`, and keep edge labels short — all of these keep the
+  width down.
+- **Split a complex diagram into smaller ones** rather than letting one grow
+  wide. One idea per diagram.
+- **Don't duplicate a diagram as ASCII.** Show the diagram once (the PNG); a
+  prose sentence can introduce it, but don't also paste an ASCII version of
+  the same picture.
+
 ## Screenshots
 
 Curated, small PNGs under `docs/images/`, generated (not hand-captured) by:
@@ -249,12 +271,43 @@ Curated, small PNGs under `docs/images/`, generated (not hand-captured) by:
 python3 tools/render_screens.py --docs
 ```
 
-This drives the app with `BRAIN_BATTLE_SIMULATE=1` against throwaway temp
-data (same approach as the existing `screens/` dump used for UI review), but
-writes a **curated** set of one screenshot per screen at 1280×800 directly
+This drives the app with `BRAIN_BATTLE_SIMULATE=1`, but — unlike the
+`screens/` dump used for UI review — docs mode points the app at a cleanly
+**named** recordings folder ("Brain Battle Data"), configured as a normal
+saved setting (not the `BRAIN_BATTLE_CAPTURE_DIR` override, which would make
+Settings show its "set outside the app" note), and fills it with a small demo
+**library** so the Sessions image shows several real statuses (Needs
+labelling, Labelled, Exported, Interrupted). No throwaway temp-folder name
+("…/bb_render_cfg_ab12/…") ever appears in a committed image —
+`tests/test_docs.py` (`test_docs_images_have_no_temp_folder_name`) guards
+that. It writes a **curated** set of one screenshot per screen at 1280×800
 into `docs/images/` with doc-friendly filenames, already scaled down for file
 size. Re-run it whenever a screen's layout or copy changes enough that a
 screenshot would mislead.
+
+## Reading column & typography
+
+`docs_tab.py` renders Markdown through Qt's `QTextDocument`/`QTextBrowser`,
+not a browser, so the reading experience is tuned in code rather than CSS
+(Qt's Markdown importer ignores most of a default stylesheet — only inline/
+character styling and table borders get through):
+
+- **Vertical rhythm & line height** come from a block-format pass
+  (`_apply_typography`): comfortable body size (~15 px), ~1.5 line height, and
+  real space above/below headings, paragraphs, list items and tables. It runs
+  the same two-pass "collect positions, then mutate" way as the code-run
+  styler, to avoid invalidating the block iterator mid-walk.
+- **"What this page covers"** is detected and set apart as a light callout box
+  (tinted background + padding). Keep that exact phrase at the top of every
+  page — it's both the reader's one-line summary and the callout's trigger.
+- **Images/diagrams scale to the column** and never force a horizontal
+  scrollbar (`_ContentBrowser` rescales them on resize; the horizontal
+  scrollbar is disabled). `test_docs.py` (`test_no_horizontal_overflow`)
+  checks every page's laid-out width fits the column at all three sizes.
+- **Don't nest fenced code blocks inside list items.** Qt won't wrap a code
+  block, and a code block indented under a numbered step widens the whole list
+  column (and overflows). Put the step as a sentence, then the code block at
+  the left margin (see `getting-started/installation.md`).
 
 ## Scope of the placeholder gate
 

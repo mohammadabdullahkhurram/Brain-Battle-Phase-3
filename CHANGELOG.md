@@ -5,6 +5,47 @@ The "Phase 2.N" headings below are historical dev-log numbering, kept as
 history — they do not track the release version. `develop` is `3.0.0-dev`; the
 3.x dev-log entries are at the top.
 
+## 3.0.0-dev · Docs viewer polish + number-key fix
+
+**Number keys 1–9 everywhere.** The code binds keys 1–9 to place a label, but
+the Review & Label keyboard-help line and `docs/DESIGN.md` §6 still said "1–8".
+Both now say **1–9** (owner-approved DESIGN change), along with the
+`label_vocab.py` comments that quoted it. No behaviour change.
+
+**Documentation viewer polish** (from the owner's screenshot review):
+
+- **Typography.** Real vertical rhythm — comfortable body size (~15 px), ~1.5
+  line height, and space around headings/paragraphs/lists/tables — applied as
+  a block-format pass in `docs_tab.py` (Qt's Markdown importer ignores a
+  default stylesheet for block layout). Each page's **"What this page covers"**
+  intro is now set apart as a light callout box.
+- **No horizontal overflow, ever.** Images/diagrams scale down to the current
+  content width at every window size (`_ContentBrowser` rescales on resize);
+  the horizontal scrollbar is disabled (removing the stray bottom-right corner
+  square); the nav/results rows lost their dotted focus rectangle (selection
+  styling is the visible keyboard-focus indicator). Fenced code blocks nested
+  in list items — which Qt won't wrap — were de-nested in `installation.md`.
+- **Readable diagrams.** `context.mmd` was reshaped from a wide (1560 px)
+  horizontal layout to a narrow vertical one, and both diagrams now declare a
+  16 px base font, so their labels display at ≥ 12 px in the reading column
+  instead of ~6 px. The overview no longer shows the same picture twice (an
+  ASCII line *and* the diagram) — just the diagram, introduced by a sentence.
+- **Search.** Results now show a **count** ("2 results for …") and each hit's
+  **section**; the search box has a **×** clear button; **Esc** returns to the
+  menu; **Enter** opens the first result; selecting a result opens the page
+  scrolled to the first match with all matches highlighted.
+- **Screenshots** regenerated with a realistic recordings folder name
+  ("Brain Battle Data") and a small demo library so the Sessions image shows
+  several statuses (Needs labelling, Labelled, Exported, Interrupted). No
+  throwaway temp-folder names appear in any committed image; temp folders are
+  used and the real Captures folder is left untouched.
+
+New `tests/test_docs.py` checks: no horizontal overflow on any page at the
+three sizes, diagram label text ≥ 12 px, the search count/section/clear/Esc/
+Enter behaviour, and that no doc image was rendered with a temp-folder name.
+`docs/contributing/docs-guide.md` gained the typography, diagram-size, and
+screenshot rules.
+
 ## 3.0.0-dev · Documentation D1 + accuracy review
 
 **In-app Documentation (step D1 of 3).** New **Documentation** screen
