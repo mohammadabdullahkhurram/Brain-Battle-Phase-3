@@ -34,6 +34,30 @@ headbands (Bluetooth). Four screens behind a light sidebar shell — **Sessions*
 - Run everything in `tests/` before and after every change, and report
   pass/fail — not just "I ran the tests."
 
+### Documentation is part of every change
+
+**A change isn't done until its docs are.** Documentation ships in the same
+change as the code it describes — not as a later step. The honesty tests
+(`tests/test_docs.py`, `test_research_docs.py`, `test_developer_docs.py`) enforce
+this, so skipping it turns the suite red. Checklist:
+
+- **User guide** — update when the UI or any user-facing wording changes.
+- **File formats** (`docs/research-and-data/file-formats.md`) — update when any
+  recording/export file changes (a manifest key, CSV column, history event, zip
+  entry); backtick the new name. (`test_research_docs.py`)
+- **Module reference** (`docs/developer-guide/module-reference.md`) + this file's
+  module map — update when a module is added, removed, or renamed.
+  (`test_developer_docs.py`)
+- **A new ADR** (`docs/decisions/`) — write one for any significant technical
+  decision, and list it in `nav.yml`. (`test_developer_docs.py`)
+- **Diagrams** — re-render (`python3 tools/render_diagrams.py`) when a `.mmd`
+  changes. (`test_docs.py`)
+- **CHANGELOG** — add an entry for every change; the top entry must match
+  `version.py`. (`test_developer_docs.py`)
+
+See `docs/contributing/docs-guide.md` "Documentation is part of every change" for
+how each item is enforced.
+
 ## Product direction
 
 **`docs/DESIGN.md` (approved 2026-10-27) is the source of truth for ALL UI
