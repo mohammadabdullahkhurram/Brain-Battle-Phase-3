@@ -324,6 +324,35 @@ vocabulary throughout, because it describes the same screens the gate
 protects and should read exactly like them — that's a style choice this guide
 makes, not something the test enforces.
 
+## The format reference must match the code
+
+The *Research & data* section documents exact file formats — every manifest
+key, CSV column, history event, and export-zip entry. Those tables are only
+useful if they can't silently drift from what the code actually writes, so a
+test enforces it: `tests/test_research_docs.py`
+(`test_*_documented`) generates a **real** recording and a **real** export,
+then reads the field names straight back out —
+
+- manifest keys recursively from `session_manifest.json`,
+- CSV columns from each file's header (markers, camera sidecars, EEG, contact
+  log, co-registered EEG, labels, events),
+- `labels.json` / `label_list.json` fields from `labels_store` / `label_vocab`,
+- history event types from `session_history.EVENT_*`,
+- export-zip entries from the zip's `namelist()` —
+
+and fails unless each one appears, backticked, in
+`research-and-data/file-formats.md`. **Add a field to the code without adding it
+to that page and the test goes red.** So: when you change a written format, update
+the format reference in the same commit. Wrap every field/column/key/event/entry
+name in `` `backticks` `` there — that's both the house style and what the test
+greps for (grouped spans like `` `{a, b, c}` `` and intentionally-empty spans
+are both handled).
+
+The same test runs the *Loading the data* Python examples against a generated
+demo export, so those stay executable; the R examples run too when `Rscript` +
+`readr`/`dplyr` are present, and are otherwise reported "not automatically
+tested".
+
 ## Checklist for a new page
 
 1. Pick the right section (see the table above) and write the `.md` file.

@@ -5,6 +5,53 @@ The "Phase 2.N" headings below are historical dev-log numbering, kept as
 history — they do not track the release version. `develop` is `3.0.0-dev`; the
 3.x dev-log entries are at the top.
 
+## 3.0.0-dev · Documentation D2 — Research & data + review fixes
+
+**New docs section: Research & data** (six pages, for analysts and
+successors). Every field, column, and number is verified against the code:
+
+- **Recording folder anatomy** — the folder tree, who writes each file and
+  when (recording vs. later), and a data-flow diagram.
+- **File format reference** — one subsection per file (`session_manifest.json`,
+  `phase_markers.csv`, camera videos + sidecars, EEG CSVs, `contact_quality.csv`,
+  `labels.json` v2, `label_list.json`, `history.jsonl`, and the export zip) with
+  a field/column table and a real example.
+- **Timing & accuracy** — the one-session-clock model (diagram), what's
+  measured vs. assumed, the numbers we have (camera flash spread 17.2 ms,
+  bounded ≤ 34 ms; EEG clock + Bluetooth latency **Not yet verified on
+  hardware**), what it means for power/envelope vs. phase-based measures, and
+  the tap/buzzer hardware-verification procedure.
+- **Loading the data** — pandas and R (readr/dplyr) examples (load, select a
+  round, cut epochs around labels, join labels to brain data). The Python
+  examples are executed by the test suite.
+- **Known limitations** — one list of every unverified item and what would
+  verify each.
+- **Personal data note** — recordings/exports contain names + brain data;
+  follow your institution's data-protection rules before sharing.
+
+**Honesty test.** `tests/test_research_docs.py` generates a real recording and
+export and fails unless every manifest key, CSV column, history event, and
+export-zip entry the code writes is documented (backticked) in the format
+reference — so the tables can't drift from the code. It also runs the Python
+loading examples against a demo export.
+
+**Review fixes (from the owner's review):**
+
+- **Sessions "Show in Finder"** was clipped to "ow in Finde"; it's now a
+  folder-icon button with a tooltip + accessible name (DESIGN §1). Added a
+  test that no row control's text is clipped at the three window sizes.
+- **Docs images now reserve only their displayed height** — scaled-down
+  screenshots no longer leave a large gap below them, and a search match
+  scrolls into the upper third of the view instead of onto blank space.
+- **Search results** show the page title (bold), section, then the snippet with
+  the match in bold; snippets trim to whole words; no horizontal scrollbar.
+- **Docs screenshots** no longer show dev/sim artefacts — the simulated camera
+  renders a neutral, text-free picture and the demo "Demo" badges are cleared
+  from the fixtures (render tool only; the app still badges real demo data, and
+  the Sessions guide notes the badge in one sentence).
+- The *Research & data* link in the Overview is now live (was "coming in a
+  later documentation step").
+
 ## 3.0.0-dev · Docs viewer polish + number-key fix
 
 **Number keys 1–9 everywhere.** The code binds keys 1–9 to place a label, but

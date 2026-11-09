@@ -26,8 +26,7 @@ running the session, and to make labelling what happened afterwards fast.
   events (who threw what, when); often the same person, sometimes someone
   else on the team.
 - **The person analysing the data** — opens the exported files in Python,
-  R, or similar; see the Research & data section (coming in a later
-  documentation step).
+  R, or similar; see [Research & data](../research-and-data/recording-folder.md).
 - **Developers and successors** — students or researchers who pick up the
   codebase later; see the Developer guide (coming in a later documentation
   step).

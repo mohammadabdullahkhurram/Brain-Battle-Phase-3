@@ -1,0 +1,7 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TB
+    CAMS["4 cameras"] -->|"video +<br/>frame timestamps"| FOLDER
+    BANDS["2 headbands"] -->|"EEG CSV +<br/>contact log"| FOLDER
+    FOLDER[("Recording folder<br/>videos · EEG · markers<br/>manifest · contact log")]
+    FOLDER -->|"open a session"| REVIEW["Review &amp; Label<br/>adds labels.json<br/>and history.jsonl"]
+    REVIEW -->|"Export for analysis"| ZIP["Analysis bundle (.zip)<br/>labels · events ·<br/>co-registered EEG"]

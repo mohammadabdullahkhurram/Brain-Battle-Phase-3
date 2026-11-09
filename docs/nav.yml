@@ -43,3 +43,24 @@ sections:
       - id: faq
         title: FAQ
         file: user-guide/faq.md
+
+  - title: Research & data
+    pages:
+      - id: recording-folder
+        title: Recording folder anatomy
+        file: research-and-data/recording-folder.md
+      - id: file-formats
+        title: File format reference
+        file: research-and-data/file-formats.md
+      - id: timing-and-accuracy
+        title: Timing & accuracy
+        file: research-and-data/timing-and-accuracy.md
+      - id: loading-the-data
+        title: Loading the data
+        file: research-and-data/loading-the-data.md
+      - id: limitations
+        title: Known limitations
+        file: research-and-data/limitations.md
+      - id: personal-data
+        title: Personal data note
+        file: research-and-data/personal-data.md

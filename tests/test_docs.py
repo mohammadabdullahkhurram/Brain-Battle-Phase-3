@@ -144,6 +144,12 @@ _KNOWN_PHRASES = {
     "settings": "Test sound",
     "troubleshooting": "QThread destroyed",
     "faq": "Bluetooth",
+    "recording-folder": "copy the folder",
+    "file-formats": "microvolts",
+    "timing-and-accuracy": "shared origin",
+    "loading-the-data": "merge_asof",
+    "limitations": "buzzer test",
+    "personal-data": "data protection",
 }
 
 
