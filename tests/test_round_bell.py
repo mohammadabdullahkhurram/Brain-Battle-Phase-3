@@ -3,8 +3,10 @@ The round bell: a real boxing-bell recording (assets/sounds/round_bell.wav,
 CC-BY, see docs/project/credits.md) replacing the old synthesized 1 kHz beep.
 
 Covers:
-  1. round_bell.wav exists with the expected duration, true peak, and
-     integrated loudness (as produced by tools/make_round_bell.py).
+  1. round_bell.wav exists with the expected duration and true peak (peak-
+     normalised to -1 dBTP — full volume, no clipping — as produced by
+     tools/make_round_bell.py; the owner turns it down with the laptop's
+     volume if needed, rather than the app being quiet by default).
   2. SessionController's beep_requested fires at BASELINE start and every
      ROUND start, and never on a BREAK.
   3. SettingsTab's Test sound button plays the bundled file, headless.
@@ -47,12 +49,21 @@ def check(name, cond, detail=""):
 
 
 def _ffmpeg_loudnorm_measure(path):
+    # loudnorm's measurement pass used purely as a true-peak/loudness meter
+    # (no second pass applying its own gain) — matches tools/make_round_bell.py.
     r = subprocess.run(
-        ["ffmpeg", "-i", path, "-af",
-         "loudnorm=I=-20:TP=-3:LRA=7:print_format=json", "-f", "null", "-"],
+        ["ffmpeg", "-i", path, "-af", "loudnorm=print_format=json", "-f", "null", "-"],
         capture_output=True, text=True)
     m = re.search(r"\{[^{}]*\}", r.stderr, flags=re.DOTALL)
     return json.loads(m.group(0)) if m else {}
+
+
+def _sample_peak_dbfs(path):
+    r = subprocess.run(
+        ["ffmpeg", "-i", path, "-af", "astats", "-f", "null", "-"],
+        capture_output=True, text=True)
+    hits = re.findall(r"Peak level dB:\s*(-?[\d.]+)", r.stderr)
+    return float(hits[-1]) if hits else float("nan")
 
 
 def _ffprobe_duration(path):
@@ -75,12 +86,13 @@ def test_round_bell_wav_specs():
           1.5 <= duration <= 2.5, f"duration={duration:.3f}s")
 
     measured = _ffmpeg_loudnorm_measure(BELL_WAV)
-    lufs = float(measured.get("input_i", "nan"))
     tp = float(measured.get("input_tp", "nan"))
-    check("integrated loudness is close to the -20 LUFS target",
-          -22.0 <= lufs <= -18.0, f"measured={lufs} LUFS")
-    check("true peak is at or below the -3 dBTP ceiling",
-          tp <= -3.0, f"measured={tp} dBTP")
+    check("true peak is peak-normalised to ~-1 dBTP (full volume)",
+          -1.5 <= tp <= -0.5, f"measured={tp} dBTP")
+
+    peak = _sample_peak_dbfs(BELL_WAV)
+    check("no clipping: sample peak stays below 0 dBFS",
+          peak < 0.0, f"sample peak={peak} dBFS")
 
 
 # ─── 2. the bell rings at baseline + each round start, never on a break ────

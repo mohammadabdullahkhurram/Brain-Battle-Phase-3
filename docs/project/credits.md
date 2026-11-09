@@ -20,10 +20,13 @@ source `.wav` requires a Freesound login to download) is kept at
 `tools/make_round_bell.py` turns it into the WAV the app actually plays,
 `assets/sounds/round_bell.wav`: downmixed to mono, trimmed to start right on
 the strike and keep ~2 s of natural ring with a gentle fade-out, a high-pass
-at 120 Hz, a high-shelf cut above 4 kHz to soften the top end, and loudness
-normalised to about −20 LUFS (true peak ≤ −3 dBTP), 44.1 kHz / 16-bit / mono.
-See the script for the exact filter chain and every constant — it documents
-itself and can be re-run if the source or the target levels ever change.
+at 120 Hz, a high-shelf cut above 4 kHz to soften the top end, and peak
+normalised to −1 dBTP — full volume, just short of clipping, not quietened to
+a comfortable-listening loudness target. (The bell is meant to be heard
+clearly in a gym; turn it down with the laptop's volume if it's too loud.)
+Final format: 44.1 kHz / 16-bit / mono. See the script for the exact filter
+chain and every constant — it documents itself and can be re-run if the
+source or the target level ever change.
 
 `sync_beep.py` plays this file through `QSoundEffect` for the "Ring a bell
 when each round starts" preference in [Settings](../user-guide/settings.md).

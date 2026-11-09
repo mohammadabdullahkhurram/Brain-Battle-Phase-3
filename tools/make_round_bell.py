@@ -13,9 +13,9 @@ mp3 introduces no audible artefacts at this short, percussive length.
 
 Processing (every number here is a named constant below, so re-running after
 changing one re-derives everything else):
-  1. Downmix to mono BEFORE any level analysis — loudnorm has to measure the
-     signal it will actually ship, and averaging L+R first avoids the ~3 dB
-     level mismatch a post-loudnorm downmix would introduce.
+  1. Downmix to mono BEFORE any level analysis — the peak measurement has to
+     see the signal it will actually ship, and averaging L+R first avoids
+     the ~3 dB level mismatch a post-normalisation downmix would introduce.
   2. `silenceremove` trims any lead-in silence so playback starts right on
      the strike, not before it.
   3. `highpass` at HIGHPASS_HZ removes handling rumble/room noise below the
@@ -26,10 +26,12 @@ changing one re-derives everything else):
      without dulling the strike.
   5. `atrim` keeps RING_DUR_SEC of the strike + natural ring, `afade` fades
      the last FADE_DUR_SEC of that out smoothly instead of cutting it off.
-  6. Two-pass `loudnorm`: measure the processed-but-not-yet-normalised mono
-     signal, then apply with the measured stats so the output lands on
-     TARGET_LUFS integrated loudness exactly (a single-pass loudnorm only
-     approximates the target).
+  6. Peak normalisation: measure the true peak (`loudnorm`'s oversampled
+     TP detector, used here purely as a meter) of the processed-but-not-yet-
+     normalised mono signal, then apply a flat linear gain so the output's
+     true peak lands exactly on TARGET_TP_DBTP — full volume, just short of
+     clipping. (Not loudness-normalised: the owner turns the bell down with
+     the laptop's volume if it's too loud, rather than the app quietening it.)
   7. Final format: SAMPLE_RATE Hz, 16-bit PCM, mono.
 
 Run: python3 tools/make_round_bell.py
@@ -53,9 +55,7 @@ SHELF_FREQ_HZ  = 4000     # high-shelf corner: everything above softened
 SHELF_GAIN_DB  = -6       # how much the shelf pulls the top end down
 RING_DUR_SEC   = 2.0      # strike + natural ring kept, within the 1.5-2.5s target
 FADE_DUR_SEC   = 0.5      # gentle fade-out over the tail of RING_DUR_SEC
-TARGET_LUFS    = -20.0    # integrated loudness target (comfortable, not jarring)
-TARGET_TP_DBTP = -3.0     # true-peak ceiling loudnorm must not exceed
-TARGET_LRA     = 7.0      # loudness range target (ffmpeg's default)
+TARGET_TP_DBTP = -1.0     # true-peak target: full volume, just below clipping
 SAMPLE_RATE    = 44100
 
 
@@ -66,10 +66,12 @@ def _run(cmd: list[str]) -> str:
     return result.stderr   # ffmpeg writes filter output (and loudnorm's JSON) to stderr
 
 
-def _measure_loudnorm(wav_path: Path) -> dict:
+def _measure_true_peak(wav_path: Path) -> dict:
+    # loudnorm's own measurement pass is used purely as a true-peak meter here
+    # (print_format=json with no second pass applying its loudness gain).
     stderr = _run([
         "ffmpeg", "-y", "-i", str(wav_path),
-        "-af", f"loudnorm=I={TARGET_LUFS}:TP={TARGET_TP_DBTP}:LRA={TARGET_LRA}:print_format=json",
+        "-af", "loudnorm=print_format=json",
         "-f", "null", "-",
     ])
     m = re.search(r"\{[^{}]*\}", stderr, flags=re.DOTALL)
@@ -86,7 +88,7 @@ def main() -> None:
         pre = Path(tmp) / "pre.wav"
 
         # Pass 1: mono downmix, trim-to-onset, EQ, trim-to-ring-length, fade-out.
-        # Kept as float32 so the loudnorm measurement below sees full precision.
+        # Kept as float32 so the peak measurement below sees full precision.
         _run([
             "ffmpeg", "-y", "-i", str(SOURCE),
             "-af", (
@@ -101,25 +103,23 @@ def main() -> None:
             "-c:a", "pcm_f32le", str(pre),
         ])
 
-        # Pass 2: measure, then apply loudnorm with the measured stats (accurate
-        # two-pass normalisation — a single pass only approximates the target).
-        measured = _measure_loudnorm(pre)
+        # Pass 2: measure the true peak, then apply a flat linear gain so the
+        # output's true peak lands exactly on TARGET_TP_DBTP (true peak scales
+        # linearly with a flat gain, so this hits the target precisely without
+        # loudnorm's own dynamic/loudness-targeting gain path).
+        measured_tp = float(_measure_true_peak(pre)["input_tp"])
+        gain_db = TARGET_TP_DBTP - measured_tp
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)
         _run([
             "ffmpeg", "-y", "-i", str(pre),
-            "-af", (
-                f"loudnorm=I={TARGET_LUFS}:TP={TARGET_TP_DBTP}:LRA={TARGET_LRA}:"
-                f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
-                f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
-                f"offset={measured['target_offset']}:linear=true"
-            ),
+            "-af", f"volume={gain_db}dB",
             "-ar", str(SAMPLE_RATE), "-sample_fmt", "s16", str(OUTPUT),
         ])
 
-    verify = _measure_loudnorm(OUTPUT)
+    verify = _measure_true_peak(OUTPUT)
     print(f"wrote {OUTPUT.relative_to(ROOT)}")
-    print(f"  integrated loudness: {verify['input_i']} LUFS (target {TARGET_LUFS})")
-    print(f"  true peak:           {verify['input_tp']} dBTP (ceiling {TARGET_TP_DBTP})")
+    print(f"  integrated loudness: {verify['input_i']} LUFS")
+    print(f"  true peak:           {verify['input_tp']} dBTP (target {TARGET_TP_DBTP})")
 
 
 if __name__ == "__main__":

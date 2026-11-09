@@ -5,6 +5,25 @@ The "Phase 2.N" headings below are historical dev-log numbering, kept as
 history — they do not track the release version. `develop` is `3.0.0-dev`; the
 3.x dev-log entries are at the top.
 
+## 3.0.0-dev · Round bell: full volume
+
+Follow-up to the round-bell change below: the bell now plays at full volume
+instead of a quietened, comfortable-listening level.
+
+- **`tools/make_round_bell.py`** — the −20 LUFS loudness normalisation is
+  replaced with peak normalisation to −1 dBTP (full volume, just short of
+  clipping). The trim, high-pass, top-end softening, and fade-out are
+  unchanged. `assets/sounds/round_bell.wav` regenerated: true peak −1.0 dBTP,
+  sample peak −1.47 dBFS (no clipping), still 2.0 s / 44.1 kHz / 16-bit /
+  mono. The app already played `SyncBeep` at `QSoundEffect`'s default full
+  volume (`volume=1.0`), so no code change was needed to stop the app itself
+  from quietening it.
+- Docs: `docs/project/credits.md` and
+  `docs/developer-guide/module-reference.md` describe peak normalisation
+  instead of loudness normalisation.
+- Tests: `tests/test_round_bell.py` now checks true peak ≈ −1 dBTP and that
+  the sample peak stays below 0 dBFS (no clipping), instead of an LUFS range.
+
 ## 3.0.0-dev · Round bell: a real boxing-bell sound
 
 The round bell is no longer a generated 1 kHz tone — it's a real boxing-bell

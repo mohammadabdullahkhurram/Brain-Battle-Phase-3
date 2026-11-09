@@ -367,9 +367,10 @@ several `tests/test_docs.py` checks.
 ### `tools/make_round_bell.py`
 Turns the raw Freesound recording (`assets/sounds/source/`) into
 `assets/sounds/round_bell.wav`: mono downmix, trim-to-onset, high-pass +
-high-shelf EQ, trim-to-ring-length + fade-out, then two-pass `loudnorm` to a
-documented LUFS/true-peak target. Every setting is a named constant in the
-script so it can be re-run after changing one. See
+high-shelf EQ, trim-to-ring-length + fade-out, then peak-normalised (via a
+flat gain computed from `loudnorm`'s true-peak meter) to −1 dBTP — full
+volume, just short of clipping; not a loudness target. Every setting is a
+named constant in the script so it can be re-run after changing one. See
 [credits](../project/credits.md). Covered by `tests/test_round_bell.py`.
 
 ---
