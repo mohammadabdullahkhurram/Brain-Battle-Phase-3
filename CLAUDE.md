@@ -167,6 +167,14 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
   confirm Set up/the recorder/the disk estimate/Review & Label all reflect it.
 - `test_contact_log.py` — per-sensor contact log weak-period spans + the >30 s
   "worth checking" filter.
+- `test_docs.py` — the in-app Documentation tab + `docs/` content (Phase 3
+  step D1): every `nav.yml` page exists and renders; every image/diagram it
+  references exists; internal links/anchors resolve; diagram freshness
+  (`.mmd` vs. its rendered `.svg`/`.png`/`.hash`); search finds a known
+  phrase per page + highlights it; Help (?) buttons route to the right
+  page/anchor from Sessions, each record-flow step, Review & Label, and
+  Settings; strict layout fit at the three sizes; and the placeholder
+  gate's scope contract (it must not scan `docs/*.md`).
 
 ## Project status
 
@@ -197,7 +205,26 @@ real capture paths (`simulation.py`, `BRAIN_BATTLE_SIMULATE`, dev-only, not
 shipped). What remains hardware-blocked is the eyes-on-glass/real-signal
 verification (deferred items below) — see `docs/ROADMAP.md`'s Phase 3 "DESIGN
 differences" note for the handful of places this build intentionally reads
-differently than DESIGN.md's mockup text. Phase 4 (Labelling) is next, gated on
+differently than DESIGN.md's mockup text.
+
+**In-app documentation (step D1 of 3, inserted before Phase 5) is also
+shipped.** A new **Documentation** screen (`docs_tab.py` + `docs_nav.py`,
+sidebar item just above Settings) renders the Markdown under `docs/` at
+runtime — no QtWebEngine, Qt's own `QTextDocument.setMarkdown` — with a
+nav tree, always-visible search (titles/headings/body, with highlighting),
+and back/forward. Help (?) buttons on Sessions, each New-recording step,
+Review & Label, and Settings open that screen's page directly. `docs/nav.yml`
+lists only finished pages; `docs/contributing/docs-guide.md` is the plan for
+all six sections (Diátaxis + ADRs) and the style rules every page follows.
+D1 wrote *Getting started* and *User guide* (11 pages); *Research & data*,
+*Developer guide*, *Decisions*, and *Project* land in D2/D3. Diagrams are
+Mermaid source (`docs/diagrams/*.mmd`) rendered via `tools/render_diagrams.py`
+to both `.svg` (GitHub) and `.png` (what Markdown actually references — Qt's
+`QSvgRenderer` can't render Mermaid's CSS-class styling or
+`foreignObject` labels, verified empirically; see docs-guide.md). Screenshots
+are generated, not hand-captured: `tools/render_screens.py --docs`.
+
+Phase 4 (Labelling) is next, gated on
 owner approval per the working agreement. The historical step-by-step narrative
 that follows is kept for context — where it names `SyncReviewTab`/
 `LabellingTab`/`vlc_module`/`sync_engine`, those are the now-removed
@@ -377,6 +404,8 @@ shipped).
 |---|---|
 | `brain_battle_main.py` | Entry point, `BrainBattleApp` shell (window sizing + QSettings, page wiring) |
 | `settings_tab.py` | The real Settings screen (DESIGN §7): recordings folder, headbands, video quality, session defaults + bell, shared label-list editor; autosaves with a "✓ Saved" confirmation |
+| `docs_tab.py` | The in-app Documentation screen: Markdown rendering via `QTextBrowser`/`QTextDocument.setMarkdown` (no QtWebEngine), nav tree, always-visible search with highlighting, back/forward |
+| `docs_nav.py` | Qt-free docs logic: `docs/nav.yml` loading, heading slugify, search index, internal link/image/anchor extraction — used by `docs_tab.py` and `tests/test_docs.py` |
 | `review_label_tab.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, jargon-free brain card, timeline, labelling |
 | `pyav_player.py` | `PyAVCamera` / `MultiCamDecoder` / `DecodeWorker` / `PlayerController` — single-clock decode off the UI thread |
 | `labels_store.py` | `labels.json` v2 (schema, v1 migration, undo/redo, events timeline) |

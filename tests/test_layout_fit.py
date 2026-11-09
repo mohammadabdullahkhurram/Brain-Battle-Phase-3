@@ -121,7 +121,8 @@ def _overflows(win, page):
 def test_pages_fit():
     win = bbm.BrainBattleApp()
     pages = [(win.IDX_SESSIONS, "Sessions"), (win.IDX_RECORD, "New recording"),
-             (win.IDX_REVIEW, "Review & Label"), (win.IDX_SETTINGS, "Settings")]
+             (win.IDX_REVIEW, "Review & Label"), (win.IDX_DOCS, "Documentation"),
+             (win.IDX_SETTINGS, "Settings")]
     for W, H in SIZES:
         win.resize(W, H)
         win.show()

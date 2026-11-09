@@ -393,6 +393,13 @@ the handful of places the build deliberately reads differently, and why:
   (none exist yet), `version.py` (build metadata); ffmpeg-path resolution in
   `usb_camera.py`/`export_module.py` to prefer the bundled binary; bundle
   include/exclude lists that drop `tools/` and `tests/`.
+  **Also bundle `docs/`** — the in-app Documentation tab (`docs_tab.py` +
+  `docs_nav.py`, added alongside this item) reads `docs/nav.yml` and every
+  page/diagram/screenshot it lists straight from the repo's `docs/` folder at
+  runtime; a packaged build needs that folder included (content only —
+  `docs/contributing/` and the raw `.mmd` diagram sources aren't referenced by
+  any page and don't need to ship, just `nav.yml` + the Markdown + the
+  rendered `.png`/`.svg` the pages actually link to).
 
 - **Rewrite README for non-technical users.**
   *Why:* the current `README.md` is written for a developer audience (pip

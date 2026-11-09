@@ -159,11 +159,13 @@ def part2_construct_tabs_and_shell(app):
     from sessions_tab import SessionsTab
     from review_label_tab import ReviewLabelTab
     from settings_tab import SettingsTab
+    from docs_tab import DocsTab
 
     for name, ctor in (("RecordFlow", RecordFlow),
                        ("ReviewLabelTab", ReviewLabelTab),
                        ("SessionsTab", lambda: SessionsTab("/tmp")),
-                       ("SettingsTab", SettingsTab)):
+                       ("SettingsTab", SettingsTab),
+                       ("DocsTab", DocsTab)):
         try:
             w = ctor()
             check(f"construct {name}", True)
@@ -206,10 +208,10 @@ def part3_pure_logic(win):
         check("__version__ surfaced in window title",
               win.windowTitle() == f"Brain Battle  v{__version__}",
               repr(win.windowTitle()))
-        # New shell: the four pages exist and the app opens on Sessions.
-        check("shell has Sessions / New recording / Review & Label / Settings pages",
+        # New shell: the five pages exist and the app opens on Sessions.
+        check("shell has Sessions / New recording / Review & Label / Documentation / Settings pages",
               all(hasattr(win, a) for a in
-                  ("IDX_SESSIONS", "IDX_RECORD", "IDX_REVIEW", "IDX_SETTINGS")))
+                  ("IDX_SESSIONS", "IDX_RECORD", "IDX_REVIEW", "IDX_DOCS", "IDX_SETTINGS")))
         check("app opens on Sessions",
               win._shell.current_index() == win.IDX_SESSIONS,
               f"current={win._shell.current_index()} sessions={getattr(win,'IDX_SESSIONS','?')}")
