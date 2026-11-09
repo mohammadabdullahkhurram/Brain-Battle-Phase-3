@@ -135,6 +135,13 @@ class BrainBattleApp(QMainWindow):
         from settings_tab import SettingsTab
         self._settings_page = SettingsTab()
         self._settings_page.capture_dir_changed.connect(self._on_capture_dir_changed)
+        self._settings_page.help_requested.connect(lambda: self.open_help("settings"))
+        from docs_tab import DocsTab
+        self._docs_page = DocsTab()
+
+        self._sessions_page.help_requested.connect(lambda: self.open_help("sessions"))
+        self.record_flow.help_requested.connect(self.open_help)
+        self._review_page.help_requested.connect(lambda: self.open_help("review-and-label"))
 
         self.IDX_SESSIONS = self._shell.add_page("sessions", "Sessions", "home", self._sessions_page)
         # New recording opens the full-screen guided flow (no sidebar).
@@ -142,6 +149,9 @@ class BrainBattleApp(QMainWindow):
                                                  self.record_flow, hide_sidebar=True)
         self.IDX_REVIEW   = self._shell.add_page("review", "Review & Label", "layers",
                                                  self._review_page, collapse_on_active=True)
+        # Documentation sits just above Settings in the bottom nav group.
+        self.IDX_DOCS     = self._shell.add_page("docs", "Documentation", "book",
+                                                 self._docs_page, bottom=True)
         self.IDX_SETTINGS = self._shell.add_page("settings", "Settings", "settings",
                                                  self._settings_page, bottom=True)
 
@@ -179,6 +189,30 @@ class BrainBattleApp(QMainWindow):
 
     def _go_to_sessions(self):
         self._shell.set_current_index(self.IDX_SESSIONS)
+
+    # ── Help (?) buttons — Sessions / each record-flow step / Review & Label /
+    # Settings all open the Documentation tab at that screen's user-guide page.
+    _HELP_PAGES = {
+        "sessions": "sessions",
+        "review-and-label": "review-and-label",
+        "settings": "settings",
+        # record_flow emits an ANCHOR, not a page id, one per guided-flow step —
+        # all four live on the single "new-recording" page (DESIGN: one page,
+        # §2-§5). Anything else passed through is treated as a page id.
+        "step-1-connect-devices": ("new-recording", "step-1-connect-devices"),
+        "step-2-set-up-session": ("new-recording", "step-2-set-up-session"),
+        "step-3-recording": ("new-recording", "step-3-recording"),
+        "step-4-saved": ("new-recording", "step-4-saved"),
+    }
+
+    def open_help(self, key: str) -> None:
+        target = self._HELP_PAGES.get(key, key)
+        if isinstance(target, tuple):
+            page_id, anchor = target
+        else:
+            page_id, anchor = target, None
+        self._docs_page.open_page(page_id, anchor)
+        self._shell.set_current_index(self.IDX_DOCS)
 
     def _on_capture_dir_changed(self, path):
         """Settings' [Change folder…] — repoint the folder card + Sessions

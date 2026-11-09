@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRectF, QPointF
-from PyQt6.QtGui import QPainter, QColor, QFont, QImage, QPolygonF
+from PyQt6.QtGui import QPainter, QColor, QFont, QImage, QPolygonF, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, QFrame,
     QSizePolicy, QLineEdit, QCheckBox, QScrollArea, QMessageBox, QStackedWidget,
@@ -1040,10 +1040,17 @@ class SavedStep(QWidget):
 # ── the flow ───────────────────────────────────────────────────────────────────
 
 class RecordFlow(QWidget):
-    session_saved = pyqtSignal(str)     # "Start labelling" (session root)
-    exit_flow     = pyqtSignal()        # Cancel / "Back to sessions"
+    session_saved  = pyqtSignal(str)     # "Start labelling" (session root)
+    exit_flow      = pyqtSignal()        # Cancel / "Back to sessions"
+    help_requested = pyqtSignal(str)     # the CURRENT step's doc anchor
 
     STEP_CONNECT, STEP_SETUP, STEP_RECORD, STEP_SAVED = 0, 1, 2, 3
+    _STEP_ANCHORS = {
+        STEP_CONNECT: "step-1-connect-devices",
+        STEP_SETUP: "step-2-set-up-session",
+        STEP_RECORD: "step-3-recording",
+        STEP_SAVED: "step-4-saved",
+    }
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1091,7 +1098,16 @@ class RecordFlow(QWidget):
         self._indicator = _StepIndicator()
         h.addWidget(self._indicator)
         h.addStretch()
-        spacer = QLabel(""); spacer.setFixedWidth(80); h.addWidget(spacer)
+        help_btn = QPushButton()
+        help_btn.setIcon(QIcon(dt.icon_pixmap("help-circle", color=dt.text_tertiary(), size=18)))
+        help_btn.setFixedSize(36, 36)
+        help_btn.setToolTip("Help")
+        help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        help_btn.setStyleSheet(dt.qss_secondary_button() + " QPushButton { padding: 0; }")
+        help_btn.clicked.connect(
+            lambda: self.help_requested.emit(self._STEP_ANCHORS.get(self._stack.currentIndex(),
+                                                                    "step-1-connect-devices")))
+        h.addWidget(help_btn)
         root.addWidget(bar)
 
         self._stack = QStackedWidget()

@@ -26,6 +26,7 @@ import os
 import shutil
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QFrame, QSizePolicy, QLineEdit, QCheckBox, QScrollArea, QComboBox,
@@ -175,6 +176,7 @@ class _LabelRow(QFrame):
 
 class SettingsTab(QWidget):
     capture_dir_changed = pyqtSignal(str)   # [Change folder…] picked a new folder
+    help_requested      = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -197,6 +199,14 @@ class SettingsTab(QWidget):
         header.addLayout(htext); header.addStretch()
         self._saved = _body("", color=dt.success_color(), bold=True)
         header.addWidget(self._saved, 0, Qt.AlignmentFlag.AlignTop)
+        help_btn = QPushButton()
+        help_btn.setIcon(QIcon(dt.icon_pixmap("help-circle", color=dt.text_tertiary(), size=18)))
+        help_btn.setFixedSize(36, 36)
+        help_btn.setToolTip("Help")
+        help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        help_btn.setStyleSheet(dt.qss_secondary_button() + " QPushButton { padding: 0; }")
+        help_btn.clicked.connect(self.help_requested.emit)
+        header.addWidget(help_btn, 0, Qt.AlignmentFlag.AlignTop)
         root.addLayout(header)
 
         scroll = QScrollArea(); scroll.setWidgetResizable(True)

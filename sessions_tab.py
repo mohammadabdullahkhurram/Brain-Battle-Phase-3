@@ -17,6 +17,7 @@ import subprocess
 import sys
 
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QLineEdit, QScrollArea, QSizePolicy, QComboBox,
@@ -202,8 +203,9 @@ def _demo_badge():
 
 
 class SessionsTab(QWidget):
-    open_session  = pyqtSignal(str)
-    new_recording = pyqtSignal()
+    open_session    = pyqtSignal(str)
+    new_recording   = pyqtSignal()
+    help_requested  = pyqtSignal()
 
     # column widths (px); the Boxers column stretches
     _COL = dict(recorded=128, length=158, labels=58, status=138, actions=172)
@@ -237,6 +239,14 @@ class SessionsTab(QWidget):
                           f"font-size: {dt.SIZE_MD}px;")
         htext.addWidget(title); htext.addWidget(sub)
         header.addLayout(htext); header.addStretch()
+        help_btn = QPushButton()
+        help_btn.setIcon(QIcon(dt.icon_pixmap("help-circle", color=dt.text_tertiary(), size=18)))
+        help_btn.setFixedSize(36, 36)
+        help_btn.setToolTip("Help")
+        help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        help_btn.setStyleSheet(dt.qss_secondary_button() + " QPushButton { padding: 0; }")
+        help_btn.clicked.connect(self.help_requested.emit)
+        header.addWidget(help_btn); header.addSpacing(10)
         show_btn = QPushButton("Show folder in Finder")
         show_btn.setStyleSheet(dt.qss_secondary_button()); show_btn.setMinimumHeight(44)
         show_btn.setCursor(Qt.CursorShape.PointingHandCursor)

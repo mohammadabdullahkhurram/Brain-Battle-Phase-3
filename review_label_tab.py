@@ -30,7 +30,7 @@ import time
 import numpy as np
 
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QPointF, QRect, QRectF, QEvent, QThread
-from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QFont, QPolygonF
+from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QFont, QPolygonF, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
     QScrollArea, QSizePolicy, QLineEdit, QButtonGroup, QToolTip, QApplication,
@@ -638,6 +638,7 @@ class _MediaLoadWorker(QThread):
 
 class ReviewLabelTab(QWidget):
     back_to_sessions = pyqtSignal()
+    help_requested   = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -718,6 +719,14 @@ class ReviewLabelTab(QWidget):
         self._autosave.setStyleSheet(f"color: {dt.success_color()}; font-family: {dt.FONT_UI}; "
                                      f"font-size: {dt.SIZE_SM}px;")
         h.addWidget(self._autosave); h.addSpacing(10)
+        help_btn = QPushButton()
+        help_btn.setIcon(QIcon(dt.icon_pixmap("help-circle", color=dt.text_tertiary(), size=18)))
+        help_btn.setFixedSize(36, 36)
+        help_btn.setToolTip("Help")
+        help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        help_btn.setStyleSheet(dt.qss_secondary_button() + " QPushButton { padding: 0; }")
+        help_btn.clicked.connect(self.help_requested.emit)
+        h.addWidget(help_btn); h.addSpacing(10)
         self._export_btn = QPushButton("Export for analysis")
         self._export_btn.setMinimumHeight(40); self._export_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._export_btn.setStyleSheet(dt.qss_primary_button())
