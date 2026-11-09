@@ -5,9 +5,9 @@ context behind the current architecture — the unified capture-time clock
 build, the v1→v2 recording-model migration, and the grounding-fixes backlog.
 `CLAUDE.md` keeps only a short pointer here; this is the long-form record.
 
-> This page is not yet listed in `docs/nav.yml` — documentation step D3 adds
-> the Project section that surfaces it in the in-app Documentation screen.
-> Until then it lives here as a repository document.
+> This page is part of the **Project** section of the in-app Documentation
+> screen (added in documentation step D3). `CLAUDE.md` keeps only a short
+> pointer to it.
 
 Many file and class names below (`SyncReviewTab`, `LabellingTab`,
 `vlc_module`, `sync_engine.py`, `live_session_tab.py`, `labels_config.py`,
@@ -193,7 +193,7 @@ still the on-disk layout today:
         Side Cams/*.mp4      # one MP4 per camera, whole session
         POV Cams/*.mp4
         Muse data/*.csv      # one CSV per Muse, whole session
-    phase_markers.csv        # phase boundaries (t_session_seconds, phase_id, label, round_num, unix_time)
+    phase_markers.csv        # phase boundaries (t_session_seconds, …)
     session_manifest.json
 ```
 

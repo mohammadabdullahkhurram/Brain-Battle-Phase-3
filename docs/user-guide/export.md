@@ -1,9 +1,9 @@
 # Export for analysis
 
 **What this page covers:** what pressing "Export for analysis" produces, at
-a glance. The exact file formats and columns are reference material for the
-Research & data section (a later documentation step) — this page is just
-"what's in the zip and how to get it."
+a glance. The exact file formats and columns are reference material in the
+[Research & data](../research-and-data/file-formats.md) section — this page is
+just "what's in the zip and how to get it."
 
 Press **Export for analysis** in the top bar of
 [Review & Label](review-and-label.md) to open the export dialog.
