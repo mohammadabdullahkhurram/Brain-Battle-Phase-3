@@ -41,21 +41,21 @@ here **except** the real-signal questions — they can't produce a real signal.
 
 ## Documentation drift found while writing the Developer guide
 
-Listed here per the D3 instruction to surface, not fix, what documenting
-uncovered:
+Surfaced while documenting. The first three were cleaned up in a short follow-up
+after D3; the fourth is intentional and stays:
 
-- **`ROADMAP.md` Phase 5 still lists "Delete dormant `sync_engine.py` code".**
-  `sync_engine.py` has already been **removed** (it went with the Review & Label
-  merge; `CLAUDE.md` confirms it's gone, and there is no such file in the repo).
-  That Phase 5 bullet is stale and should be struck when Phase 5 is next edited.
-- **`sync_beep.py`'s module docstring still claims the beep leaves a spike "that
-  the audio-based cross-correlation sync engine (`sync_engine.py`) can lock
-  onto".** That engine is gone and in-app cameras never recorded audio, so the
-  claim is obsolete. Fixing the docstring (and confirming the bell is purely a
-  round bell) is already a ROADMAP Phase 5 item.
-- **`README.md` describes the old three-tab architecture** ("LIVE MONITOR →
-  REVIEW → LABELLING", `usb_camera_slot.py`, "~11k lines"). D3 updates the README
-  to point at these docs; a full non-technical rewrite is ROADMAP Phase 6.
+- **Resolved — `ROADMAP.md` Phase 5's "Delete dormant `sync_engine.py`" item.**
+  `sync_engine.py` was removed with the Review & Label merge (`c21fac0`,
+  2026-11-01); the ROADMAP item is now marked DONE and struck from the open list.
+- **Resolved — `sync_beep.py`'s module docstring.** It used to claim the beep
+  left a spike "that the audio-based cross-correlation sync engine
+  (`sync_engine.py`) can lock onto". The docstring was rewritten to describe a
+  round bell for the boxers only, with no role in timing or alignment and an
+  on/off toggle in Settings.
+- **Resolved — `README.md`'s stale architecture.** The old three-tab description
+  and the per-module tables (naming removed modules like `usb_camera_slot.py`)
+  were removed; the README is now a short, accurate landing page that points at
+  these docs. The full non-technical rewrite remains ROADMAP Phase 6.
 - **`docs/ARCHITECTURE_AND_EVALUATION.md` and `docs/project/history.md` reference
   removed modules** (`SyncReviewTab`, `live_session_tab.py`, `vlc_module.py`,
   etc.). This is **intentional** — both are explicitly historical documents with

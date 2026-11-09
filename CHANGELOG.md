@@ -5,6 +5,24 @@ The "Phase 2.N" headings below are historical dev-log numbering, kept as
 history — they do not track the release version. `develop` is `3.0.0-dev`; the
 3.x dev-log entries are at the top.
 
+## 3.0.0-dev · D3 follow-up — doc-drift cleanup
+
+Clean up the three doc-drift items D3 surfaced on its "Known issues & tech debt"
+page (now marked resolved there):
+
+- **`ROADMAP.md` Phase 5** — the "Delete dormant `sync_engine.py`" item is marked
+  DONE (removed in `c21fac0`, 2026-11-01, with the Review & Label merge) and
+  struck from the open list; the adjacent "Sync beep becomes a round bell only"
+  item is likewise marked DONE (the Settings toggle shipped in Phase 3 and the
+  docstring is now fixed).
+- **`sync_beep.py`** — the module docstring is rewritten: the beep is a round bell
+  for the boxers only, toggled on/off in Settings, with no part in timing or
+  alignment. The old audio-cross-correlation / `sync_engine.py` claims are gone.
+- **`README.md`** — the stale architecture/module tables and the old tab
+  descriptions are removed entirely. The README is now short and accurate: what
+  Brain Battle is, install & run, where the documentation lives (with links), and
+  current status. The full non-technical rewrite stays in Phase 6.
+
 ## 3.0.0-dev · Documentation D3 — Developer guide, Decisions, Project
 
 **The documentation is now complete.** D3 adds the three developer-facing

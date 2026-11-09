@@ -365,23 +365,21 @@ the handful of places the build deliberately reads differently, and why:
   indicator) is needed before anyone trusts what they're looking at.
   *Files:* `eeg_module.py` (`EEGReviewWidget`), `eeg_plot_pg.py`.
 
-- **Delete dormant `sync_engine.py` code (move `SourceOffset`/`SyncResult`
-  out).**
-  *Why:* already flagged in `CLAUDE.md`'s deferred work #4 and confirmed
-  still dead on `develop` — `compute_sync`/`SyncWorker`/`_xcorr_offset`/
-  `get_eeg_window` have zero callers; only the two dataclasses are live.
-  *Files:* `sync_engine.py` (delete everything but `SourceOffset`/
-  `SyncResult`, or move them into their own module), `brain_battle_main.py`
-  (update the import), `tests/test_smoke.py` (module-discovery count).
+- ~~**Delete dormant `sync_engine.py` code (move `SourceOffset`/`SyncResult`
+  out).**~~ **DONE** (`c21fac0`, 2026-11-01 — "Merged Review & Label screen
+  (DESIGN §6); delete old stacks"). The whole module was removed when the merged
+  Review & Label screen replaced the old Sync/Labelling tabs — the dead
+  `compute_sync`/`SyncWorker`/`_xcorr_offset`/`get_eeg_window` and the
+  `SourceOffset`/`SyncResult` dataclasses are all gone, so there was nothing left
+  to move. `CLAUDE.md`'s deferred work #4 is closed accordingly.
 
-- **Sync beep becomes a round bell only** (fix docstring; toggle in
-  Settings).
-  *Why:* `sync_beep.py`'s docstring still claims the beep helps "the
-  audio-based cross-correlation sync engine... lock onto" it — that engine
-  is dead code on `develop`, and in-app cameras never recorded audio in the
-  first place, so the claim no longer applies to anything.
-  *Files:* `sync_beep.py` (docstring), the Settings screen (Phase 3) for
-  the on/off toggle, `live_session_tab.py` (wiring).
+- ~~**Sync beep becomes a round bell only** (fix docstring; toggle in
+  Settings).~~ **DONE.** The round-bell on/off toggle shipped in the Phase 3
+  Settings screen (DESIGN §7; `settings_tab.py`, wired through `record_flow.py` —
+  the old `live_session_tab.py` wiring is gone), and `sync_beep.py`'s docstring
+  was rewritten to describe a round bell for the boxers with no role in
+  timing/alignment (the audio-xcorr `sync_engine` it once referenced is removed,
+  per the item above).
 
 - **Extend tests to the new flows.**
   *Why:* `tests/` currently covers the capture-clock + ring-buffer + smoke

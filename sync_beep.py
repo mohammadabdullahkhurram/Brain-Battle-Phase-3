@@ -1,15 +1,20 @@
 """
 sync_beep.py
 ────────────
-Produces a loud audible synchronisation beep used at:
-  • Baseline start
-  • Start of every round
+The round bell: a short, audible tone played for the boxers and operators at the
+start of each round (optionally also at baseline start). It is a cue for the
+people in the room only — nothing more.
 
-The beep is intentionally short, loud, and tonally distinct so it:
-  (a) cues the boxers and operators that a new phase has started, and
-  (b) leaves a sharp spike on camera audio tracks that the audio-based
-      cross-correlation sync engine (sync_engine.py) can lock onto during
-      post-session alignment.
+It plays NO part in timing or alignment. Alignment is driven entirely by the
+capture-time clock (per-frame and per-EEG-sample timestamps on one
+`t_session_seconds` axis), and in-app cameras record no audio track at all, so
+there is nothing on the audio for anything to "lock onto". Whether the bell
+sounds is a plain on/off preference in Settings (the "Ring a bell when each round
+starts" option, DESIGN §7), wired through the record flow.
+
+(The module and `SyncBeep` class keep their historical names from an earlier
+design that used an audio cross-correlation sync engine; that engine has been
+removed and the names no longer describe a sync role.)
 
 Implementation strategy:
   • Generate a one-second 1 kHz sine burst (with 5 ms linear fade-in/out to
