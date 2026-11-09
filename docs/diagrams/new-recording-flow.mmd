@@ -1,0 +1,17 @@
+flowchart TD
+    Start(["Press 'New recording'"]) --> Connect["Step 1 — Connect devices"]
+    Connect -->|"device missing"| ConnectWarn["Tile shows a not-found message.\nPress Search again, or Continue anyway."]
+    ConnectWarn --> Connect
+    Connect -->|"everything connected, or Continue pressed"| Setup["Step 2 — Set up session"]
+    Setup --> Disk{"Enough disk space?"}
+    Disk -->|"not enough"| DiskBlock["Start recording is disabled.\nFree up space or shorten the session."]
+    DiskBlock --> Setup
+    Disk -->|"enough, or low space confirmed"| Record["Step 3 — Recording"]
+    Record -->|"a headband disconnects"| Reconnect["A Reconnect button appears.\nThe brain recording resumes from where it left off."]
+    Reconnect --> Record
+    Record -->|"M key or Mark this moment"| Moment["Moment marked — name it later in Review"]
+    Moment --> Record
+    Record -->|"Stop and save, or the session finishes"| Saved["Step 4 — Saved"]
+    Saved --> Label["Start labelling →\n(opens Review & Label)"]
+    Saved --> Sessions["Back to sessions"]
+    Saved --> Another["Record another"]

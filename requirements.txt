@@ -25,3 +25,5 @@ av==19.0.2
 # backend (backend="bleak", used throughout eeg_module.py) requires it at
 # runtime — without it, EEG connect fails with an import error inside muselsl.
 bleak==2.1.1
+# docs_nav.py (the in-app Documentation tab) parses docs/nav.yml.
+PyYAML==6.0.2

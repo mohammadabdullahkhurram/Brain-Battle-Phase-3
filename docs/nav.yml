@@ -1,0 +1,45 @@
+# The Documentation tab's menu. Only finished pages are listed here — see
+# docs/contributing/docs-guide.md "Only finished pages go in nav.yml."
+#
+# Each page: id (used for in-app navigation + Help buttons), title (shown in
+# the nav tree), file (path relative to docs/).
+
+sections:
+  - title: Getting started
+    pages:
+      - id: overview
+        title: Overview
+        file: getting-started/overview.md
+      - id: installation
+        title: Installation
+        file: getting-started/installation.md
+      - id: first-run
+        title: First run
+        file: getting-started/first-run.md
+      - id: quick-tour
+        title: Quick tour
+        file: getting-started/quick-tour.md
+
+  - title: User guide
+    pages:
+      - id: sessions
+        title: Sessions
+        file: user-guide/sessions.md
+      - id: new-recording
+        title: New recording
+        file: user-guide/new-recording.md
+      - id: review-and-label
+        title: Review & Label
+        file: user-guide/review-and-label.md
+      - id: export
+        title: Export for analysis
+        file: user-guide/export.md
+      - id: settings
+        title: Settings
+        file: user-guide/settings.md
+      - id: troubleshooting
+        title: Troubleshooting
+        file: user-guide/troubleshooting.md
+      - id: faq
+        title: FAQ
+        file: user-guide/faq.md
