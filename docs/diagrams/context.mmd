@@ -1,34 +1,17 @@
-flowchart LR
-    subgraph People["People"]
-        A["Boxer A"]
-        B["Boxer B"]
-        R["Researcher / research assistant"]
-    end
-    subgraph Hardware["Hardware"]
-        HB1["Headband A — Muse-S"]
-        HB2["Headband B — Muse-S"]
-        C1["Side camera 1"]
-        C2["Side camera 2"]
-        C3["Boxer A view camera"]
-        C4["Boxer B view camera"]
-    end
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TB
+    Boxers["Boxer A &amp; Boxer B"]
+    HW["2 headbands (Muse-S, Bluetooth)<br/>+ 4 cameras"]
     APP["Brain Battle app"]
     F[("Recordings folder")]
-    REV["Review & Label screen"]
+    REV["Review &amp; Label"]
     OUT["Exported analysis bundle"]
+    R["Researcher"]
 
-    A --> HB1
-    B --> HB2
-    A -.-> C3
-    B -.-> C4
-    C1 --> APP
-    C2 --> APP
-    C3 --> APP
-    C4 --> APP
-    HB1 -- Bluetooth --> APP
-    HB2 -- Bluetooth --> APP
-    R -- operates --> APP
+    Boxers --> HW
+    HW --> APP
     APP --> F
     F --> REV
-    R -- labels events --> REV
     REV --> OUT
+    R -- operates --> APP
+    R -- labels events --> REV
