@@ -6,10 +6,12 @@ hardware situation that shapes all of it.
 
 ## In one line
 
-**Phase 3 is complete and the documentation is complete** (`develop` =
-`3.0.0-dev`). Phase 5 is next, gated on owner approval. The hardware is broken, so
-everything is built and tested against a generated demo session and simulated
-devices.
+**Phase 3 and the documentation are complete, and the app has been reorganised
+into the `brain_battle` package** (`main` and `develop` are both
+`3.0.0-beta.1`, the first tagged pre-release — see
+[ADR-0013](../decisions/adr-0013-package-reorganisation.md)). Phase 5 is next,
+gated on owner approval. The hardware is broken, so everything is built and
+tested against a generated demo session and simulated devices.
 
 ## What's complete
 
@@ -26,6 +28,10 @@ devices.
 - **The in-app Documentation screen** and the documentation itself — Getting
   started, User guide, Research & data, and (this step, D3) Developer guide,
   Decisions, and Project.
+- **The `brain_battle` package** — all modules reorganised into
+  `ui/ · capture/ · playback/ · data/ · support/`, installable with
+  `pip install -e .`, run with `python3 -m brain_battle`
+  ([ADR-0013](../decisions/adr-0013-package-reorganisation.md)).
 
 The old Review/Labelling tabs, VLC, audio-xcorr, and the Live Monitor are gone;
 see [Version history](version-history.md) and [Project history](history.md).

@@ -139,6 +139,9 @@ sections:
       - id: adr-0012
         title: ADR-0012 In-app docs
         file: decisions/adr-0012-in-app-docs.md
+      - id: adr-0013
+        title: ADR-0013 Package reorganisation
+        file: decisions/adr-0013-package-reorganisation.md
 
   - title: Project
     pages:

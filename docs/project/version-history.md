@@ -7,10 +7,11 @@ narrative is in [Project history](history.md).
 
 ## The authoritative version
 
-The single source of truth for the version is `version.py` (`__version__`).
-Today: **`develop` = `3.0.0-dev`**, **`main` = `2.1.0`**. The `3.0.0-dev`
-pre-release label is carried on `develop` and becomes `3.0.0` when `develop`
-merges to `main` to ship.
+The single source of truth for the version is `brain_battle/version.py`
+(`__version__`). Today: **`main` and `develop` are both `3.0.0-beta.1`** — the
+first tagged pre-release, cut when `develop` merged to `main` alongside the
+[package reorganisation](../decisions/adr-0013-package-reorganisation.md). The
+beta label becomes `3.0.0` when the remaining pre-release work lands.
 
 > The `CHANGELOG.md` headings numbered "Phase 2.N" are historical **dev-log**
 > numbering, not release versions — they intentionally do not track
@@ -21,8 +22,8 @@ merges to `main` to ship.
 | Era | Recording model | Where |
 |---|---|---|
 | **v1.x** | Per-phase recording: separate folders and clips per round (`baseline/`, `Round 1/`, each with `Side Cams/`, `POV Cams/`, `Muse data/`). | superseded |
-| **v2.x** | One continuous take: one MP4 per camera and one CSV per band for the whole session, with `phase_markers.csv` for the boundaries. `main` = 2.1.0. | current `main` |
-| **v3.0** | The continuous take **plus the capture-time clock**: per-frame sidecars and a `t_session_seconds` column so alignment is measured, not assumed. A deliberate breaking change. | current `develop` |
+| **v2.x** | One continuous take: one MP4 per camera and one CSV per band for the whole session, with `phase_markers.csv` for the boundaries. `main` was 2.1.0 before the 3.0 beta. | superseded |
+| **v3.0** | The continuous take **plus the capture-time clock**: per-frame sidecars and a `t_session_seconds` column so alignment is measured, not assumed. A deliberate breaking change. | current (`main` & `develop`, v3.0.0-beta.1) |
 
 ### v1 → v2: the continuous-take migration
 

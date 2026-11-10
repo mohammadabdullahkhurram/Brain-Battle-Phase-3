@@ -6,20 +6,23 @@ thread it runs on, and the gotchas. Start with the grouped overview, then jump
 to the module you need. The test-suite modules are summarised in one table at
 the end.
 
-This page is kept honest by `tests/test_developer_docs.py`, which fails if a
-root `.py` file has no entry here, or if an entry names a file that no longer
-exists. When you add, remove, or rename a module, update this page in the same
-commit (see [CLAUDE.md's "Documentation is part of every change"](../contributing/docs-guide.md#documentation-is-part-of-every-change-owner-rule)).
+All application code lives in the **`brain_battle` package**; the overview
+groups below map to its subpackages. This page is kept honest by
+`tests/test_developer_docs.py`, which fails if a first-party module has no
+entry here, or if an entry names a file that no longer exists. When you add,
+remove, or rename a module, update this page in the same commit (see
+[CLAUDE.md's "Documentation is part of every change"](../contributing/docs-guide.md#documentation-is-part-of-every-change-owner-rule)).
 
 ## Grouped overview
 
-| Group | Modules |
+| Group (subpackage) | Modules |
 |---|---|
-| **App shell & UI screens** | `brain_battle_main` · `sidebar_shell` · `sessions_tab` · `record_flow` · `review_label_tab` · `settings_tab` · `docs_tab` · `docs_nav` |
-| **Capture** | `camera_source` · `usb_camera` · `headband_source` · `eeg_module` · `eeg_plot_pg` · `session_controller` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
-| **Playback** | `pyav_player` |
-| **Data & storage** | `session_storage` · `labels_store` · `label_vocab` · `session_history` · `export_module` |
-| **Support** | `app_settings` · `design_tokens` · `fonts` · `log_setup` · `version` · `simulation` |
+| **Package top** | `app` · `version` · `paths` · (root shim `brain_battle_main`) |
+| **`ui/`** | `sidebar_shell` · `sessions_tab` · `record_flow` · `review_label_tab` · `settings_tab` · `docs_tab` · `design_tokens` · `fonts` |
+| **`capture/`** | `usb_camera` · `camera_source` · `headband_source` · `eeg_module` · `eeg_plot_pg` · `session_controller` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
+| **`playback/`** | `pyav_player` |
+| **`data/`** | `session_storage` · `session_history` · `labels_store` · `label_vocab` · `export_module` · `app_settings` |
+| **`support/`** | `log_setup` · `docs_nav` |
 | **Tools** (`tools/`, not shipped) | `generate_demo_session` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its

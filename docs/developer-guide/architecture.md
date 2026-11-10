@@ -56,19 +56,20 @@ about a session is inside that session's folder.
 
 ## Components — modules grouped by job
 
-The 31 modules fall into five groups. UI screens sit on top; capture, playback,
-and data/storage do the work; a support layer (settings + design tokens) cuts
-across all of them.
+The modules live in the **`brain_battle` package**, grouped into five
+subpackages. UI screens sit on top; capture, playback, and data/storage do the
+work; a support layer plus a couple of package-top modules (`app`, `version`,
+`paths`) cut across all of them.
 
-![Component diagram: UI screens (sidebar shell, sessions, record flow, review & label, settings, docs) sit above capture (camera/headband sources, usb_camera, eeg_module, session_controller), playback (pyav_player), and data/storage (session storage, labels, vocabulary, history, contact log, export); a support layer provides app settings and design tokens.](../diagrams/component.png)
+![Component diagram: the brain_battle.ui screens (sidebar shell, sessions, record flow, review & label, settings, docs, design tokens, fonts) sit above brain_battle.capture (camera/headband sources, usb_camera, eeg_module, session_controller, simulation, contact quality/log, keep-awake, round bell), brain_battle.playback (pyav_player), and brain_battle.data (session storage, history, labels, vocabulary, export, settings); a support layer plus package-top modules provide logging, docs navigation, paths and the app shell.](../diagrams/component.png)
 
-| Group | Modules | Job |
+| Subpackage | Modules | Job |
 |---|---|---|
-| **UI screens** | `sidebar_shell`, `sessions_tab`, `record_flow`, `review_label_tab`, `settings_tab`, `docs_tab` | The four DESIGN screens behind a light sidebar shell, plus the in-app docs. |
-| **Capture** | `camera_source`, `headband_source`, `usb_camera`, `eeg_module`, `session_controller`, `contact_quality`, `keep_awake`, `contact_log` | Turn live devices into files on disk during a recording. |
-| **Playback** | `pyav_player` | App-driven multi-camera decode on one playhead. |
-| **Data & storage** | `session_storage`, `labels_store`, `label_vocab`, `session_history`, `export_module` | On-disk layout, labels, the shared vocabulary, the history log, and the export bundle. |
-| **Support** | `app_settings`, `design_tokens`, `fonts`, `log_setup`, `version`, `simulation` | Settings, the light-only design system, logging, version, and the dev-only device simulator. |
+| **`ui/`** | `sidebar_shell`, `sessions_tab`, `record_flow`, `review_label_tab`, `settings_tab`, `docs_tab`, `design_tokens`, `fonts` | The four DESIGN screens behind a light sidebar shell, the in-app docs, and the light-only design system. |
+| **`capture/`** | `camera_source`, `headband_source`, `usb_camera`, `eeg_module`, `eeg_plot_pg`, `session_controller`, `simulation`, `contact_quality`, `contact_log`, `keep_awake`, `round_bell` | Turn live devices into files on disk during a recording (plus the dev-only simulator and the round bell). |
+| **`playback/`** | `pyav_player` | App-driven multi-camera decode on one playhead. |
+| **`data/`** | `session_storage`, `session_history`, `labels_store`, `label_vocab`, `export_module`, `app_settings` | On-disk layout, the history log, labels + the shared vocabulary, the export bundle, and the settings store. |
+| **`support/`** + top | `log_setup`, `docs_nav`, `paths`, `app`, `version` | Logging, Qt-free docs navigation, repo-relative paths, the app shell/`main()`, and the version. |
 
 Each module is documented in the [module reference](module-reference.md); the
 main runtime interactions are drawn as [key flows](key-flows.md).

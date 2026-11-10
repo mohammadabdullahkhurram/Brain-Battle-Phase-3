@@ -175,6 +175,7 @@ _KNOWN_PHRASES = {
     "adr-0010": "one place to look",
     "adr-0011": "device boundary",
     "adr-0012": "QSvgRenderer",
+    "adr-0013": "Reorganise into",
     # Project (D3)
     "goals": "Community Impact Project",
     "status": "working agreement",

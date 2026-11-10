@@ -10,22 +10,33 @@ See [Installation](../getting-started/installation.md) for the full, OS-specific
 walkthrough. In short:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
+
+`pip install -e .` is an **editable** install: it reads `pyproject.toml`
+(metadata, dependencies, the `brain-battle` console script) and installs the
+pinned `requirements.txt` set. It is the supported install for now because the
+app resolves its bundled `assets/` and `docs/` relative to the checkout root
+via `brain_battle/paths.py` (`REPO_ROOT`); a non-editable install would not
+find them yet — proper packaging of assets/docs is [ROADMAP](../ROADMAP.md)
+Phase 6.
 
 You also need `ffmpeg` on `PATH` (per-camera H.264 recording, export, probing;
 recording is blocked at pre-flight without it). Review & Label playback is
 in-process via PyAV (`av`, which bundles its own ffmpeg) — **no VLC**. Then run:
 
 ```bash
-python3 brain_battle_main.py
+python3 -m brain_battle
 ```
+
+(or the `brain-battle` console script, or the repo-root shim
+`python3 brain_battle_main.py` — all three run the same `main()`).
 
 With no hardware, develop against the [simulation mode and demo
 generator](simulation-and-demo.md):
 
 ```bash
-BRAIN_BATTLE_SIMULATE=1 python3 brain_battle_main.py
+BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle
 python3 tools/generate_demo_session.py --out /tmp/demo
 ```
 

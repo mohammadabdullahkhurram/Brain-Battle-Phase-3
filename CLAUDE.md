@@ -1,10 +1,12 @@
-# Brain Battle — v3.0.0-dev (develop)
+# Brain Battle — v3.0.0-beta.1 (main · develop)
 
 PyQt6 desktop app for neuroscience boxing capture: 4 USB cameras + 2 Muse-S EEG
 headbands (Bluetooth). Four screens behind a light sidebar shell — **Sessions**
 (home library), **New recording** (a guided capture flow), **Review & Label**
 (one merged playback + labelling screen), and **Settings** — plus an in-app
-**Documentation** screen and an export pipeline. ~13k lines across 31 .py files.
+**Documentation** screen and an export pipeline. ~13k lines in the
+`brain_battle` package (`ui/` · `capture/` · `playback/` · `data/` ·
+`support/`).
 
 ## Project situation
 
@@ -84,8 +86,8 @@ and read like. Summary of where the product is headed:
 ## Running
 
 ```bash
-pip install -r requirements.txt
-python3 brain_battle_main.py
+pip install -e .          # supported install for now (reads pyproject.toml)
+python3 -m brain_battle    # or: brain-battle  (or the shim: python3 brain_battle_main.py)
 ```
 
 System binaries required: `ffmpeg` (per-camera H.264 **recording**, plus
@@ -219,7 +221,8 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
 
 ## Project status
 
-**Current state: Phase 3 COMPLETE (`develop` = `3.0.0-dev`).** The unified
+**Current state: Phase 3 COMPLETE, reorganised into the `brain_battle` package
+(`main` = `develop` = `3.0.0-beta.1`).** The unified
 capture-time clock shipped and the app was rebuilt onto the four DESIGN
 screens — Sessions, New recording, Review & Label, and now Settings. Review &
 Label is one merged PyAV-driven screen (single `t_session_seconds` playhead);
@@ -287,48 +290,58 @@ keeps the narrative.
 
 ## Module map
 
-Current architecture: four DESIGN screens behind a light sidebar shell —
+Current architecture: everything lives in the **`brain_battle` package**,
+grouped by responsibility into `ui/` · `capture/` · `playback/` · `data/` ·
+`support/`. Four DESIGN screens sit behind a light sidebar shell —
 **Sessions** (home library), **New recording** (a full-screen guided flow,
-`record_flow.py`), **Review & Label** (one merged screen), and **Settings**
-(`settings_tab.py`). Review & Label playback is app-driven on a single
-`t_session_seconds` playhead
-via **PyAV** (`pyav_player.py`): there is no VLC, no Qt-Multimedia, and no
-audio-xcorr. Labels are `labels.json` v2 (`labels_store.py`) with a shared team
-vocabulary (`label_vocab.py`); export is an analysis bundle
-(`export_module.SessionExportWorker`). Hardware is broken, so the flow can be
-driven by **simulated** cameras + headbands through the real capture paths,
-gated entirely by `BRAIN_BATTLE_SIMULATE` (`simulation.py`, dev-only, not
-shipped).
+`ui/record_flow.py`), **Review & Label** (one merged screen), and **Settings**
+(`ui/settings_tab.py`). Review & Label playback is app-driven on a single
+`t_session_seconds` playhead via **PyAV** (`playback/pyav_player.py`): there is
+no VLC, no Qt-Multimedia, and no audio-xcorr. Labels are `labels.json` v2
+(`data/labels_store.py`) with a shared team vocabulary (`data/label_vocab.py`);
+export is an analysis bundle (`export_module.SessionExportWorker`). Hardware is
+broken, so the flow can be driven by **simulated** cameras + headbands through
+the real capture paths, gated entirely by `BRAIN_BATTLE_SIMULATE`
+(`capture/simulation.py`, dev-only, not shipped).
 
-| File | Purpose |
+Run it with `python3 -m brain_battle` (or the `brain-battle` console script
+after `pip install -e .`); `brain_battle_main.py` at the repo root is a thin
+launcher shim.
+
+| File (under `brain_battle/`) | Purpose |
 |---|---|
-| `brain_battle_main.py` | Entry point, `BrainBattleApp` shell (window sizing + QSettings, page wiring) |
-| `settings_tab.py` | The real Settings screen (DESIGN §7): recordings folder, headbands, video quality, session defaults + bell, shared label-list editor; autosaves with a "✓ Saved" confirmation |
-| `docs_tab.py` | The in-app Documentation screen: Markdown rendering via `QTextBrowser`/`QTextDocument.setMarkdown` (no QtWebEngine), nav tree, always-visible search with highlighting, back/forward |
-| `docs_nav.py` | Qt-free docs logic: `docs/nav.yml` loading, heading slugify, search index, internal link/image/anchor extraction — used by `docs_tab.py` and `tests/test_docs.py` |
-| `review_label_tab.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, jargon-free brain card, timeline, labelling |
-| `pyav_player.py` | `PyAVCamera` / `MultiCamDecoder` / `DecodeWorker` / `PlayerController` — single-clock decode off the UI thread |
-| `labels_store.py` | `labels.json` v2 (schema, v1 migration, undo/redo, events timeline) |
-| `label_vocab.py` | Shared team label list (`label_list.json` in the recordings folder) |
-| `contact_quality.py` | Per-sensor EEG contact-quality heuristic (plain language) |
-| `sessions_tab.py` | Sessions home library (discovery, status, search/filter/sort, interrupted banner, background scan + sizing) |
-| `eeg_module.py` | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` (pyqtgraph) |
-| `eeg_plot_pg.py` | pyqtgraph live EEG plots (plain sensor names, no channel codes) |
-| `design_tokens.py` | **Light-only** design system (docs/DESIGN.md tokens) + QSS factories |
-| `record_flow.py` | The guided New-recording flow (DESIGN §2–§5): Connect → Set up → Record → Saved; owns the device slots + SessionController; emits `session_saved` / `exit_flow` |
-| `camera_source.py` | `CameraSlot` — one camera for the flow (wraps `USBCameraThread`: preview, fps, recording/dropped/encoder state) |
-| `headband_source.py` | `HeadbandSlot` — one boxer's headband (wraps `_MuseDirectReader`: connection, battery, per-sensor contact, live trace, reconnect/append) |
-| `app_settings.py` | User-config store: headband→Boxer A/B mapping + known-headbands list (replaces hard-coded `BOXER_LABELS`), session defaults, round bell, video quality (resolution + bitrate), capture dir (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set) |
-| `simulation.py` | **Dev-only, not shipped** — `BRAIN_BATTLE_SIMULATE` simulated cameras + headbands through the real capture paths; failure injection (missing camera, headband drop) |
-| `contact_log.py` | Per-sensor contact-quality log written during recording + weak-period summary for Saved/Review |
-| `keep_awake.py` | Prevent sleep while recording (caffeinate / SetThreadExecutionState) |
-| `export_module.py` | `SessionExportWorker` + `ExportOptionsDialog` (analysis zip), `VideoExportWorker` (optional 2×2 merge), `build_coregistered_eeg` |
-| `session_storage.py` | On-disk layout, manifest (boxers, capture_clock, demo, moments, stopped_early), `phase_markers.csv`, Sessions discovery/classification/disk verdict |
-| `session_history.py` | Append-only `history.jsonl` per recording — flush+fsync, tolerant reader |
-| `usb_camera.py` | `USBCameraThread` (cv2, or a simulated capture) + `FrameEncoder` — crash-safe fragmented H.264 per-camera ffmpeg subprocess + row-per-frame sidecar; no audio; preview downscale |
-| `sidebar_shell.py` | DESIGN shell: 232px sidebar, 72px rail on Review & Label, fully hidden for the full-screen record flow; app opens on Sessions |
-| `session_controller.py` | Pure-logic phase state machine (headless-testable), 1 Hz QTimer |
-| `circular_timer.py` | Circular countdown dial · `sync_beep.py` round-start beep · `fonts.py` bundled Inter · `sync_utils/infobox.py` message-box helper |
+| `app.py` | `BrainBattleApp` shell (window sizing + QSettings, page wiring) + `main()` entry point |
+| `version.py` | Single authoritative `__version__` (window title, manifest, pyproject reads it) |
+| `paths.py` | Single source of repo-relative paths: `REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`, default `Captures/` |
+| `ui/sidebar_shell.py` | DESIGN shell: 232px sidebar, 72px rail on Review & Label, fully hidden for the full-screen record flow; app opens on Sessions |
+| `ui/record_flow.py` | The guided New-recording flow (DESIGN §2–§5): Connect → Set up → Record → Saved; owns the device slots + SessionController; emits `session_saved` / `exit_flow` |
+| `ui/review_label_tab.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, jargon-free brain card, timeline, labelling |
+| `ui/sessions_tab.py` | Sessions home library (discovery, status, search/filter/sort, interrupted banner, background scan + sizing) |
+| `ui/settings_tab.py` | The real Settings screen (DESIGN §7): recordings folder, headbands, video quality, session defaults + bell, shared label-list editor; autosaves with a "✓ Saved" confirmation |
+| `ui/docs_tab.py` | The in-app Documentation screen: Markdown rendering via `QTextBrowser`/`QTextDocument.setMarkdown` (no QtWebEngine), nav tree, always-visible search with highlighting, back/forward |
+| `ui/design_tokens.py` | **Light-only** design system (docs/DESIGN.md tokens) + QSS factories |
+| `ui/fonts.py` | Registers the bundled Inter font (from `assets/fonts/` via `paths.ASSETS_DIR`) |
+| `capture/usb_camera.py` | `USBCameraThread` (cv2, or a simulated capture) + `FrameEncoder` — crash-safe fragmented H.264 per-camera ffmpeg subprocess + row-per-frame sidecar; no audio; preview downscale |
+| `capture/camera_source.py` | `CameraSlot` — one camera for the flow (wraps `USBCameraThread`: preview, fps, recording/dropped/encoder state) |
+| `capture/headband_source.py` | `HeadbandSlot` — one boxer's headband (wraps `_MuseDirectReader`: connection, battery, per-sensor contact, live trace, reconnect/append) |
+| `capture/eeg_module.py` | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` (pyqtgraph) |
+| `capture/eeg_plot_pg.py` | pyqtgraph live EEG plots (plain sensor names, no channel codes) |
+| `capture/session_controller.py` | Pure-logic phase state machine (headless-testable), 1 Hz QTimer |
+| `capture/simulation.py` | **Dev-only, not shipped** — `BRAIN_BATTLE_SIMULATE` simulated cameras + headbands through the real capture paths; failure injection (missing camera, headband drop) |
+| `capture/contact_quality.py` | Per-sensor EEG contact-quality heuristic (plain language) |
+| `capture/contact_log.py` | Per-sensor contact-quality log written during recording + weak-period summary for Saved/Review |
+| `capture/keep_awake.py` | Prevent sleep while recording (caffeinate / SetThreadExecutionState) |
+| `capture/round_bell.py` | `RoundBell` — round-start boxing bell via `QSoundEffect` (was `sync_beep.py` / `SyncBeep`) |
+| `playback/pyav_player.py` | `PyAVCamera` / `MultiCamDecoder` / `DecodeWorker` / `PlayerController` — single-clock decode off the UI thread |
+| `data/session_storage.py` | On-disk layout, manifest (boxers, capture_clock, demo, moments, stopped_early), `phase_markers.csv`, Sessions discovery/classification/disk verdict |
+| `data/session_history.py` | Append-only `history.jsonl` per recording — flush+fsync, tolerant reader |
+| `data/labels_store.py` | `labels.json` v2 (schema, v1 migration, undo/redo, events timeline) |
+| `data/label_vocab.py` | Shared team label list (`label_list.json` in the recordings folder) |
+| `data/export_module.py` | `SessionExportWorker` + `ExportOptionsDialog` (analysis zip), `VideoExportWorker` (optional 2×2 merge), `build_coregistered_eeg` |
+| `data/app_settings.py` | User-config store: headband→Boxer A/B mapping + known-headbands list (replaces hard-coded `BOXER_LABELS`), session defaults, round bell, video quality (resolution + bitrate), capture dir (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set) |
+| `support/log_setup.py` | Logging configuration (console + file handlers) |
+| `support/docs_nav.py` | Qt-free docs logic: `docs/nav.yml` loading, heading slugify, search index, internal link/image/anchor extraction — used by `ui/docs_tab.py` and `tests/test_docs.py` |
+| `../brain_battle_main.py` | Thin launcher shim at the repo root — re-exports from `brain_battle.app`; `python3 brain_battle_main.py` still works |
 
 (Removed with the guided flow: `live_session_tab.py` (Live Monitor),
 `session_setup_dialog.py`, `usb_camera_panel.py` / `usb_camera_slot.py` (the old
@@ -368,7 +381,7 @@ merged onto PyAV and the old Sync/Labelling tabs (and `vlc_module.py`,
    alignment arithmetic (unit tests), but nobody has *watched* the tab render
    aligned playback on real data — offscreen Qt can't put pixels on glass, and
    synthetic fixtures aren't real signals. *Unblocked by:* the first real
-   capture session. **Procedure:** `python3 brain_battle_main.py` → open a
+   capture session. **Procedure:** `python3 -m brain_battle` → open a
    session from **Sessions** → it lands in **Review & Label** (alignment is
    automatic — nothing to click to "sync") → press play and confirm all four
    cameras run in lockstep → scrub and watch both brain-activity traces follow

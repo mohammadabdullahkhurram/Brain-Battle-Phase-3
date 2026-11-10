@@ -36,6 +36,7 @@ file is missing from this index or from `nav.yml`.
 | [ADR-0010](adr-0010-app-settings-store.md) | App settings store | 2026-11-03 | Accepted |
 | [ADR-0011](adr-0011-simulated-devices.md) | Simulated devices for dev/test | 2026-11-03 | Accepted |
 | [ADR-0012](adr-0012-in-app-docs.md) | In-app docs: Markdown + pre-rendered diagrams | 2026-11-09 | Accepted |
+| [ADR-0013](adr-0013-package-reorganisation.md) | Reorganise into the `brain_battle` package | 2026-11-10 | Accepted |
 
 The sources behind these decisions are the planning documents
 ([DESIGN.md, ROADMAP.md, PLAYBACK_PROPOSAL.md, ARCHITECTURE_AND_EVALUATION.md,

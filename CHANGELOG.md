@@ -1,9 +1,55 @@
 # Brain Battle — Changelog
 
-**Current release: v2.1.0** (authoritative source: `version.py` `__version__`).
-The "Phase 2.N" headings below are historical dev-log numbering, kept as
-history — they do not track the release version. `develop` is `3.0.0-dev`; the
-3.x dev-log entries are at the top.
+**Current release: v3.0.0-beta.1** (authoritative source:
+`brain_battle/version.py` `__version__`). The "Phase 2.N" headings below are
+historical dev-log numbering, kept as history — they do not track the release
+version. `main` and `develop` are both `3.0.0-beta.1`; the 3.x dev-log entries
+are at the top.
+
+## 3.0.0-beta.1 · Package reorganisation + first beta
+
+The whole app moved out of a flat pile of root-level modules into a proper
+`brain_battle` package, and `develop` merged to `main` as the first tagged
+pre-release (`v3.0.0-beta.1`). No behaviour changed — this is structure,
+packaging, and cleanup.
+
+- **Package layout.** All modules now live under `brain_battle/` grouped by
+  responsibility: `ui/` (the sidebar shell + the four DESIGN screens, design
+  tokens, fonts), `capture/` (cameras, headbands/EEG, the phase controller,
+  contact quality, keep-awake, the round bell), `playback/` (the PyAV player),
+  `data/` (session storage/history, labels + vocabulary, export, settings), and
+  `support/` (logging, the Qt-free docs-navigation helpers). Moved with
+  `git mv`, so history is preserved.
+- **Run it with `python3 -m brain_battle`** (or the `brain-battle` console
+  script after `pip install -e .`). `brain_battle_main.py` stays at the repo
+  root as a thin launcher shim, so `python3 brain_battle_main.py` still works.
+- **`brain_battle/paths.py`** is the single source of repo-relative paths
+  (`REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`, the default `Captures/` folder);
+  `fonts`, `round_bell`, `docs_nav` and `app_settings` resolve assets/docs/
+  Captures through it instead of each deriving the root from its own
+  `__file__`. `BRAIN_BATTLE_CAPTURE_DIR` and `BRAIN_BATTLE_SIMULATE` are
+  unchanged.
+- **Renames.** `sync_beep.py` → `brain_battle/capture/round_bell.py`, class
+  `SyncBeep` → `RoundBell` (the name no longer described a sync role; ADR-0002).
+  The shell (`brain_battle_main.py`) → `brain_battle/app.py`, with the launch
+  logic wrapped in `main()`.
+- **`pyproject.toml`** added: project metadata, abstract dependencies, the
+  `brain-battle` console script, and a dynamic version read from
+  `brain_battle/version.py`. `requirements.txt` stays the pinned lockfile and
+  drops `ffmpeg-python` (never imported — only the ffmpeg *binary* is used).
+- **Dead code removed.** `circular_timer.py` (`CircularTimer`, 0 importers),
+  `sync_utils/` (`Infobox`, 0 importers), and the stale
+  `Documentation/Brain_Battle_README.docx` (superseded by `README.md` + the
+  in-app docs).
+- **Docs.** New [ADR-0013](docs/decisions/adr-0013-package-reorganisation.md);
+  module reference, architecture overview + the component/container diagrams,
+  developer setup & workflow, the Installation page, README and CLAUDE.md all
+  updated to the package layout and the new run command; ROADMAP Phase 6 gains
+  the asset/doc packaging + Documents-default-folder items and the deferred
+  `*Tab` → `*Screen` class rename.
+- Tests: harness discovery (`test_smoke`, `test_developer_docs`,
+  `test_light_theme`, `test_no_placeholders`) now walks the package; all 27
+  test scripts pass.
 
 ## 3.0.0-dev · Round bell: full volume
 

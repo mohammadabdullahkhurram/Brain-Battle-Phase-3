@@ -32,7 +32,7 @@ brew install ffmpeg
 From the repository root, install the Python packages:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 Then continue to [Verify the install](#verify-the-install) below.
@@ -49,7 +49,7 @@ Then continue to [Verify the install](#verify-the-install) below.
 From the repository root, install the Python packages:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 Then continue to [Verify the install](#verify-the-install) below.
@@ -74,11 +74,11 @@ it's missing).
 Then launch the app:
 
 ```bash
-python3 brain_battle_main.py
+python3 -m brain_battle
 ```
 
 It should open on the **Sessions** screen, empty, titled "Brain Battle" —
-that confirms PyQt6 and the rest of `requirements.txt` installed correctly.
+that confirms PyQt6 and the rest of the dependencies installed correctly.
 If the app opens, installation is done — continue to
 [First run](first-run.md).
 

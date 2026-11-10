@@ -19,7 +19,7 @@ paths** — the same `USBCameraThread`, `FrameEncoder`, `_MuseDirectReader`, rec
 flow, storage writers, and history. Only the device at the very bottom is faked.
 
 ```bash
-BRAIN_BATTLE_SIMULATE=1 python3 brain_battle_main.py
+BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle
 ```
 
 | Faked | Real (unchanged) |

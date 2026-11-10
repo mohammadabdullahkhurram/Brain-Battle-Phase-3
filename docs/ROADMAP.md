@@ -393,6 +393,30 @@ the handful of places the build deliberately reads differently, and why:
 
 ## Phase 6 — Shipping
 
+- **Ship `assets/` and `docs/` as proper package data so a non-editable
+  install works.** The [package reorganisation](decisions/adr-0013-package-reorganisation.md)
+  made `pip install -e .` work and centralised repo-relative lookups in
+  `brain_battle/paths.py` (`REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`), but those
+  still resolve to the checkout — a non-editable `pip install .` would not find
+  the bundled fonts, round-bell WAV, or `docs/` tree. Declare them as package
+  data (or `importlib.resources`) and switch `paths.py` to resolve them from the
+  installed location. *Files:* `pyproject.toml` (package-data / `MANIFEST.in`),
+  `brain_battle/paths.py`.
+- **Default the recordings folder to the user's Documents for the packaged
+  app.** Today `brain_battle/paths.default_capture_root()` returns
+  `REPO_ROOT/Captures`, which is right for a checkout but wrong for a
+  double-click app. Point the default at e.g. `~/Documents/Brain Battle` (the
+  `BRAIN_BATTLE_CAPTURE_DIR` override and the Settings "Change folder…" flow are
+  unchanged). *Files:* `brain_battle/paths.py`, `brain_battle/data/app_settings.py`.
+- **Cleanup: rename the `*Tab` screen classes to `*Screen`.** The screen
+  classes kept their historical names through the package reorganisation
+  (`SessionsTab`, `ReviewLabelTab`, `SettingsTab`, `DocsTab`) — they are DESIGN
+  *screens*, not tabs. Rename the classes (and, optionally, the module files) to
+  `*Screen` for vocabulary consistency; deferred from
+  [ADR-0013](decisions/adr-0013-package-reorganisation.md) to keep that diff
+  reviewable. *Files:* the `brain_battle/ui/*_tab.py` modules and every importer/
+  test that names the classes.
+
 - **Package as a double-click app** (py2app macOS, PyInstaller Windows) +
   build workflow. **Must bundle ffmpeg** inside the app (the camera recorder
   shells out to it per camera for crash-safe H.264, and the pre-flight blocks
@@ -407,13 +431,14 @@ the handful of places the build deliberately reads differently, and why:
   the Phase-3 guided-recording step) and must be excluded from the
   py2app/PyInstaller bundle. With the flag unset there is no trace of
   simulation in the UI, so excluding the module is safe.
-  *Why:* today the app only runs via `python3 brain_battle_main.py` inside
-  a hand-built Python environment — not realistic for the target
-  non-technical researcher/assistant audience.
-  *Files:* new `setup.py`/PyInstaller spec files, a build script/CI config
-  (none exist yet), `version.py` (build metadata); ffmpeg-path resolution in
-  `usb_camera.py`/`export_module.py` to prefer the bundled binary; bundle
-  include/exclude lists that drop `tools/` and `tests/`.
+  *Why:* today the app only runs via `python3 -m brain_battle` (or
+  `pip install -e .`) inside a hand-built Python environment — not realistic for
+  the target non-technical researcher/assistant audience.
+  *Files:* a PyInstaller spec / py2app config building on the existing
+  `pyproject.toml`, a build script/CI config (none exist yet),
+  `brain_battle/version.py` (build metadata); ffmpeg-path resolution in
+  `capture/usb_camera.py`/`data/export_module.py` to prefer the bundled binary;
+  bundle include/exclude lists that drop `tools/` and `tests/`.
   **Also bundle `docs/`** — the in-app Documentation tab (`docs_tab.py` +
   `docs_nav.py`, added alongside this item) reads `docs/nav.yml` and every
   page/diagram/screenshot it lists straight from the repo's `docs/` folder at
@@ -421,7 +446,7 @@ the handful of places the build deliberately reads differently, and why:
   `docs/contributing/` and the raw `.mmd` diagram sources aren't referenced by
   any page and don't need to ship, just `nav.yml` + the Markdown + the
   rendered `.png`/`.svg` the pages actually link to).
-  **Also bundle `assets/sounds/`** — `sync_beep.py` plays
+  **Also bundle `assets/sounds/`** — `capture/round_bell.py` plays
   `assets/sounds/round_bell.wav` at runtime (see
   [credits](project/credits.md)); only the processed WAV needs to ship, not
   `assets/sounds/source/` or `tools/make_round_bell.py` (developer-only, like
