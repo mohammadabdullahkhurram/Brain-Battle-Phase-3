@@ -49,7 +49,6 @@ def test_app_source_has_no_theme_machinery():
                  "set_theme(", "current_theme(", "_toggle_theme",
                  "brain_battle_prefs"]
     py_files = [f for f in glob.glob(os.path.join(ROOT, "*.py"))]
-    py_files += glob.glob(os.path.join(ROOT, "sync_utils", "*.py"))
     py_files += glob.glob(os.path.join(ROOT, "tools", "*.py"))
     offenders = {}
     for fn in py_files:

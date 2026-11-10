@@ -16,7 +16,7 @@ commit (see [CLAUDE.md's "Documentation is part of every change"](../contributin
 | Group | Modules |
 |---|---|
 | **App shell & UI screens** | `brain_battle_main` · `sidebar_shell` · `sessions_tab` · `record_flow` · `review_label_tab` · `settings_tab` · `docs_tab` · `docs_nav` |
-| **Capture** | `camera_source` · `usb_camera` · `headband_source` · `eeg_module` · `eeg_plot_pg` · `session_controller` · `contact_quality` · `contact_log` · `keep_awake` · `circular_timer` · `sync_beep` |
+| **Capture** | `camera_source` · `usb_camera` · `headband_source` · `eeg_module` · `eeg_plot_pg` · `session_controller` · `contact_quality` · `contact_log` · `keep_awake` · `sync_beep` |
 | **Playback** | `pyav_player` |
 | **Data & storage** | `session_storage` · `labels_store` · `label_vocab` · `session_history` · `export_module` |
 | **Support** | `app_settings` · `design_tokens` · `fonts` · `log_setup` · `version` · `simulation` |
@@ -73,7 +73,7 @@ supporting widgets include `CameraTile`, `HeadbandView`, `MiniTrace`,
 (`keep_awake`), logs contact quality (`contact_log`), and stops cleanly early.
 Runs on the UI thread (devices run on their own threads). **Calls:**
 `camera_source`, `headband_source`, `session_controller`, `session_storage`,
-`session_history`, `contact_log`, `keep_awake`, `app_settings`, `circular_timer`,
+`session_history`, `contact_log`, `keep_awake`, `app_settings`,
 `sync_beep`. **Gotcha:** `begin_recording` captures one shared origin `(t0_mono,
 t0_unix)` and threads it into every camera and headband — this is the capture
 clock ([ADR-0001](../decisions/adr-0001-capture-time-clock.md)); do not stamp
@@ -210,10 +210,6 @@ updated (honesty test).
 `caffeinate -dimsu`; Windows: `SetThreadExecutionState`). Best-effort and
 cross-platform. **Called by:** `record_flow` (started at record start, released
 at stop).
-
-### `circular_timer.py`
-`CircularTimer(QWidget)` — the Apple-style countdown dial shown during recording,
-driven by `SessionController` ticks. **Called by:** `record_flow`.
 
 ### `sync_beep.py`
 `SyncBeep(QObject)` plays `assets/sounds/round_bell.wav` (a real boxing-bell

@@ -118,9 +118,6 @@ def _discover_modules():
     for f in sorted(os.listdir(ROOT)):
         if f.endswith(".py"):
             mods.append(f[:-3])
-    for f in sorted(os.listdir(os.path.join(ROOT, "sync_utils"))):
-        if f.endswith(".py") and f != "__init__.py":
-            mods.append(f"sync_utils.{f[:-3]}")
     return mods
 
 
