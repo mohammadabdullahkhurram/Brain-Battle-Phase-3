@@ -1,9 +1,12 @@
 # Brain Battle — pinned Python dependencies.
 #
-# Derived from the actual `import` statements across the repo (grepped, not
-# copied from an old pip line) and pinned to the versions this environment's
-# tests/ suite passed against. matplotlib is intentionally absent — nothing
-# has imported it since the pyqtgraph port (93888f4).
+# This is the pinned lockfile; pyproject.toml declares the same dependencies
+# abstractly (lower bounds) and the package metadata. Derived from the actual
+# `import` statements across the repo (grepped, not copied from an old pip
+# line) and pinned to the versions this environment's tests/ suite passed
+# against. matplotlib is intentionally absent — nothing has imported it since
+# the pyqtgraph port (93888f4). ffmpeg-python was removed too: nothing imports
+# it (only the ffmpeg *binary* is called, via subprocess).
 #
 # One more runtime dependency is NOT here because it is a system install, not
 # a pip package:
@@ -18,7 +21,6 @@ pylsl==1.18.1
 muselsl==2.3.1
 scipy==1.15.3
 pandas==2.2.3
-ffmpeg-python==0.2.0
 numpy==2.2.5
 av==19.0.2
 # bleak is never imported directly in this repo, but muselsl's direct-BLE

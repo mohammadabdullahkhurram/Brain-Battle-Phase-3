@@ -3,6 +3,11 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Packaging build artifacts (pip install -e . / build)
+*.egg-info/
+build/
+dist/
+
 # macOS
 **/.DS_Store
 *.textClipping
