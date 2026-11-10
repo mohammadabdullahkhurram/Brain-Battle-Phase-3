@@ -1,5 +1,13 @@
 # Brain Battle — Architecture & Evaluation
 
+> **Note (added on `develop`, post-capture-clock build):** this report
+> describes `main` at merge `5c08a9b` — it predates the `develop` branch's
+> unified capture-clock work. Items I1-I4 from Part 3.1 below (per-frame
+> timestamps, wall-clock alignment, measured startup latency, co-registered
+> EEG export) have since been implemented as Steps 1-5 of the capture-clock
+> build (see `CLAUDE.md`). Current planning lives in `docs/ROADMAP.md`, not
+> here. The body below is left as-written for historical reference.
+
 For planning major changes. Grounded in the current `main` (merge `5c08a9b`).
 Research goal it serves: **measuring neural synchrony between two boxers** —
 a recording team captures one continuous session (2× Muse-S EEG, POV + side

@@ -1,0 +1,31 @@
+# Brain Battle — pinned Python dependencies.
+#
+# This is the pinned lockfile; pyproject.toml declares the same dependencies
+# abstractly (lower bounds) and the package metadata. Derived from the actual
+# `import` statements across the repo (grepped, not copied from an old pip
+# line) and pinned to the versions this environment's tests/ suite passed
+# against. matplotlib is intentionally absent — nothing has imported it since
+# the pyqtgraph port (93888f4). ffmpeg-python was removed too: nothing imports
+# it (only the ffmpeg *binary* is called, via subprocess).
+#
+# One more runtime dependency is NOT here because it is a system install, not
+# a pip package:
+#   ffmpeg — export encoding + probing (brew install ffmpeg)
+# Review & Label playback uses PyAV (`av`), which bundles its own ffmpeg libs,
+# so there is no longer any VLC / python-vlc desktop dependency.
+#
+PyQt6==6.10.2
+opencv-python==4.11.0.86
+pyqtgraph==0.14.0
+pylsl==1.18.1
+muselsl==2.3.1
+scipy==1.15.3
+pandas==2.2.3
+numpy==2.2.5
+av==19.0.2
+# bleak is never imported directly in this repo, but muselsl's direct-BLE
+# backend (backend="bleak", used throughout eeg_module.py) requires it at
+# runtime — without it, EEG connect fails with an import error inside muselsl.
+bleak==2.1.1
+# docs_nav.py (the in-app Documentation tab) parses docs/nav.yml.
+PyYAML==6.0.2

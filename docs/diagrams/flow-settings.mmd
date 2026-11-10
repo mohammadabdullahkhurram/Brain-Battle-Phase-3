@@ -1,0 +1,13 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}, 'sequence': {'actorMargin': 40, 'width': 140, 'boxMargin': 8, 'mirrorActors': false}}}%%
+sequenceDiagram
+    participant U as User
+    participant ST as SettingsTab
+    participant J as app_settings.json
+    participant RF as RecordFlow
+    U->>ST: change video quality
+    ST->>J: save() + "✓ Saved"
+    Note over J: one JSON file in<br/>the config directory
+    U->>RF: start a new recording
+    RF->>J: load()
+    J-->>RF: resolution + bitrate
+    RF->>RF: recorder uses new quality

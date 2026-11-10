@@ -1,0 +1,20 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}, 'sequence': {'actorMargin': 30, 'width': 120, 'boxMargin': 8, 'mirrorActors': false}}}%%
+sequenceDiagram
+    participant RF as RecordFlow
+    participant SC as SessionController
+    participant Cam as CameraSlot
+    participant Band as HeadbandSlot
+    participant St as Storage
+    RF->>St: create_session()
+    RF->>St: set_capture_origin(t0)
+    RF->>Cam: start_recording(t0)
+    RF->>Band: start_recording(t0)
+    RF->>SC: start()
+    loop each phase
+        SC->>RF: phase_changed
+        RF->>St: append_marker()
+    end
+    SC->>RF: session_finished
+    RF->>Cam: stop_recording()
+    RF->>Band: stop_recording()
+    RF->>St: write manifest + history

@@ -3,10 +3,16 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Packaging build artifacts (pip install -e . / build)
+*.egg-info/
+build/
+dist/
+
 # macOS
-.DS_Store
+**/.DS_Store
 *.textClipping
 
 # Runtime-generated data
 Captures/
 .brain_battle_prefs.json
+screens/

@@ -1,8 +1,282 @@
 # Brain Battle — Changelog
 
-**Current release: v2.1.0** (authoritative source: `version.py` `__version__`).
-The "Phase 2.N" headings below are historical dev-log numbering, kept as
-history — they do not track the release version.
+**Current release: v3.0.0-beta.1** (authoritative source:
+`brain_battle/version.py` `__version__`). The "Phase 2.N" headings below are
+historical dev-log numbering, kept as history — they do not track the release
+version. `main` and `develop` are both `3.0.0-beta.1`; the 3.x dev-log entries
+are at the top.
+
+## 3.0.0-beta.1 · Package reorganisation + first beta
+
+The whole app moved out of a flat pile of root-level modules into a proper
+`brain_battle` package, and `develop` merged to `main` as the first tagged
+pre-release (`v3.0.0-beta.1`). No behaviour changed — this is structure,
+packaging, and cleanup.
+
+- **Package layout.** All modules now live under `brain_battle/` grouped by
+  responsibility: `ui/` (the sidebar shell + the four DESIGN screens, design
+  tokens, fonts), `capture/` (cameras, headbands/EEG, the phase controller,
+  contact quality, keep-awake, the round bell), `playback/` (the PyAV player),
+  `data/` (session storage/history, labels + vocabulary, export, settings), and
+  `support/` (logging, the Qt-free docs-navigation helpers). Moved with
+  `git mv`, so history is preserved.
+- **Run it with `python3 -m brain_battle`** (or the `brain-battle` console
+  script after `pip install -e .`). `brain_battle_main.py` stays at the repo
+  root as a thin launcher shim, so `python3 brain_battle_main.py` still works.
+- **`brain_battle/paths.py`** is the single source of repo-relative paths
+  (`REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`, the default `Captures/` folder);
+  `fonts`, `round_bell`, `docs_nav` and `app_settings` resolve assets/docs/
+  Captures through it instead of each deriving the root from its own
+  `__file__`. `BRAIN_BATTLE_CAPTURE_DIR` and `BRAIN_BATTLE_SIMULATE` are
+  unchanged.
+- **Renames.** `sync_beep.py` → `brain_battle/capture/round_bell.py`, class
+  `SyncBeep` → `RoundBell` (the name no longer described a sync role; ADR-0002).
+  The shell (`brain_battle_main.py`) → `brain_battle/app.py`, with the launch
+  logic wrapped in `main()`.
+- **`pyproject.toml`** added: project metadata, abstract dependencies, the
+  `brain-battle` console script, and a dynamic version read from
+  `brain_battle/version.py`. `requirements.txt` stays the pinned lockfile and
+  drops `ffmpeg-python` (never imported — only the ffmpeg *binary* is used).
+- **Dead code removed.** `circular_timer.py` (`CircularTimer`, 0 importers),
+  `sync_utils/` (`Infobox`, 0 importers), and the stale
+  `Documentation/Brain_Battle_README.docx` (superseded by `README.md` + the
+  in-app docs).
+- **Docs.** New [ADR-0013](docs/decisions/adr-0013-package-reorganisation.md);
+  module reference, architecture overview + the component/container diagrams,
+  developer setup & workflow, the Installation page, README and CLAUDE.md all
+  updated to the package layout and the new run command; ROADMAP Phase 6 gains
+  the asset/doc packaging + Documents-default-folder items and the deferred
+  `*Tab` → `*Screen` class rename.
+- Tests: harness discovery (`test_smoke`, `test_developer_docs`,
+  `test_light_theme`, `test_no_placeholders`) now walks the package; all 27
+  test scripts pass.
+
+## 3.0.0-dev · Round bell: full volume
+
+Follow-up to the round-bell change below: the bell now plays at full volume
+instead of a quietened, comfortable-listening level.
+
+- **`tools/make_round_bell.py`** — the −20 LUFS loudness normalisation is
+  replaced with peak normalisation to −1 dBTP (full volume, just short of
+  clipping). The trim, high-pass, top-end softening, and fade-out are
+  unchanged. `assets/sounds/round_bell.wav` regenerated: true peak −1.0 dBTP,
+  sample peak −1.47 dBFS (no clipping), still 2.0 s / 44.1 kHz / 16-bit /
+  mono. The app already played `SyncBeep` at `QSoundEffect`'s default full
+  volume (`volume=1.0`), so no code change was needed to stop the app itself
+  from quietening it.
+- Docs: `docs/project/credits.md` and
+  `docs/developer-guide/module-reference.md` describe peak normalisation
+  instead of loudness normalisation.
+- Tests: `tests/test_round_bell.py` now checks true peak ≈ −1 dBTP and that
+  the sample peak stays below 0 dBFS (no clipping), instead of an LUFS range.
+
+## 3.0.0-dev · Round bell: a real boxing-bell sound
+
+The round bell is no longer a generated 1 kHz tone — it's a real boxing-bell
+recording:
+
+- **`assets/sounds/round_bell.wav`** — "Boxing Bell.wav" by Benboncan
+  (Freesound #66951, CC-BY 4.0), processed by the new
+  **`tools/make_round_bell.py`** (mono downmix, trim-to-onset, high-pass +
+  high-shelf EQ, trim-to-ring-length + fade-out, two-pass loudness
+  normalisation to ~−20 LUFS / true peak ≤ −3 dBTP, 44.1 kHz/16-bit/mono).
+  The untouched source is kept at `assets/sounds/source/`. See the new
+  [Credits & licences](docs/project/credits.md) page for the full attribution
+  (and the bundled Inter font's).
+- **`sync_beep.py`** — `SyncBeep` now plays this WAV through `QSoundEffect`
+  instead of synthesizing a tone; a missing/unplayable file logs a warning
+  and stays silent rather than raising. Same trigger moments as before (the
+  rest period before round 1, every round start, never a break), the same
+  Settings on/off toggle, and the same Test sound button.
+- Docs: `docs/user-guide/settings.md` describes the actual sound and when it
+  rings; `docs/developer-guide/module-reference.md` covers `sync_beep.py`'s
+  new playback path and `tools/make_round_bell.py`; `docs/ROADMAP.md`'s
+  Phase 6 packaging item now also calls for bundling `assets/sounds/`.
+- Tests: new `tests/test_round_bell.py` (WAV specs, bell-timing-by-phase,
+  Test sound, missing-file safety, the credits entry).
+
+## 3.0.0-dev · D3 follow-up — doc-drift cleanup
+
+Clean up the three doc-drift items D3 surfaced on its "Known issues & tech debt"
+page (now marked resolved there):
+
+- **`ROADMAP.md` Phase 5** — the "Delete dormant `sync_engine.py`" item is marked
+  DONE (removed in `c21fac0`, 2026-11-01, with the Review & Label merge) and
+  struck from the open list; the adjacent "Sync beep becomes a round bell only"
+  item is likewise marked DONE (the Settings toggle shipped in Phase 3 and the
+  docstring is now fixed).
+- **`sync_beep.py`** — the module docstring is rewritten: the beep is a round bell
+  for the boxers only, toggled on/off in Settings, with no part in timing or
+  alignment. The old audio-cross-correlation / `sync_engine.py` claims are gone.
+- **`README.md`** — the stale architecture/module tables and the old tab
+  descriptions are removed entirely. The README is now short and accurate: what
+  Brain Battle is, install & run, where the documentation lives (with links), and
+  current status. The full non-technical rewrite stays in Phase 6.
+
+## 3.0.0-dev · Documentation D3 — Developer guide, Decisions, Project
+
+**The documentation is now complete.** D3 adds the three developer-facing
+sections and the rule + tests that keep the docs current from here on.
+
+- **Developer guide (10 pages):** architecture (context/container/component
+  diagrams), a reference entry for every `.py` module (31 root modules + the
+  `tools/`, with a tests summary table), seven key flows as sequence diagrams
+  (recording start→stop, crash recovery, open-in-review, the playback clock,
+  label→autosave→undo, export, a Settings change reaching the next recording),
+  the threading model (including the camera-thread teardown crash and its fix),
+  the design system & UI conventions, the testing strategy, simulation mode + the
+  demo generator, developer setup & workflow, how-to recipes, and known
+  issues/tech debt.
+- **Decisions (ADRs):** an index plus 12 ADRs in Nygard format — capture-time
+  clock, removing audio cross-correlation, EEG streamed to disk, crash-safe
+  H.264, PyAV playback, labels v2, light-only design, the merged Review & Label
+  screen, folder naming, the app settings store, simulated devices, and in-app
+  docs — each with the dates and reasons from git history and the planning docs.
+- **Project:** goals & research context (Constructor University CIP; supervisor
+  Prof. Jakob Fruchtmann; author Mohammad Abdullah Khurram), current status,
+  roadmap summary (incl. Phases 6–7), version history (v1→v2→v3), a glossary, and
+  a "Planning documents" page surfacing DESIGN/ROADMAP/PLAYBACK_PROPOSAL/
+  ARCHITECTURE_AND_EVALUATION/history in the app. `history.md` is now a Project
+  page. The remaining "coming in a later documentation step" links were replaced
+  with real links, and `README.md` now points at the docs.
+
+**Docs stay current (owner rule).** `CLAUDE.md` and `docs/contributing/docs-guide.md`
+now carry a prominent "Documentation is part of every change" checklist (user
+guide on UI/wording changes, file-formats on any recording/export file change,
+module reference on module changes, a new ADR per significant decision,
+re-rendered diagrams, a CHANGELOG entry). A change isn't done until its docs are.
+
+**Honesty test.** New `tests/test_developer_docs.py`: every `.py` file has a
+module-reference entry and no entry names a deleted file; every ADR is in the
+index and `nav.yml`; every section page is in `nav.yml`; no "later documentation
+step" text remains; and the CHANGELOG's top entry matches `version.py`. Added 14
+diagrams (3 architecture + 7 sequence + threads/component/container), 30 new
+pages to `nav.yml`, and their known-phrase search tests; relaxed the search-UX
+count to be corpus-derived and the diagram viewBox parse to accept Mermaid
+sequence diagrams' negative origin.
+
+**Found while documenting (listed, not fixed):** `ROADMAP.md` Phase 5 still lists
+deleting `sync_engine.py`, which is already removed; `sync_beep.py`'s docstring
+still references that deleted engine; `README.md` still described the old
+three-tab architecture (now points at the docs instead). Tracked in the Developer
+guide's "Known issues & tech debt" page.
+
+## 3.0.0-dev · Documentation D2 — Research & data + review fixes
+
+**New docs section: Research & data** (six pages, for analysts and
+successors). Every field, column, and number is verified against the code:
+
+- **Recording folder anatomy** — the folder tree, who writes each file and
+  when (recording vs. later), and a data-flow diagram.
+- **File format reference** — one subsection per file (`session_manifest.json`,
+  `phase_markers.csv`, camera videos + sidecars, EEG CSVs, `contact_quality.csv`,
+  `labels.json` v2, `label_list.json`, `history.jsonl`, and the export zip) with
+  a field/column table and a real example.
+- **Timing & accuracy** — the one-session-clock model (diagram), what's
+  measured vs. assumed, the numbers we have (camera flash spread 17.2 ms,
+  bounded ≤ 34 ms; EEG clock + Bluetooth latency **Not yet verified on
+  hardware**), what it means for power/envelope vs. phase-based measures, and
+  the tap/buzzer hardware-verification procedure.
+- **Loading the data** — pandas and R (readr/dplyr) examples (load, select a
+  round, cut epochs around labels, join labels to brain data). The Python
+  examples are executed by the test suite.
+- **Known limitations** — one list of every unverified item and what would
+  verify each.
+- **Personal data note** — recordings/exports contain names + brain data;
+  follow your institution's data-protection rules before sharing.
+
+**Honesty test.** `tests/test_research_docs.py` generates a real recording and
+export and fails unless every manifest key, CSV column, history event, and
+export-zip entry the code writes is documented (backticked) in the format
+reference — so the tables can't drift from the code. It also runs the Python
+loading examples against a demo export.
+
+**Review fixes (from the owner's review):**
+
+- **Sessions "Show in Finder"** was clipped to "ow in Finde"; it's now a
+  folder-icon button with a tooltip + accessible name (DESIGN §1). Added a
+  test that no row control's text is clipped at the three window sizes.
+- **Docs images now reserve only their displayed height** — scaled-down
+  screenshots no longer leave a large gap below them, and a search match
+  scrolls into the upper third of the view instead of onto blank space.
+- **Search results** show the page title (bold), section, then the snippet with
+  the match in bold; snippets trim to whole words; no horizontal scrollbar.
+- **Docs screenshots** no longer show dev/sim artefacts — the simulated camera
+  renders a neutral, text-free picture and the demo "Demo" badges are cleared
+  from the fixtures (render tool only; the app still badges real demo data, and
+  the Sessions guide notes the badge in one sentence).
+- The *Research & data* link in the Overview is now live (was "coming in a
+  later documentation step").
+
+## 3.0.0-dev · Docs viewer polish + number-key fix
+
+**Number keys 1–9 everywhere.** The code binds keys 1–9 to place a label, but
+the Review & Label keyboard-help line and `docs/DESIGN.md` §6 still said "1–8".
+Both now say **1–9** (owner-approved DESIGN change), along with the
+`label_vocab.py` comments that quoted it. No behaviour change.
+
+**Documentation viewer polish** (from the owner's screenshot review):
+
+- **Typography.** Real vertical rhythm — comfortable body size (~15 px), ~1.5
+  line height, and space around headings/paragraphs/lists/tables — applied as
+  a block-format pass in `docs_tab.py` (Qt's Markdown importer ignores a
+  default stylesheet for block layout). Each page's **"What this page covers"**
+  intro is now set apart as a light callout box.
+- **No horizontal overflow, ever.** Images/diagrams scale down to the current
+  content width at every window size (`_ContentBrowser` rescales on resize);
+  the horizontal scrollbar is disabled (removing the stray bottom-right corner
+  square); the nav/results rows lost their dotted focus rectangle (selection
+  styling is the visible keyboard-focus indicator). Fenced code blocks nested
+  in list items — which Qt won't wrap — were de-nested in `installation.md`.
+- **Readable diagrams.** `context.mmd` was reshaped from a wide (1560 px)
+  horizontal layout to a narrow vertical one, and both diagrams now declare a
+  16 px base font, so their labels display at ≥ 12 px in the reading column
+  instead of ~6 px. The overview no longer shows the same picture twice (an
+  ASCII line *and* the diagram) — just the diagram, introduced by a sentence.
+- **Search.** Results now show a **count** ("2 results for …") and each hit's
+  **section**; the search box has a **×** clear button; **Esc** returns to the
+  menu; **Enter** opens the first result; selecting a result opens the page
+  scrolled to the first match with all matches highlighted.
+- **Screenshots** regenerated with a realistic recordings folder name
+  ("Brain Battle Data") and a small demo library so the Sessions image shows
+  several statuses (Needs labelling, Labelled, Exported, Interrupted). No
+  throwaway temp-folder names appear in any committed image; temp folders are
+  used and the real Captures folder is left untouched.
+
+New `tests/test_docs.py` checks: no horizontal overflow on any page at the
+three sizes, diagram label text ≥ 12 px, the search count/section/clear/Esc/
+Enter behaviour, and that no doc image was rendered with a temp-folder name.
+`docs/contributing/docs-guide.md` gained the typography, diagram-size, and
+screenshot rules.
+
+## 3.0.0-dev · Documentation D1 + accuracy review
+
+**In-app Documentation (step D1 of 3).** New **Documentation** screen
+(`docs_tab.py` + `docs_nav.py`, sidebar item above Settings) renders the
+Markdown under `docs/` at runtime via Qt's own `QTextDocument.setMarkdown`
+(no QtWebEngine) — nav tree, always-visible search with highlighting, and
+back/forward. Help (?) buttons on Sessions, every New-recording step, Review &
+Label and Settings open that screen's page directly. `docs/nav.yml` lists only
+finished pages; D1 shipped *Getting started* and *User guide* (11 pages).
+Diagrams are Mermaid source rendered to `.svg` (GitHub) + `.png` (what the
+Markdown references), screenshots are generated via `tools/render_screens.py`.
+Covered by `tests/test_docs.py`.
+
+**Documentation accuracy review (this change).** Verified every `nav.yml` page
+against the code and corrected `review-and-label.md`: label number keys are
+**1–9** (not 1–8), added the **Redo** shortcut (⇧⌘Z / Ctrl+Shift+Z), documented
+that clicking a placed label jumps to it, the exact "A · \<name\>" who-button
+wording, and the "Marked moment — click to name" row wording; flagged the
+brain-activity trace as not-yet-verified-on-hardware. The other ten pages were
+checked and found accurate. **CLAUDE.md** was rewritten to describe the present
+(current screens, file count, next work = docs D2/D3 then Phase 5) with its
+long historical narrative — the unified capture-time clock build, the prior
+functional-fixes/cleanup phase, the grounding backlog, and the v1→v2 migration
+— moved to **`docs/project/history.md`**; its Deferred-work list was rewritten
+to the current architecture (closing the removed labelling-tab / VLC-drift /
+`sync_engine` items, keeping the hardware-blocked EEG-clock and eyes-on-glass
+checks). **ROADMAP.md** Phase 4 (Labelling) is marked delivered as part of the
+Phase 3 Review & Label build. No code behaviour changed — docs only.
 
 ## Phase 2.17 · Second-Muse picker + 2-min disconnect fix
 

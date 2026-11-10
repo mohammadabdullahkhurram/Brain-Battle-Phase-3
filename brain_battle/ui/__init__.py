@@ -1,0 +1,1 @@
+"""Brain Battle ui subpackage."""

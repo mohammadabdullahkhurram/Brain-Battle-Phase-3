@@ -1,0 +1,48 @@
+# Brain Battle — project metadata and packaging.
+#
+# The pinned lockfile lives in requirements.txt; this file declares the same
+# dependencies abstractly (lower bounds matching the tested versions) plus the
+# package metadata and the `brain-battle` console entry point.
+#
+# SUPPORTED INSTALL (for now): `pip install -e .` (editable). The app resolves
+# its bundled assets/ and docs/ relative to the checkout root via
+# brain_battle/paths.py, so a non-editable install would not find them yet.
+# Packaging assets/docs/sounds/fonts as proper package data (and a
+# Documents-based default recordings folder) is tracked in docs/ROADMAP.md
+# Phase 6.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brain-battle"
+description = "Neuroscience boxing capture: 4 USB cameras + 2 Muse-S EEG headbands, recording, review, labelling and export."
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]      # single source of truth: brain_battle/version.py
+dependencies = [
+    "PyQt6>=6.10",
+    "opencv-python>=4.11",
+    "pyqtgraph>=0.14",
+    "pylsl>=1.18",
+    "muselsl>=2.3",
+    "scipy>=1.15",
+    "pandas>=2.2",
+    "numpy>=2.2",
+    "av>=19.0",
+    # muselsl's direct-BLE backend (backend="bleak") needs bleak at runtime.
+    "bleak>=2.1",
+    # docs_nav.py parses docs/nav.yml.
+    "PyYAML>=6.0",
+]
+# ffmpeg (the system binary) is also required at runtime for export encoding /
+# probing — `brew install ffmpeg` — but it is not a pip package.
+
+[project.scripts]
+brain-battle = "brain_battle.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "brain_battle.version.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["brain_battle*"]

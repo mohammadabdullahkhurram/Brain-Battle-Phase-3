@@ -1,0 +1,17 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TB
+    Boxers["Boxer A &amp; Boxer B"]
+    HW["2 headbands (Muse-S, Bluetooth)<br/>+ 4 cameras"]
+    APP["Brain Battle app"]
+    F[("Recordings folder")]
+    REV["Review &amp; Label"]
+    OUT["Exported analysis bundle"]
+    R["Researcher"]
+
+    Boxers --> HW
+    HW --> APP
+    APP --> F
+    F --> REV
+    REV --> OUT
+    R -- operates --> APP
+    R -- labels events --> REV

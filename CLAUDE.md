@@ -1,254 +1,413 @@
-# Brain Battle — Phase 2 (v2.1.0)
+# Brain Battle — v3.0.0-beta.1 (main · develop)
 
 PyQt6 desktop app for neuroscience boxing capture: 4 USB cameras + 2 Muse-S EEG
-headbands (Bluetooth), with a live capture tab, a sync/review tab, a labelling
-tab, and an export pipeline. ~11k lines across 24 .py files.
+headbands (Bluetooth). Four screens behind a light sidebar shell — **Sessions**
+(home library), **New recording** (a guided capture flow), **Review & Label**
+(one merged playback + labelling screen), and **Settings** — plus an in-app
+**Documentation** screen and an export pipeline. ~13k lines in the
+`brain_battle` package (`ui/` · `capture/` · `playback/` · `data/` ·
+`support/`).
+
+## Project situation
+
+- **Hardware is currently broken.** Nothing in this project can be tested
+  against real cameras or real Muse-S bands right now. All development and
+  testing happens against a generated demo session (see
+  `docs/ROADMAP.md` Phase 1) until hardware is available again.
+- **Nobody has inspected raw Muse-S EEG from a real sparring round.** Signal
+  usability — noise floor, motion artifact during actual boxing, whether the
+  channels are even readable — is unknown. Don't assume the EEG is clean.
+- **The synchrony analysis method is undecided and has no owner yet.** This
+  matters directly for how much more sync-precision work is worth doing:
+  phase-based measures (PLV, coherence) need alignment accurate to a few ms;
+  power/envelope-based measures tolerate tens of ms (what the current
+  capture-clock design already targets). **Don't invest in tighter sync
+  precision until this is answered** — it would be optimizing a number nobody
+  has confirmed matters.
+- Therefore: build and test everything against the generated demo session
+  described in `docs/ROADMAP.md`, not against hardware that doesn't exist
+  yet or data nobody has seen.
+
+## Working agreement
+
+- The owner approves each `docs/ROADMAP.md` phase before it starts. Never
+  start the next phase on your own initiative.
+- Commit locally per logical change. Never push unless explicitly told to.
+- Run everything in `tests/` before and after every change, and report
+  pass/fail — not just "I ran the tests."
+
+### Documentation is part of every change
+
+**A change isn't done until its docs are.** Documentation ships in the same
+change as the code it describes — not as a later step. The honesty tests
+(`tests/test_docs.py`, `test_research_docs.py`, `test_developer_docs.py`) enforce
+this, so skipping it turns the suite red. Checklist:
+
+- **User guide** — update when the UI or any user-facing wording changes.
+- **File formats** (`docs/research-and-data/file-formats.md`) — update when any
+  recording/export file changes (a manifest key, CSV column, history event, zip
+  entry); backtick the new name. (`test_research_docs.py`)
+- **Module reference** (`docs/developer-guide/module-reference.md`) + this file's
+  module map — update when a module is added, removed, or renamed.
+  (`test_developer_docs.py`)
+- **A new ADR** (`docs/decisions/`) — write one for any significant technical
+  decision, and list it in `nav.yml`. (`test_developer_docs.py`)
+- **Diagrams** — re-render (`python3 tools/render_diagrams.py`) when a `.mmd`
+  changes. (`test_docs.py`)
+- **CHANGELOG** — add an entry for every change; the top entry must match
+  `version.py`. (`test_developer_docs.py`)
+
+See `docs/contributing/docs-guide.md` "Documentation is part of every change" for
+how each item is enforced.
+
+## Product direction
+
+**`docs/DESIGN.md` (approved 2026-10-27) is the source of truth for ALL UI
+work** — the actual screens, copy, vocabulary, tokens, and layout from the
+approved mockups. If code and DESIGN.md disagree, ask; don't guess.
+`docs/ROADMAP.md` is the build plan/sequencing; DESIGN.md is what it must look
+and read like. Summary of where the product is headed:
+
+- **Audience is non-technical researchers and research assistants**, not
+  developers. UI copy should be plain language, no jargon ("alignment",
+  "capture clock", "xcorr" are implementation details, not UI vocabulary).
+- **Light mode only.** The dark theme, the theme toggle, and the
+  restart-to-apply theme-switch flow are going away.
+- **Three screens, not three tabs with sync internals exposed:** Sessions
+  (home library of past/current sessions) → Record (a guided capture flow)
+  → Review & Label (one merged screen — recording and labelling stop being
+  separate tabs with separate, sometimes-inconsistent alignment logic), plus
+  a Settings screen for everything that's currently hardcoded in source
+  (boxer↔headband mapping, resolution/fps, label vocabulary, round bell).
+- **The separate Sync/Review tab goes away as a distinct concept** —
+  alignment becomes fully automatic and invisible to the user; there is
+  nothing to click to "sync."
 
 ## Running
 
 ```bash
-pip install PyQt6 pyqtgraph opencv-python matplotlib pylsl muselsl scipy pandas ffmpeg-python numpy python-vlc bleak
-python3 brain_battle_main.py
+pip install -e .          # supported install for now (reads pyproject.toml)
+python3 -m brain_battle    # or: brain-battle  (or the shim: python3 brain_battle_main.py)
 ```
 
-System binaries required: `ffmpeg` (audio extraction, export) and VLC (review
-playback via python-vlc). Captures land in `Captures/` next to the source
-(override with `BRAIN_BATTLE_CAPTURE_DIR`).
+System binaries required: `ffmpeg` (per-camera H.264 **recording**, plus
+export/probing — recording is now blocked at pre-flight without it). Review &
+Label playback is in-process via **PyAV** (`av`, bundles its own ffmpeg) — no
+VLC / python-vlc dependency anymore. Captures land in `Captures/` next to the
+source (override with `BRAIN_BATTLE_CAPTURE_DIR`).
+
+## Demo session
+
+Hardware is broken (see "Project situation" above), so every phase of
+`docs/ROADMAP.md` builds and tests against a **generated demo session**
+instead:
+
+```bash
+python3 tools/generate_demo_session.py --out /tmp/demo              # one session (2 rounds, seed 0)
+python3 tools/generate_demo_session.py --out /tmp/demo --rounds 3 --seed 7
+python3 tools/generate_demo_session.py --out /tmp/demo --interrupted  # looks like a mid-round crash
+python3 tools/generate_demo_session.py --out /tmp/library --library   # ~5 sessions, every Sessions status
+```
+
+`--out` is **required** — a demo must never land in your real recordings
+folder by accident. The generator also **refuses** an `--out` that equals the
+configured recordings folder unless you pass `--force` (the
+`_refuse_real_folder` guard), so demo data can't be mistaken for real captures.
+`--library` fills `--out` with ~5 short sessions covering every status
+(interrupted, needs labelling, labelled, exported, no-name) — handy for the
+Sessions screen.
+
+Each run writes a real v3 session folder — 4 camera MP4s + sidecars (one camera
+deliberately drifts: 30fps declared container vs. ~29.5fps true capture rate,
+for Phase 5's drift-detection work), 2 boxer EEG CSVs with plausible synthetic
+signal, `phase_markers.csv`, and `session_manifest.json` (`demo:true`) — by
+reusing the real writers (`session_storage`, `USBCameraThread`'s sidecar
+methods, `_MuseDirectReader`'s chunk/flush path) wherever they're headlessly
+callable, so it can't silently drift from the format the app actually
+reads/writes. Deterministic for a given `--seed`; the default config generates
+in well under a minute.
+
+**This is also the eyes-on-glass fixture** deferred work item #1 has been
+waiting for: every camera shows a full-frame white flash and every EEG channel
+gets a sharp spike at each phase-marker instant, so you can open a generated
+session from **Sessions → Review & Label** and visually confirm all four
+cameras + both brain-activity traces land on the same instant at each
+flash/spike (alignment is automatic — there is nothing to click to "sync"). It
+is the same check a real capture session needs, without needing hardware to
+produce the fixture. `tests/test_demo_session.py` automates the arithmetic side
+(sidecar/MP4 frame counts, EEG columns/rate, and that the computed alignment
+seeks match the generator's own start delays exactly).
 
 ## Tests (`tests/` — plain scripts, `python3 tests/<name>.py`, nonzero exit on failure)
 
-All need ffmpeg on PATH and stub python-vlc only when libVLC is absent.
+All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
 
 - `test_smoke.py` — the "loads and stands up" floor and **acceptance gate for
-  deletions/refactors**: fresh-subprocess import of every first-party module
-  (dynamic discovery), import-time `_HW_ENCODER` == post-import detection
-  (the check that would have caught the four-commit videotoolbox NameError
-  bug), headless construction of all three tabs + app shell, session-timeline
-  order, `__version__` in the window title. Run this before and after any
-  module deletion (J/K) or structural change (H).
-- `test_seek_alignment.py` — ground truth for the sync seek formula: a known
-  transient must land at the same playhead time in every clip after seeks
-  (the formula flip-flopped twice; never change it without this). Also pins
-  the simultaneous-start path to all-zero seeks.
-- `test_xcorr_confidence.py` — confidence metric discrimination (high on
-  shared signal, near-zero on unrelated, monotone decay under noise) plus
-  threading: worker → SyncResult → badge → honest `n/a (<method>)` CSV rows.
-- `test_ring_buffer.py` — `_RingBuffer` chronological ordering, including
-  the over-capacity write branch (latent bug fixed in `0de80f2`).
+  deletions/refactors**: fresh-subprocess import of every first-party module,
+  import-time `_HW_ENCODER` == post-import detection, headless construction of
+  the screens (RecordFlow, ReviewLabelTab, SessionsTab, SettingsTab) + the
+  `BrainBattleApp` shell, `__version__` in the window title. Run before/after
+  any deletion/refactor.
+- `test_player.py` — the PyAV single-clock player: frame-for-t correctness vs a
+  ground-truth decode (incl. the drift camera's last frame), real-time pacing
+  (±2% over ~10 s), scrub coalescing (50 seeks → a couple of decodes), paint fps.
+- `test_review_tab.py` — the merged screen's label side: fast labels-first open
+  (<0.5 s, media in the background), duration flow + Esc, undo/redo, keyboard
+  focus rules, autosave + history, seeded vocabulary.
+- `test_labels_v2.py` — `labels_store` v2 schema, v1→v2 migration (+ `.v1.bak`),
+  undo/redo, events timeline.
+- `test_label_vocab.py` — the shared `label_list.json` (seed from DESIGN
+  defaults, round-trip, tolerant load).
+- `test_contact_quality.py` — the per-sensor heuristic (flat/clipped/noisy/good)
+  and its plain-language summary.
+- `test_export.py` — the analysis bundle: zip contents (labels.csv v2,
+  events.csv, eeg_coregistered.csv, raw EEG + videos with sidecars, manifest,
+  history, README) and events.csv ordering.
+- `test_flash_sync.py` — verify-only: at every phase marker of a 12-min demo the
+  white flash is within one frame period (≤34 ms) across the four tiles.
+- `test_no_placeholders.py` — acceptance gate: ZERO placeholder/temporary UI
+  copy, no EEG channel codes or "UPLOAD" text, zero placeholder screens left
+  (the Settings placeholder shipped as a real screen in Phase 3 step 7).
+- `test_capture_clock.py` — capture-clock reconciliation arithmetic, two-band
+  relative skew, marker/EEG co-registration, manifest bridge round-trip, the
+  real EEG reader flush path, and the co-registered EEG export.
+- `test_demo_session.py` — `tools/generate_demo_session.py` end to end: sidecar
+  rows == MP4 frames (incl. the drift camera), EEG columns/rate, a headless
+  `ReviewLabelTab.load_session_folder`, the `--interrupted` fixture, marker-token
+  forms, `demo:true` manifests, and the generator's refuse-real-folder guard.
+- `test_sessions.py` — Sessions discovery/status/search/filter/sort, the
+  interrupted banner + dismissal persistence, off-UI-thread scanning, demo
+  badges, and the strict layout at both sizes.
+- `test_ring_buffer.py` / `test_eeg_streaming.py` / `test_video_recording.py` /
+  `test_crash_recovery.py` / `test_history_log.py` — ring-buffer ordering; the
+  streamed EEG recorder under SIGKILL; crash-safe H.264 recording; interrupted-
+  session detection + disk-space branches; the append-only history log + its
+  hooks (recording start/finish, opened_for_review, labels add/remove, driven
+  through ReviewLabelTab).
+- `test_light_theme.py` — light-only guard (no dark tokens / theme machinery).
+- `test_layout_fit.py` — every shell page fits (nothing clipped) at 1440×900,
+  1280×800 AND the minimum window size; a visible scrollbar is chrome, not an
+  overflow.
+- `test_record_flow.py` — the guided flow end to end with simulated devices:
+  all four steps → a valid recording (sidecars, EEG CSVs, markers, manifest
+  with names + moments, history, contact log) shown in Sessions and opened in
+  Review with markers + moments; stop early; missing camera; headband
+  drop+reconnect; disk-blocked start; quit-while-recording confirmation; sleep
+  prevention requested/released; per-step layout fit at all three sizes; and no
+  simulation text when `BRAIN_BATTLE_SIMULATE` is unset.
+- `test_app_settings.py` — the settings store (defaults, round-trip) and the
+  `BOXER_LABELS` removal (now `eeg_module.boxer_labels()` from settings).
+- `test_settings_screen.py` — the real Settings screen (DESIGN §7): bitrate
+  computed (not hard-coded) into the GB/hour copy, the disk estimate, and the
+  recorder's own `-b:v`; known-headbands + the same-headband guard; every
+  section's autosave; the label-list editor (add/rename/remove/reorder/
+  recolour, keys renumbered 1..n); and a headless end-to-end — change
+  defaults/quality/label list in Settings, start a (simulated) recording, and
+  confirm Set up/the recorder/the disk estimate/Review & Label all reflect it.
+- `test_contact_log.py` — per-sensor contact log weak-period spans + the >30 s
+  "worth checking" filter.
+- `test_round_bell.py` — `assets/sounds/round_bell.wav`'s duration/true-peak/
+  loudness; `SessionController.beep_requested` fires at baseline + every round
+  start and never on a break; Settings' Test sound plays the bundled file; a
+  missing WAV stays silent instead of crashing; the credits entry exists.
+- `test_docs.py` — the in-app Documentation tab + `docs/` content (Phase 3
+  step D1): every `nav.yml` page exists and renders; every image/diagram it
+  references exists; internal links/anchors resolve; diagram freshness
+  (`.mmd` vs. its rendered `.svg`/`.png`/`.hash`); search finds a known
+  phrase per page + highlights it; Help (?) buttons route to the right
+  page/anchor from Sessions, each record-flow step, Review & Label, and
+  Settings; strict layout fit at the three sizes; and the placeholder
+  gate's scope contract (it must not scan `docs/*.md`).
 
-Broader end-to-end suites from the fix sessions (31-check acceptance, hybrid
-audio/no-audio sync, export error-text, real-VLC playback smoke) were
-session-local scratchpad scripts and are NOT checked in — the checked-in
-suites above are the durable safety net.
+## Project status
 
-## Project status (2026-07-06)
+**Current state: Phase 3 COMPLETE, reorganised into the `brain_battle` package
+(`main` = `develop` = `3.0.0-beta.1`).** The unified
+capture-time clock shipped and the app was rebuilt onto the four DESIGN
+screens — Sessions, New recording, Review & Label, and now Settings. Review &
+Label is one merged PyAV-driven screen (single `t_session_seconds` playhead);
+labels are `labels.json` v2 with undo/redo and a shared vocabulary; Sessions is
+the home library; export produces an analysis bundle. The old Review/Labelling
+tabs, VLC, audio-xcorr (`sync_engine.py`), and `labels_config.py` are gone. **New
+recording is the guided flow** (`record_flow.py`, DESIGN §2–§5: Connect →
+Set up → Record → Saved), replacing the Live Monitor (`live_session_tab.py`,
+`session_setup_dialog.py`, the old camera grid — all removed). It records moments
+(M), prevents sleep, logs per-sensor contact quality, and stops cleanly early;
+moments surface in Review as unnamed labels. **Settings is now the real screen**
+(`settings_tab.py`, DESIGN §7 — Phase 3 step 7, the final placeholder removed):
+recordings folder (Change folder…/Show in Finder, a `BRAIN_BATTLE_CAPTURE_DIR`
+override note), headbands (known-device dropdowns + BLE search, a same-headband
+guard), video quality (Standard/High/Light — resolution AND bitrate wired into
+the recorder, with the GB/hour copy and disk-space estimate both computed from
+that bitrate), session defaults + round bell + Test sound, and the shared label
+list (add/rename/remove/reorder/recolour). Everything autosaves with a brief
+"✓ Saved" confirmation and applies to the next recording. The former hard-coded
+`eeg_module.BOXER_LABELS` and `usb_camera.py`'s fixed resolution/bitrate are
+gone — all of it now lives in the `app_settings` store. Hardware is broken, so
+the whole flow is built + tested against **simulated** devices driven through the
+real capture paths (`simulation.py`, `BRAIN_BATTLE_SIMULATE`, dev-only, not
+shipped). What remains hardware-blocked is the eyes-on-glass/real-signal
+verification (deferred items below) — see `docs/ROADMAP.md`'s Phase 3 "DESIGN
+differences" note for the handful of places this build intentionally reads
+differently than DESIGN.md's mockup text.
 
-**FINISHED.** Both phases — functional fixes and cleanup — are complete on
-branch `fix/v2-migration-review-path` (15 commits; `git log --oneline
-1a840e1..` for detail). The migration gap that started this work (the
-review/sync path still reading the v1 per-round layout) is closed. Coverage:
+**In-app documentation (step D1 of 3, inserted before Phase 5) is also
+shipped.** A new **Documentation** screen (`docs_tab.py` + `docs_nav.py`,
+sidebar item just above Settings) renders the Markdown under `docs/` at
+runtime — no QtWebEngine, Qt's own `QTextDocument.setMarkdown` — with a
+nav tree, always-visible search (titles/headings/body, with highlighting),
+and back/forward. Help (?) buttons on Sessions, each New-recording step,
+Review & Label, and Settings open that screen's page directly. `docs/nav.yml`
+lists only finished pages; `docs/contributing/docs-guide.md` is the plan for
+all six sections (Diátaxis + ADRs) and the style rules every page follows.
+D1 wrote *Getting started* and *User guide* (11 pages); *Research & data*,
+*Developer guide*, *Decisions*, and *Project* land in D2/D3. Diagrams are
+Mermaid source (`docs/diagrams/*.mmd`) rendered via `tools/render_diagrams.py`
+to both `.svg` (GitHub) and `.png` (what Markdown actually references — Qt's
+`QSvgRenderer` can't render Mermaid's CSS-class styling or
+`foreignObject` labels, verified empirically; see docs-guide.md). Screenshots
+are generated, not hand-captured: `tools/render_screens.py --docs`.
 
-| Commits | Work |
-|---|---|
-| `8aaa14a` `faa8f38` `bfa0a36` `16f91a2` | Functional fixes A/B, D′, E, C |
-| `0993721` | E follow-up (videotoolbox NameError, silently broken 4 commits) |
-| `0de80f2` `e16aab3` | Cleanup G (ring buffer), I+F (storage API, `__version__`) |
-| `bbc0769` `5ff48db` `7697642` `93888f4` | Smoke gate, J deletions, K logging, H pyqtgraph port |
-| `43ece84` `fc13bd8` `d1ec67b` (+ this one) | CLAUDE.md + README documentation |
+Documentation steps **D2** and **D3** come next, then **Phase 5** — each gated
+on owner approval per the working agreement (never start one on your own
+initiative). D2/D3 add the remaining documentation sections (*Research & data*,
+*Developer guide*, *Decisions*, *Project*); Phase 5 is the remaining
+report/research-value items in `docs/ROADMAP.md`.
 
-Every remaining item is in **Deferred work** below — nothing else is planned.
+**Phase 4 (Labelling) was delivered as part of the Phase 3 Review & Label
+build**, not as a separate phase: every label is tied to a boxer (A/B/Both),
+labels are point or duration events on the numeric `t_session_seconds` axis, a
+shared team vocabulary is stored with the sessions (not committed to the repo),
+and frame-stepping, 0.25×/0.5× playback, undo/redo and an editable list of
+placed labels all ship in `review_label_tab.py` + `labels_store.py` +
+`label_vocab.py`. `docs/ROADMAP.md`'s Phase 4 section is marked accordingly.
 
-## CRITICAL CONTEXT — the v1.x → v2.x migration gap
-
-The app was migrated from a v1.x **per-phase recording** model (separate
-folders and clips per round: `baseline/`, `Round 1/`, each with `Side Cams/`,
-`POV Cams/`, `Muse data/`) to a v2.x **one continuous take** model:
-
-```
-Brain Battle <timestamp>/
-    continuous/
-        Side Cams/*.mp4      # one MP4 per camera, whole session
-        POV Cams/*.mp4
-        Muse data/*.csv      # one CSV per Muse, whole session
-    phase_markers.csv        # phase boundaries as timestamps (t_session_seconds, phase_id, label, round_num, unix_time)
-    session_manifest.json
-```
-
-- The **CAPTURE half is fully migrated**: `session_controller.py`,
-  `session_storage.py`, `live_session_tab.py` record one continuous take and
-  write `phase_markers.csv`. Per-round folders are never created
-  (`session_storage.py:207-211` documents this explicitly).
-- The **REVIEW/SYNC half is now migrated too** (fixed in `8aaa14a`): the Sync
-  tab's `load_session_folder` reads `continuous/` + `phase_markers.csv`,
-  mirroring the Labelling tab's `_open_session_folder`, and the tab has its
-  own OPEN SESSION FOLDER button. The historical migration gap — the Sync tab
-  globbing nonexistent `Round {n}/` folders and returning silently — is where
-  most of the original bugs lived; keep both loaders in step if the session
-  layout ever changes again.
-
-A second structural consequence: all four in-app cameras (side AND POV) record
-via `cv2.VideoWriter` (`usb_camera.py`), which writes **no audio track**. So
-audio-xcorr sync can only work on externally recorded footage (e.g. SD-card
-DSLR files uploaded manually); in-app captures don't need xcorr anyway — they
-start simultaneously and share `phase_markers.csv` time.
+For the long-form history behind the current architecture — the unified
+capture-time clock build (STEPs 1–5), the prior functional-fixes / cleanup
+phase and its grounding backlog, and the v1.x→v2.x recording-model migration —
+see **`docs/project/history.md`**. CLAUDE.md describes the present; that page
+keeps the narrative.
 
 ## Module map
 
-| File | Lines | Purpose |
-|---|---|---|
-| `brain_battle_main.py` | 2168 | Entry point + `SyncReviewTab`, `LabellingTab`, `MainEditorSyncWorker`, `BrainBattleApp` shell |
-| `eeg_module.py` | ~1600 | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` + `EEGReviewWidget` (both pyqtgraph) |
-| `design_tokens.py` | 741 | Theme system (dark/light), QSS factories |
-| `live_session_tab.py` | 584 | Live Monitor tab — capture orchestration, emits `session_saved(session_root)` |
-| `export_module.py` | 531 | `VideoExportWorker` (ffmpeg quad-grid), `LabelsExporter`, `FullSessionExportWorker` (zip), progress dialog |
-| `usb_camera_slot.py` | 479 | One camera slot widget (preview + record state) |
-| `sync_engine.py` | 465 | `SourceOffset`/`SyncResult` dataclasses (ACTIVELY USED) + `SyncWorker` QThread (unused) |
-| `vlc_module.py` | 391 | `VLCVideoSlot`, `SyncPlaybackController` — labelling-tab playback |
-| `usb_camera.py` | 361 | `USBCameraThread` — cv2 capture + `cv2.VideoWriter` recording (no audio track) |
-| `sync_utils/video_sync.py` | 300 | ffmpeg preview/trim helpers |
-| `eeg_plot_pg.py` | 276 | pyqtgraph live EEG plot (the fast path the live widget uses) |
-| `sidebar_shell.py` | 274 | Sidebar navigation shell (replaced QTabWidget) |
-| `session_controller.py` | 241 | Pure-logic phase state machine (IDLE→BASELINE→ROUND↔BREAK→DONE), 1 Hz QTimer |
-| `session_setup_dialog.py` | 225 | Rounds/durations config dialog |
-| `session_storage.py` | 218 | On-disk session layout, manifest, `phase_markers.csv` writer |
-| `sync_utils/audio_analysis.py` | 215 | Audio extraction + xcorr delay estimation (`compute_delays`, `_xcorr_delay`) |
-| `circular_timer.py` | 192 | Circular countdown dial |
-| `usb_camera_panel.py` | 158 | 2×2 grid of camera slots, start/stop recording fan-out |
-| `sync_utils/eeg_video_sync.py` | 154 | EEG-vs-video window comparison |
-| `sync_beep.py` | 125 | Round-start beep |
-| `labels_config.py` | 71 | Label palette persistence (`labels_data.json`) |
-| `sync_utils/infobox.py` | 20 | Tiny message-box helper |
+Current architecture: everything lives in the **`brain_battle` package**,
+grouped by responsibility into `ui/` · `capture/` · `playback/` · `data/` ·
+`support/`. Four DESIGN screens sit behind a light sidebar shell —
+**Sessions** (home library), **New recording** (a full-screen guided flow,
+`ui/record_flow.py`), **Review & Label** (one merged screen), and **Settings**
+(`ui/settings_tab.py`). Review & Label playback is app-driven on a single
+`t_session_seconds` playhead via **PyAV** (`playback/pyav_player.py`): there is
+no VLC, no Qt-Multimedia, and no audio-xcorr. Labels are `labels.json` v2
+(`data/labels_store.py`) with a shared team vocabulary (`data/label_vocab.py`);
+export is an analysis bundle (`export_module.SessionExportWorker`). Hardware is
+broken, so the flow can be driven by **simulated** cameras + headbands through
+the real capture paths, gated entirely by `BRAIN_BATTLE_SIMULATE`
+(`capture/simulation.py`, dev-only, not shipped).
 
-## Issue backlog
+Run it with `python3 -m brain_battle` (or the `brain-battle` console script
+after `pip install -e .`); `brain_battle_main.py` at the repo root is a thin
+launcher shim.
 
-### DONE — all ten grounding items (commits on fix/v2-migration-review-path)
+| File (under `brain_battle/`) | Purpose |
+|---|---|
+| `app.py` | `BrainBattleApp` shell (window sizing + QSettings, page wiring) + `main()` entry point |
+| `version.py` | Single authoritative `__version__` (window title, manifest, pyproject reads it) |
+| `paths.py` | Single source of repo-relative paths: `REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`, default `Captures/` |
+| `ui/sidebar_shell.py` | DESIGN shell: 232px sidebar, 72px rail on Review & Label, fully hidden for the full-screen record flow; app opens on Sessions |
+| `ui/record_flow.py` | The guided New-recording flow (DESIGN §2–§5): Connect → Set up → Record → Saved; owns the device slots + SessionController; emits `session_saved` / `exit_flow` |
+| `ui/review_label_tab.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, jargon-free brain card, timeline, labelling |
+| `ui/sessions_tab.py` | Sessions home library (discovery, status, search/filter/sort, interrupted banner, background scan + sizing) |
+| `ui/settings_tab.py` | The real Settings screen (DESIGN §7): recordings folder, headbands, video quality, session defaults + bell, shared label-list editor; autosaves with a "✓ Saved" confirmation |
+| `ui/docs_tab.py` | The in-app Documentation screen: Markdown rendering via `QTextBrowser`/`QTextDocument.setMarkdown` (no QtWebEngine), nav tree, always-visible search with highlighting, back/forward |
+| `ui/design_tokens.py` | **Light-only** design system (docs/DESIGN.md tokens) + QSS factories |
+| `ui/fonts.py` | Registers the bundled Inter font (from `assets/fonts/` via `paths.ASSETS_DIR`) |
+| `capture/usb_camera.py` | `USBCameraThread` (cv2, or a simulated capture) + `FrameEncoder` — crash-safe fragmented H.264 per-camera ffmpeg subprocess + row-per-frame sidecar; no audio; preview downscale |
+| `capture/camera_source.py` | `CameraSlot` — one camera for the flow (wraps `USBCameraThread`: preview, fps, recording/dropped/encoder state) |
+| `capture/headband_source.py` | `HeadbandSlot` — one boxer's headband (wraps `_MuseDirectReader`: connection, battery, per-sensor contact, live trace, reconnect/append) |
+| `capture/eeg_module.py` | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` (pyqtgraph) |
+| `capture/eeg_plot_pg.py` | pyqtgraph live EEG plots (plain sensor names, no channel codes) |
+| `capture/session_controller.py` | Pure-logic phase state machine (headless-testable), 1 Hz QTimer |
+| `capture/simulation.py` | **Dev-only, not shipped** — `BRAIN_BATTLE_SIMULATE` simulated cameras + headbands through the real capture paths; failure injection (missing camera, headband drop) |
+| `capture/contact_quality.py` | Per-sensor EEG contact-quality heuristic (plain language) |
+| `capture/contact_log.py` | Per-sensor contact-quality log written during recording + weak-period summary for Saved/Review |
+| `capture/keep_awake.py` | Prevent sleep while recording (caffeinate / SetThreadExecutionState) |
+| `capture/round_bell.py` | `RoundBell` — round-start boxing bell via `QSoundEffect` (was `sync_beep.py` / `SyncBeep`) |
+| `playback/pyav_player.py` | `PyAVCamera` / `MultiCamDecoder` / `DecodeWorker` / `PlayerController` — single-clock decode off the UI thread |
+| `data/session_storage.py` | On-disk layout, manifest (boxers, capture_clock, demo, moments, stopped_early), `phase_markers.csv`, Sessions discovery/classification/disk verdict |
+| `data/session_history.py` | Append-only `history.jsonl` per recording — flush+fsync, tolerant reader |
+| `data/labels_store.py` | `labels.json` v2 (schema, v1 migration, undo/redo, events timeline) |
+| `data/label_vocab.py` | Shared team label list (`label_list.json` in the recordings folder) |
+| `data/export_module.py` | `SessionExportWorker` + `ExportOptionsDialog` (analysis zip), `VideoExportWorker` (optional 2×2 merge), `build_coregistered_eeg` |
+| `data/app_settings.py` | User-config store: headband→Boxer A/B mapping + known-headbands list (replaces hard-coded `BOXER_LABELS`), session defaults, round bell, video quality (resolution + bitrate), capture dir (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set) |
+| `support/log_setup.py` | Logging configuration (console + file handlers) |
+| `support/docs_nav.py` | Qt-free docs logic: `docs/nav.yml` loading, heading slugify, search index, internal link/image/anchor extraction — used by `ui/docs_tab.py` and `tests/test_docs.py` |
+| `../brain_battle_main.py` | Thin launcher shim at the repo root — re-exports from `brain_battle.app`; `python3 brain_battle_main.py` still works |
 
-- **A/B [HIGH] — DONE in `8aaa14a`.** Live→Review handoff ported to the
-  `continuous/` layout (was globbing v1 `Round {n}/` and returning silently);
-  alignment is audio-aware (<2 audio clips → simultaneous_start with offsets
-  0, 2+ → xcorr among the audio-bearing subset); `_clamp_ms` NaN/inf-guarded;
-  `_xcorr_delay` returns 0 on empty input; OPEN SESSION FOLDER button and
-  phase markers added to the Sync tab.
+(Removed with the guided flow: `live_session_tab.py` (Live Monitor),
+`session_setup_dialog.py`, `usb_camera_panel.py` / `usb_camera_slot.py` (the old
+Live-Monitor camera grid). Removed earlier with the merged screen:
+`vlc_module.py`, `sync_engine.py`, `labels_config.py` + `labels_data.json`, and
+`brain_battle_main`'s old `SyncReviewTab` / `LabellingTab` /
+`MainEditorSyncWorker` / `EEGReviewWidget`.)
 
-- **D′ [MED] — DONE in `faa8f38`.** Seek formula reverted to
-  `max_norm_delay - d` (the old code seeked the latest-starting clip the
-  most, misaligning external uploads by ~2× the true offset). Red-first
-  regression test: `tests/test_seek_alignment.py` (3019ms spread before →
-  19ms after). That line has flip-flopped twice — never change it without
-  running that test.
+## Deferred work — hardware-blocked verification
 
-- **E [MED] — DONE in `bfa0a36`.** Export failures now surface the tail of
-  ffmpeg's stderr + exit code (deque captured during the progress loop);
-  `_detect_hw_encoder` requires a real test-encode probe, not just an
-  `-encoders` listing, falling through to libx264.
+Everything below is blocked specifically on real hardware — it cannot be closed
+by writing more code. This is NOT the project backlog (that's
+`docs/ROADMAP.md`); these are the loose ends that need a real capture session.
+Items that were only code-scoped follow-ups — the old labelling-tab video
+timeline, VLC playback-drift correction, and the `sync_engine` dataclass
+extraction — are now **closed**: that code was removed when Review & Label
+merged onto PyAV and the old Sync/Labelling tabs (and `vlc_module.py`,
+`sync_engine.py`) went away.
 
-- **C [MED] — DONE in `16f91a2`.** Real xcorr confidence
-  (baseline-corrected peak-to-second-peak prominence, `_peak_confidence`);
-  wired through worker → `SourceOffset` → the `set_confidence` badge;
-  `sync_offsets.csv` records the true value or a labeled
-  `n/a (<method>)` sentinel for unmeasured sources. Discrimination test:
-  `tests/test_xcorr_confidence.py`.
+0. **UNVERIFIED: EEG capture-time alignment.** EEG samples are placed on the
+   shared session axis by `t_session = muse_timestamp - capture_t0_unix`. The
+   *arithmetic* is unit-tested (`tests/test_capture_clock.py`), but the EEG
+   *clock source* is not: muselsl derives its timestamps from `time.time()`
+   corrected by a per-band regression, and BLE transport adds latency — neither
+   is confirmable without a real Muse band. *Why it matters:* between-brain
+   synchrony timing depends on where each band sits on the axis. The app logs
+   this warning at every EEG session start (labeled in `eeg_module.py`).
+   *Unblocked by:* a real 2-band session — record a known simultaneous physical
+   event (e.g. both boxers tap in view of a camera at one buzzer), then check
+   the EEG artifact lands at the same `t_session` as the camera frame. **The
+   exported `eeg_coregistered.csv` inherits this** — its between-brain skew is
+   measured-but-hardware-unverified; the same buzzer check discharges it too.
 
-- **G [LOW] — DONE in `0de80f2`.** Ring buffer over-capacity ordering: the
-  `n >= capacity` branch of `_RingBuffer.extend` left `_n_written` unaligned,
-  so `to_array` mis-rotated. Latent (Muse chunks ≤12 into a 7680 buffer).
-  Guarding test: `tests/test_ring_buffer.py`.
+1. **Eyes-on-glass visual check — real signals.** Synced playback (decode,
+   4-cam lockstep, automatic capture-clock alignment) and the brain-activity
+   traces are verified headless to correct-pixels + measured scrub perf +
+   alignment arithmetic (unit tests), but nobody has *watched* the tab render
+   aligned playback on real data — offscreen Qt can't put pixels on glass, and
+   synthetic fixtures aren't real signals. *Unblocked by:* the first real
+   capture session. **Procedure:** `python3 -m brain_battle` → open a
+   session from **Sessions** → it lands in **Review & Label** (alignment is
+   automatic — nothing to click to "sync") → press play and confirm all four
+   cameras run in lockstep → scrub and watch both brain-activity traces follow
+   → click a phase marker and confirm the playhead + traces land at that event.
+   The sharp check: a marker at a known physical event (round buzzer) should
+   line up with that event in the video AND the EEG artifact (this also
+   discharges #0's EEG-clock check). The generated demo session (above) is the
+   stand-in fixture for everything here except the real-signal question.
 
-- **I + F [LOW] — DONE in `e16aab3`.** I: deleted the uncalled v1 per-phase
-  path API (`phase_dir`/`side_cams_dir`/`pov_cams_dir`/`muse_dir`/
-  `_phase_folder_name`) and rewrote `session_storage.py`'s stale docstrings
-  to the continuous/ model. F: single `version.py` `__version__ = "2.1.0"`,
-  surfaced to the window title, the session manifest (was `"Phase 2"`), the
-  README, and the CHANGELOG header. Guarded by `tests/test_smoke.py`
-  (window-title check).
+Not hardware-blocked, but noted: the drift camera the demo generates (30fps
+declared vs ~29.5fps true) is a real, reproduced alignment defect — using the
+full per-frame sidecar for playback timing (rather than the first row only) is
+tracked in `docs/ROADMAP.md` Phase 5, not here.
 
-- **Smoke gate — ADDED in `bbc0769`.** `tests/test_smoke.py`: the
-  import/construct floor and acceptance gate for deletions/refactors (the
-  check that would have caught the videotoolbox bug, verified RED against
-  the pre-`0993721` revision). E's follow-up fix itself is `0993721`.
-
-- **J [CLEANUP] — DONE in `5ff48db`.** Deleted `sync_utils/eeg_module.py`
-  (1207-line orphan, zero importers; its "(v3)" docstring label was stale —
-  root `eeg_module.py` got all later work), the fully-dead
-  `from sync_engine import SyncWorker, SyncResult` line, and the
-  never-created `_drift_hb`/`_nudge_drift` machinery. `sync_engine.py` stays
-  for its live dataclasses. Guarded by the smoke gate (dynamic module
-  discovery auto-shrank 24→23).
-
-- **K [DIAGNOSTICS] — DONE in `7697642`.** Central logging in
-  `log_setup.py` (console at INFO; `attach_session_log()` adds a DEBUG file
-  handler in each session folder). All 56 `print()` calls → module loggers;
-  36 silent `except` blocks triaged (real-failure-hiding → warning/error,
-  teardown races → debug/comment); control flow unchanged everywhere. Level
-  policy in `log_setup.py`'s docstring. Most failure-path log lines are
-  verified-by-inspection (triggers need real hardware/corrupt data).
-
-- **H [LOW] — DONE in `93888f4`.** `EEGReviewWidget` ported matplotlib →
-  pyqtgraph mirroring `eeg_plot_pg.py`: trace uploaded once at `load()`,
-  playhead ticks move an `InfiniteLine` + shift the ViewBox; band-power
-  welch recomputes per ≥0.2 s movement (`_BP_STEP_SEC`). Measured: waveform
-  scrub 118→15 ms/tick, band-power renderer 102→11 ms; the old widget could
-  not service the app's 100 ms tick. API unchanged; removed the repo's last
-  matplotlib import. Rendering correctness deferred — see below.
-
-### KNOWN LIMITATIONS (inherent — not fixable by more work here)
-
-- **Sync confidence measures internal consistency, not correctness.** A high
-  score means the correlation peak dominates its window — coincident loud
-  transients in genuinely unrelated audio can still score high (inherent to
-  envelope xcorr, not fixable by the metric).
-- **Encoder validation's "listed-but-no-hardware" fallback** (e.g. nvenc on a
-  GPU-less box) is proven by forced-probe-failure unit tests only; it has
-  never been exercised on real GPU-less hardware.
-
-## Deferred work — THE one place to look
-
-Everything not finished lives here, each with why it's deferred and what
-unblocks it. Nothing else is planned or half-open elsewhere in this file.
-
-1. **Eyes-on-glass visual check** — synced playback (decode, 4-cam lockstep,
-   markers, simultaneous-start sync) and the pyqtgraph review-EEG rendering.
-   *Why deferred:* both are verified headless to correct-pixels-in-the-render-
-   buffer plus measured scrub performance, but nobody has *watched* them —
-   offscreen Qt can't put pixels on glass, and synthetic fixtures aren't real
-   signals. *Unblocked by:* the first real capture session. **The 30-second
-   procedure:** `python3 brain_battle_main.py` → Sync + Review → OPEN SESSION
-   FOLDER → pick the session → confirm all four cams show video and PLAY runs
-   them in lockstep → scrub the timeline and watch both EEG panes follow
-   (waveform view + band-power view) → click a phase-marker chip and confirm
-   it seeks.
-
-2. **Drift-correction decision** — there is NO active playback drift
-   correction; lockstep rests solely on issuing `play()` to all four players
-   in the same event-loop turn (the removed `_drift_hb` heartbeat was dead
-   code, so nothing was lost). Held to ~250 ms — libVLC clock quantization —
-   over short windows in the real-VLC smoke. *Why deferred:* whether VLC
-   clocks actually drift apart is unknowable without long recordings.
-   *Unblocked by:* a real multi-minute session — play it end to end and watch
-   for growing desync; if it drifts, reintroduce a heartbeat (QTimer ~2 s →
-   nudge players toward the reference clock).
-
-3. **`sync_engine.py` dataclass extraction** — `SourceOffset`/`SyncResult`
-   are live (imported locally in `_on_sync_finished`); everything else in the
-   module (`SyncWorker`, `compute_sync`, the zeros-on-failure audio loader)
-   is unreachable and deliberately un-instrumented by K. *Why deferred:* pure
-   refactor, no behavior at stake — doable anytime. Move the two dataclasses
-   into their own module (or `brain_battle_main`), delete the rest, run the
-   smoke gate.
-
-4. **matplotlib removal from requirements** — nothing imports it since H
-   (grep-verified; only comment/docstring mentions remain). *Why deferred:*
-   one-line change bundled better with the next environment touch — doable
-   anytime. Drop it from the README pip line and any environment files.
 
 ## Conventions & gotchas
 
-- Review playback uses **python-vlc** with a vmem→QPainter pipeline on macOS
-  and HWND on Windows (`SyncReviewTab._load_video*`); labelling playback uses
-  `vlc_module.VLCVideoSlot`. Careful with native-surface z-order hacks
-  (`make_opaque_toolbar`, deferred `raise_()`).
-- Theme changes restyle by string-replacing hex colors in child stylesheets
-  (`_apply_theme`) — new hardcoded colors must be added to those maps.
+- Review & Label playback is in-process via **PyAV** (`pyav_player.py`): one
+  `t_session_seconds` playhead, decode off the UI thread, no VLC/Qt-Multimedia
+  players and no native-surface z-order hacks.
+- The per-phase white flash is NOT perfectly simultaneous across the four
+  cameras — each camera captures on its own phase, so the first frame at/after a
+  phase marker lands up to one frame period (~34 ms) apart. This is expected and
+  correct; `tests/test_flash_sync.py` asserts the spread stays within one frame.
+- Light mode only — there is no theme machinery (no dark palette, no
+  `_apply_theme`); `test_light_theme.py` guards that it stays gone.
 - `session_controller.py` is deliberately Qt-optional (headless-testable).
 - `phase_markers.csv` labels look like `BASELINE_START`, `ROUND_1_START`,
   `BREAK_1_START`, `SESSION_END`; `t_session_seconds` is monotonic time since

@@ -1,0 +1,16 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TB
+    UIG["brain_battle.ui<br/>sidebar_shell · sessions_tab · record_flow<br/>review_label_tab · settings_tab · docs_tab<br/>design_tokens · fonts"]
+    CAP["brain_battle.capture<br/>camera_source · headband_source · usb_camera<br/>eeg_module · eeg_plot_pg · session_controller<br/>simulation · contact_quality · contact_log · keep_awake · round_bell"]
+    PLY["brain_battle.playback<br/>pyav_player"]
+    DATA["brain_battle.data<br/>session_storage · session_history · labels_store<br/>label_vocab · export_module · app_settings"]
+    SUP["brain_battle.support + package top<br/>log_setup · docs_nav · paths · app"]
+
+    UIG --> CAP
+    UIG --> PLY
+    UIG --> DATA
+    CAP --> DATA
+    PLY --> DATA
+    UIG --> SUP
+    CAP --> SUP
+    DATA --> SUP

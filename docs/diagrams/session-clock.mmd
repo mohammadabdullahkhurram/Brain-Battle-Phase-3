@@ -1,0 +1,9 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TB
+    T0["Shared origin at record start<br/>t0_unix + t0_monotonic<br/>(capture_clock in the manifest)"]
+    T0 --> CAM["Camera sidecars<br/>t_session = t_monotonic − t0_monotonic"]
+    T0 --> EEG["EEG timestamps<br/>t_session = muse_ts − t0_unix"]
+    T0 --> MARK["Phase markers<br/>written directly at t_session"]
+    CAM --> AXIS["One t_session_seconds axis"]
+    EEG --> AXIS
+    MARK --> AXIS

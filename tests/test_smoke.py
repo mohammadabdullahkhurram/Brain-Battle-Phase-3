@@ -20,8 +20,8 @@ Covers:
   1b. export_module's import-time _HW_ENCODER equals what post-import
      detection returns — i.e. the import-time probe really ran and did not
      silently fall back.
-  2. Construct LiveSessionTab, SyncReviewTab, LabellingTab, BrainBattleApp
-     headless (no event pumping — no camera probing, no playback).
+  2. Construct RecordFlow, ReviewLabelTab, SessionsTab, SettingsTab,
+     BrainBattleApp headless (no event pumping — no camera probing, no playback).
   3. Minimal pure-logic checks: session timeline phase order, config
      validation, __version__ surfaced in the window title.
 
@@ -113,14 +113,23 @@ _SUBPROC_BOOTSTRAP = (
 
 
 def _discover_modules():
-    """Every first-party module, dynamically — deletions self-update the gate."""
+    """Every first-party module, dynamically — deletions self-update the gate.
+    Walks the ``brain_battle`` package (dotted names) and adds the root-level
+    launcher shim."""
+    import glob
     mods = []
-    for f in sorted(os.listdir(ROOT)):
+    for p in sorted(glob.glob(os.path.join(ROOT, "brain_battle", "**", "*.py"),
+                              recursive=True)):
+        rel = os.path.relpath(p, ROOT)[:-3]              # strip ".py"
+        name = rel.replace(os.sep, ".")
+        if name.endswith(".__main__"):                   # would just be main()
+            continue
+        if name.endswith(".__init__"):
+            name = name[: -len(".__init__")]
+        mods.append(name)
+    for f in sorted(os.listdir(ROOT)):                   # root-level launcher shim
         if f.endswith(".py"):
             mods.append(f[:-3])
-    for f in sorted(os.listdir(os.path.join(ROOT, "sync_utils"))):
-        if f.endswith(".py") and f != "__init__.py":
-            mods.append(f"sync_utils.{f[:-3]}")
     return mods
 
 
@@ -140,7 +149,7 @@ def part1_fresh_process_imports():
     # except) while post-import gave the real hardware encoder — unequal.
     r = subprocess.run(
         [sys.executable, "-c", _SUBPROC_BOOTSTRAP +
-         "import export_module as em\n"
+         "import brain_battle.data.export_module as em\n"
          "print(em._HW_ENCODER)\n"
          "print(em._detect_hw_encoder())\n"],
         capture_output=True, text=True, timeout=120, cwd=ROOT,
@@ -155,11 +164,17 @@ def part1_fresh_process_imports():
 def part2_construct_tabs_and_shell(app):
     print("── 2. headless construction of tabs + app shell")
     import brain_battle_main as bbm
-    from live_session_tab import LiveSessionTab
+    from brain_battle.ui.record_flow import RecordFlow
+    from brain_battle.ui.sessions_tab import SessionsTab
+    from brain_battle.ui.review_label_tab import ReviewLabelTab
+    from brain_battle.ui.settings_tab import SettingsTab
+    from brain_battle.ui.docs_tab import DocsTab
 
-    for name, ctor in (("LiveSessionTab", LiveSessionTab),
-                       ("SyncReviewTab", bbm.SyncReviewTab),
-                       ("LabellingTab", bbm.LabellingTab)):
+    for name, ctor in (("RecordFlow", RecordFlow),
+                       ("ReviewLabelTab", ReviewLabelTab),
+                       ("SessionsTab", lambda: SessionsTab("/tmp")),
+                       ("SettingsTab", SettingsTab),
+                       ("DocsTab", DocsTab)):
         try:
             w = ctor()
             check(f"construct {name}", True)
@@ -179,8 +194,8 @@ def part2_construct_tabs_and_shell(app):
 
 def part3_pure_logic(win):
     print("── 3. pure-logic quick checks")
-    from session_controller import SessionConfig, Phase, _build_timeline
-    from version import __version__
+    from brain_battle.capture.session_controller import SessionConfig, Phase, _build_timeline
+    from brain_battle.version import __version__
 
     tl = _build_timeline(SessionConfig(num_rounds=3, round_sec=180,
                                        break_sec=60, baseline_sec=60))
@@ -202,6 +217,13 @@ def part3_pure_logic(win):
         check("__version__ surfaced in window title",
               win.windowTitle() == f"Brain Battle  v{__version__}",
               repr(win.windowTitle()))
+        # New shell: the five pages exist and the app opens on Sessions.
+        check("shell has Sessions / New recording / Review & Label / Documentation / Settings pages",
+              all(hasattr(win, a) for a in
+                  ("IDX_SESSIONS", "IDX_RECORD", "IDX_REVIEW", "IDX_DOCS", "IDX_SETTINGS")))
+        check("app opens on Sessions",
+              win._shell.current_index() == win.IDX_SESSIONS,
+              f"current={win._shell.current_index()} sessions={getattr(win,'IDX_SESSIONS','?')}")
     else:
         check("__version__ surfaced in window title", False, "no app shell")
 
@@ -213,6 +235,14 @@ if __name__ == "__main__":
     if stubbed:
         print("  (libVLC absent — construct checks use the vlc stub)")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    # Constructing SettingsTab/BrainBattleApp touches the recordings folder
+    # (free-space read, label_list.json seed) — point it at a throwaway temp
+    # dir so this headless construct check never writes into the real repo's
+    # Captures/.
+    import tempfile
+    os.environ.setdefault("BRAIN_BATTLE_CAPTURE_DIR", tempfile.mkdtemp(prefix="bb_smoke_cap_"))
+    os.environ.setdefault("BRAIN_BATTLE_CONFIG",
+                          os.path.join(tempfile.mkdtemp(prefix="bb_smoke_cfg_"), "settings.json"))
     from PyQt6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication(sys.argv)
 
@@ -220,7 +250,7 @@ if __name__ == "__main__":
     part3_pure_logic(win)
     if win is not None:
         try:
-            win.live_tab.shutdown(); win.sync_tab.shutdown()
+            win.record_flow.shutdown(); win._review_page.shutdown()
         except Exception:
             pass
 

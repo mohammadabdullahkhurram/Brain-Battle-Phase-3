@@ -1,0 +1,14 @@
+%%{init: {'themeVariables': {'fontSize': '16px'}, 'sequence': {'actorMargin': 35, 'width': 130, 'boxMargin': 8, 'mirrorActors': false}}}%%
+sequenceDiagram
+    participant U as User
+    participant RL as ReviewLabelTab
+    participant MW as MediaLoadWorker
+    participant PC as PlayerController
+    U->>RL: open a session
+    RL->>RL: read labels and markers
+    Note over RL: labels and timeline shown immediately
+    RL->>MW: load media (background thread)
+    MW->>MW: open videos and EEG
+    MW-->>RL: media_loaded(decoder, eeg)
+    RL->>PC: create PlayerController
+    RL->>U: video grid and brain traces ready
