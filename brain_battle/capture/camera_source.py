@@ -19,8 +19,8 @@ import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QImage
 
-import app_settings
-from usb_camera import USBCameraThread, CameraDevice
+import brain_battle.data.app_settings as app_settings
+from brain_battle.capture.usb_camera import USBCameraThread, CameraDevice
 
 # Slot specs mirror usb_camera_panel._SLOT_SPECS so the recorded filenames and
 # the Review screen's camera names line up exactly.

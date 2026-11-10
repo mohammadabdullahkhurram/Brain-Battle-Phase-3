@@ -26,7 +26,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
-from session_controller import SessionConfig
+from brain_battle.capture.session_controller import SessionConfig
 
 SCHEMA_VERSION = 1
 
@@ -79,13 +79,14 @@ def config_path() -> str:
 
 def default_capture_root() -> str:
     """Where recordings are saved when the user hasn't chosen a folder: the
-    BRAIN_BATTLE_CAPTURE_DIR override, else a `Captures/` folder next to the
-    source. (Historically this lived in live_session_tab._default_capture_root.)"""
+    BRAIN_BATTLE_CAPTURE_DIR override, else a `Captures/` folder at the repo
+    root (defined in `brain_battle.paths`). (Historically this lived in
+    live_session_tab._default_capture_root.)"""
     env = os.environ.get("BRAIN_BATTLE_CAPTURE_DIR")
     if env:
         return env
-    here = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(here, "Captures")
+    from brain_battle.paths import default_capture_root as _repo_captures
+    return _repo_captures()
 
 
 # ─── the settings object ──────────────────────────────────────────────────────

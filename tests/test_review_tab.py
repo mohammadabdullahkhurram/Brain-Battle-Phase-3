@@ -21,8 +21,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QLineEdit, QPushButton
 
-import label_vocab
-import session_history
+import brain_battle.data.label_vocab as label_vocab
+import brain_battle.data.session_history as session_history
 
 _app = QApplication.instance() or QApplication(sys.argv)
 
@@ -38,7 +38,7 @@ def check(name, cond, detail=""):
 
 
 def _fresh_tab():
-    import review_label_tab as rl
+    import brain_battle.ui.review_label_tab as rl
     tab = rl.ReviewLabelTab()
     tab.load_session_folder(DEMO_ROOT)
     tab.wait_loaded()
@@ -64,8 +64,9 @@ def _key(tab, key, mods=Qt.KeyboardModifier.NoModifier):
 def test_fast_open_labels_first():
     """labels.json + the label list + timeline marks are available immediately
     on Open; the (slow) video + brain data load in the background."""
-    import review_label_tab as rl
-    import labels_store, json, time as _t
+    import brain_battle.ui.review_label_tab as rl
+    import brain_battle.data.labels_store as labels_store
+    import json, time as _t
     # seed a few labels on disk so there is something to show at once
     store = labels_store.LabelsStore()
     for nm, t0 in (("Jab", 3.0), ("Cross", 5.0), ("Hook", 7.0)):

@@ -58,7 +58,7 @@ def _install_text_free_camera():
     code changes. (The screens/ review dump keeps the labels: there they help
     identify which tile is which.)"""
     import numpy as np
-    import simulation as sim
+    import brain_battle.capture.simulation as sim
 
     def _neutral_render(self, n):
         import cv2
@@ -156,7 +156,7 @@ def _pump(app, secs):
 
 def main():
     app = QApplication.instance() or QApplication(sys.argv)
-    from fonts import register_fonts
+    from brain_battle.ui.fonts import register_fonts
     register_fonts()
     import brain_battle_main as bbm
 

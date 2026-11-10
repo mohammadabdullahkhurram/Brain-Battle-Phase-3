@@ -76,7 +76,7 @@ def _fresh_env(**extra):
 
 
 def _new_flow():
-    from record_flow import RecordFlow
+    from brain_battle.ui.record_flow import RecordFlow
     return RecordFlow()
 
 
@@ -130,21 +130,21 @@ def test_end_to_end():
               and os.path.isfile(root + "/contact_quality.csv")
               and os.path.isfile(root + "/history.jsonl"))
 
-        import session_history as sh
+        import brain_battle.data.session_history as sh
         events = [e["event"] for e in sh.read_history(root)]
         check("history logged started + moment + finished",
               "recording_started" in events and "moment_marked" in events
               and "recording_finished" in events, str(events))
 
         # shows in Sessions with a sensible status (needs labelling, clean)
-        import session_storage as ss
+        import brain_battle.data.session_storage as ss
         info = ss.session_info(root)
         check("Sessions status is needs_labelling (clean, no labels)",
               info.status == ss.STATUS_NEEDS_LABELLING, info.status)
         check("Sessions not interrupted", not info.interrupted)
 
         # opens in Review & Label with markers + the moment surfaced
-        from review_label_tab import ReviewLabelTab, read_phase_markers
+        from brain_battle.ui.review_label_tab import ReviewLabelTab, read_phase_markers
         rt = ReviewLabelTab()
         try:
             rt.load_session_folder(root); rt.wait_loaded()
@@ -175,7 +175,7 @@ def test_stop_early():
         check("stop early flags stopped_early", man.get("stopped_early") is True)
         check("SESSION_END marker still written (clean stop, not a crash)",
               "SESSION_END" in open(root + "/phase_markers.csv").read())
-        import session_storage as ss
+        import brain_battle.data.session_storage as ss
         info = ss.session_info(root)
         check("stopped-early session is NOT interrupted", not info.interrupted)
         check("Sessions shows where it stopped", info.stopped_sec is not None)
@@ -252,7 +252,7 @@ class _FakeMsg:
 
 def test_disk_blocked():
     _fresh_env()
-    import record_flow
+    import brain_battle.ui.record_flow as record_flow
     flow = _new_flow()
     real_msg = record_flow.QMessageBox
     real_usage = shutil.disk_usage
@@ -281,9 +281,10 @@ def test_disk_blocked():
 def test_quit_confirmation():
     _fresh_env()
     import brain_battle_main as bbm
+    import brain_battle.app as _app   # closeEvent resolves QMessageBox here
     from PyQt6.QtGui import QCloseEvent
     win = bbm.BrainBattleApp()
-    real_msg = bbm.QMessageBox
+    real_msg = _app.QMessageBox
     try:
         win.show()
         win._shell.set_current_index(win.IDX_RECORD)
@@ -291,7 +292,7 @@ def test_quit_confirmation():
         _setup_short(win.record_flow, rest=2, rnd=30, brk=0, rounds=1)
         win.record_flow.begin_recording()
         check("recording is in progress", win.record_flow.is_recording())
-        bbm.QMessageBox = _FakeMsg
+        _app.QMessageBox = _FakeMsg
         # user answers No → close is vetoed
         _FakeMsg.calls = {"critical": 0, "question": 0}
         ev = QCloseEvent()
@@ -300,7 +301,7 @@ def test_quit_confirmation():
               _FakeMsg.calls["question"] == 1 and not ev.isAccepted())
         win.record_flow.stop_and_save(); pump(0.5)
     finally:
-        bbm.QMessageBox = real_msg
+        _app.QMessageBox = real_msg
         try:
             win.record_flow.shutdown(); win._review_page.shutdown(); win._sessions_page.shutdown()
         except Exception:
@@ -369,7 +370,7 @@ def test_no_simulation_when_unset():
               "BRAIN_BATTLE_SIMULATE_DROP_HEADBAND"):
         os.environ.pop(k, None)
     import importlib
-    import simulation
+    import brain_battle.capture.simulation as simulation
     importlib.reload(simulation)
     check("simulation disabled when the flag is unset", not simulation.enabled())
     # Build the flow WITHOUT starting it (so no real-hardware scan) and confirm

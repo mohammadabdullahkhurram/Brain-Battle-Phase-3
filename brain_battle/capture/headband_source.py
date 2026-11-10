@@ -20,10 +20,10 @@ import logging
 import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal, Qt
 
-import contact_quality as cq
+import brain_battle.capture.contact_quality as cq
 
 log = logging.getLogger(__name__)
-from eeg_module import _RingBuffer, _MuseDirectReader
+from brain_battle.capture.eeg_module import _RingBuffer, _MuseDirectReader
 
 _CHANNELS = ["TP9", "AF7", "AF8", "TP10"]
 _SR = 256
@@ -59,7 +59,7 @@ class HeadbandSlot(QObject):
         addr = self.device.get("address", "")
         self._lost = False
         try:
-            import simulation
+            import brain_battle.capture.simulation as simulation
             if simulation.enabled():
                 reader = simulation.make_muse_reader(addr, name, boxer=self.which, parent=self)
             else:

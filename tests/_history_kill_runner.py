@@ -14,7 +14,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import session_history
+import brain_battle.data.session_history as session_history
 
 
 def main():

@@ -38,8 +38,8 @@ from PyQt6.QtWidgets import (
     QStackedWidget, QSizePolicy, QStyledItemDelegate, QStyle,
 )
 
-import design_tokens as dt
-import docs_nav
+import brain_battle.ui.design_tokens as dt
+import brain_battle.support.docs_nav as docs_nav
 
 # Images never display wider than this (keeps the reading column legible even
 # on a very wide window), AND never wider than the live content width (so they

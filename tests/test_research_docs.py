@@ -36,12 +36,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
 
-import contact_log
-import label_vocab
-import labels_store
-import session_history
-import export_module
-from review_label_tab import read_phase_markers
+import brain_battle.capture.contact_log as contact_log
+import brain_battle.data.label_vocab as label_vocab
+import brain_battle.data.labels_store as labels_store
+import brain_battle.data.session_history as session_history
+import brain_battle.data.export_module as export_module
+from brain_battle.ui.review_label_tab import read_phase_markers
 
 _app = QApplication.instance() or QApplication(sys.argv)
 
@@ -168,7 +168,7 @@ def test_eeg_csv_documented():
     if eeg:
         _assert_all_documented(text, _csv_header(eeg), "EEG CSV column")
     # plain-language sensor names
-    import contact_quality
+    import brain_battle.capture.contact_quality as contact_quality
     missing = [v for v in contact_quality.SENSOR_NAME.values()
                if not _documented_plain(text, v)]
     check("every plain-language sensor name is documented", not missing, str(missing))

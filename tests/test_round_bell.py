@@ -10,7 +10,7 @@ Covers:
   2. SessionController's beep_requested fires at BASELINE start and every
      ROUND start, and never on a BREAK.
   3. SettingsTab's Test sound button plays the bundled file, headless.
-  4. A missing WAV logs a warning and stays silent — SyncBeep never raises.
+  4. A missing WAV logs a warning and stays silent — RoundBell never raises.
   5. The credits entry for the bell (and the bundled Inter font) exists in
      docs/project/credits.md and nav.yml.
 
@@ -98,7 +98,7 @@ def test_round_bell_wav_specs():
 # ─── 2. the bell rings at baseline + each round start, never on a break ────
 
 def test_beep_requested_timing():
-    from session_controller import SessionController, SessionConfig, Phase
+    from brain_battle.capture.session_controller import SessionController, SessionConfig, Phase
 
     sc = SessionController()
     sc.configure(SessionConfig(num_rounds=3, round_sec=5, break_sec=5, baseline_sec=5))
@@ -133,11 +133,11 @@ def test_beep_requested_timing():
 def test_settings_test_sound_plays_bundled_bell():
     os.environ["BRAIN_BATTLE_CONFIG"] = os.path.join(tempfile.mkdtemp(), "settings.json")
     os.environ.pop("BRAIN_BATTLE_CAPTURE_DIR", None)
-    import app_settings as aps
+    import brain_battle.data.app_settings as aps
     s = aps.load(); s.capture_dir = tempfile.mkdtemp(prefix="bb_round_bell_cap_"); s.save()
 
-    import sync_beep
-    from settings_tab import SettingsTab
+    import brain_battle.capture.round_bell as round_bell
+    from brain_battle.ui.settings_tab import SettingsTab
 
     st = SettingsTab()
     try:
@@ -148,28 +148,28 @@ def test_settings_test_sound_plays_bundled_bell():
         print("    test-sound raised:", e)
     check("Test sound doesn't crash headless", ok)
     check("Test sound points at the bundled round bell, not a synthesized tone",
-          ok and st._beep.path() == sync_beep.bundled_bell_path(),
+          ok and st._beep.path() == round_bell.bundled_bell_path(),
           getattr(st, "_beep", None) and st._beep.path())
 
 
-# ─── 4. a missing WAV never crashes SyncBeep ───────────────────────────────
+# ─── 4. a missing WAV never crashes RoundBell ───────────────────────────────
 
 def test_missing_bell_file_stays_silent():
-    import sync_beep
+    import brain_battle.capture.round_bell as round_bell
 
-    original = sync_beep.bundled_bell_path
-    sync_beep.bundled_bell_path = lambda: "/nonexistent/round_bell.wav"
+    original = round_bell.bundled_bell_path
+    round_bell.bundled_bell_path = lambda: "/nonexistent/round_bell.wav"
     try:
-        b = sync_beep.SyncBeep()
+        b = round_bell.RoundBell()
         b.play()   # must not raise
         ok = True
     except Exception as e:
         ok = False
         print("    missing-file playback raised:", e)
     finally:
-        sync_beep.bundled_bell_path = original
-    check("SyncBeep with a missing WAV never crashes", ok)
-    check("SyncBeep falls back to no sound effect when the file is missing",
+        round_bell.bundled_bell_path = original
+    check("RoundBell with a missing WAV never crashes", ok)
+    check("RoundBell falls back to no sound effect when the file is missing",
           ok and b._sfx is None)
 
 

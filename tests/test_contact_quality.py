@@ -11,7 +11,7 @@ sys.path.insert(0, ROOT)
 
 import numpy as np
 import pandas as pd
-import contact_quality as cq
+import brain_battle.capture.contact_quality as cq
 
 _failures = []
 

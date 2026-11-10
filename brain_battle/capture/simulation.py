@@ -75,7 +75,7 @@ def camera_devices():
     """Enumerate simulated capture devices as real CameraDevice records so the
     picker / auto-assign treats them like hardware. One fewer when the
     missing-camera failure is on."""
-    from usb_camera import CameraDevice
+    from brain_battle.capture.usb_camera import CameraDevice
     names = ["Simulated Side camera 1", "Simulated Side camera 2",
              "Simulated Boxer A view", "Simulated Boxer B view"]
     if missing_camera():
@@ -163,7 +163,7 @@ def open_capture(device, w=960, h=540, fps=30.0):
 def muse_devices():
     """Two simulated Muse-S bands whose names match the default headband
     mapping, so they auto-assign to Boxer A / Boxer B."""
-    import app_settings
+    import brain_battle.data.app_settings as app_settings
     s = app_settings.load()
     out = []
     for who in ("A", "B"):
@@ -184,7 +184,7 @@ def _sim_reader_cls():
         return _SIM_READER_CLS
 
     from PyQt6.QtCore import pyqtSignal
-    from eeg_module import _MuseDirectReader
+    from brain_battle.capture.eeg_module import _MuseDirectReader
 
     class SimMuseReader(_MuseDirectReader):
         """Generates synthetic 256 Hz EEG and feeds it through the real reader's

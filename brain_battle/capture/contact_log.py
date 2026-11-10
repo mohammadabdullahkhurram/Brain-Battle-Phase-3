@@ -21,7 +21,7 @@ import os
 import time
 from typing import Optional
 
-from contact_quality import CHANNELS, SENSOR_NAME
+from brain_battle.capture.contact_quality import CHANNELS, SENSOR_NAME
 
 FILENAME = "contact_quality.csv"
 _HEADER = ["t_session_seconds", "boxer", "summary", *CHANNELS]

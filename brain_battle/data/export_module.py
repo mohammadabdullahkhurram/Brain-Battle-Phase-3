@@ -430,7 +430,7 @@ def _write_labels_csv_v2(labels, path):
 
 
 def _write_events_csv(labels, phase_markers, path):
-    import labels_store
+    import brain_battle.data.labels_store as labels_store
     rows = labels_store.events_timeline(labels, phase_markers)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["t_start", "t_end", "source", "who", "label"])
@@ -560,7 +560,7 @@ class SessionExportWorker(QThread):
                     zf.write(disk, arc)
 
         try:
-            import session_history
+            import brain_battle.data.session_history as session_history
             session_history.log_event(root, session_history.EVENT_EXPORT_CREATED,
                                       {"name": os.path.basename(self.zip_path)})
         except Exception as e:
@@ -605,7 +605,7 @@ class ExportOptionsDialog(QDialog):
 
     def __init__(self, session_root, labels, phase_markers, parent=None):
         super().__init__(parent)
-        import design_tokens as dt
+        import brain_battle.ui.design_tokens as dt
         from PyQt6.QtWidgets import QCheckBox
         from PyQt6.QtCore import Qt
         self._root = session_root
@@ -680,13 +680,13 @@ class ExportOptionsDialog(QDialog):
         self._worker.start()
 
     def _on_done(self, path):
-        import design_tokens as dt
+        import brain_battle.ui.design_tokens as dt
         self._status.setText(f"Saved ✓  {path}")
         self._status.setStyleSheet(f"color: {dt.success_color()}; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px;")
         self._cancel.setText("Done")
 
     def _on_error(self, msg):
-        import design_tokens as dt
+        import brain_battle.ui.design_tokens as dt
         self._status.setText(f"Export failed: {msg[:400]}")
         self._status.setStyleSheet(f"color: {dt.error_color()}; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px;")
         self._go.setEnabled(True); self._merge_cb.setEnabled(True)

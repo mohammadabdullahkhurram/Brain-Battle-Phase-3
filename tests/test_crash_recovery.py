@@ -35,8 +35,8 @@ except Exception:
 from PyQt6.QtWidgets import QApplication
 _app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841
 
-import session_storage as ss
-from session_controller import SessionConfig
+import brain_battle.data.session_storage as ss
+from brain_battle.capture.session_controller import SessionConfig
 from tools.generate_demo_session import generate_demo_session
 
 _failures = []

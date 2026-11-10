@@ -37,7 +37,7 @@ def main():
     origin = float(sys.argv[3]) if len(sys.argv) > 3 else 1_783_000_000.0
 
     _app = QApplication.instance() or QApplication([])  # noqa: F841
-    from eeg_module import _MuseDirectReader
+    from brain_battle.capture.eeg_module import _MuseDirectReader
 
     reader = _MuseDirectReader(address="kill-test", name="synthetic")
     reader.start_recording(csv_path, origin_unix=origin)

@@ -18,7 +18,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication
 _app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841
 
-import design_tokens as dt
+import brain_battle.ui.design_tokens as dt
 
 _failures = []
 
@@ -49,6 +49,7 @@ def test_app_source_has_no_theme_machinery():
                  "set_theme(", "current_theme(", "_toggle_theme",
                  "brain_battle_prefs"]
     py_files = [f for f in glob.glob(os.path.join(ROOT, "*.py"))]
+    py_files += glob.glob(os.path.join(ROOT, "brain_battle", "**", "*.py"), recursive=True)
     py_files += glob.glob(os.path.join(ROOT, "tools", "*.py"))
     offenders = {}
     for fn in py_files:
@@ -61,7 +62,8 @@ def test_app_source_has_no_theme_machinery():
 
 
 def test_design_tokens_source_has_no_dark_palette():
-    src = open(os.path.join(ROOT, "design_tokens.py"), encoding="utf-8").read()
+    src = open(os.path.join(ROOT, "brain_battle", "ui", "design_tokens.py"),
+               encoding="utf-8").read()
     # The old dark canvas / card near-blacks must be gone from the token file.
     for dark in ("#0E0E12", "#1C1C21", "#151519", '"dark"'):
         check(f"design_tokens.py has no {dark}", dark not in src)

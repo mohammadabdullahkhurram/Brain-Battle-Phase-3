@@ -36,7 +36,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from version import __version__
+from brain_battle.version import __version__
 
 HISTORY_FILENAME = "history.jsonl"
 

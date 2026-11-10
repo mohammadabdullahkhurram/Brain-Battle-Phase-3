@@ -19,8 +19,9 @@ from typing import Optional
 
 import yaml
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-DOCS_DIR = os.path.join(ROOT, "docs")
+from brain_battle.paths import DOCS_DIR as _DOCS_DIR
+
+DOCS_DIR = str(_DOCS_DIR)
 NAV_PATH = os.path.join(DOCS_DIR, "nav.yml")
 
 

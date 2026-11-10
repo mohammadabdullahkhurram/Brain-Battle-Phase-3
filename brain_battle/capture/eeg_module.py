@@ -149,7 +149,7 @@ class _RingBuffer:
 def boxer_labels() -> dict:
     """{device_name: "BOXER A"/"BOXER B"} from the saved headband mapping."""
     try:
-        import app_settings
+        import brain_battle.data.app_settings as app_settings
         return app_settings.boxer_labels()
     except Exception:
         return {}
@@ -206,7 +206,7 @@ def _any_muse_connected() -> bool:
 # ─── Tab-button style helper ──────────────────────────────────────────────────
 
 def _tab_style(active: bool) -> str:
-    import design_tokens as _dt
+    import brain_battle.ui.design_tokens as _dt
     if active:
         return (
             f"background:{_dt.accent_ghost()}; "
@@ -999,7 +999,7 @@ class EEGLiveWidget(QFrame):
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        import design_tokens as _dt
+        import brain_battle.ui.design_tokens as _dt
         self._dt = _dt
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -1105,13 +1105,13 @@ class EEGLiveWidget(QFrame):
         # pyqtgraph-backed replacement for the matplotlib FigureCanvas.
         # ~10× the frame rate, lower CPU usage, and no QtAgg blit stalls.
         # See eeg_plot_pg.WaveformPlot for rendering details.
-        from eeg_plot_pg import WaveformPlot
+        from brain_battle.capture.eeg_plot_pg import WaveformPlot
         self._wave_canvas = WaveformPlot(window_sec=ROLLING_WINDOW_SEC)
         self._canvas_layout.addWidget(self._wave_canvas)
         self._wave_canvas.setVisible(False)
 
     def _build_bandpower_plot(self):
-        from eeg_plot_pg import BandPowerPlot
+        from brain_battle.capture.eeg_plot_pg import BandPowerPlot
         self._band_canvas = BandPowerPlot(bands=_BANDS)
         self._canvas_layout.addWidget(self._band_canvas)
         self._band_canvas.setVisible(False)
@@ -1303,7 +1303,7 @@ class EEGLiveWidget(QFrame):
 
     def stop_stream(self):
         """Fully disconnect — flush recording, stop BLE reader, reset UI."""
-        import design_tokens as _dt
+        import brain_battle.ui.design_tokens as _dt
         self.stop_recording()
         self._draw_timer.stop()
         if self._reader:

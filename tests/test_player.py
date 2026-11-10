@@ -29,7 +29,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
 
-import pyav_player as pp
+import brain_battle.playback.pyav_player as pp
 
 _failures = []
 DEMO = None       # set in __main__

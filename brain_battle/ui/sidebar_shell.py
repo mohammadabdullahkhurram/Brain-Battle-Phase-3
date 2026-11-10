@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QFrame, QProgressBar,
 )
 
-import design_tokens as dt
+import brain_battle.ui.design_tokens as dt
 
 SIDEBAR_WIDTH   = 232
 SIDEBAR_RAIL    = 72
@@ -165,9 +165,9 @@ class SidebarShell(QWidget):
         (at the currently-chosen video quality). Returns (key, status_text,
         bar_colour). green normally; amber when free < 3× a default session;
         red when free < 1×."""
-        from session_storage import estimate_session_bytes, video_bytes_per_sec_for_mbps
-        from session_controller import SessionConfig
-        import app_settings
+        from brain_battle.data.session_storage import estimate_session_bytes, video_bytes_per_sec_for_mbps
+        from brain_battle.capture.session_controller import SessionConfig
+        import brain_battle.data.app_settings as app_settings
         vbps = video_bytes_per_sec_for_mbps(app_settings.load().video_mbps())
         est = estimate_session_bytes(SessionConfig(), n_cameras=4, n_eeg=2, video_bytes_per_sec=vbps)
         if free_bytes < est:

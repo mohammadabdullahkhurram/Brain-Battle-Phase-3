@@ -44,7 +44,7 @@ from PyQt6.QtCore import Qt
 
 _app = QApplication.instance() or QApplication(sys.argv)
 
-import docs_nav
+import brain_battle.support.docs_nav as docs_nav
 
 _failures = []
 
@@ -70,7 +70,7 @@ def _load_test_layout_fit():
 # ─── 1 + 2. every nav page exists, renders, and its images exist ─────────────
 
 def test_nav_pages_render():
-    from docs_tab import DocsTab
+    from brain_battle.ui.docs_tab import DocsTab
     nav = docs_nav.load_nav()
     check("nav.yml has at least one section", len(nav.sections) > 0)
     check("nav.yml has at least one page", len(nav.all_pages()) > 0)
@@ -201,7 +201,7 @@ def test_search_finds_known_phrases():
 
 
 def test_search_highlighting():
-    from docs_tab import DocsTab
+    from brain_battle.ui.docs_tab import DocsTab
     tab = DocsTab()
     tab.open_page("troubleshooting")
     tab._highlight("Reconnect")
@@ -215,7 +215,7 @@ def test_search_highlighting():
 # ─── 5b. search UX (count / section / clear / Esc / Enter) ──────────────────
 
 def test_search_ux():
-    from docs_tab import DocsTab
+    from brain_battle.ui.docs_tab import DocsTab
     tab = DocsTab()
 
     # The × clear button is enabled on the search box.
@@ -303,7 +303,7 @@ def test_result_rows_show_title_section_and_bold_match():
     """Each result row carries structured data (title / section / snippet with
     the match located) for the rich-text delegate — the title is rendered
     bold, the section beneath it, then the snippet with the match bold."""
-    from docs_tab import DocsTab, _RESULT_ROLE
+    from brain_battle.ui.docs_tab import DocsTab, _RESULT_ROLE
     tab = DocsTab()
     tab._search_box.setText("Reconnect")
     n = tab._results_list.count()
@@ -323,7 +323,7 @@ def test_result_rows_show_title_section_and_bold_match():
 
 
 def test_results_list_no_horizontal_scroll():
-    from docs_tab import DocsTab
+    from brain_battle.ui.docs_tab import DocsTab
     from PyQt6.QtWidgets import QMainWindow
     tab = DocsTab()
     win = QMainWindow(); win.setCentralWidget(tab); win.resize(1180, 720); win.show()
@@ -346,7 +346,7 @@ def test_image_height_matches_displayed_size():
     height, not its full intrinsic height (which left a large gap below it and
     made search land on blank space). Each image fragment gets an explicit
     width AND height, proportional to the source aspect ratio."""
-    from docs_tab import DocsTab
+    from brain_battle.ui.docs_tab import DocsTab
     from PyQt6.QtWidgets import QMainWindow
     from PyQt6.QtGui import QTextDocument
     tab = DocsTab()
@@ -390,7 +390,7 @@ def test_image_height_matches_displayed_size():
 def test_search_match_scrolled_into_view():
     """Opening a body-match result scrolls so the match sits near the top of the
     viewport (roughly the upper third), not off-screen or in a blank gap."""
-    from docs_tab import DocsTab
+    from brain_battle.ui.docs_tab import DocsTab
     from PyQt6.QtWidgets import QMainWindow
     tab = DocsTab()
     win = QMainWindow(); win.setCentralWidget(tab); win.resize(1280, 800); win.show()
@@ -471,7 +471,7 @@ def test_diagram_text_is_readable():
     label text must be at least ~12 px — otherwise it's unreadable once scaled
     into the reading column. displayed = declared_font × MAX_IMG_WIDTH / svg
     width (see docs/contributing/docs-guide.md 'Diagram size')."""
-    import docs_tab
+    import brain_battle.ui.docs_tab as docs_tab
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import render_diagrams as rd
     mmd_files = sorted(rd.DIAGRAMS_DIR.glob("*.mmd"))

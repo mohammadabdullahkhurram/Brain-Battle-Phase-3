@@ -76,9 +76,9 @@ import cv2
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from session_controller import SessionConfig, Phase, _build_timeline  # noqa: E402
-from session_storage import create_session, PhaseRecord  # noqa: E402
-from usb_camera import FrameEncoder, preflight_recording  # noqa: E402
+from brain_battle.capture.session_controller import SessionConfig, Phase, _build_timeline  # noqa: E402
+from brain_battle.data.session_storage import create_session, PhaseRecord  # noqa: E402
+from brain_battle.capture.usb_camera import FrameEncoder, preflight_recording  # noqa: E402
 
 # Camera slots (index, label, kind). The labels drive the on-disk filenames
 # (session_SIDE_01.mp4 etc.) and the drift-camera selection; they match
@@ -87,8 +87,8 @@ _SLOT_SPECS = [
     (1, "SIDE 01", "side"), (2, "SIDE 02", "side"),
     (3, "POV 01", "pov"),   (4, "POV 02", "pov"),
 ]
-from eeg_module import _MuseDirectReader, boxer_labels, muse_friendly as _muse_friendly  # noqa: E402
-from app_settings import default_capture_root as _default_capture_root  # noqa: E402
+from brain_battle.capture.eeg_module import _MuseDirectReader, boxer_labels, muse_friendly as _muse_friendly  # noqa: E402
+from brain_battle.data.app_settings import default_capture_root as _default_capture_root  # noqa: E402
 
 # PyQt requires a live Python reference to the QApplication singleton or it
 # can be garbage-collected even though QApplication.instance() still reports
@@ -443,8 +443,8 @@ def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
     the list has variety."""
     import datetime as _dt
     import json as _json
-    import session_storage as _ss
-    import session_history as _sh
+    import brain_battle.data.session_storage as _ss
+    import brain_battle.data.session_history as _sh
 
     base = out or _default_capture_root()
     os.makedirs(base, exist_ok=True)

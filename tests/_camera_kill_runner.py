@@ -20,7 +20,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication
 
 import cv2
-from usb_camera import USBCameraThread, CameraDevice
+from brain_battle.capture.usb_camera import USBCameraThread, CameraDevice
 
 
 def main():

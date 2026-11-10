@@ -23,8 +23,8 @@ from PyQt6.QtWidgets import (
     QLineEdit, QScrollArea, QSizePolicy, QComboBox,
 )
 
-import design_tokens as dt
-import session_storage as ss
+import brain_battle.ui.design_tokens as dt
+import brain_battle.data.session_storage as ss
 
 STATUS_META = {
     ss.STATUS_INTERRUPTED:     ("Interrupted",     "warning"),
@@ -592,7 +592,7 @@ class SessionsTab(QWidget):
             return
         ss.dismiss_interrupted(root)
         try:
-            import session_history
+            import brain_battle.data.session_history as session_history
             session_history.log_event(root, "interrupted_dismissed")
         except Exception:
             pass

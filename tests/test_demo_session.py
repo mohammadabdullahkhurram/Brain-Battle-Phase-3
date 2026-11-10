@@ -129,7 +129,7 @@ def test_review_tab_loads():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt6.QtWidgets import QApplication
     QApplication.instance() or QApplication(sys.argv)
-    import review_label_tab as rl
+    import brain_battle.ui.review_label_tab as rl
 
     with tempfile.TemporaryDirectory() as tmp:
         result = generate_demo_session(out=tmp, rounds=1, round_sec=10,
@@ -200,7 +200,7 @@ def test_marker_label_format():
 
     # The merged screen's marker parser (review_label_tab.friendly_phase) must
     # read BOTH the new underscore form and the legacy space form.
-    from review_label_tab import friendly_phase
+    from brain_battle.ui.review_label_tab import friendly_phase
     pairs = [
         ("ROUND_1_START", "ROUND 1_START", "Round 1"),
         ("BREAK_2_START", "BREAK 2_START", "Break"),
@@ -217,7 +217,7 @@ def test_marker_label_format():
 def test_generator_safety():
     """The CLI must never default a demo into the real recordings folder."""
     from tools.generate_demo_session import _build_arg_parser, _refuse_real_folder
-    from app_settings import default_capture_root as _default_capture_root
+    from brain_battle.data.app_settings import default_capture_root as _default_capture_root
 
     # --out is required
     raised = False

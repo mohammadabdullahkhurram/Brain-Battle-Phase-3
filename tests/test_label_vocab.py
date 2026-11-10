@@ -11,7 +11,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import label_vocab as lv
+import brain_battle.data.label_vocab as lv
 
 _failures = []
 

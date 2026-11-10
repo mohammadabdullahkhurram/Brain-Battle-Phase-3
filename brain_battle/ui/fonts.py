@@ -13,9 +13,11 @@ from __future__ import annotations
 import logging
 import os
 
+from brain_battle.paths import ASSETS_DIR
+
 log = logging.getLogger(__name__)
 
-_FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts")
+_FONT_DIR = os.path.join(str(ASSETS_DIR), "fonts")
 _INTER_FILES = (
     "Inter-Regular.ttf",
     "Inter-Medium.ttf",

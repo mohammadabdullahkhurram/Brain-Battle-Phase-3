@@ -16,7 +16,7 @@ commit (see [CLAUDE.md's "Documentation is part of every change"](../contributin
 | Group | Modules |
 |---|---|
 | **App shell & UI screens** | `brain_battle_main` · `sidebar_shell` · `sessions_tab` · `record_flow` · `review_label_tab` · `settings_tab` · `docs_tab` · `docs_nav` |
-| **Capture** | `camera_source` · `usb_camera` · `headband_source` · `eeg_module` · `eeg_plot_pg` · `session_controller` · `contact_quality` · `contact_log` · `keep_awake` · `sync_beep` |
+| **Capture** | `camera_source` · `usb_camera` · `headband_source` · `eeg_module` · `eeg_plot_pg` · `session_controller` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **Playback** | `pyav_player` |
 | **Data & storage** | `session_storage` · `labels_store` · `label_vocab` · `session_history` · `export_module` |
 | **Support** | `app_settings` · `design_tokens` · `fonts` · `log_setup` · `version` · `simulation` |
@@ -31,16 +31,36 @@ and `export_module`; see the [threading model](threading-model.md).
 
 ## App shell & UI screens
 
-### `brain_battle_main.py`
-The entry point and the application shell. `BrainBattleApp(QMainWindow)` builds
-the sidebar shell, constructs each screen once, wires their signals together
-(`session_saved`, `help_requested`, `exit_flow`, `capture_dir_changed`), and
-owns window sizing/`QSettings` restore. `open_help(key)` routes every screen's
-`?` button to the Documentation screen. Runs on the UI thread. **Calls:**
+### `app.py`
+`brain_battle/app.py` — the application shell and `main()` entry point.
+`BrainBattleApp(QMainWindow)` builds the sidebar shell, constructs each screen
+once, wires their signals together (`session_saved`, `help_requested`,
+`exit_flow`, `capture_dir_changed`), and owns window sizing/`QSettings` restore.
+`open_help(key)` routes every screen's `?` button to the Documentation screen.
+`main()` creates the `QApplication`, registers fonts, and runs the event loop —
+it is the target of `python3 -m brain_battle`, the `brain-battle` console
+script, and the `brain_battle_main.py` shim. Runs on the UI thread. **Calls:**
 `sidebar_shell`, every screen module, `app_settings`, `log_setup`, `fonts`.
 **Gotcha:** it holds the single instance of each screen — navigation swaps the
 visible page, it does not reconstruct screens, so screens must tolerate being
 shown/hidden repeatedly (see each `showEvent`/`hideEvent`).
+
+### `brain_battle_main.py`
+A thin launcher shim at the repo root, kept for backward compatibility. It
+re-exports `BrainBattleApp`, `MIN_WINDOW`, `QMessageBox`, and `main` from
+`brain_battle.app` and calls `main()` under `__main__`, so `python3
+brain_battle_main.py` and `import brain_battle_main` both still work. New code
+should prefer `python3 -m brain_battle`.
+
+### `paths.py`
+`brain_battle/paths.py` — the single source of repo-relative paths. `REPO_ROOT`
+is the checkout root (the directory containing the `brain_battle` package);
+`ASSETS_DIR` and `DOCS_DIR` hang off it, and `default_capture_root()` returns
+`REPO_ROOT/Captures`. Every module that needs the bundled assets, the `docs/`
+tree, or the default recordings folder resolves it here rather than deriving it
+from its own `__file__` — so modules can move between subpackages without
+breaking asset lookup. **Called by:** `fonts`, `round_bell`, `docs_nav`,
+`app_settings`.
 
 ### `sidebar_shell.py`
 The DESIGN "App structure" shell: a 232 px sidebar (logo, the screen buttons, a
@@ -74,7 +94,7 @@ supporting widgets include `CameraTile`, `HeadbandView`, `MiniTrace`,
 Runs on the UI thread (devices run on their own threads). **Calls:**
 `camera_source`, `headband_source`, `session_controller`, `session_storage`,
 `session_history`, `contact_log`, `keep_awake`, `app_settings`,
-`sync_beep`. **Gotcha:** `begin_recording` captures one shared origin `(t0_mono,
+`round_bell`. **Gotcha:** `begin_recording` captures one shared origin `(t0_mono,
 t0_unix)` and threads it into every camera and headband — this is the capture
 clock ([ADR-0001](../decisions/adr-0001-capture-time-clock.md)); do not stamp
 sources from separate clocks.
@@ -100,7 +120,7 @@ disk estimate both computed from the bitrate), session defaults + round bell +
 Test sound, and the shared label list (`_LabelRow`: add/rename/remove/reorder/
 recolour, keys renumbered 1..n). Everything autosaves with a brief "✓ Saved".
 **Calls:** `app_settings`, `label_vocab`, `session_storage` (disk estimate),
-`eeg_module`/`headband_source` (BLE search), `sync_beep` (Test sound).
+`eeg_module`/`headband_source` (BLE search), `round_bell` (Test sound).
 **Gotcha:** quality is stored as resolution + bitrate in `app_settings`, and the
 GB/hour and disk-estimate numbers are **derived** from the bitrate (not
 hardcoded) — `tests/test_settings_screen.py` asserts this.
@@ -211,15 +231,16 @@ updated (honesty test).
 cross-platform. **Called by:** `record_flow` (started at record start, released
 at stop).
 
-### `sync_beep.py`
-`SyncBeep(QObject)` plays `assets/sounds/round_bell.wav` (a real boxing-bell
+### `round_bell.py`
+`RoundBell(QObject)` plays `assets/sounds/round_bell.wav` (a real boxing-bell
 recording — see [credits](../project/credits.md)) through `QSoundEffect`;
 `bundled_bell_path` resolves the WAV's path regardless of cwd. **Called by:**
-`record_flow` (round start) and `settings_tab` (Test sound). **Gotcha:** the
-name is historical — the beep is now purely a round bell, not a sync aid (the
-audio-xcorr engine it once fed is gone; see
-[ADR-0002](../decisions/adr-0002-remove-audio-xcorr.md)). A missing/unplayable
-WAV logs a warning and leaves `play()` a no-op — never raises.
+`record_flow` (round start) and `settings_tab` (Test sound). **Note:** this was
+once `sync_beep.py` / `SyncBeep`, named for an audio-xcorr sync engine that has
+since been removed (see
+[ADR-0002](../decisions/adr-0002-remove-audio-xcorr.md)); it was renamed once
+the name no longer described a sync role. A missing/unplayable WAV logs a
+warning and leaves `play()` a no-op — never raises.
 
 ---
 

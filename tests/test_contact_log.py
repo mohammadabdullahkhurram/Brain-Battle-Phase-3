@@ -12,7 +12,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import contact_log
+import brain_battle.capture.contact_log as contact_log
 
 _failures = []
 

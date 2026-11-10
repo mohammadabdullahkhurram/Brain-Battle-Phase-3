@@ -37,12 +37,12 @@ from PyQt6.QtWidgets import (
     QDialog,
 )
 
-import design_tokens as dt
-import label_vocab
-import labels_store
-import contact_quality as cq
-import session_history
-from pyav_player import open_session_cameras, PlayerController, FRAME_PERIOD
+import brain_battle.ui.design_tokens as dt
+import brain_battle.data.label_vocab as label_vocab
+import brain_battle.data.labels_store as labels_store
+import brain_battle.capture.contact_quality as cq
+import brain_battle.data.session_history as session_history
+from brain_battle.playback.pyav_player import open_session_cameras, PlayerController, FRAME_PERIOD
 
 # EEG channel → plain-language sensor (DESIGN vocabulary). Channel CODES never
 # appear in the UI — only these names, and only in the legend/tooltip.
@@ -880,7 +880,7 @@ class ReviewLabelTab(QWidget):
                 pass
         # Unnamed "Mark this moment" marks recorded during capture — shown as
         # moments to name here (DESIGN §4/§6).
-        import session_storage
+        import brain_battle.data.session_storage as session_storage
         self._moments = session_storage.read_moments(root)
         self._refresh_placed()
         self._strip.set_session(self._duration, self._phases, self._timeline_labels())
@@ -909,7 +909,7 @@ class ReviewLabelTab(QWidget):
         muse = os.path.join(root, "continuous", "Muse data")
         plan = {}
         try:
-            from eeg_module import boxer_labels, muse_friendly as _muse_friendly
+            from brain_battle.capture.eeg_module import boxer_labels, muse_friendly as _muse_friendly
             BOXER_LABELS = boxer_labels()
         except Exception:
             BOXER_LABELS, _muse_friendly = {}, (lambda x: x)
@@ -1136,7 +1136,7 @@ class ReviewLabelTab(QWidget):
         # consume the moment from the manifest so it isn't offered again
         if self._root:
             try:
-                import session_storage
+                import brain_battle.data.session_storage as session_storage
                 session_storage.consume_moment(self._root, t)
             except Exception:
                 pass
@@ -1276,7 +1276,7 @@ class ReviewLabelTab(QWidget):
     def _open_export(self):
         if not self._root:
             return
-        from export_module import ExportOptionsDialog
+        from brain_battle.data.export_module import ExportOptionsDialog
         ExportOptionsDialog(self._root, self._store.labels, self._phases, self).exec()
 
     # ---- teardown ----

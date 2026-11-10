@@ -37,7 +37,7 @@ import cv2
 from PyQt6.QtWidgets import QApplication
 _app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841
 
-from usb_camera import USBCameraThread, CameraDevice
+from brain_battle.capture.usb_camera import USBCameraThread, CameraDevice
 
 _failures = []
 
@@ -121,7 +121,7 @@ def test_sigkill_midrecording():
 # ─── 2. Back-pressure ───────────────────────────────────────────────────────
 
 def test_backpressure_drops_and_consistency():
-    import usb_camera
+    import brain_battle.capture.usb_camera as usb_camera
     orig_write = usb_camera.FrameEncoder.write_frame
 
     def slow_write(self, frame, t):
@@ -222,7 +222,7 @@ def test_ffmpeg_death_isolated_to_one_camera():
 # ─── 4. recording pre-flight ────────────────────────────────────────────────
 
 def test_preflight_recording():
-    import usb_camera
+    import brain_battle.capture.usb_camera as usb_camera
     ok, enc, msg = usb_camera.preflight_recording()
     check("preflight OK on a machine with ffmpeg + an encoder",
           ok and enc and msg == "", f"ok={ok} enc={enc!r}")

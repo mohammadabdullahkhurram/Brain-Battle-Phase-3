@@ -1,6 +1,6 @@
 """
-sync_beep.py
-────────────
+round_bell.py
+─────────────
 The round bell: a short, audible boxing-bell sound played for the boxers and
 operators at the start of each round (and the rest period before round 1). It
 is a cue for the people in the room only — nothing more.
@@ -12,9 +12,9 @@ there is nothing on the audio for anything to "lock onto". Whether the bell
 sounds is a plain on/off preference in Settings (the "Ring a bell when each
 round starts" option, DESIGN §7), wired through the record flow.
 
-(The module and `SyncBeep` class keep their historical names from an earlier
-design that used an audio cross-correlation sync engine; that engine has been
-removed and the names no longer describe a sync role.)
+(The module was once `sync_beep.py` / `SyncBeep`, named for an audio
+cross-correlation sync engine that has since been removed; it was renamed to
+`round_bell` / `RoundBell` once the names no longer described a sync role.)
 
 The sound itself is `assets/sounds/round_bell.wav` — a real boxing-bell
 recording (see docs/project/credits.md for licence/attribution), processed by
@@ -30,6 +30,8 @@ from __future__ import annotations
 import logging
 import os
 
+from brain_battle.paths import ASSETS_DIR
+
 log = logging.getLogger(__name__)
 
 try:
@@ -43,13 +45,12 @@ except Exception:                                     # pragma: no cover
 
 def bundled_bell_path() -> str:
     """Path to the shipped round-bell WAV, regardless of cwd."""
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         "assets", "sounds", "round_bell.wav")
+    return os.path.join(str(ASSETS_DIR), "sounds", "round_bell.wav")
 
 
 # ─── Player ───────────────────────────────────────────────────────────────────
 
-class SyncBeep(QObject):
+class RoundBell(QObject):
     """
     Plays the round bell. Owns a persistent QSoundEffect so repeated plays
     don't re-decode the WAV every time. Never raises: a missing file or
@@ -91,4 +92,4 @@ class SyncBeep(QObject):
         return self._path
 
 
-__all__ = ["SyncBeep", "bundled_bell_path"]
+__all__ = ["RoundBell", "bundled_bell_path"]

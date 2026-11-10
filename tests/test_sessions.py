@@ -47,9 +47,9 @@ from PyQt6.QtWidgets import (
 
 _app = QApplication.instance() or QApplication(sys.argv)
 
-import session_storage as ss
-import sessions_tab as st
-from session_controller import SessionConfig
+import brain_battle.data.session_storage as ss
+import brain_battle.ui.sessions_tab as st
+from brain_battle.capture.session_controller import SessionConfig
 
 _failures = []
 BASE_LIB = None   # the one generated demo library (set in __main__)

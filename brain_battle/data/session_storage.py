@@ -37,8 +37,8 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
-from session_controller import SessionConfig, Phase
-from version import __version__
+from brain_battle.capture.session_controller import SessionConfig, Phase
+from brain_battle.version import __version__
 
 
 # ─── Directory naming ─────────────────────────────────────────────────────────
@@ -629,7 +629,7 @@ def flag_new_interrupted(base_dir) -> int:
         if mark_session_interrupted(info.root):
             n += 1
             try:
-                import session_history
+                import brain_battle.data.session_history as session_history
                 session_history.log_event(
                     info.root, session_history.EVENT_RECORDING_INTERRUPTED)
             except Exception:

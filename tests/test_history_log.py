@@ -34,7 +34,7 @@ except Exception:
 from PyQt6.QtWidgets import QApplication
 _app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841
 
-import session_history as sh
+import brain_battle.data.session_history as sh
 
 _failures = []
 DEMO_ROOT = None   # set in __main__ (ProcessPool children re-import this module)
@@ -116,7 +116,7 @@ def test_sigkill_midwrite():
 # (labels_exported → export_created is covered in tests/test_export.py)
 
 def test_label_hooks():
-    import review_label_tab as rl
+    import brain_battle.ui.review_label_tab as rl
     root = DEMO_ROOT
     tab = rl.ReviewLabelTab()
     try:
@@ -143,9 +143,9 @@ def test_label_hooks():
 # ─── 5. hooks: recording_started / recording_finished (RecordFlow) ───────────
 
 def test_recording_hooks():
-    from record_flow import RecordFlow
-    from session_storage import create_session
-    from session_controller import SessionConfig
+    from brain_battle.ui.record_flow import RecordFlow
+    from brain_battle.data.session_storage import create_session
+    from brain_battle.capture.session_controller import SessionConfig
     with tempfile.TemporaryDirectory() as base:
         flow = RecordFlow()
         cfg = SessionConfig(num_rounds=1, round_sec=10, break_sec=0, baseline_sec=5)
@@ -165,7 +165,7 @@ def test_recording_hooks():
 # ─── 6. hook: opened_for_review (merged Review & Label screen) ───────────────
 
 def test_opened_for_review_hook():
-    import review_label_tab as rl
+    import brain_battle.ui.review_label_tab as rl
     tab = rl.ReviewLabelTab()
     try:
         tab.load_session_folder(DEMO_ROOT)

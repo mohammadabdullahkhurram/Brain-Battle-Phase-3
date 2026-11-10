@@ -41,23 +41,23 @@ from PyQt6.QtWidgets import (
 
 import logging
 
-import design_tokens as dt
-import app_settings
-import camera_source
-import contact_log
-import session_history
-from headband_source import HeadbandSlot
-from camera_source import CameraSlot
-from session_controller import SessionController, SessionConfig, Phase, _build_timeline
-from session_storage import (
+import brain_battle.ui.design_tokens as dt
+import brain_battle.data.app_settings as app_settings
+import brain_battle.capture.camera_source as camera_source
+import brain_battle.capture.contact_log as contact_log
+import brain_battle.data.session_history as session_history
+from brain_battle.capture.headband_source import HeadbandSlot
+from brain_battle.capture.camera_source import CameraSlot
+from brain_battle.capture.session_controller import SessionController, SessionConfig, Phase, _build_timeline
+from brain_battle.data.session_storage import (
     create_session, SessionLayout, PhaseRecord, estimate_session_bytes,
     human_bytes, session_total_seconds, disk_space_verdict,
     video_bytes_per_sec_for_mbps,
 )
-from sync_beep import SyncBeep
-from keep_awake import KeepAwake
-from log_setup import attach_session_log
-from usb_camera import list_cameras, preflight_recording, CameraDevice
+from brain_battle.capture.round_bell import RoundBell
+from brain_battle.capture.keep_awake import KeepAwake
+from brain_battle.support.log_setup import attach_session_log
+from brain_battle.capture.usb_camera import list_cameras, preflight_recording, CameraDevice
 
 log = logging.getLogger(__name__)
 
@@ -797,7 +797,7 @@ class SetupStep(QWidget):
 
     def _update_saves_to(self, cfg):
         import datetime as _dt
-        from session_storage import _session_folder_name
+        from brain_battle.data.session_storage import _session_folder_name
         a, b = self.names()
         base = self.flow._settings.capture_dir_resolved()
         folder = _session_folder_name(_dt.datetime.now(), a or None, b or None)
@@ -1058,7 +1058,7 @@ class RecordFlow(QWidget):
         self._cams = camera_source.make_slots(self)
         self._bands = {"A": HeadbandSlot("A", self), "B": HeadbandSlot("B", self)}
         self._controller = SessionController(self)
-        self._beep = SyncBeep(self)
+        self._beep = RoundBell(self)
         self._keep_awake = KeepAwake()
         self._layout: Optional[SessionLayout] = None
         self._cfg: Optional[SessionConfig] = None
@@ -1184,7 +1184,7 @@ class RecordFlow(QWidget):
 
     def _scan_headbands(self):
         try:
-            import simulation
+            import brain_battle.capture.simulation as simulation
             if simulation.enabled():
                 for d in simulation.muse_devices():
                     who = d.get("boxer", "")
@@ -1195,7 +1195,7 @@ class RecordFlow(QWidget):
         except Exception:
             pass
         # Real BLE scan, mapped to A/B via the settings headband mapping.
-        from eeg_module import _MuseScanThread
+        from brain_battle.capture.eeg_module import _MuseScanThread
         th = _MuseScanThread(self)
         th.found.connect(self._on_headbands_found)
         th.error.connect(lambda m: log.warning("headband scan error: %s", m))
@@ -1341,7 +1341,7 @@ class RecordFlow(QWidget):
                 slot.start_recording(path, clock)
                 self._cam_rec_paths[slot.index] = path
         # headbands
-        from eeg_module import muse_friendly
+        from brain_battle.capture.eeg_module import muse_friendly
         muse_dir = cont / "Muse data"; muse_dir.mkdir(parents=True, exist_ok=True)
         self._band_rec_paths = {}
         for which, band in self._bands.items():
@@ -1524,8 +1524,8 @@ class RecordFlow(QWidget):
     # ── Saved-screen data (from REAL files) ──
     def _build_saved_info(self):
         import datetime as _dt
-        from session_storage import folder_size_bytes, session_total_seconds
-        from review_label_tab import read_phase_markers
+        from brain_battle.data.session_storage import folder_size_bytes, session_total_seconds
+        from brain_battle.ui.review_label_tab import read_phase_markers
         root = self._saved_root
         a, b = self._names.get("A"), self._names.get("B")
         vs = f"{a or 'Boxer A'} vs {b or 'Boxer B'}"
@@ -1593,7 +1593,7 @@ class RecordFlow(QWidget):
     def reveal_saved(self):
         if self._saved_root:
             try:
-                from sessions_tab import reveal_in_finder
+                from brain_battle.ui.sessions_tab import reveal_in_finder
                 reveal_in_finder(self._saved_root)
             except Exception as e:
                 log.warning("reveal in finder failed: %s", e)

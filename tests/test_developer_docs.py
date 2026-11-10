@@ -29,7 +29,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import docs_nav
+import brain_battle.support.docs_nav as docs_nav
 
 DOCS = os.path.join(ROOT, "docs")
 DEV_DIR = os.path.join(DOCS, "developer-guide")
@@ -37,7 +37,7 @@ DEC_DIR = os.path.join(DOCS, "decisions")
 MODULE_REF = os.path.join(DEV_DIR, "module-reference.md")
 ADR_INDEX = os.path.join(DEC_DIR, "index.md")
 CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
-VERSION_PY = os.path.join(ROOT, "version.py")
+VERSION_PY = os.path.join(ROOT, "brain_battle", "version.py")
 
 # Section folders whose every page must be in nav.yml. (The top-level planning
 # docs and contributing/ are intentionally not nav pages.)
@@ -61,24 +61,47 @@ def _read(path):
 
 # ── 1. module reference completeness ────────────────────────────────────────
 
+def _package_modules():
+    """Every first-party module, by basename: the ``brain_battle`` package
+    (excluding package __init__/__main__ scaffolding) plus the root launcher
+    shim. Modules live under subpackages now, so the gate matches on the file
+    basename rather than a flat root listing."""
+    names = set()
+    for p in glob.glob(os.path.join(ROOT, "brain_battle", "**", "*.py"),
+                       recursive=True):
+        base = os.path.basename(p)
+        if base in ("__init__.py", "__main__.py"):
+            continue
+        names.add(base)
+    for p in glob.glob(os.path.join(ROOT, "*.py")):      # brain_battle_main.py
+        names.add(os.path.basename(p))
+    return names
+
+
 def test_every_module_has_a_reference_entry():
     text = _read(MODULE_REF)
     # backticked token spans (same idea as test_research_docs)
     backticked = set(re.findall(r"`([^`]+)`", text))
-    root_py = sorted(os.path.basename(p) for p in glob.glob(os.path.join(ROOT, "*.py")))
-    check("found the root modules", len(root_py) > 20, str(len(root_py)))
-    missing = [m for m in root_py if m not in backticked]
-    check("every root *.py has a backticked entry in module-reference.md",
+    modules = sorted(_package_modules())
+    check("found the first-party modules", len(modules) > 20, str(len(modules)))
+    missing = [m for m in modules if m not in backticked]
+    check("every first-party module has a backticked entry in module-reference.md",
           not missing, f"undocumented: {missing}")
 
 
 def test_no_reference_entry_for_a_deleted_module():
-    """Every '### `name.py`' entry heading names a file that still exists."""
+    """Every '### `name.py`' entry heading names a module that still exists
+    (matched by basename, anywhere in the package)."""
     text = _read(MODULE_REF)
     heading_files = re.findall(r"^###\s+`([^`]+\.py)`", text, flags=re.MULTILINE)
     check("module-reference.md has ### module entries", len(heading_files) > 20,
           str(len(heading_files)))
-    stale = [f for f in heading_files if not os.path.isfile(os.path.join(ROOT, f))]
+    modules = _package_modules()
+    # A heading may be a bare module basename (resolved against the package) or
+    # a repo-relative path like `tools/generate_demo_session.py`.
+    stale = [f for f in heading_files
+             if os.path.basename(f) not in modules
+             and not os.path.isfile(os.path.join(ROOT, f))]
     check("no module-reference entry names a .py file that no longer exists",
           not stale, f"stale entries: {stale}")
 

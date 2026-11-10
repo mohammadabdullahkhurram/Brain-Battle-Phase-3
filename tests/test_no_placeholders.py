@@ -43,6 +43,7 @@ ALLOWED_PHRASE_LINES: set = set()
 
 def _app_files():
     files = glob.glob(os.path.join(ROOT, "*.py"))
+    files += glob.glob(os.path.join(ROOT, "brain_battle", "**", "*.py"), recursive=True)
     return files
 
 

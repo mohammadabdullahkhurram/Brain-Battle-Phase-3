@@ -23,8 +23,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
 
-import pyav_player as pp
-from review_label_tab import _discover_cameras, read_phase_markers
+import brain_battle.playback.pyav_player as pp
+from brain_battle.ui.review_label_tab import _discover_cameras, read_phase_markers
 
 _failures = []
 ONE_FRAME = 1.0 / 29.5   # the slowest (drift) camera's frame period ≈ 33.9 ms

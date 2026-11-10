@@ -28,7 +28,7 @@ def check(name, cond, detail=""):
 
 
 def test_defaults():
-    import app_settings
+    import brain_battle.data.app_settings as app_settings
     os.environ["BRAIN_BATTLE_CONFIG"] = os.path.join(tempfile.mkdtemp(), "settings.json")
     s = app_settings.load()
     cfg = s.session_config()
@@ -46,7 +46,7 @@ def test_defaults():
 
 
 def test_round_trip():
-    import app_settings
+    import brain_battle.data.app_settings as app_settings
     path = os.path.join(tempfile.mkdtemp(), "settings.json")
     os.environ["BRAIN_BATTLE_CONFIG"] = path
     s = app_settings.load()
@@ -68,7 +68,7 @@ def test_round_trip():
 
 
 def test_boxer_labels_removed_from_eeg_module():
-    import eeg_module
+    import brain_battle.capture.eeg_module as eeg_module
     check("eeg_module has NO module-level BOXER_LABELS dict",
           not isinstance(getattr(eeg_module, "BOXER_LABELS", None), dict))
     check("eeg_module.boxer_labels() exists and returns a dict",
@@ -76,7 +76,7 @@ def test_boxer_labels_removed_from_eeg_module():
           and isinstance(eeg_module.boxer_labels(), dict))
     # derives from the current settings
     os.environ["BRAIN_BATTLE_CONFIG"] = os.path.join(tempfile.mkdtemp(), "settings.json")
-    import app_settings
+    import brain_battle.data.app_settings as app_settings
     s = app_settings.load(); s.headbands = {"A": "MuseS-AAAA", "B": "MuseS-BBBB"}; s.save()
     check("eeg_module.boxer_labels() reflects settings",
           eeg_module.boxer_labels() == {"MuseS-AAAA": "BOXER A", "MuseS-BBBB": "BOXER B"},

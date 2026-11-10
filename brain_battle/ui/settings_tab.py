@@ -33,11 +33,11 @@ from PyQt6.QtWidgets import (
     QButtonGroup, QRadioButton, QColorDialog, QFileDialog, QMessageBox,
 )
 
-import design_tokens as dt
-import app_settings
-import label_vocab
-from record_flow import Stepper, _mmss
-from version import __version__
+import brain_battle.ui.design_tokens as dt
+import brain_battle.data.app_settings as app_settings
+import brain_battle.data.label_vocab as label_vocab
+from brain_battle.ui.record_flow import Stepper, _mmss
+from brain_battle.version import __version__
 
 VIDEO_QUALITY_ORDER = ["standard", "high", "light"]
 
@@ -322,7 +322,7 @@ class SettingsTab(QWidget):
         self.capture_dir_changed.emit(path)
 
     def _on_show_in_finder(self):
-        from sessions_tab import reveal_in_finder
+        from brain_battle.ui.sessions_tab import reveal_in_finder
         reveal_in_finder(self._settings.capture_dir_resolved())
 
     # ── 2. Headbands ──
@@ -389,7 +389,7 @@ class SettingsTab(QWidget):
         self._search_btn.setEnabled(False)
         self._search_btn.setText("Searching…")
         try:
-            import simulation
+            import brain_battle.capture.simulation as simulation
             if simulation.enabled():
                 devices = simulation.muse_devices()
                 self._on_headbands_found(devices)
@@ -397,7 +397,7 @@ class SettingsTab(QWidget):
         except Exception:
             pass
         try:
-            from eeg_module import _MuseScanThread
+            from brain_battle.capture.eeg_module import _MuseScanThread
         except Exception:
             self._on_headbands_found([])
             return
@@ -510,8 +510,8 @@ class SettingsTab(QWidget):
 
     def _on_test_sound(self):
         if getattr(self, "_beep", None) is None:
-            from sync_beep import SyncBeep
-            self._beep = SyncBeep(self)
+            from brain_battle.capture.round_bell import RoundBell
+            self._beep = RoundBell(self)
         self._beep.play()
 
     # ── 5. Label list ──

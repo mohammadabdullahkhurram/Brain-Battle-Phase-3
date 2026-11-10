@@ -130,7 +130,7 @@ def list_cameras(max_probe: int = 8) -> list[CameraDevice]:
     # exact same capture path below — only the device list + frame source are
     # synthetic. No trace of this when the flag is unset.
     try:
-        import simulation
+        import brain_battle.capture.simulation as simulation
         if simulation.enabled():
             return simulation.camera_devices()
     except Exception:
@@ -171,7 +171,7 @@ def _resolve_encoder() -> str:
     importing usb_camera doesn't trigger the probe (keeps module import cheap,
     which the smoke gate relies on)."""
     try:
-        from export_module import _HW_ENCODER
+        from brain_battle.data.export_module import _HW_ENCODER
         return _HW_ENCODER
     except Exception as e:
         log.warning("could not read probed encoder (%r) — using libx264", e)
@@ -202,7 +202,7 @@ def preflight_recording() -> tuple[bool, str, str]:
                            "needs it — install ffmpeg and try again.")
     encoder = _resolve_encoder()
     try:
-        from export_module import _validate_encoder
+        from brain_battle.data.export_module import _validate_encoder
         ff = _ffmpeg_path()
         if not _validate_encoder(ff, encoder):
             # Chosen encoder failed its test-encode; try plain libx264 before
@@ -526,7 +526,7 @@ class USBCameraThread(QThread):
         real-time-paced cv2.VideoCapture-compatible source is substituted — the
         rest of run() (negotiation, encode, sidecar) is identical."""
         try:
-            import simulation
+            import brain_battle.capture.simulation as simulation
             if simulation.enabled():
                 return simulation.open_capture(
                     self._dev, w=self._want_w, h=self._want_h, fps=self._want_fps)

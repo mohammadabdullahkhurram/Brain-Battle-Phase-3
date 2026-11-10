@@ -100,8 +100,8 @@ def test_marker_and_eeg_coregister():
 
 
 def test_manifest_bridge_roundtrips():
-    from session_controller import SessionConfig
-    from session_storage import create_session
+    from brain_battle.capture.session_controller import SessionConfig
+    from brain_battle.data.session_storage import create_session
     with tempfile.TemporaryDirectory() as tmp:
         layout = create_session(tmp, SessionConfig())
         layout.set_capture_origin(t0_monotonic=5000.0, t0_unix=1_783_000_000.0)
@@ -127,7 +127,7 @@ def test_reader_writes_t_session_column():
         import types; sys.modules["vlc"] = types.ModuleType("vlc")
     from PyQt6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841
-    from eeg_module import _MuseDirectReader
+    from brain_battle.capture.eeg_module import _MuseDirectReader
 
     origin = 1_783_000_000.0
     r = _MuseDirectReader(address="x", name="synthetic")
@@ -168,7 +168,7 @@ def _band_with_spike(start_offset, spike_t_session, n_sec=8, sr=SR, amp=50.0):
 
 
 def test_coregistered_preserves_between_brain_skew():
-    from export_module import build_coregistered_eeg
+    from brain_battle.data.export_module import build_coregistered_eeg
     # Two boxers: band A starts 0.20s in with a spike at session t=5.00;
     # band B starts 0.55s in with a spike at session t=5.35. The between-brain
     # skew (0.35s) is the payload — it must survive co-registration.

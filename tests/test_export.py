@@ -19,9 +19,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
 
-import labels_store
-import session_history
-from review_label_tab import read_phase_markers
+import brain_battle.data.labels_store as labels_store
+import brain_battle.data.session_history as session_history
+from brain_battle.ui.review_label_tab import read_phase_markers
 
 _app = QApplication.instance() or QApplication(sys.argv)
 
@@ -44,7 +44,7 @@ def _make_labels():
 
 
 def test_bundle_contents():
-    import export_module as em
+    import brain_battle.data.export_module as em
     labels = _make_labels()
     phases = read_phase_markers(DEMO_ROOT)
     zip_path = os.path.join(tempfile.mkdtemp(prefix="bb_exp_"), "out.zip")
@@ -80,7 +80,7 @@ def test_bundle_contents():
 
 
 def test_events_csv_ordering():
-    import export_module as em
+    import brain_battle.data.export_module as em
     labels = _make_labels()
     phases = read_phase_markers(DEMO_ROOT)
     zip_path = os.path.join(tempfile.mkdtemp(prefix="bb_exp2_"), "out.zip")
