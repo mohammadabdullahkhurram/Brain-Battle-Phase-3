@@ -29,8 +29,8 @@ relative to the checkout, so the editable install is the supported one for now
 (proper packaging is ROADMAP Phase 6). `python3 brain_battle_main.py` still
 works as a thin launcher shim.
 
-Recordings are written to `Captures/` at the repo root unless
-`BRAIN_BATTLE_CAPTURE_DIR` is set. With no hardware, develop against the demo
+Recordings are written to `~/Documents/Brain Battle Data` by default (change it
+in Settings, or set `BRAIN_BATTLE_CAPTURE_DIR`). With no hardware, develop against the demo
 session and simulation mode (see the Developer guide):
 
 ```bash

@@ -61,7 +61,7 @@ def _fresh_env():
     """Isolated settings file + an isolated recordings folder, saved as the
     settings store's OWN capture_dir (not BRAIN_BATTLE_CAPTURE_DIR — tests
     that specifically exercise the env-override behaviour set that
-    themselves) so nothing here ever touches the real repo's Captures/."""
+    themselves) so nothing here ever touches the real default recordings folder."""
     cap = tempfile.mkdtemp(prefix="bb_settings_cap_")
     os.environ.pop("BRAIN_BATTLE_CAPTURE_DIR", None)
     os.environ["BRAIN_BATTLE_CONFIG"] = os.path.join(tempfile.mkdtemp(), "settings.json")
@@ -142,7 +142,7 @@ def test_folder_section():
 
     st = SettingsScreen()
     st.show(); pump()
-    check("folder name shows the default Captures-root basename",
+    check("folder name shows the default recordings-folder basename",
           st._folder_name.text() == os.path.basename(aps.load().capture_dir_resolved()))
     check("env-override note hidden + Change enabled with no env var set",
           not st._folder_env_note.isVisible() and st._change_folder_btn.isEnabled())

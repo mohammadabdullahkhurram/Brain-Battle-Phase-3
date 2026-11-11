@@ -56,14 +56,16 @@ brain_battle_main.py` and `import brain_battle_main` both still work. New code
 should prefer `python3 -m brain_battle`.
 
 ### `paths.py`
-`brain_battle/paths.py` — the single source of repo-relative paths. `REPO_ROOT`
-is the checkout root (the directory containing the `brain_battle` package);
-`ASSETS_DIR` and `DOCS_DIR` hang off it, and `default_capture_root()` returns
-`REPO_ROOT/Captures`. Every module that needs the bundled assets, the `docs/`
-tree, or the default recordings folder resolves it here rather than deriving it
-from its own `__file__` — so modules can move between subpackages without
-breaking asset lookup. **Called by:** `fonts`, `round_bell`, `docs_nav`,
-`app_settings`.
+`brain_battle/paths.py` — the single source of repo-relative paths and the
+default recordings folder. `REPO_ROOT` is the checkout root (the directory
+containing the `brain_battle` package); `ASSETS_DIR` and `DOCS_DIR` hang off it.
+`documents_dir()` returns the OS Documents folder and `default_capture_root()`
+returns `~/Documents/Brain Battle Data`
+([ADR-0014](../decisions/adr-0014-documents-default-folder.md)). Every module
+that needs the bundled assets, the `docs/` tree, or the default recordings
+folder resolves it here rather than deriving it from its own `__file__` — so
+modules can move between subpackages without breaking asset lookup. **Called
+by:** `fonts`, `round_bell`, `docs_nav`, `app_settings`.
 
 ### `sidebar_shell.py`
 The DESIGN "App structure" shell: a 232 px sidebar (logo, the screen buttons, a

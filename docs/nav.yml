@@ -142,6 +142,9 @@ sections:
       - id: adr-0013
         title: ADR-0013 Package reorganisation
         file: decisions/adr-0013-package-reorganisation.md
+      - id: adr-0014
+        title: ADR-0014 Documents default folder
+        file: decisions/adr-0014-documents-default-folder.md
 
   - title: Project
     pages:

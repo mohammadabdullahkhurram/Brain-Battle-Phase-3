@@ -13,8 +13,9 @@ camera videos, both boxers' brain recordings, the round markers, the labels
 you add later, and a log of what happened — lives inside it. Nothing is stored
 in a database; copy the folder and you've copied the whole recording.
 
-Recordings sit inside your **recordings folder** (set in Settings; see the
-[Settings guide](../user-guide/settings.md)). One extra file,
+Recordings sit inside your **recordings folder** — by default
+`~/Documents/Brain Battle Data`, changeable in Settings; see the
+[Settings guide](../user-guide/settings.md). One extra file,
 `label_list.json`, lives in the recordings folder itself and is **shared by
 every recording** in it — it's the team's label vocabulary, not part of any
 one session.

@@ -9,9 +9,10 @@ progress.
 
 ## Recordings folder
 
-Shows the folder's name, full path, and free space. **Change folder…**
-picks an existing folder or lets you create a new one; **Show in Finder**
-opens it. Recordings already in the old folder are **not** moved — you're
+Shows the folder's name, full path, and free space. By default this is a
+**Brain Battle Data** folder inside your **Documents** folder. **Change
+folder…** picks an existing folder or lets you create a new one; **Show in
+Finder** opens it. Recordings already in the old folder are **not** moved — you're
 only changing where new ones go. If a folder is shared (for example on a
 shared drive), everyone pointed at it sees the same sessions and labels.
 

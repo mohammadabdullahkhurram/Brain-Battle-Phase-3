@@ -39,7 +39,9 @@ lookup scattered across several modules each deriving the repo root from its own
   at the repo root as a thin launcher shim re-exporting from `brain_battle.app`,
   so the old command and `import brain_battle_main` keep working.
 - **`brain_battle/paths.py`** is the single source of repo-relative paths
-  (`REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`, the default `Captures/`). `fonts`,
+  (`REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`, the default recordings folder —
+  then `REPO_ROOT/Captures`, since moved to Documents by
+  [ADR-0014](adr-0014-documents-default-folder.md)). `fonts`,
   `round_bell`, `docs_nav` and `app_settings` resolve through it instead of
   their own `__file__`, so modules survive moving between subpackages.
 - **Renames:** `sync_beep.py` → `capture/round_bell.py`, class `SyncBeep` →

@@ -40,8 +40,9 @@ BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle
 python3 tools/generate_demo_session.py --out /tmp/demo
 ```
 
-Recordings land in `Captures/` next to the source unless
-`BRAIN_BATTLE_CAPTURE_DIR` is set.
+Recordings land in `~/Documents/Brain Battle Data` by default (change it in
+Settings, or set `BRAIN_BATTLE_CAPTURE_DIR`); see
+[ADR-0014](../decisions/adr-0014-documents-default-folder.md).
 
 ## Branches: `develop` and `main`
 

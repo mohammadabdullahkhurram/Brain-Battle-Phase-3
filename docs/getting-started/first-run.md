@@ -21,7 +21,7 @@ there from the start.
 Brain Battle writes every recording into one **recordings folder** (its
 exact name and location are shown in Settings, and at the bottom of the
 sidebar on every screen, with a free-space bar). By default that's a folder
-named `Captures` next to the app itself.
+named **Brain Battle Data** inside your **Documents** folder.
 
 Each recording gets its own dated subfolder, named
 `YYYY-MM-DD HH-MM <Boxer A name> vs <Boxer B name>`, so recordings sort

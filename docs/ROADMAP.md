@@ -402,12 +402,6 @@ the handful of places the build deliberately reads differently, and why:
   data (or `importlib.resources`) and switch `paths.py` to resolve them from the
   installed location. *Files:* `pyproject.toml` (package-data / `MANIFEST.in`),
   `brain_battle/paths.py`.
-- **Default the recordings folder to the user's Documents for the packaged
-  app.** Today `brain_battle/paths.default_capture_root()` returns
-  `REPO_ROOT/Captures`, which is right for a checkout but wrong for a
-  double-click app. Point the default at e.g. `~/Documents/Brain Battle` (the
-  `BRAIN_BATTLE_CAPTURE_DIR` override and the Settings "Change folder…" flow are
-  unchanged). *Files:* `brain_battle/paths.py`, `brain_battle/data/app_settings.py`.
 - **Package as a double-click app** (py2app macOS, PyInstaller Windows) +
   build workflow. **Must bundle ffmpeg** inside the app (the camera recorder
   shells out to it per camera for crash-safe H.264, and the pre-flight blocks

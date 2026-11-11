@@ -176,6 +176,7 @@ _KNOWN_PHRASES = {
     "adr-0011": "device boundary",
     "adr-0012": "QSvgRenderer",
     "adr-0013": "Reorganise into",
+    "adr-0014": "Documents folder",
     # Project (D3)
     "goals": "Community Impact Project",
     "status": "working agreement",

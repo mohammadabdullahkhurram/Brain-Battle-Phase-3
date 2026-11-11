@@ -42,7 +42,8 @@ def test_defaults():
           s.boxer_labels() == {"MuseS-7538": "BOXER A", "MuseS-7564": "BOXER B"},
           str(s.boxer_labels()))
     check("capture dir falls back to the default root",
-          s.capture_dir_resolved().endswith("Captures") or os.path.isabs(s.capture_dir_resolved()))
+          s.capture_dir_resolved().endswith("Brain Battle Data")
+          and os.path.isabs(s.capture_dir_resolved()))
 
 
 def test_round_trip():
