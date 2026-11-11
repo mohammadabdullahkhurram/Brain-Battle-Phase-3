@@ -1,7 +1,7 @@
 """
 simulation.py  —  DEVELOPER-ONLY simulated cameras + headbands
 ──────────────────────────────────────────────────────────────
-Hardware is currently broken (see CLAUDE.md "Project situation"), so this
+Hardware is currently broken (see AGENTS.md "Project situation"), so this
 module lets the guided recording flow be built and tested end to end without
 real cameras or Muse-S bands. It is gated entirely behind the
 ``BRAIN_BATTLE_SIMULATE`` environment variable: with it unset, nothing here is

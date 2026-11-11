@@ -51,5 +51,5 @@ stamps.
 ## Links
 
 - Commit `af385bf` (remove obsolete audio-xcorr sync; single capture-clock path).
-- [history.md](../project/history.md) (STEP 4),
+- [history.md](../archive/history.md) (STEP 4),
   [ADR-0001](adr-0001-capture-time-clock.md).

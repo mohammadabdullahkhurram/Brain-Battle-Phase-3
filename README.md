@@ -78,5 +78,5 @@ real-signal and eyes-on-glass checks remain open. See
 | GitHub | https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3 |
 
 Development history is in [`CHANGELOG.md`](CHANGELOG.md); current project context,
-backlog, and the test map are in [`CLAUDE.md`](CLAUDE.md); planned work is in
+backlog, and the test map are in [`AGENTS.md`](AGENTS.md); planned work is in
 [`docs/ROADMAP.md`](docs/ROADMAP.md).

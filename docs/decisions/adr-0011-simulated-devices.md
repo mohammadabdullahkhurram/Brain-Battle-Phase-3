@@ -9,7 +9,7 @@ through the real capture paths, and why that code never ships.
 ## Context
 
 The hardware is broken and nobody has a camera rig or Muse-S bands to develop
-against (see [CLAUDE.md's Project situation](../project/status.md)). The entire
+against (see [AGENTS.md's Project situation](../project/status.md)). The entire
 recording flow — Connect, Set up, Record, Saved, plus crash and reconnect
 handling — still needs to be built and tested. Mocking out the capture code would
 test the mocks, not the real paths that actually run during a recording.

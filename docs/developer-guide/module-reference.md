@@ -11,7 +11,7 @@ groups below map to its subpackages. This page is kept honest by
 `tests/test_developer_docs.py`, which fails if a first-party module has no
 entry here, or if an entry names a file that no longer exists. When you add,
 remove, or rename a module, update this page in the same commit (see
-[CLAUDE.md's "Documentation is part of every change"](../contributing/docs-guide.md#documentation-is-part-of-every-change-owner-rule)).
+[AGENTS.md's "Documentation is part of every change"](../contributing/docs-guide.md#documentation-is-part-of-every-change-owner-rule)).
 
 ## Grouped overview
 
@@ -372,7 +372,7 @@ Generates a realistic v3 demo session (4 camera MP4s + sidecars including one
 deliberately drifting camera, 2 EEG CSVs, `phase_markers.csv`, a `demo:true`
 manifest) by **reusing the real writers**, so the fixture can't drift from the
 real format. `--out` is required and refuses the real recordings folder without
-`--force`. See [CLAUDE.md's "Demo session"](../project/planning-documents.md) and
+`--force`. See [AGENTS.md's "Demo session"](../project/planning-documents.md) and
 [simulation & demo](simulation-and-demo.md). Covered by `tests/test_demo_session.py`.
 
 ### `tools/render_diagrams.py`

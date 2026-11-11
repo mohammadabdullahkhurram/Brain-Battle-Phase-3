@@ -1,13 +1,13 @@
 # Brain Battle — Roadmap
 
 Single source of planned work. Supersedes any "nothing else is planned"
-wording elsewhere in the repo. See `CLAUDE.md`'s "Project situation" and
+wording elsewhere in the repo. See `AGENTS.md`'s "Project situation" and
 "Working agreement" sections before starting anything here — in particular:
 
 - **The owner approves each phase below before it starts.** Do not start the
   next phase on your own initiative, even if the current one is finished.
 - Hardware is currently broken and nobody has inspected real Muse-S EEG from
-  a sparring round yet (see `CLAUDE.md`). Everything through Phase 6 is
+  a sparring round yet (see `AGENTS.md`). Everything through Phase 6 is
   built and tested against the **generated demo session** from Phase 1, not
   against real cameras or headbands.
 - The synchrony analysis method is undecided. Don't let any phase below
@@ -25,9 +25,9 @@ whoever picks up the item, not a contract.
 - ~~**`requirements.txt` pinning current deps (no matplotlib).**~~ **DONE.**
   `requirements.txt` is derived from the repo's actual `import` statements
   (grepped, not copied from the old pip line) and pinned to the versions the
-  `tests/` suite passed against; `matplotlib` stays excluded. `CLAUDE.md` and
+  `tests/` suite passed against; `matplotlib` stays excluded. `AGENTS.md` and
   `README.md` now say `pip install -r requirements.txt`.
-  *Files touched:* new `requirements.txt`; `README.md`/`CLAUDE.md` (pip line).
+  *Files touched:* new `requirements.txt`; `README.md`/`AGENTS.md` (pip line).
 
 - ~~**Demo session generator**~~ **DONE.** `tools/generate_demo_session.py`
   builds a realistic fake v3 session folder: 4 videos with `.timestamps.csv`
@@ -41,14 +41,14 @@ whoever picks up the item, not a contract.
   callable (`session_storage.SessionLayout`, `session_controller._build_timeline`,
   `USBCameraThread`'s sidecar methods, `_MuseDirectReader`'s chunk/flush path)
   so the fixture can't silently drift from the real format. Covered end to
-  end by `tests/test_demo_session.py`. See `CLAUDE.md`'s "Demo session"
+  end by `tests/test_demo_session.py`. See `AGENTS.md`'s "Demo session"
   section for usage.
   *Files touched:* new `tools/generate_demo_session.py`,
   `tests/test_demo_session.py`.
 
 - **Decide later: merge `develop` → `main`** (owner's call; `main` is meant
   to be the verified, shippable baseline).
-  *Why:* per `CLAUDE.md`'s branching convention, `develop` only merges to
+  *Why:* per `AGENTS.md`'s branching convention, `develop` only merges to
   `main` when a version is verified and ready to ship — that has not
   happened for the capture-clock work yet (eyes-on-glass + EEG clock-source
   checks are still open), so this is explicitly not automatic.
@@ -112,11 +112,11 @@ whoever picks up the item, not a contract.
 > and DESIGN.md disagree, ask; don't guess. The items below are the build
 > breakdown; DESIGN.md is what they must look and read like. Playback approach
 > for the merged Review & Label screen: **Option C (PyAV, app-driven decode)**,
-> recommended in `docs/PLAYBACK_PROPOSAL.md` — the only option correct on the
+> recommended in `docs/archive/PLAYBACK_PROPOSAL.md` — the only option correct on the
 > drifting camera, and it collapses today's two playback stacks into one.
 
 **All of Phase 3 is built and tested against the generated demo session +
-simulated devices** (hardware is still broken — see `CLAUDE.md`'s "Project
+simulated devices** (hardware is still broken — see `AGENTS.md`'s "Project
 situation"). Step 7 (this step) shipped the real Settings screen
 (`settings_screen.py`), which was the last placeholder screen — the Phase-3
 owner rule ("zero placeholder/temporary UI copy, zero placeholder screens")
@@ -136,7 +136,7 @@ reads slightly differently than DESIGN.md's mockup text, and why.
 
 - ~~**Merge Review and Labelling into one "Review & Label" screen**~~ **DONE.**
   `review_label_screen.py` + `pyav_player.py` — one PyAV-driven screen on a single
-  `t_session_seconds` playhead (Option C from `docs/PLAYBACK_PROPOSAL.md`); the
+  `t_session_seconds` playhead (Option C from `docs/archive/PLAYBACK_PROPOSAL.md`); the
   old `SyncReviewTab`/`LabellingTab`/`vlc_module`/audio-xcorr (`sync_engine`'s
   dead half) are gone.
 
@@ -360,7 +360,7 @@ the handful of places the build deliberately reads differently, and why:
   `_RingBuffer` — currently EEG-channel-only).
 
 - **EEG signal-quality view per channel in review.**
-  *Why:* per `CLAUDE.md`'s "Project situation," nobody has inspected real
+  *Why:* per `AGENTS.md`'s "Project situation," nobody has inspected real
   Muse-S EEG from a sparring round — a quality view (noise/flatline/contact
   indicator) is needed before anyone trusts what they're looking at.
   *Files:* `eeg_module.py` (`EEGReviewWidget`), `eeg_plot_pg.py`.
@@ -371,7 +371,7 @@ the handful of places the build deliberately reads differently, and why:
   Review & Label screen replaced the old Sync/Labelling tabs — the dead
   `compute_sync`/`SyncWorker`/`_xcorr_offset`/`get_eeg_window` and the
   `SourceOffset`/`SyncResult` dataclasses are all gone, so there was nothing left
-  to move. `CLAUDE.md`'s deferred work #4 is closed accordingly.
+  to move. `AGENTS.md`'s deferred work #4 is closed accordingly.
 
 - ~~**Sync beep becomes a round bell only** (fix docstring; toggle in
   Settings).~~ **DONE.** The round-bell on/off toggle shipped in the Phase 3
@@ -520,7 +520,7 @@ rig and Muse-S bands, which the project doesn't currently have.
 
 - **Eyes-on-glass playback check; EEG clock-source verification
   (buzzer/tap test).**
-  *Why:* `CLAUDE.md` deferred work items #0/#1 — logic-verified by unit
+  *Why:* `AGENTS.md` deferred work items #0/#1 — logic-verified by unit
   tests but never watched on real data; the arithmetic is confirmed, the
   EEG's actual position on the shared axis is not.
   *Files:* none directly; validates `brain_battle_main.py`'s Review

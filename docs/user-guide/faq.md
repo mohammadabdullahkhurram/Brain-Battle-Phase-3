@@ -61,6 +61,6 @@ to pick a different camera for that role.
 - There's no built-in way to merge two separate recordings of the same
   session.
 
-For the full, currently-maintained list, see `CLAUDE.md`'s "Deferred work"
+For the full, currently-maintained list, see `AGENTS.md`'s "Deferred work"
 section and `docs/ROADMAP.md` in the repository — this page summarizes the
 parts relevant to day-to-day use, not every open engineering item.

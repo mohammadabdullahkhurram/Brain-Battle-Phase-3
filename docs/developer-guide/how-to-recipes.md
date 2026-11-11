@@ -99,4 +99,4 @@ otherwise, on purpose.
    remove it. `tests/test_developer_docs.py` fails if a root `.py` file has no
    entry, **or** if an entry names a file that no longer exists — so a stale entry
    is caught too.
-3. Update `CLAUDE.md`'s module map and add a CHANGELOG entry.
+3. Update `AGENTS.md`'s module map and add a CHANGELOG entry.

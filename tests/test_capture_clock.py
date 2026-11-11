@@ -10,7 +10,7 @@ is captured at the same instant at recording start.
 
 IMPORTANT — what this does NOT test: whether muselsl's real timestamps are
 accurate to tens-of-ms on a physical Muse band, or whether BLE transport
-latency skews them. That is UNVERIFIED and needs a real band (see CLAUDE.md
+latency skews them. That is UNVERIFIED and needs a real band (see AGENTS.md
 "Deferred work"). These tests use synthetic EEG with KNOWN injected offsets,
 so they confirm the reconciliation math and the manifest bridge only.
 

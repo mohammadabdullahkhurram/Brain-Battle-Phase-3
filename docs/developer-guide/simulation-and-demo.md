@@ -7,7 +7,7 @@ to disk. What each one fakes, what stays real, how to use them, and the fact tha
 neither ships in the packaged app.
 
 Both exist because the hardware is currently broken and nobody has inspected real
-Muse-S EEG from a sparring round (see [CLAUDE.md's Project situation](../project/status.md)).
+Muse-S EEG from a sparring round (see [AGENTS.md's Project situation](../project/status.md)).
 They are stand-ins, not substitutes for the real-hardware checks that remain
 open — see [known limitations](../research-and-data/limitations.md).
 

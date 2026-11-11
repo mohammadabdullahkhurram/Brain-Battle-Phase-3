@@ -2,7 +2,7 @@
 generate_demo_session.py
 ─────────────────────────
 Generates a realistic fake Brain Battle v3 session folder so the rest of the
-app can be built and tested without hardware (see CLAUDE.md "Project
+app can be built and tested without hardware (see AGENTS.md "Project
 situation" — real cameras/Muse-S bands are currently unavailable).
 
 What's REUSED from the real pipeline (so the demo can never silently drift

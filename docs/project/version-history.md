@@ -3,7 +3,7 @@
 **What this page covers:** how Brain Battle got from v1 to v3 at a glance — the
 three recording-model eras and what changed between them. The blow-by-blow dev
 log is in [`CHANGELOG.md`](../../CHANGELOG.md); the long-form architectural
-narrative is in [Project history](history.md).
+narrative is in [Project history](../archive/history.md).
 
 ## The authoritative version
 
@@ -34,7 +34,7 @@ gap — the review/sync half still globbing nonexistent `Round {n}/` folders —
 where most of the early bugs lived, and closing it is what the v2 cleanup phase
 was about. A structural consequence that still holds: all in-app cameras record
 **no audio track**, which is why audio-based sync could never work for in-app
-captures. See [Project history](history.md) for the detail.
+captures. See [Project history](../archive/history.md) for the detail.
 
 ### v2 → v3: the capture-time clock (breaking)
 

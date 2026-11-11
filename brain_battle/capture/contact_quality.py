@@ -6,7 +6,7 @@ plain language on the connect / recording / review screens (DESIGN vocabulary:
 TP9 = left ear, AF7 = left forehead, AF8 = right forehead, TP10 = right ear).
 
 *** HEURISTIC, pending real data. *** Nobody has inspected raw Muse-S EEG from
-a real sparring round yet (CLAUDE.md "Project situation"), so these thresholds
+a real sparring round yet (AGENTS.md "Project situation"), so these thresholds
 are first-guess rules over a short window, not validated against ground truth:
 
   • flat     — std below FLAT_UV: the electrode isn't picking anything up

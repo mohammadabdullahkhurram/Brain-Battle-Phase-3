@@ -1,8 +1,8 @@
 # Developer setup & workflow
 
 **What this page covers:** how to get the code running for development, the
-branch and commit conventions, the role `CLAUDE.md` plays, how this project is
-built with Claude Code, and the coding conventions a change should follow.
+branch and commit conventions, the role `AGENTS.md` plays, the AI-assisted
+development workflow, and the coding conventions a change should follow.
 
 ## Setup
 
@@ -44,25 +44,26 @@ Recordings land in `~/Documents/Brain Battle Data` by default (change it in
 Settings, or set `BRAIN_BATTLE_CAPTURE_DIR`); see
 [ADR-0014](../decisions/adr-0014-documents-default-folder.md).
 
-## Branches: `develop` and `main`
+## Branch policy: `main` and `develop`
 
-- **`main`** is the stable, shippable baseline — currently `2.1.0`.
-- **`develop`** is the long-lived working branch — currently `3.0.0-dev`.
-- `develop` merges to `main` **only** when a version is verified and ready to
-  ship. `3.0.0` is a deliberate breaking change (alignment by the capture-time
-  clock; pre-3.0 sessions are not supported), and the eyes-on-glass + EEG
-  clock-source checks are still open, so that merge has not happened yet — it is
-  explicitly not automatic (see [ROADMAP.md](../project/roadmap.md) Phase 1).
+- **`main` is the stable, reviewed version.** It only ever advances when the
+  owner has reviewed and approved the work, and each such merge is marked with a
+  version tag (e.g. `v3.0.0-beta.2`).
+- **`develop` is the staging area.** All new work happens on `develop` first.
+- **The flow:** work on `develop` → run the full `tests/` suite → commit per
+  logical change → the owner reviews → on approval, merge `develop` into `main`
+  (a merge commit) and tag the release. After such a release `main` and
+  `develop` point at the same commit.
 
-Never push unless explicitly told to. If you're on the default branch, branch
-first.
+Don't push to `main` without that owner approval. If you're starting fresh work,
+do it on `develop`.
 
 ## Commits
 
 - **Commit locally per logical change.** One coherent change per commit, with a
   message that says what changed and why.
-- Co-author trailer on commits made with Claude Code:
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+- Add a co-author trailer when an AI agent made the commit (for example, with
+  Claude Code: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`).
 - **Run everything in `tests/` before and after every change, and report
   pass/fail** — not just "I ran the tests" (the [working agreement](../project/status.md)).
 - **Documentation is part of every change** — a change isn't done until its docs
@@ -72,20 +73,25 @@ first.
   entry) is enforced by the honesty tests. See
   [docs-guide.md](../contributing/docs-guide.md#documentation-is-part-of-every-change-owner-rule).
 
-## The role of `CLAUDE.md`
+## The role of `AGENTS.md`
 
-`CLAUDE.md` at the repo root describes the **present** state of the project for
-whoever (human or Claude Code) is working on it: the current architecture, the
-module map, how to run and test, the project situation (broken hardware), and the
-working agreement. It is the orientation document a session reads first. The
-long-form **history** lives in [`docs/project/history.md`](../project/history.md),
-not `CLAUDE.md` — `CLAUDE.md` keeps only a pointer. When the architecture changes,
-update `CLAUDE.md`'s module map in the same change.
+`AGENTS.md` at the repo root is the shared, tool-neutral instructions file for
+AI coding agents — read automatically by OpenAI Codex, and by Claude Code via a
+one-line `CLAUDE.md` that just imports it (`@AGENTS.md`), so there is a single
+source. It describes the **present** state of the project for whoever (human or
+AI agent) is working on it: the current architecture, the module map, how to run
+and test, the project situation (broken hardware), the working agreement, and
+the branch policy. It is the orientation document a session reads first. The
+long-form **history** lives in [`docs/archive/history.md`](../archive/history.md),
+not `AGENTS.md` — `AGENTS.md` keeps only a pointer. When the architecture
+changes, update `AGENTS.md`'s module map in the same change.
 
-## How this project is built with Claude Code
+## AI-assisted development workflow
 
-Brain Battle is developed with [Claude Code](https://claude.com/claude-code)
-under an explicit **owner-approval workflow**:
+Brain Battle is developed with AI coding agents — primarily
+[Claude Code](https://claude.com/claude-code) and
+[OpenAI Codex](https://openai.com/codex), reading the same `AGENTS.md` — under
+an explicit **owner-approval workflow**:
 
 - Work is sequenced as **phases** in [`ROADMAP.md`](../project/roadmap.md). **The
   owner approves each phase before it starts** — a session never starts the next

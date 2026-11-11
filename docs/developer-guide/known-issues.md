@@ -11,8 +11,8 @@ is **listed, not fixed**.
 ## Hardware-blocked (can't be closed by writing code)
 
 These need a working camera rig and Muse-S bands, which the project doesn't have
-(see [CLAUDE.md's Project situation](../project/status.md)). They are tracked in
-`CLAUDE.md`'s "Deferred work" and `ROADMAP.md`'s "Deferred until hardware works".
+(see [AGENTS.md's Project situation](../project/status.md)). They are tracked in
+`AGENTS.md`'s "Deferred work" and `ROADMAP.md`'s "Deferred until hardware works".
 
 | # | Item | What would close it |
 |---|---|---|
@@ -56,7 +56,7 @@ after D3; the fourth is intentional and stays:
   and the per-module tables (naming removed modules like `usb_camera_slot.py`)
   were removed; the README is now a short, accurate landing page that points at
   these docs. The full non-technical rewrite remains ROADMAP Phase 6.
-- **`docs/ARCHITECTURE_AND_EVALUATION.md` and `docs/project/history.md` reference
+- **`docs/archive/ARCHITECTURE_AND_EVALUATION.md` and `docs/archive/history.md` reference
   removed modules** (`SyncReviewTab`, `live_session_tab.py`, `vlc_module.py`,
   etc.). This is **intentional** — both are explicitly historical documents with
   a note at the top saying so; they are not drift, but a reader should know the
@@ -70,5 +70,5 @@ after D3; the fourth is intentional and stays:
   `tests/test_flash_sync.py` asserts the spread stays within one frame.
 - **Sync precision beyond "tens of ms" is deliberately not pursued** until
   whoever owns the synchrony analysis method confirms it's needed — see
-  [CLAUDE.md](../project/status.md) and
+  [AGENTS.md](../project/status.md) and
   [timing & accuracy](../research-and-data/timing-and-accuracy.md).

@@ -162,7 +162,7 @@ sections:
         file: project/version-history.md
       - id: history
         title: Project history
-        file: project/history.md
+        file: archive/history.md
       - id: glossary
         title: Glossary
         file: project/glossary.md

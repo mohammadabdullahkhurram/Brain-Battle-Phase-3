@@ -34,7 +34,7 @@ tested against a generated demo session and simulated devices.
   ([ADR-0013](../decisions/adr-0013-package-reorganisation.md)).
 
 The old Review/Labelling tabs, VLC, audio-xcorr, and the Live Monitor are gone;
-see [Version history](version-history.md) and [Project history](history.md).
+see [Version history](version-history.md) and [Project history](../archive/history.md).
 
 ## What's next
 

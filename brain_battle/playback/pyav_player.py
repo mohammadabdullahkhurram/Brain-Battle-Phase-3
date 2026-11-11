@@ -1,7 +1,7 @@
 """
 pyav_player.py
 ──────────────
-App-driven multi-camera playback (DESIGN §6 / docs/PLAYBACK_PROPOSAL.md Option
+App-driven multi-camera playback (DESIGN §6 / docs/archive/PLAYBACK_PROPOSAL.md Option
 C). ONE playhead `t` on the `t_session_seconds` axis drives every camera: each
 tile shows the frame whose sidecar `t_session_seconds` is the latest ≤ t. There
 is no per-player clock and no A/V sync — our videos have no audio — so video,

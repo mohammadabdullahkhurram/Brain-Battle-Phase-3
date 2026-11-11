@@ -1,7 +1,7 @@
 """
 Tests for tools/generate_demo_session.py — the fixture every later roadmap
 phase builds against since there is no working hardware right now (see
-CLAUDE.md "Project situation").
+AGENTS.md "Project situation").
 
 Generates a demo session into a temp dir and checks:
   1. Layout matches what SyncReviewTab.load_session_folder expects.
