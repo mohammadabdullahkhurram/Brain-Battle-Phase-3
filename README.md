@@ -58,11 +58,12 @@ the bundled Inter font.
 
 ## Current status
 
-**Phase 3 and the documentation are complete, and the app has been reorganised
-into the `brain_battle` package** (`main` and `develop` = `3.0.0-beta.1`). The
-four DESIGN screens, the capture-time clock, labelling, data safety, and the
-in-app docs all shipped; Phase 5 (remaining research-value items) is next,
-gated on owner approval. **The hardware is currently broken**, so everything is
+**Phase 3 and the documentation are complete; the app is organised into the
+`brain_battle` package and the repo has been cleaned up and made tool-neutral
+for handover** (`main` and `develop` = `3.0.0-beta.2`). The four DESIGN screens,
+the capture-time clock, labelling, data safety, and the in-app docs all shipped;
+Phase 5 (remaining research-value items) is next, gated on owner approval.
+**The hardware is currently broken**, so everything is
 built and tested against a generated demo session and simulated devices — the
 real-signal and eyes-on-glass checks remain open. See
 [Current status](docs/project/status.md) and
@@ -74,7 +75,7 @@ real-signal and eyes-on-glass checks remain open. See
 |---|---|
 | Institution | Constructor University Bremen (Community Impact Project) |
 | Author | Mohammad Abdullah Khurram · supervisor Prof. Jakob Fruchtmann |
-| Version | `main` & `develop` v3.0.0-beta.1 (authoritative: `brain_battle/version.py`) |
+| Version | `main` & `develop` v3.0.0-beta.2 (authoritative: `brain_battle/version.py`) |
 | GitHub | https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3 |
 
 Development history is in [`CHANGELOG.md`](CHANGELOG.md); current project context,
