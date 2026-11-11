@@ -14,7 +14,7 @@ release versions; they intentionally do not track __version__.
 capture-time clock (manifest capture_clock + per-frame/EEG t_session_seconds),
 and pre-3.0 sessions recorded without that data are NOT supported — there is
 no legacy-fallback alignment path. The "-dev" pre-release label was carried on
-`develop`; the first shipped pre-release is "3.0.0-beta.1" (develop merged to
-main).
+`develop`; the first shipped pre-release was "3.0.0-beta.1". "3.0.0-beta.2" is
+the handover/cleanup release (tool-neutral AGENTS.md, package tidy-ups).
 """
-__version__ = "3.0.0-beta.1"
+__version__ = "3.0.0-beta.2"

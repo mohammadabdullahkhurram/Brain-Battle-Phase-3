@@ -25,7 +25,7 @@ link to each other instead of repeating themselves.
 Plain Markdown under `docs/`, rendered three ways:
 
 1. **GitHub** — the repo's normal Markdown rendering. Nothing special needed.
-2. **Inside the app** — a *Documentation* tab (`docs_tab.py`) reads the same
+2. **Inside the app** — a *Documentation* tab (`docs_screen.py`) reads the same
    files at runtime and renders them with Qt's built-in Markdown support (no
    browser engine, no bundled web assets).
 3. Nowhere else — **no separate website, no hosting, no build step** that
@@ -46,15 +46,18 @@ docs/
   images/                    # screenshots referenced by pages (small PNGs)
   contributing/
     docs-guide.md            # this page
-  DESIGN.md                  # existing — UI source of truth, stays where it is
-  ROADMAP.md                 # existing — build plan, stays where it is
-  PLAYBACK_PROPOSAL.md       # existing — stays where it is
-  ARCHITECTURE_AND_EVALUATION.md   # existing — stays where it is
+  archive/                   # superseded / historical documents (not nav pages,
+                             #   except history.md): PLAYBACK_PROPOSAL.md,
+                             #   ARCHITECTURE_AND_EVALUATION.md, history.md
+  DESIGN.md                  # existing — UI source of truth, stays at docs/ root
+  ROADMAP.md                 # existing — build plan, stays at docs/ root
 ```
 
-`DESIGN.md`, `ROADMAP.md`, `PLAYBACK_PROPOSAL.md`, and
-`ARCHITECTURE_AND_EVALUATION.md` are **not moved**. The sections below link to
-them from the relevant pages instead of duplicating their content.
+`DESIGN.md` and `ROADMAP.md` are **current** documents and stay at the `docs/`
+root. The superseded planning reports (`PLAYBACK_PROPOSAL.md`,
+`ARCHITECTURE_AND_EVALUATION.md`) and the long-form `history.md` were moved into
+`docs/archive/`; the sections below link to them from the relevant pages instead
+of duplicating their content.
 
 ### `docs/nav.yml`
 
@@ -177,11 +180,11 @@ Every page in every section follows these, no exceptions:
 7. **Every technical claim is verified against the code**, and cites the
    module/function it came from (e.g. "per `session_storage.disk_space_verdict`").
    Don't describe what the code *should* do from memory — open the file and
-   check, the same way `CLAUDE.md`'s own conventions demand for the app
+   check, the same way `AGENTS.md`'s own conventions demand for the app
    itself.
 8. **Anything not confirmed on real hardware is labelled "Not yet verified on
    hardware."** Brain Battle's hardware is currently broken (see
-   `CLAUDE.md`'s "Project situation") and built/tested against the generated
+   `AGENTS.md`'s "Project situation") and built/tested against the generated
    demo session and simulated devices — the docs must not imply something was
    watched on real cameras/headbands when it wasn't. Use the exact phrase so
    it's greppable.
@@ -287,7 +290,7 @@ screenshot would mislead.
 
 ## Reading column & typography
 
-`docs_tab.py` renders Markdown through Qt's `QTextDocument`/`QTextBrowser`,
+`docs_screen.py` renders Markdown through Qt's `QTextDocument`/`QTextBrowser`,
 not a browser, so the reading experience is tuned in code rather than CSS
 (Qt's Markdown importer ignores most of a default stylesheet — only inline/
 character styling and table borders get through):
@@ -357,14 +360,14 @@ tested".
 
 **A change isn't done until its docs are.** Documentation is not a separate
 phase — it ships in the same commit as the code it describes. This is the same
-rule stated in `CLAUDE.md`; it's repeated here with how each item is enforced so
+rule stated in `AGENTS.md`; it's repeated here with how each item is enforced so
 a contributor can't miss it. When you make a change, work through this checklist:
 
 | When you… | Update… | Enforced by |
 |---|---|---|
 | change the UI or any user-facing wording | the relevant [User guide](../user-guide/sessions.md) page | review (plus the placeholder/jargon gate on the code) |
 | change any recording/export file (a manifest key, CSV column, history event, zip entry) | [file-formats.md](../research-and-data/file-formats.md) — backtick the new name | `tests/test_research_docs.py` (fails if the code writes a field the page doesn't document) |
-| add, remove, or rename a module | the [module reference](../developer-guide/module-reference.md) and `CLAUDE.md`'s module map | `tests/test_developer_docs.py` (every `.py` has an entry; no entry names a deleted file) |
+| add, remove, or rename a module | the [module reference](../developer-guide/module-reference.md) and `AGENTS.md`'s module map | `tests/test_developer_docs.py` (every `.py` has an entry; no entry names a deleted file) |
 | make a significant technical decision | a new [ADR](../decisions/index.md) + `nav.yml` | `tests/test_developer_docs.py` (every ADR is indexed and in `nav.yml`) |
 | change a diagram's `.mmd` source | re-render it (`python3 tools/render_diagrams.py`) | `tests/test_docs.py` (diagram freshness via the `.hash` sidecar) |
 | make any change at all | a `CHANGELOG.md` entry; bump `version.py` if it's a release change | `tests/test_developer_docs.py` (CHANGELOG top entry matches `version.py`) |

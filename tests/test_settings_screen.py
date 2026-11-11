@@ -1,5 +1,5 @@
 """
-The real Settings screen (settings_tab.SettingsTab, DESIGN §7) + its wiring
+The real Settings screen (settings_screen.SettingsScreen, DESIGN §7) + its wiring
 into app_settings/session_storage/usb_camera for Phase 3 step 7.
 
 Covers:
@@ -7,7 +7,7 @@ Covers:
      video_bytes_per_sec_for_mbps are COMPUTED from the chosen bitrate (not a
      hard-coded number), and usb_camera actually requests that bitrate.
   2. Known-headband bookkeeping (app_settings.remember_headband / known_headband_names).
-  3. SettingsTab sections: recordings folder (name/path/free space, Change
+  3. SettingsScreen sections: recordings folder (name/path/free space, Change
      folder.../env-override note, Show in Finder), headbands (dropdowns +
      same-headband guard), video quality (radio rows persist), session
      defaults (steppers + bell + Test sound), label list (add/rename/remove/
@@ -61,7 +61,7 @@ def _fresh_env():
     """Isolated settings file + an isolated recordings folder, saved as the
     settings store's OWN capture_dir (not BRAIN_BATTLE_CAPTURE_DIR — tests
     that specifically exercise the env-override behaviour set that
-    themselves) so nothing here ever touches the real repo's Captures/."""
+    themselves) so nothing here ever touches the real default recordings folder."""
     cap = tempfile.mkdtemp(prefix="bb_settings_cap_")
     os.environ.pop("BRAIN_BATTLE_CAPTURE_DIR", None)
     os.environ["BRAIN_BATTLE_CONFIG"] = os.path.join(tempfile.mkdtemp(), "settings.json")
@@ -136,13 +136,13 @@ def test_known_headbands():
 
 def test_folder_section():
     cap = _fresh_env()
-    from brain_battle.ui.settings_tab import SettingsTab
+    from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.app_settings as aps
     import brain_battle.data.label_vocab as lv
 
-    st = SettingsTab()
+    st = SettingsScreen()
     st.show(); pump()
-    check("folder name shows the default Captures-root basename",
+    check("folder name shows the default recordings-folder basename",
           st._folder_name.text() == os.path.basename(aps.load().capture_dir_resolved()))
     check("env-override note hidden + Change enabled with no env var set",
           not st._folder_env_note.isVisible() and st._change_folder_btn.isEnabled())
@@ -165,8 +165,8 @@ def test_folder_env_override_disables_change():
     fixed = tempfile.mkdtemp(prefix="bb_settings_fixedcap_")
     os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = fixed
     try:
-        from brain_battle.ui.settings_tab import SettingsTab
-        st = SettingsTab(); st.show(); pump()
+        from brain_battle.ui.settings_screen import SettingsScreen
+        st = SettingsScreen(); st.show(); pump()
         check("Change folder disabled when BRAIN_BATTLE_CAPTURE_DIR is set",
               not st._change_folder_btn.isEnabled())
         check("env-override note visible and plain-language",
@@ -178,10 +178,10 @@ def test_folder_env_override_disables_change():
 
 def test_headbands_section():
     cap = _fresh_env()
-    from brain_battle.ui.settings_tab import SettingsTab
+    from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.app_settings as aps
 
-    st = SettingsTab(); st.show(); pump()
+    st = SettingsScreen(); st.show(); pump()
     check("Boxer A/B combos start on the saved mapping",
           st._hb_combo["A"].currentText() == "MuseS-7538"
           and st._hb_combo["B"].currentText() == "MuseS-7564")
@@ -203,10 +203,10 @@ def test_headbands_section():
 
 def test_video_quality_section():
     cap = _fresh_env()
-    from brain_battle.ui.settings_tab import SettingsTab
+    from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.app_settings as aps
 
-    st = SettingsTab(); st.show(); pump()
+    st = SettingsScreen(); st.show(); pump()
     check("Standard selected by default", st._quality_rows["standard"].isChecked())
     st._quality_rows["high"].setChecked(True); pump()
     check("choosing High persists to settings", aps.load().video_quality == "high")
@@ -216,10 +216,10 @@ def test_video_quality_section():
 
 def test_session_defaults_section():
     cap = _fresh_env()
-    from brain_battle.ui.settings_tab import SettingsTab
+    from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.app_settings as aps
 
-    st = SettingsTab(); st.show(); pump()
+    st = SettingsScreen(); st.show(); pump()
     st._st_rounds.set_value(7)
     st._st_round.set_value(90)
     st._on_defaults_changed()
@@ -244,10 +244,10 @@ def test_session_defaults_section():
 
 def test_label_list_section():
     cap = _fresh_env()
-    from brain_battle.ui.settings_tab import SettingsTab
+    from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.label_vocab as lv
 
-    st = SettingsTab(); st.show(); pump()
+    st = SettingsScreen(); st.show(); pump()
     check("label list starts from the 8 DESIGN defaults",
           [e["name"] for e in st._labels] == [d["name"] for d in lv.DEFAULT_LABELS])
 
@@ -283,9 +283,9 @@ def test_label_list_section():
 
 def test_footer():
     cap = _fresh_env()
-    from brain_battle.ui.settings_tab import SettingsTab
+    from brain_battle.ui.settings_screen import SettingsScreen
     from brain_battle.version import __version__
-    st = SettingsTab(); st.show(); pump()
+    st = SettingsScreen(); st.show(); pump()
     texts = [c.text() for c in st.findChildren(type(st._folder_name))]
     joined = "\n".join(texts)
     check("footer shows version + Constructor University",
@@ -301,13 +301,13 @@ def test_settings_drive_a_real_recording():
         os.environ.pop(k, None)
     os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = cap
 
-    from brain_battle.ui.settings_tab import SettingsTab
+    from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.app_settings as aps
     import brain_battle.data.label_vocab as lv
     import brain_battle.data.session_storage as ss
 
     # 1. Change defaults, video quality, and the label list in Settings.
-    st = SettingsTab(); st.show(); pump()
+    st = SettingsScreen(); st.show(); pump()
     st._st_rounds.set_value(2); st._st_round.set_value(10)
     st._st_break.set_value(2); st._st_rest.set_value(2)
     st._on_defaults_changed()
@@ -361,8 +361,8 @@ def test_settings_drive_a_real_recording():
         check("a recording root was saved", bool(root) and os.path.isdir(root))
 
         # 3. Review & Label shows the new label list (shared label_list.json).
-        from brain_battle.ui.review_label_tab import ReviewLabelTab
-        rt = ReviewLabelTab()
+        from brain_battle.ui.review_label_screen import ReviewLabelScreen
+        rt = ReviewLabelScreen()
         try:
             rt.load_session_folder(root); rt.wait_loaded()
             names = [e["name"] for e in rt._vocab]

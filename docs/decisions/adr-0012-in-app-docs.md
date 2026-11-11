@@ -27,7 +27,7 @@ a few diagrams.
 ## Decision
 
 **Render the `docs/` Markdown at runtime with Qt's built-in Markdown support**
-(`docs_tab.py`), driven by a `nav.yml` menu, with search and back/forward. No
+(`docs_screen.py`), driven by a `nav.yml` menu, with search and back/forward. No
 QtWebEngine, no bundled web assets. Because Qt loads images through `QSvgRenderer`
 — which doesn't support Mermaid's CSS-class styling or `foreignObject` labels
 (verified empirically) — diagrams are **pre-rendered to PNG** by

@@ -24,7 +24,7 @@ Built on the long-lived `develop` branch (`main` stays the stable baseline;
 develop merges to main only when a version is verified and ready to ship).
 Goal: one monotonic capture-time reference stamped on every source so
 alignment is MEASURED (tens-of-ms target — deliberately NOT sub-ms; no
-genlock/LSL). See `docs/ARCHITECTURE_AND_EVALUATION.md` for the design.
+genlock/LSL). See `docs/archive/ARCHITECTURE_AND_EVALUATION.md` for the design.
 
 **Versions: `develop` = `3.0.0-dev`, `main` = `2.1.0`.** 3.0.0 is a
 DELIBERATE BREAKING CHANGE: the review/label path aligns by the capture-time

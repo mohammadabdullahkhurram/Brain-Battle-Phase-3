@@ -1,7 +1,7 @@
 """
 docs_nav.py
 ───────────
-Pure-Python (no Qt) logic for the in-app Documentation tab (`docs_tab.py`)
+Pure-Python (no Qt) logic for the in-app Documentation tab (`docs_screen.py`)
 and its tests (`tests/test_docs.py`): `docs/nav.yml` loading, a page
 registry, GitHub-style heading slugs (for jump-to-anchor), a small search
 index (titles/headings/body text), and internal link/image extraction for
@@ -100,7 +100,7 @@ def slugify(text: str) -> str:
     """The same algorithm GitHub uses for heading anchors: lowercase, drop
     anything that isn't a word character/space/hyphen, collapse runs of
     space/hyphen into one hyphen. Qt's Markdown renderer doesn't generate
-    heading anchors itself (verified — see docs-guide.md), so docs_tab.py
+    heading anchors itself (verified — see docs-guide.md), so docs_screen.py
     computes these itself to scroll to a heading."""
     s = text.strip().lower()
     s = re.sub(r"[^\w\s-]", "", s)

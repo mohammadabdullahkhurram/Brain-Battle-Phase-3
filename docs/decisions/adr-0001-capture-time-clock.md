@@ -68,5 +68,5 @@ deliberately not sub-ms — no genlock, no LSL.
 
 - Commit `2e03d49` (align review/label by capture-time stamps).
 - [Timing & accuracy](../research-and-data/timing-and-accuracy.md),
-  [history.md](../project/history.md) (STEPs 1–5),
+  [history.md](../archive/history.md) (STEPs 1–5),
   [ADR-0002](adr-0002-remove-audio-xcorr.md).

@@ -405,7 +405,7 @@ class _MuseDirectReader(QThread):
         shared session axis as t_session = ts - origin. The ARITHMETIC is
         unit-tested (test_capture_clock.py); what is NOT verifiable without a
         real Muse band is whether those timestamps are accurate to tens-of-ms
-        and whether BLE transport latency skews them. See CLAUDE.md."""
+        and whether BLE transport latency skews them. See AGENTS.md."""
         writer = _csv.writer(f)
         has_session = origin_unix is not None
         last_flush = time.monotonic()

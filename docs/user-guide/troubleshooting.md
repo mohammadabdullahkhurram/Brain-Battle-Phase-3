@@ -54,5 +54,5 @@ do — organized as a symptom → cause → fix table per topic. See the
 
 ## Still stuck?
 
-Check the [FAQ](faq.md), or see `CLAUDE.md`'s "Project situation" in the
+Check the [FAQ](faq.md), or see `AGENTS.md`'s "Project situation" in the
 repository for what's currently known-unverified about hardware behaviour.

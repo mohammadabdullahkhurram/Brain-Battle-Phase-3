@@ -79,14 +79,14 @@ def config_path() -> str:
 
 def default_capture_root() -> str:
     """Where recordings are saved when the user hasn't chosen a folder: the
-    BRAIN_BATTLE_CAPTURE_DIR override, else a `Captures/` folder at the repo
-    root (defined in `brain_battle.paths`). (Historically this lived in
-    live_session_tab._default_capture_root.)"""
+    BRAIN_BATTLE_CAPTURE_DIR override, else a `Brain Battle Data` folder in the
+    user's OS Documents folder (defined in `brain_battle.paths`). (Historically
+    this lived in live_session_tab._default_capture_root.)"""
     env = os.environ.get("BRAIN_BATTLE_CAPTURE_DIR")
     if env:
         return env
-    from brain_battle.paths import default_capture_root as _repo_captures
-    return _repo_captures()
+    from brain_battle.paths import default_capture_root as _default
+    return _default()
 
 
 # ─── the settings object ──────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ class AppSettings:
         """BRAIN_BATTLE_CAPTURE_DIR, if set, always wins — it's "set outside
         the app" (Settings §7), so it overrides even a folder the user
         previously picked from Settings. Otherwise the user's saved choice,
-        else the default Captures/ root."""
+        else the default 'Brain Battle Data' folder in Documents."""
         env = os.environ.get("BRAIN_BATTLE_CAPTURE_DIR")
         if env:
             return env

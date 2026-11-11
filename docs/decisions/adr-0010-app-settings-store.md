@@ -30,7 +30,7 @@ bell, and video quality (resolution + bitrate). `capture_dir_resolved()` resolve
 the recordings folder — with `BRAIN_BATTLE_CAPTURE_DIR` always winning when set.
 The GB/hour copy and disk estimate are **computed** from the stored bitrate
 (`gb_per_hour`, `estimate_session_bytes`), not hardcoded. The Settings screen
-(`settings_tab.py`) is the edit surface; everything autosaves.
+(`settings_screen.py`) is the edit surface; everything autosaves.
 
 ## Consequences
 

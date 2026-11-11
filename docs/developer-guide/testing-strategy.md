@@ -11,7 +11,7 @@ Tests are **plain scripts**, not a pytest project: each
 nonzero on any failure. They run headless (`QT_QPA_PLATFORM=offscreen`) and most
 drive the **real** code paths under `BRAIN_BATTLE_SIMULATE=1` (simulated devices)
 or against a **generated demo session** — because the hardware is broken (see
-[CLAUDE.md's Project situation](../project/status.md)). All of them need `ffmpeg`
+[AGENTS.md's Project situation](../project/status.md)). All of them need `ffmpeg`
 on `PATH`; playback/decoding is PyAV (`av`), not VLC.
 
 ### Run one, or all
@@ -81,7 +81,7 @@ Run them before and after any change in their area:
   `nav.yml`; every non-internal page is in `nav.yml`; no "coming in a later
   documentation step" text remains; the CHANGELOG's top entry matches
   `version.py`). These are what keep the docs from drifting from the code — see
-  [CLAUDE.md's "Documentation is part of every change"](../contributing/docs-guide.md#documentation-is-part-of-every-change-owner-rule).
+  [AGENTS.md's "Documentation is part of every change"](../contributing/docs-guide.md#documentation-is-part-of-every-change-owner-rule).
 
 ## How to add a test
 

@@ -693,7 +693,7 @@ class USBCameraThread(QThread):
     # after that frame's bytes reached ffmpeg's stdin — so sidecar rows ==
     # encoded frames (dropped frames get neither). This turns the video from
     # "frames at a nominal fps" into "frames at known capture instants"
-    # (docs/ARCHITECTURE_AND_EVALUATION.md §1.6).
+    # (docs/archive/ARCHITECTURE_AND_EVALUATION.md §1.6).
 
     def _start_recording_encoder(self, path, fw, fh, fps, clock) -> None:
         enc = FrameEncoder(path, fw, fh, fps, clock, bitrate_mbps=self._bitrate_mbps)

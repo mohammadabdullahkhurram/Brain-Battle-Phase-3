@@ -99,8 +99,6 @@ def success_color():  return _p().success
 def warning_color():  return _p().warning
 def error_color():    return _p().error
 def record_red():     return _p().record_red
-def info_color():     return _p().info
-
 def boxer_colors(which: str):
     """('A'|'B') → (line, soft_bg, text)."""
     p = _p()
@@ -171,14 +169,6 @@ def ui_font(pt: int = 11, weight: int = QFont.Weight.Normal) -> QFont:
     f = QFont("Inter"); f.setStyleHint(QFont.StyleHint.SansSerif)
     f.setPointSize(pt); f.setWeight(weight)
     return f
-
-def mono_font(pt: int = 11, weight: int = QFont.Weight.Normal) -> QFont:
-    f = QFont("JetBrains Mono"); f.setStyleHint(QFont.StyleHint.Monospace)
-    f.setPointSize(pt); f.setWeight(weight)
-    return f
-
-def sans_font(pt: int = 11, weight: int = QFont.Weight.Normal) -> QFont:
-    return ui_font(pt, weight)
 
 
 # ═══════════════════════════════════════════════════════ STYLESHEETS
@@ -323,22 +313,6 @@ def qss_danger_button() -> str:
     """
 
 
-def qss_ghost_button() -> str:
-    p = _p()
-    return f"""
-        QPushButton {{
-            background: transparent;
-            color: {p.text_secondary};
-            border: none;
-            border-radius: {RADIUS_SM}px;
-            padding: 6px 12px;
-            font-family: {FONT_UI};
-            font-size: {SIZE_SM}px;
-        }}
-        QPushButton:hover {{ background: {p.card_bg_hover}; color: {p.text_primary}; }}
-        QPushButton:checked {{ background: {p.accent_ghost}; color: {p.accent}; }}
-    """
-
 
 def qss_chip(active: bool = False) -> str:
     p = _p()
@@ -384,28 +358,8 @@ def qss_input() -> str:
     """
 
 
-def qss_section_label() -> str:
-    p = _p()
-    return (f"color: {p.text_tertiary}; font-family: {FONT_UI}; "
-            f"font-size: {SIZE_CAPTION}px; letter-spacing: {LS_WIDER}; font-weight: 700;")
 
 
-def qss_brand_label() -> str:
-    p = _p()
-    return (f"color: {p.accent}; font-family: {FONT_UI}; "
-            f"font-size: {SIZE_CAPTION}px; letter-spacing: {LS_WIDER}; font-weight: 700;")
-
-
-def qss_data_readout(size: int = SIZE_SM) -> str:
-    p = _p()
-    return (f"color: {p.text_primary}; font-family: {FONT_MONO}; "
-            f"font-size: {size}px; letter-spacing: {LS_NORMAL};")
-
-
-def qss_display_number() -> str:
-    p = _p()
-    return (f"color: {p.text_primary}; font-family: {FONT_MONO}; "
-            f"font-size: {SIZE_HERO}px; font-weight: 300; letter-spacing: {LS_TIGHT};")
 
 
 def qss_status_pill(kind: str = "idle") -> str:
@@ -428,20 +382,6 @@ def qss_status_pill(kind: str = "idle") -> str:
             f"font-weight: 600; letter-spacing: {LS_WIDE};")
 
 
-def status_dot_css(kind: str = "idle") -> str:
-    p = _p()
-    color_map = {
-        "idle": p.text_tertiary, "connected": p.success, "live": p.success,
-        "recording": p.record_red, "error": p.error, "pending": p.warning,
-        "baseline": p.phase_rest[1], "round": p.accent,
-    }
-    c = color_map.get(kind, p.text_tertiary)
-    return f"color: {c}; font-size: 12px;"
-
-
-def qss_panel() -> str:       return qss_card()
-def qss_glass_panel() -> str: return qss_card()
-def qss_canvas_gradient() -> str: return qss_canvas_ambient()
 
 
 # ═══════════════════════════════════════════════════════════════ ICONS

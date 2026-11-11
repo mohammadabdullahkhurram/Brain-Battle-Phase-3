@@ -7,7 +7,7 @@ Usage:
     Per session:     from log_setup import attach_session_log
                      attach_session_log(session_root)   # adds <root>/session.log
 
-Levels policy (see CLAUDE.md K entry):
+Levels policy (see AGENTS.md K entry):
   - error/warning — real failures a human should see (file/subprocess/parse/
     device errors, swallowed-exception paths of the videotoolbox-bug class)
   - info          — session lifecycle milestones (created, phase change, saved)

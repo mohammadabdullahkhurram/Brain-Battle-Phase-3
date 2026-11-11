@@ -64,6 +64,6 @@ and [current status](status.md).
 
 - What's done and what's next: [Current status](status.md) and [Roadmap](roadmap.md).
 - How the product got here: [Version history](version-history.md) and
-  [Project history](history.md).
+  [Project history](../archive/history.md).
 - The vocabulary used across these docs and the app: [Glossary](glossary.md).
 - The design/architecture source documents: [Planning documents](planning-documents.md).

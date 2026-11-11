@@ -1,10 +1,52 @@
 # Brain Battle — Changelog
 
-**Current release: v3.0.0-beta.1** (authoritative source:
+**Current release: v3.0.0-beta.2** (authoritative source:
 `brain_battle/version.py` `__version__`). The "Phase 2.N" headings below are
 historical dev-log numbering, kept as history — they do not track the release
-version. `main` and `develop` are both `3.0.0-beta.1`; the 3.x dev-log entries
+version. `main` and `develop` are both `3.0.0-beta.2`; the 3.x dev-log entries
 are at the top.
+
+## 3.0.0-beta.2 · Cleanup + tool-neutral handover
+
+Prepares the repo to hand over to a different AI coding tool (OpenAI Codex)
+while the owner continues to use Claude Code. Code tidy-ups plus tool-neutral,
+clearly-organised documentation. No user-facing behaviour change beyond the
+default recordings folder.
+
+- **Screens renamed `*Tab` → `*Screen`** (classes and module files, via
+  `git mv`): `SessionsTab`/`ReviewLabelTab`/`SettingsTab`/`DocsTab` →
+  `…Screen`, `ui/sessions_tab.py` → `ui/sessions_screen.py`, etc. The deferred
+  item from [ADR-0013](docs/decisions/adr-0013-package-reorganisation.md) is
+  done.
+- **Default recordings folder → `~/Documents/Brain Battle Data`** (the OS
+  Documents folder; Linux honours `XDG_DOCUMENTS_DIR`), defined only in
+  `brain_battle/paths.py`. A folder chosen in Settings and
+  `BRAIN_BATTLE_CAPTURE_DIR` still take priority. The repo-root `Captures/`
+  folder and its `.gitignore` entry are removed. New
+  [ADR-0014](docs/decisions/adr-0014-documents-default-folder.md).
+- **Dead code removed:** 12 unused helpers in `ui/design_tokens.py` (zero
+  callers, re-verified).
+- **Tool-neutral handover:** new `AGENTS.md` is the single source of agent
+  instructions and the full handover (status, package layout, running,
+  simulation + tests, working agreement, **branch policy**, conventions,
+  what's next, hardware-blocked items). `CLAUDE.md` is now a minimal stub that
+  imports it (`@AGENTS.md`) so Claude Code loads the same instructions; `.claude/`
+  is untouched. Every current doc/code/test reference points at `AGENTS.md`; the
+  developer "built with Claude Code" workflow is reframed as a tool-neutral
+  "AI-assisted development workflow" covering Claude Code and Codex.
+- **Branch policy recorded** (AGENTS.md + developer setup & workflow): `main` =
+  the stable, reviewed version; `develop` = staging; all new work lands on
+  `develop` first and merges to `main` only after owner review + approval, with
+  a version tag.
+- **Docs organised:** superseded/historical documents moved into `docs/archive/`
+  (`ARCHITECTURE_AND_EVALUATION.md`, `PLAYBACK_PROPOSAL.md`, project `history.md`);
+  `DESIGN.md` and `ROADMAP.md` stay current at the `docs/` root. nav.yml, the
+  Planning documents page, ADR links and docs-guide updated.
+- `.gitignore` now explicitly ignores local AI-agent config (`.claude/`,
+  `.codex/`) so it's never committed across tools/machines.
+- All 27 test scripts pass; a headless simulated run (record → Review & Label →
+  Documentation → round bell) confirms the recording lands in the new default
+  folder.
 
 ## 3.0.0-beta.1 · Package reorganisation + first beta
 

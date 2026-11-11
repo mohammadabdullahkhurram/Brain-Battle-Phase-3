@@ -15,6 +15,8 @@ default recordings folder at the user's Documents instead.
 """
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 # brain_battle/paths.py -> brain_battle/ -> <repo root>
@@ -22,10 +24,29 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ASSETS_DIR = REPO_ROOT / "assets"
 DOCS_DIR = REPO_ROOT / "docs"
 
+#: Name of the folder (inside the user's Documents) where recordings are saved
+#: by default.
+DEFAULT_CAPTURE_DIRNAME = "Brain Battle Data"
+
+
+def documents_dir() -> Path:
+    """The current user's OS "Documents" folder, cross-platform.
+
+    macOS and Windows both use ``~/Documents``. On Linux the XDG user-dirs
+    ``XDG_DOCUMENTS_DIR`` is honoured if configured, else ``~/Documents``.
+    """
+    home = Path(os.path.expanduser("~"))
+    if sys.platform not in ("darwin", "win32"):
+        xdg = os.environ.get("XDG_DOCUMENTS_DIR")
+        if xdg:
+            return Path(os.path.expandvars(xdg))
+    return home / "Documents"
+
 
 def default_capture_root() -> str:
     """The default recordings folder when the user hasn't chosen one and
-    ``BRAIN_BATTLE_CAPTURE_DIR`` isn't set: a ``Captures/`` folder at the repo
-    root. This is the single definition of that default (ROADMAP Phase 6 will
-    switch the packaged app to a Documents-based default)."""
-    return str(REPO_ROOT / "Captures")
+    ``BRAIN_BATTLE_CAPTURE_DIR`` isn't set: a ``Brain Battle Data`` folder in
+    the user's OS Documents folder. This is the single definition of that
+    default. A folder chosen in Settings and ``BRAIN_BATTLE_CAPTURE_DIR`` both
+    take priority (see ``AppSettings.capture_dir_resolved``)."""
+    return str(documents_dir() / DEFAULT_CAPTURE_DIRNAME)

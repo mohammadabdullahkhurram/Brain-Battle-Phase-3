@@ -8,7 +8,7 @@ Covers the append-only history.jsonl:
   - a SIGKILL mid-write leaves a still-readable file (append + fsync per line);
   - the real app hooks actually log: recording_started / recording_finished
     (LiveSessionTab), opened_for_review + labels_added / labels_removed
-    (the merged ReviewLabelTab). Export's export_created hook is in test_export.
+    (the merged ReviewLabelScreen). Export's export_created hook is in test_export.
 
 Run:  python3 tests/test_history_log.py   (nonzero exit on any failure)
 """
@@ -116,9 +116,9 @@ def test_sigkill_midwrite():
 # (labels_exported → export_created is covered in tests/test_export.py)
 
 def test_label_hooks():
-    import brain_battle.ui.review_label_tab as rl
+    import brain_battle.ui.review_label_screen as rl
     root = DEMO_ROOT
-    tab = rl.ReviewLabelTab()
+    tab = rl.ReviewLabelScreen()
     try:
         tab.load_session_folder(root)
         tab.wait_loaded()
@@ -165,8 +165,8 @@ def test_recording_hooks():
 # ─── 6. hook: opened_for_review (merged Review & Label screen) ───────────────
 
 def test_opened_for_review_hook():
-    import brain_battle.ui.review_label_tab as rl
-    tab = rl.ReviewLabelTab()
+    import brain_battle.ui.review_label_screen as rl
+    tab = rl.ReviewLabelScreen()
     try:
         tab.load_session_folder(DEMO_ROOT)
         tab.wait_loaded()

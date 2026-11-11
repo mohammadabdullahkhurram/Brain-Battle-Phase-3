@@ -39,7 +39,9 @@ lookup scattered across several modules each deriving the repo root from its own
   at the repo root as a thin launcher shim re-exporting from `brain_battle.app`,
   so the old command and `import brain_battle_main` keep working.
 - **`brain_battle/paths.py`** is the single source of repo-relative paths
-  (`REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`, the default `Captures/`). `fonts`,
+  (`REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`, the default recordings folder —
+  then `REPO_ROOT/Captures`, since moved to Documents by
+  [ADR-0014](adr-0014-documents-default-folder.md)). `fonts`,
   `round_bell`, `docs_nav` and `app_settings` resolve through it instead of
   their own `__file__`, so modules survive moving between subpackages.
 - **Renames:** `sync_beep.py` → `capture/round_bell.py`, class `SyncBeep` →
@@ -63,10 +65,10 @@ lookup scattered across several modules each deriving the repo root from its own
   folder is still `REPO_ROOT/Captures`. Both are deferred to **ROADMAP Phase 6**
   (ship assets/docs/sounds/fonts as package data; default the recordings folder
   to the user's Documents for the packaged app).
-- **Deferred rename.** The `*Tab` screen classes (`SessionsTab`,
-  `ReviewLabelTab`, `SettingsTab`, `DocsTab`) keep their historical names this
-  pass to bound the diff; renaming them to `*Screen` is tracked as a later
-  ROADMAP cleanup item.
+- **Deferred rename (since done).** The screen classes kept their historical
+  `*Tab` names in this pass to bound the diff. They were renamed to `*Screen`
+  (`SessionsScreen`, `ReviewLabelScreen`, `SettingsScreen`, `DocsScreen`), with
+  their module files, in v3.0.0-beta.2.
 - **No behaviour change** — this is structure, packaging, and cleanup; all 27
   test scripts pass, and `python3 -m brain_battle` plus the shim both launch.
 

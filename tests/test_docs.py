@@ -1,5 +1,5 @@
 """
-The in-app Documentation tab (docs_tab.py, docs_nav.py) + the docs/ content
+The in-app Documentation tab (docs_screen.py, docs_nav.py) + the docs/ content
 itself (Phase 3 step D1 — Getting started + User guide).
 
 Covers:
@@ -70,7 +70,7 @@ def _load_test_layout_fit():
 # ─── 1 + 2. every nav page exists, renders, and its images exist ─────────────
 
 def test_nav_pages_render():
-    from brain_battle.ui.docs_tab import DocsTab
+    from brain_battle.ui.docs_screen import DocsScreen
     nav = docs_nav.load_nav()
     check("nav.yml has at least one section", len(nav.sections) > 0)
     check("nav.yml has at least one page", len(nav.all_pages()) > 0)
@@ -79,7 +79,7 @@ def test_nav_pages_render():
     check("every nav.yml page's .md file exists", not missing,
           str([p.file for p in missing]))
 
-    tab = DocsTab()
+    tab = DocsScreen()
     for page in nav.all_pages():
         try:
             tab.open_page(page.id)
@@ -176,6 +176,7 @@ _KNOWN_PHRASES = {
     "adr-0011": "device boundary",
     "adr-0012": "QSvgRenderer",
     "adr-0013": "Reorganise into",
+    "adr-0014": "Documents folder",
     # Project (D3)
     "goals": "Community Impact Project",
     "status": "working agreement",
@@ -202,8 +203,8 @@ def test_search_finds_known_phrases():
 
 
 def test_search_highlighting():
-    from brain_battle.ui.docs_tab import DocsTab
-    tab = DocsTab()
+    from brain_battle.ui.docs_screen import DocsScreen
+    tab = DocsScreen()
     tab.open_page("troubleshooting")
     tab._highlight("Reconnect")
     check("highlighting a known phrase produces at least one match",
@@ -216,8 +217,8 @@ def test_search_highlighting():
 # ─── 5b. search UX (count / section / clear / Esc / Enter) ──────────────────
 
 def test_search_ux():
-    from brain_battle.ui.docs_tab import DocsTab
-    tab = DocsTab()
+    from brain_battle.ui.docs_screen import DocsScreen
+    tab = DocsScreen()
 
     # The × clear button is enabled on the search box.
     check("search box has a clear (×) button", tab._search_box.isClearButtonEnabled())
@@ -304,8 +305,8 @@ def test_result_rows_show_title_section_and_bold_match():
     """Each result row carries structured data (title / section / snippet with
     the match located) for the rich-text delegate — the title is rendered
     bold, the section beneath it, then the snippet with the match bold."""
-    from brain_battle.ui.docs_tab import DocsTab, _RESULT_ROLE
-    tab = DocsTab()
+    from brain_battle.ui.docs_screen import DocsScreen, _RESULT_ROLE
+    tab = DocsScreen()
     tab._search_box.setText("Reconnect")
     n = tab._results_list.count()
     check("the search produced result rows", n > 0, str(n))
@@ -324,9 +325,9 @@ def test_result_rows_show_title_section_and_bold_match():
 
 
 def test_results_list_no_horizontal_scroll():
-    from brain_battle.ui.docs_tab import DocsTab
+    from brain_battle.ui.docs_screen import DocsScreen
     from PyQt6.QtWidgets import QMainWindow
-    tab = DocsTab()
+    tab = DocsScreen()
     win = QMainWindow(); win.setCentralWidget(tab); win.resize(1180, 720); win.show()
     for _ in range(3):
         _app.processEvents()
@@ -347,10 +348,10 @@ def test_image_height_matches_displayed_size():
     height, not its full intrinsic height (which left a large gap below it and
     made search land on blank space). Each image fragment gets an explicit
     width AND height, proportional to the source aspect ratio."""
-    from brain_battle.ui.docs_tab import DocsTab
+    from brain_battle.ui.docs_screen import DocsScreen
     from PyQt6.QtWidgets import QMainWindow
     from PyQt6.QtGui import QTextDocument
-    tab = DocsTab()
+    tab = DocsScreen()
     win = QMainWindow(); win.setCentralWidget(tab); win.resize(1280, 800); win.show()
     for _ in range(4):
         _app.processEvents()
@@ -391,9 +392,9 @@ def test_image_height_matches_displayed_size():
 def test_search_match_scrolled_into_view():
     """Opening a body-match result scrolls so the match sits near the top of the
     viewport (roughly the upper third), not off-screen or in a blank gap."""
-    from brain_battle.ui.docs_tab import DocsTab
+    from brain_battle.ui.docs_screen import DocsScreen
     from PyQt6.QtWidgets import QMainWindow
-    tab = DocsTab()
+    tab = DocsScreen()
     win = QMainWindow(); win.setCentralWidget(tab); win.resize(1280, 800); win.show()
     for _ in range(4):
         _app.processEvents()
@@ -468,11 +469,11 @@ def _svg_viewbox_width(svg_text: str):
 
 
 def test_diagram_text_is_readable():
-    """At the content display width (docs_tab.MAX_IMG_WIDTH), each diagram's
+    """At the content display width (docs_screen.MAX_IMG_WIDTH), each diagram's
     label text must be at least ~12 px — otherwise it's unreadable once scaled
     into the reading column. displayed = declared_font × MAX_IMG_WIDTH / svg
     width (see docs/contributing/docs-guide.md 'Diagram size')."""
-    import brain_battle.ui.docs_tab as docs_tab
+    import brain_battle.ui.docs_screen as docs_screen
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import render_diagrams as rd
     mmd_files = sorted(rd.DIAGRAMS_DIR.glob("*.mmd"))
@@ -484,9 +485,9 @@ def test_diagram_text_is_readable():
         vbw = _svg_viewbox_width(svg.read_text(encoding="utf-8")) if svg.is_file() else None
         check(f"{p.stem}.svg has a viewBox width", vbw is not None)
         if font and vbw:
-            displayed = font * docs_tab.MAX_IMG_WIDTH / vbw
+            displayed = font * docs_screen.MAX_IMG_WIDTH / vbw
             check(f"{p.stem}: label text is ≥12px when displayed "
-                  f"({displayed:.1f}px at {docs_tab.MAX_IMG_WIDTH}px wide; "
+                  f"({displayed:.1f}px at {docs_screen.MAX_IMG_WIDTH}px wide; "
                   f"narrow the diagram or raise fontSize if not)",
                   displayed >= 12.0, f"{displayed:.1f}px")
 

@@ -1,5 +1,5 @@
 """
-sessions_tab.py
+sessions_screen.py
 ───────────────
 The Sessions home screen (docs/DESIGN.md §1): a library of every recording in
 the recordings folder. Scanning + folder sizing run on background threads so
@@ -202,7 +202,7 @@ def _demo_badge():
     return chip
 
 
-class SessionsTab(QWidget):
+class SessionsScreen(QWidget):
     open_session    = pyqtSignal(str)
     new_recording   = pyqtSignal()
     help_requested  = pyqtSignal()
@@ -220,7 +220,7 @@ class SessionsTab(QWidget):
         self._newest_first = True
         self._scan_worker = None
         self._size_worker = None
-        self.setStyleSheet(f"SessionsTab {{ background: {dt.canvas_bg()}; }}")
+        self.setStyleSheet(f"SessionsScreen {{ background: {dt.canvas_bg()}; }}")
         self._build()
 
     # ---- construction ----
@@ -626,5 +626,5 @@ def _small_secondary():
             f"QPushButton:hover {{ border-color: {dt.accent()}; color: {dt.accent()}; }}")
 
 
-__all__ = ["SessionsTab", "filter_sort_sessions", "status_counts",
+__all__ = ["SessionsScreen", "filter_sort_sessions", "status_counts",
            "length_text", "reveal_in_finder"]

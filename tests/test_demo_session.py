@@ -1,7 +1,7 @@
 """
 Tests for tools/generate_demo_session.py — the fixture every later roadmap
 phase builds against since there is no working hardware right now (see
-CLAUDE.md "Project situation").
+AGENTS.md "Project situation").
 
 Generates a demo session into a temp dir and checks:
   1. Layout matches what SyncReviewTab.load_session_folder expects.
@@ -129,12 +129,12 @@ def test_review_tab_loads():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt6.QtWidgets import QApplication
     QApplication.instance() or QApplication(sys.argv)
-    import brain_battle.ui.review_label_tab as rl
+    import brain_battle.ui.review_label_screen as rl
 
     with tempfile.TemporaryDirectory() as tmp:
         result = generate_demo_session(out=tmp, rounds=1, round_sec=10,
                                        break_sec=3, baseline_sec=3, seed=2)
-        tab = rl.ReviewLabelTab()
+        tab = rl.ReviewLabelScreen()
         try:
             tab.load_session_folder(result["root"])
             # labels/timeline are available immediately; the player loads in
@@ -142,7 +142,7 @@ def test_review_tab_loads():
             check("phases available immediately after open (labels-first)",
                   len(tab._phases) == len(result["markers"]))
             tab.wait_loaded()
-            check("ReviewLabelTab.load_session_folder: no exception", True)
+            check("ReviewLabelScreen.load_session_folder: no exception", True)
             check("single-clock player built with a sane duration",
                   tab._player is not None and tab._duration > 0, f"{tab._duration:.1f}s")
             check("phase markers loaded from phase_markers.csv",
@@ -198,9 +198,9 @@ def test_marker_label_format():
         check("generated markers use underscore form (ROUND_1_START)",
               labels == expected, str(labels))
 
-    # The merged screen's marker parser (review_label_tab.friendly_phase) must
+    # The merged screen's marker parser (review_label_screen.friendly_phase) must
     # read BOTH the new underscore form and the legacy space form.
-    from brain_battle.ui.review_label_tab import friendly_phase
+    from brain_battle.ui.review_label_screen import friendly_phase
     pairs = [
         ("ROUND_1_START", "ROUND 1_START", "Round 1"),
         ("BREAK_2_START", "BREAK 2_START", "Break"),

@@ -6,12 +6,12 @@ hardware situation that shapes all of it.
 
 ## In one line
 
-**Phase 3 and the documentation are complete, and the app has been reorganised
-into the `brain_battle` package** (`main` and `develop` are both
-`3.0.0-beta.1`, the first tagged pre-release — see
-[ADR-0013](../decisions/adr-0013-package-reorganisation.md)). Phase 5 is next,
-gated on owner approval. The hardware is broken, so everything is built and
-tested against a generated demo session and simulated devices.
+**Phase 3 and the documentation are complete; the app is organised into the
+`brain_battle` package and the repo has been cleaned up and made tool-neutral
+for handover** (`main` and `develop` are both `3.0.0-beta.2`; the package
+reorganisation is [ADR-0013](../decisions/adr-0013-package-reorganisation.md)).
+Phase 5 is next, gated on owner approval. The hardware is broken, so everything
+is built and tested against a generated demo session and simulated devices.
 
 ## What's complete
 
@@ -34,7 +34,7 @@ tested against a generated demo session and simulated devices.
   ([ADR-0013](../decisions/adr-0013-package-reorganisation.md)).
 
 The old Review/Labelling tabs, VLC, audio-xcorr, and the Live Monitor are gone;
-see [Version history](version-history.md) and [Project history](history.md).
+see [Version history](version-history.md) and [Project history](../archive/history.md).
 
 ## What's next
 

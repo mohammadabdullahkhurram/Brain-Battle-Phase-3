@@ -20,7 +20,7 @@ Covers:
   1b. export_module's import-time _HW_ENCODER equals what post-import
      detection returns — i.e. the import-time probe really ran and did not
      silently fall back.
-  2. Construct RecordFlow, ReviewLabelTab, SessionsTab, SettingsTab,
+  2. Construct RecordFlow, ReviewLabelScreen, SessionsScreen, SettingsScreen,
      BrainBattleApp headless (no event pumping — no camera probing, no playback).
   3. Minimal pure-logic checks: session timeline phase order, config
      validation, __version__ surfaced in the window title.
@@ -165,16 +165,16 @@ def part2_construct_tabs_and_shell(app):
     print("── 2. headless construction of tabs + app shell")
     import brain_battle_main as bbm
     from brain_battle.ui.record_flow import RecordFlow
-    from brain_battle.ui.sessions_tab import SessionsTab
-    from brain_battle.ui.review_label_tab import ReviewLabelTab
-    from brain_battle.ui.settings_tab import SettingsTab
-    from brain_battle.ui.docs_tab import DocsTab
+    from brain_battle.ui.sessions_screen import SessionsScreen
+    from brain_battle.ui.review_label_screen import ReviewLabelScreen
+    from brain_battle.ui.settings_screen import SettingsScreen
+    from brain_battle.ui.docs_screen import DocsScreen
 
     for name, ctor in (("RecordFlow", RecordFlow),
-                       ("ReviewLabelTab", ReviewLabelTab),
-                       ("SessionsTab", lambda: SessionsTab("/tmp")),
-                       ("SettingsTab", SettingsTab),
-                       ("DocsTab", DocsTab)):
+                       ("ReviewLabelScreen", ReviewLabelScreen),
+                       ("SessionsScreen", lambda: SessionsScreen("/tmp")),
+                       ("SettingsScreen", SettingsScreen),
+                       ("DocsScreen", DocsScreen)):
         try:
             w = ctor()
             check(f"construct {name}", True)
@@ -235,7 +235,7 @@ if __name__ == "__main__":
     if stubbed:
         print("  (libVLC absent — construct checks use the vlc stub)")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    # Constructing SettingsTab/BrainBattleApp touches the recordings folder
+    # Constructing SettingsScreen/BrainBattleApp touches the recordings folder
     # (free-space read, label_list.json seed) — point it at a throwaway temp
     # dir so this headless construct check never writes into the real repo's
     # Captures/.

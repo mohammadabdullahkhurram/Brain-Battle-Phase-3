@@ -1,5 +1,5 @@
 """
-settings_tab.py
+settings_screen.py
 ────────────────
 The real Settings screen (DESIGN §7) — everything that used to be hard-coded
 in source now lives here, editing the `app_settings` store. Every control
@@ -16,9 +16,9 @@ session defaults (steppers + round bell + Test sound), the shared label list
 footer.
 
 Public surface used by the app shell:
-  • SettingsTab(parent)
+  • SettingsScreen(parent)
   • .capture_dir_changed (signal, str) — [Change folder…] picked a new
-    recordings folder; the shell re-points SidebarShell + SessionsTab at it.
+    recordings folder; the shell re-points SidebarShell + SessionsScreen at it.
 """
 from __future__ import annotations
 
@@ -174,7 +174,7 @@ class _LabelRow(QFrame):
 
 # ── the screen ──────────────────────────────────────────────────────────────
 
-class SettingsTab(QWidget):
+class SettingsScreen(QWidget):
     capture_dir_changed = pyqtSignal(str)   # [Change folder…] picked a new folder
     help_requested      = pyqtSignal()
 
@@ -183,7 +183,7 @@ class SettingsTab(QWidget):
         self._settings = app_settings.load()
         self._labels: list[dict] = []
         self._scan_thread = None
-        self.setStyleSheet(f"SettingsTab {{ background: {dt.canvas_bg()}; }}")
+        self.setStyleSheet(f"SettingsScreen {{ background: {dt.canvas_bg()}; }}")
         self._build()
         self._refresh_all()
 
@@ -322,7 +322,7 @@ class SettingsTab(QWidget):
         self.capture_dir_changed.emit(path)
 
     def _on_show_in_finder(self):
-        from brain_battle.ui.sessions_tab import reveal_in_finder
+        from brain_battle.ui.sessions_screen import reveal_in_finder
         reveal_in_finder(self._settings.capture_dir_resolved())
 
     # ── 2. Headbands ──
@@ -585,4 +585,4 @@ class SettingsTab(QWidget):
         self._save_labels()
 
 
-__all__ = ["SettingsTab"]
+__all__ = ["SettingsScreen"]

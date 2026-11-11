@@ -125,19 +125,19 @@ class BrainBattleApp(QMainWindow):
         self.record_flow = RecordFlow()
         self.record_flow.session_saved.connect(self._on_session_saved)
         self.record_flow.exit_flow.connect(self._go_to_sessions)
-        from brain_battle.ui.review_label_tab import ReviewLabelTab
-        self._review_page = ReviewLabelTab()
+        from brain_battle.ui.review_label_screen import ReviewLabelScreen
+        self._review_page = ReviewLabelScreen()
         self._review_page.back_to_sessions.connect(self._go_to_sessions)
-        from brain_battle.ui.sessions_tab import SessionsTab
-        self._sessions_page = SessionsTab(capture_dir)
+        from brain_battle.ui.sessions_screen import SessionsScreen
+        self._sessions_page = SessionsScreen(capture_dir)
         self._sessions_page.new_recording.connect(self._go_to_new_recording)
         self._sessions_page.open_session.connect(self._open_session_in_review)
-        from brain_battle.ui.settings_tab import SettingsTab
-        self._settings_page = SettingsTab()
+        from brain_battle.ui.settings_screen import SettingsScreen
+        self._settings_page = SettingsScreen()
         self._settings_page.capture_dir_changed.connect(self._on_capture_dir_changed)
         self._settings_page.help_requested.connect(lambda: self.open_help("settings"))
-        from brain_battle.ui.docs_tab import DocsTab
-        self._docs_page = DocsTab()
+        from brain_battle.ui.docs_screen import DocsScreen
+        self._docs_page = DocsScreen()
 
         self._sessions_page.help_requested.connect(lambda: self.open_help("sessions"))
         self.record_flow.help_requested.connect(self.open_help)

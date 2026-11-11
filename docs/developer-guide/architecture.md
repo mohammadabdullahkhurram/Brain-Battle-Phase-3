@@ -65,7 +65,7 @@ work; a support layer plus a couple of package-top modules (`app`, `version`,
 
 | Subpackage | Modules | Job |
 |---|---|---|
-| **`ui/`** | `sidebar_shell`, `sessions_tab`, `record_flow`, `review_label_tab`, `settings_tab`, `docs_tab`, `design_tokens`, `fonts` | The four DESIGN screens behind a light sidebar shell, the in-app docs, and the light-only design system. |
+| **`ui/`** | `sidebar_shell`, `sessions_screen`, `record_flow`, `review_label_screen`, `settings_screen`, `docs_screen`, `design_tokens`, `fonts` | The four DESIGN screens behind a light sidebar shell, the in-app docs, and the light-only design system. |
 | **`capture/`** | `camera_source`, `headband_source`, `usb_camera`, `eeg_module`, `eeg_plot_pg`, `session_controller`, `simulation`, `contact_quality`, `contact_log`, `keep_awake`, `round_bell` | Turn live devices into files on disk during a recording (plus the dev-only simulator and the round bell). |
 | **`playback/`** | `pyav_player` | App-driven multi-camera decode on one playhead. |
 | **`data/`** | `session_storage`, `session_history`, `labels_store`, `label_vocab`, `export_module`, `app_settings` | On-disk layout, the history log, labels + the shared vocabulary, the export bundle, and the settings store. |
@@ -77,15 +77,15 @@ main runtime interactions are drawn as [key flows](key-flows.md).
 ## The three screens (plus two)
 
 The product is **three screens plus Settings**, wired behind a light sidebar
-shell (`sidebar_shell.py`), with an in-app Documentation screen (`docs_tab.py`)
+shell (`sidebar_shell.py`), with an in-app Documentation screen (`docs_screen.py`)
 added in documentation step D1:
 
-1. **Sessions** (`sessions_tab.py`) — the home library; the app opens here.
+1. **Sessions** (`sessions_screen.py`) — the home library; the app opens here.
 2. **New recording** (`record_flow.py`) — a full-screen guided flow: Connect →
    Set up → Record → Saved.
-3. **Review & Label** (`review_label_tab.py`) — one merged screen for playback
+3. **Review & Label** (`review_label_screen.py`) — one merged screen for playback
    and labelling on a single `t_session_seconds` playhead.
-4. **Settings** (`settings_tab.py`) — everything that used to be hardcoded.
+4. **Settings** (`settings_screen.py`) — everything that used to be hardcoded.
 
 The source of truth for how these screens look and read is
 [`docs/DESIGN.md`](../project/planning-documents.md); the reasoning behind the
