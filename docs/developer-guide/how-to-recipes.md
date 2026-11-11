@@ -26,7 +26,7 @@ otherwise, on purpose.
 
 1. Add it to the store in `app_settings.py` (a default, an accessor, and
    round-trip through `to_json`/`load`).
-2. Add a control to the right card in `settings_tab.py`; autosave it with the
+2. Add a control to the right card in `settings_screen.py`; autosave it with the
    "✓ Saved" flash like the others.
 3. Read it where it takes effect (e.g. `record_flow`, the recorder) — **read the
    setting, don't hardcode**.
@@ -39,11 +39,11 @@ otherwise, on purpose.
 
 - The **vocabulary** (the team's label list) is data, not code: it lives in
   `label_list.json` in the recordings folder and is edited in Settings
-  (`settings_tab.py` → `label_vocab`). Adding a label the team uses is a Settings
+  (`settings_screen.py` → `label_vocab`). Adding a label the team uses is a Settings
   action, not a code change.
 - A genuinely new **kind** (beyond `point`/`duration`) is a schema change in
   `labels_store.py`: add the constant, handle it in `new_label`, the placement
-  logic in `review_label_tab._handle_duration`/`_commit_label`, the timeline
+  logic in `review_label_screen._handle_duration`/`_commit_label`, the timeline
   rendering (`TimelineStrip`), and the export (`export_module._write_events_csv`).
   Update `tests/test_labels_v2.py`, the `labels.json` section of
   [file-formats.md](../research-and-data/file-formats.md), and — if it's a
@@ -81,7 +81,7 @@ otherwise, on purpose.
 ## Change the video quality levels
 
 1. The levels are resolution + bitrate in `app_settings.py` (`video_dims`,
-   `video_mbps`); the Settings card is `settings_tab._build_quality_card`.
+   `video_mbps`); the Settings card is `settings_screen._build_quality_card`.
 2. The GB/hour copy and the disk estimate are **computed from the bitrate**
    (`app_settings.gb_per_hour`, `session_storage.estimate_session_bytes`) — don't
    hardcode a GB number.

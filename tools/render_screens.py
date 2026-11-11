@@ -80,7 +80,7 @@ def _strip_demo_flag_from_fixtures(folder):
     """Docs mode only: clear `demo: true` in every session manifest under
     `folder`, so the committed Sessions screenshot shows ordinary recordings
     rather than ones wearing the in-app "Demo" badge. The app still badges real
-    demo data (see sessions_tab); these render-tool fixtures simply aren't demo
+    demo data (see sessions_screen); these render-tool fixtures simply aren't demo
     data once rewritten. Render-tool-only — the app's manifest read/write path
     is untouched."""
     import json

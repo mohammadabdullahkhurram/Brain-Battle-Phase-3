@@ -15,7 +15,7 @@ pixel-faithful to what Mermaid intends.
 
 Why PNG, not SVG, in the Markdown
 ──────────────────────────────────
-Qt's QTextBrowser/QTextDocument (used by docs_tab.py, no QtWebEngine) loads
+Qt's QTextBrowser/QTextDocument (used by docs_screen.py, no QtWebEngine) loads
 images through QtSvg's QSvgRenderer, which only implements a small, old
 subset of SVG+CSS. Mermaid's SVG output relies on two things that subset
 doesn't support: (1) element styling from an embedded <style> block with
@@ -60,7 +60,7 @@ DIAGRAMS_DIR = ROOT / "docs" / "diagrams"
 MERMAID_CLI_PKG = "@mermaid-js/mermaid-cli@12.2.0"
 
 # Raster scale factor for the PNG (puppeteer device-pixel-ratio) — 2x gives a
-# sharp result at the ~700-900px column width docs_tab.py displays images at.
+# sharp result at the ~700-900px column width docs_screen.py displays images at.
 PNG_SCALE = "2"
 
 

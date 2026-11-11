@@ -144,8 +144,8 @@ def test_end_to_end():
         check("Sessions not interrupted", not info.interrupted)
 
         # opens in Review & Label with markers + the moment surfaced
-        from brain_battle.ui.review_label_tab import ReviewLabelTab, read_phase_markers
-        rt = ReviewLabelTab()
+        from brain_battle.ui.review_label_screen import ReviewLabelScreen, read_phase_markers
+        rt = ReviewLabelScreen()
         try:
             rt.load_session_folder(root); rt.wait_loaded()
             check("Review sees the phase markers", len(read_phase_markers(root)) >= 4)

@@ -1525,7 +1525,7 @@ class RecordFlow(QWidget):
     def _build_saved_info(self):
         import datetime as _dt
         from brain_battle.data.session_storage import folder_size_bytes, session_total_seconds
-        from brain_battle.ui.review_label_tab import read_phase_markers
+        from brain_battle.ui.review_label_screen import read_phase_markers
         root = self._saved_root
         a, b = self._names.get("A"), self._names.get("B")
         vs = f"{a or 'Boxer A'} vs {b or 'Boxer B'}"
@@ -1593,7 +1593,7 @@ class RecordFlow(QWidget):
     def reveal_saved(self):
         if self._saved_root:
             try:
-                from brain_battle.ui.sessions_tab import reveal_in_finder
+                from brain_battle.ui.sessions_screen import reveal_in_finder
                 reveal_in_finder(self._saved_root)
             except Exception as e:
                 log.warning("reveal in finder failed: %s", e)

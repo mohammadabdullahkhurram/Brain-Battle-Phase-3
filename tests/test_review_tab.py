@@ -1,5 +1,5 @@
 """
-ReviewLabelTab integration tests — labelling through the real merged screen:
+ReviewLabelScreen integration tests — labelling through the real merged screen:
 duration flow (incl. Esc cancel), undo/redo, keyboard focus rules, autosave +
 history events, and the seeded vocabulary file. Playback itself is covered by
 test_player.py; here we drive the label side.
@@ -38,8 +38,8 @@ def check(name, cond, detail=""):
 
 
 def _fresh_tab():
-    import brain_battle.ui.review_label_tab as rl
-    tab = rl.ReviewLabelTab()
+    import brain_battle.ui.review_label_screen as rl
+    tab = rl.ReviewLabelScreen()
     tab.load_session_folder(DEMO_ROOT)
     tab.wait_loaded()
     tab._seek(2.0)
@@ -64,7 +64,7 @@ def _key(tab, key, mods=Qt.KeyboardModifier.NoModifier):
 def test_fast_open_labels_first():
     """labels.json + the label list + timeline marks are available immediately
     on Open; the (slow) video + brain data load in the background."""
-    import brain_battle.ui.review_label_tab as rl
+    import brain_battle.ui.review_label_screen as rl
     import brain_battle.data.labels_store as labels_store
     import json, time as _t
     # seed a few labels on disk so there is something to show at once
@@ -73,7 +73,7 @@ def test_fast_open_labels_first():
         store.add(labels_store.new_label(nm, "A", labels_store.POINT, t0, created_by="x"))
     store.save(os.path.join(DEMO_ROOT, "labels.json"))
 
-    tab = rl.ReviewLabelTab()
+    tab = rl.ReviewLabelScreen()
     t0 = _t.perf_counter()
     tab.load_session_folder(DEMO_ROOT)
     elapsed = _t.perf_counter() - t0

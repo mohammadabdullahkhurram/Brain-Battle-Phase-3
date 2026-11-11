@@ -41,7 +41,7 @@ import brain_battle.data.label_vocab as label_vocab
 import brain_battle.data.labels_store as labels_store
 import brain_battle.data.session_history as session_history
 import brain_battle.data.export_module as export_module
-from brain_battle.ui.review_label_tab import read_phase_markers
+from brain_battle.ui.review_label_screen import read_phase_markers
 
 _app = QApplication.instance() or QApplication(sys.argv)
 

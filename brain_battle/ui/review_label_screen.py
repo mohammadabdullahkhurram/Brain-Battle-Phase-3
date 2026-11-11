@@ -1,5 +1,5 @@
 """
-review_label_tab.py
+review_label_screen.py
 ───────────────────
 The one merged Review & Label screen (DESIGN §6). Everything runs off a single
 playhead on the t_session_seconds axis via pyav_player: the video tiles, both
@@ -12,7 +12,7 @@ thread (each section shows its own plain loading state) so placed labels never
 wait behind decoding or EEG parsing.
 
 Public surface used by the app shell:
-  • ReviewLabelTab(parent) — one widget for the "Review & Label" page.
+  • ReviewLabelScreen(parent) — one widget for the "Review & Label" page.
   • .load_session_folder(root) — open a v3 recording (returns fast).
   • .wait_loaded(timeout) — block until the background media load finishes
     (tests only; the live UI just lets the loading states resolve).
@@ -636,7 +636,7 @@ class _MediaLoadWorker(QThread):
 
 # ── the tab ──────────────────────────────────────────────────────────────────────
 
-class ReviewLabelTab(QWidget):
+class ReviewLabelScreen(QWidget):
     back_to_sessions = pyqtSignal()
     help_requested   = pyqtSignal()
 
@@ -656,7 +656,7 @@ class ReviewLabelTab(QWidget):
         self._focus_getter = None
         self._loader = None
         self._loaded = False
-        self.setStyleSheet(f"ReviewLabelTab {{ background: {dt.canvas_bg()}; }}")
+        self.setStyleSheet(f"ReviewLabelScreen {{ background: {dt.canvas_bg()}; }}")
         self._build()
 
     # ---- construction ----
@@ -1363,5 +1363,5 @@ def _getuser() -> str:
         return "user"
 
 
-__all__ = ["ReviewLabelTab", "read_phase_markers", "friendly_phase", "short_phase",
+__all__ = ["ReviewLabelScreen", "read_phase_markers", "friendly_phase", "short_phase",
            "_discover_cameras", "_fmt_time"]

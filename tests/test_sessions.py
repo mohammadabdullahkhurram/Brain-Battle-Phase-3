@@ -48,7 +48,7 @@ from PyQt6.QtWidgets import (
 _app = QApplication.instance() or QApplication(sys.argv)
 
 import brain_battle.data.session_storage as ss
-import brain_battle.ui.sessions_tab as st
+import brain_battle.ui.sessions_screen as st
 from brain_battle.capture.session_controller import SessionConfig
 
 _failures = []
@@ -194,7 +194,7 @@ def test_banner_and_dismissal():
     interrupted = [r for r in rows if r.interrupted and not r.dismissed]
     check("banner: one pending interruption before dismissal", len(interrupted) == 1)
 
-    tab = st.SessionsTab(base)
+    tab = st.SessionsScreen(base)
     tab._on_scanned(rows)
     # isHidden() reflects the explicit setVisible() state without needing the
     # tab to be shown inside a top-level window.
@@ -212,7 +212,7 @@ def test_banner_and_dismissal():
     still_pending = [r for r in rows2 if r.interrupted and not r.dismissed]
     check("dismissal: no pending interruptions after restart", len(still_pending) == 0)
 
-    tab2 = st.SessionsTab(base)
+    tab2 = st.SessionsScreen(base)
     tab2._on_scanned(rows2)
     check("banner: does NOT reappear on a fresh screen after dismissal",
           tab2._banner.isHidden())
@@ -299,7 +299,7 @@ def test_layout_strict():
     rows = ss.list_sessions(BASE_LIB)
     for W, H in [(1440, 900), (1280, 800)]:
         win = QMainWindow()
-        tab = st.SessionsTab(BASE_LIB)
+        tab = st.SessionsScreen(BASE_LIB)
         win.setCentralWidget(tab)
         win.resize(W, H)
         win.show()
@@ -344,7 +344,7 @@ def test_row_controls_not_clipped():
     rows = ss.list_sessions(BASE_LIB)
     for W, H in [(1440, 900), (1280, 800), (1180, 720)]:
         win = QMainWindow()
-        tab = st.SessionsTab(BASE_LIB)
+        tab = st.SessionsScreen(BASE_LIB)
         win.setCentralWidget(tab)
         win.resize(W, H)
         win.show()

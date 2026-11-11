@@ -28,7 +28,7 @@ both jobs.
 ## Decision
 
 **Merge Review and Labelling into one "Review & Label" screen**
-(`review_label_tab.py` + `pyav_player.py`), driven by a single
+(`review_label_screen.py` + `pyav_player.py`), driven by a single
 `t_session_seconds` playhead. The separate Sync/Review concept goes away entirely
 — alignment is automatic and there is nothing to click to "sync". Labels, the
 video grid, the brain-activity card, and the timeline all move on the same

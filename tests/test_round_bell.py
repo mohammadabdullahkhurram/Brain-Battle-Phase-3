@@ -9,7 +9,7 @@ Covers:
      volume if needed, rather than the app being quiet by default).
   2. SessionController's beep_requested fires at BASELINE start and every
      ROUND start, and never on a BREAK.
-  3. SettingsTab's Test sound button plays the bundled file, headless.
+  3. SettingsScreen's Test sound button plays the bundled file, headless.
   4. A missing WAV logs a warning and stays silent — RoundBell never raises.
   5. The credits entry for the bell (and the bundled Inter font) exists in
      docs/project/credits.md and nav.yml.
@@ -137,9 +137,9 @@ def test_settings_test_sound_plays_bundled_bell():
     s = aps.load(); s.capture_dir = tempfile.mkdtemp(prefix="bb_round_bell_cap_"); s.save()
 
     import brain_battle.capture.round_bell as round_bell
-    from brain_battle.ui.settings_tab import SettingsTab
+    from brain_battle.ui.settings_screen import SettingsScreen
 
-    st = SettingsTab()
+    st = SettingsScreen()
     try:
         st._on_test_sound()
         ok = True

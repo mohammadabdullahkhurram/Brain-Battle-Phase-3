@@ -33,7 +33,7 @@ discarded, and surfaced once.
 1. On launch, `session_storage.scan_interrupted_sessions` finds folders with
    recorded phases but no `SESSION_END`.
 2. Each is flagged `interrupted: true` in its manifest (no fabricated
-   `SESSION_END`), so it won't nag again, and `SessionsTab` shows the banner.
+   `SESSION_END`), so it won't nag again, and `SessionsScreen` shows the banner.
 3. **Dismiss** calls `dismiss_interrupted`, persisting the dismissal — the
    banner does not come back. Everything recorded up to the crash is kept and
    still opens in Review.
@@ -43,9 +43,9 @@ discarded, and surfaced once.
 Labels and the timeline appear **immediately**; the heavier media load happens
 on a background thread so the screen is usable in well under half a second.
 
-![Sequence diagram: ReviewLabelTab reads labels and markers and shows them at once, then a MediaLoadWorker opens videos and EEG on a background thread and signals back; a PlayerController is created and the video grid and brain traces become ready.](../diagrams/flow-open-review.png)
+![Sequence diagram: ReviewLabelScreen reads labels and markers and shows them at once, then a MediaLoadWorker opens videos and EEG on a background thread and signals back; a PlayerController is created and the video grid and brain traces become ready.](../diagrams/flow-open-review.png)
 
-1. `ReviewLabelTab.load_session_folder` reads `labels.json` and
+1. `ReviewLabelScreen.load_session_folder` reads `labels.json` and
    `phase_markers.csv` and renders the labels panel and timeline right away.
 2. `_MediaLoadWorker` (a QThread) opens the four videos and both EEG files off
    the UI thread.
@@ -60,7 +60,7 @@ real monotonic clock, asks the decode worker for the frame-at-`t`, and moves the
 EEG and timeline to the same `t`. No per-player clocks, no A/V sync (the videos
 have no audio).
 
-![Sequence diagram: a QTimer ticks the PlayerController, which computes t from the monotonic clock and requests it from the DecodeWorker; the worker keeps only the latest t, decodes all cameras, and emits frames; the PlayerController also emits the playhead, and ReviewLabelTab moves the EEG and timeline to t.](../diagrams/flow-playback-clock.png)
+![Sequence diagram: a QTimer ticks the PlayerController, which computes t from the monotonic clock and requests it from the DecodeWorker; the worker keeps only the latest t, decodes all cameras, and emits frames; the PlayerController also emits the playhead, and ReviewLabelScreen moves the EEG and timeline to t.](../diagrams/flow-playback-clock.png)
 
 1. A ~60 Hz `QTimer` ticks `PlayerController._tick`, which sets
    `t = t0 + speed × (now − wall0)` — so 1× is honest 1× even if decoding is
@@ -78,9 +78,9 @@ have no audio).
 
 Every label change is persisted immediately and is undoable.
 
-![Sequence diagram: the user presses a number key, ReviewLabelTab adds a label to the LabelsStore which records an inverse op, then saves labels.json and appends history.jsonl and shows "All labels saved"; Undo pops the inverse op and saves again.](../diagrams/flow-label-autosave.png)
+![Sequence diagram: the user presses a number key, ReviewLabelScreen adds a label to the LabelsStore which records an inverse op, then saves labels.json and appends history.jsonl and shows "All labels saved"; Undo pops the inverse op and saves again.](../diagrams/flow-label-autosave.png)
 
-1. A number key (or click) calls `_place_from_vocab`; `ReviewLabelTab` builds a
+1. A number key (or click) calls `_place_from_vocab`; `ReviewLabelScreen` builds a
    label with `labels_store.new_label` (who A/B/Both, point or duration) and
    `LabelsStore.add`s it. The store records an inverse op for undo.
 2. `labels.json` is saved atomically and `history.jsonl` gets an append; the
@@ -111,7 +111,7 @@ Export reads straight from the recording folder and writes a self-contained zip.
 Settings autosave to one JSON file; the next recording reads it fresh. There is
 no "apply" step and no restart.
 
-![Sequence diagram: the user changes video quality in SettingsTab, which saves app_settings.json and shows a saved tick; later the user starts a recording, RecordFlow loads the settings and the recorder uses the new resolution and bitrate.](../diagrams/flow-settings.png)
+![Sequence diagram: the user changes video quality in SettingsScreen, which saves app_settings.json and shows a saved tick; later the user starts a recording, RecordFlow loads the settings and the recorder uses the new resolution and bitrate.](../diagrams/flow-settings.png)
 
 1. Changing a Settings control autosaves to `app_settings.json` and flashes
    "✓ Saved".

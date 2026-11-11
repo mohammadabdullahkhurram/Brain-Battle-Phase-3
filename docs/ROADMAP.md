@@ -118,13 +118,13 @@ whoever picks up the item, not a contract.
 **All of Phase 3 is built and tested against the generated demo session +
 simulated devices** (hardware is still broken — see `CLAUDE.md`'s "Project
 situation"). Step 7 (this step) shipped the real Settings screen
-(`settings_tab.py`), which was the last placeholder screen — the Phase-3
+(`settings_screen.py`), which was the last placeholder screen — the Phase-3
 owner rule ("zero placeholder/temporary UI copy, zero placeholder screens")
 is now met with zero exceptions (`tests/test_no_placeholders.py`). See
 "DESIGN differences" below for the handful of places the build intentionally
 reads slightly differently than DESIGN.md's mockup text, and why.
 
-- ~~**Sessions home screen**~~ **DONE.** `sessions_tab.py` — a table (DESIGN
+- ~~**Sessions home screen**~~ **DONE.** `sessions_screen.py` — a table (DESIGN
   §1's actual layout, not the cards this bullet originally sketched): date,
   boxers, length, labels, status badge, search, status filter chips + counts,
   sort, the interrupted banner, "Show in Finder", one-click open.
@@ -135,7 +135,7 @@ reads slightly differently than DESIGN.md's mockup text, and why.
   camera grid).
 
 - ~~**Merge Review and Labelling into one "Review & Label" screen**~~ **DONE.**
-  `review_label_tab.py` + `pyav_player.py` — one PyAV-driven screen on a single
+  `review_label_screen.py` + `pyav_player.py` — one PyAV-driven screen on a single
   `t_session_seconds` playhead (Option C from `docs/PLAYBACK_PROPOSAL.md`); the
   old `SyncReviewTab`/`LabellingTab`/`vlc_module`/audio-xcorr (`sync_engine`'s
   dead half) are gone.
@@ -145,7 +145,7 @@ reads slightly differently than DESIGN.md's mockup text, and why.
   (including Settings, this step) to 1440×900 / 1280×800 / the app's minimum
   window with nothing clipped.
 
-- ~~**Settings screen**~~ **DONE (Phase 3 step 7).** `settings_tab.py`
+- ~~**Settings screen**~~ **DONE (Phase 3 step 7).** `settings_screen.py`
   (DESIGN §7): recordings folder (name/path/free space, Change folder…/Show in
   Finder, a `BRAIN_BATTLE_CAPTURE_DIR`-override note), headbands (known-device
   dropdowns + BLE search, a same-headband guard), video quality (Standard/
@@ -201,15 +201,15 @@ screens above; see DESIGN.md for the exact copy/layout.
 
 - ~~**"Mark this moment" during recording**~~ **DONE** — `record_flow.py`'s
   `mark_moment`/`RecordingStep.show_moment`; surfaced as unnamed labels to
-  name in `review_label_tab.py`.
+  name in `review_label_screen.py`.
 
 - ~~**Sessions status model**~~ **DONE** — `session_storage.session_info`
-  (Interrupted / Needs labelling / Labelled / Exported) drives `sessions_tab.py`'s
+  (Interrupted / Needs labelling / Labelled / Exported) drives `sessions_screen.py`'s
   status badges + filter chips.
 
 - ~~**Labels gain `who` = A | B | Both and point/duration types**~~ **DONE**
   — `labels_store.py` v2 schema; the who-picker + duration placement in
-  `review_label_tab.py` (DESIGN §6).
+  `review_label_screen.py` (DESIGN §6).
 
 ### DESIGN differences (intentional, as of Phase 3 step 7)
 
@@ -248,7 +248,7 @@ the handful of places the build deliberately reads differently, and why:
 > `brain_battle_main.py` (`LabelMarker`/`_place_label`/`get_labels`/
 > `SyncPlaybackController`/`TimelineWithMarkers`), `vlc_module.py`,
 > `labels_config.py` or `labels_data.json`, those are the now-removed
-> predecessors — the delivered work lives in **`review_label_tab.py`**
+> predecessors — the delivered work lives in **`review_label_screen.py`**
 > (transport: frame step, 0.25×/0.5×, undo/redo, editable placed-labels list),
 > **`labels_store.py`** (`labels.json` v2: `who` A/B/Both, `kind`
 > point/duration, numeric `t_start`/`t_end`, undo/redo) and **`label_vocab.py`**
@@ -287,7 +287,7 @@ the handful of places the build deliberately reads differently, and why:
   Settings screen (Phase 3) as the new edit surface.
 
 - **Frame stepping, 0.25×/0.5× playback, undo/redo, editable list of
-  placed labels.** **DONE** — all in `review_label_tab.py`: ← → step one
+  placed labels.** **DONE** — all in `review_label_screen.py`: ← → step one
   frame, a 0.25×/0.5×/1× speed control, ⌘Z/⇧⌘Z undo/redo, and a "Placed
   labels" list (click a row to jump to it, ✕ to delete).
   *Why:* precise event placement (e.g. the exact frame of first contact)
@@ -375,7 +375,7 @@ the handful of places the build deliberately reads differently, and why:
 
 - ~~**Sync beep becomes a round bell only** (fix docstring; toggle in
   Settings).~~ **DONE.** The round-bell on/off toggle shipped in the Phase 3
-  Settings screen (DESIGN §7; `settings_tab.py`, wired through `record_flow.py` —
+  Settings screen (DESIGN §7; `settings_screen.py`, wired through `record_flow.py` —
   the old `live_session_tab.py` wiring is gone), and `sync_beep.py`'s docstring
   was rewritten to describe a round bell for the boxers with no role in
   timing/alignment (the audio-xcorr `sync_engine` it once referenced is removed,
@@ -408,15 +408,6 @@ the handful of places the build deliberately reads differently, and why:
   double-click app. Point the default at e.g. `~/Documents/Brain Battle` (the
   `BRAIN_BATTLE_CAPTURE_DIR` override and the Settings "Change folder…" flow are
   unchanged). *Files:* `brain_battle/paths.py`, `brain_battle/data/app_settings.py`.
-- **Cleanup: rename the `*Tab` screen classes to `*Screen`.** The screen
-  classes kept their historical names through the package reorganisation
-  (`SessionsTab`, `ReviewLabelTab`, `SettingsTab`, `DocsTab`) — they are DESIGN
-  *screens*, not tabs. Rename the classes (and, optionally, the module files) to
-  `*Screen` for vocabulary consistency; deferred from
-  [ADR-0013](decisions/adr-0013-package-reorganisation.md) to keep that diff
-  reviewable. *Files:* the `brain_battle/ui/*_tab.py` modules and every importer/
-  test that names the classes.
-
 - **Package as a double-click app** (py2app macOS, PyInstaller Windows) +
   build workflow. **Must bundle ffmpeg** inside the app (the camera recorder
   shells out to it per camera for crash-safe H.264, and the pre-flight blocks
@@ -439,7 +430,7 @@ the handful of places the build deliberately reads differently, and why:
   `brain_battle/version.py` (build metadata); ffmpeg-path resolution in
   `capture/usb_camera.py`/`data/export_module.py` to prefer the bundled binary;
   bundle include/exclude lists that drop `tools/` and `tests/`.
-  **Also bundle `docs/`** — the in-app Documentation tab (`docs_tab.py` +
+  **Also bundle `docs/`** — the in-app Documentation tab (`docs_screen.py` +
   `docs_nav.py`, added alongside this item) reads `docs/nav.yml` and every
   page/diagram/screenshot it lists straight from the repo's `docs/` folder at
   runtime; a packaged build needs that folder included (content only —

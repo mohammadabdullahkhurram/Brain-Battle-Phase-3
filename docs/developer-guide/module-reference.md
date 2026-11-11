@@ -18,7 +18,7 @@ remove, or rename a module, update this page in the same commit (see
 | Group (subpackage) | Modules |
 |---|---|
 | **Package top** | `app` · `version` · `paths` · (root shim `brain_battle_main`) |
-| **`ui/`** | `sidebar_shell` · `sessions_tab` · `record_flow` · `review_label_tab` · `settings_tab` · `docs_tab` · `design_tokens` · `fonts` |
+| **`ui/`** | `sidebar_shell` · `sessions_screen` · `record_flow` · `review_label_screen` · `settings_screen` · `docs_screen` · `design_tokens` · `fonts` |
 | **`capture/`** | `usb_camera` · `camera_source` · `headband_source` · `eeg_module` · `eeg_plot_pg` · `session_controller` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
 | **`data/`** | `session_storage` · `session_history` · `labels_store` · `label_vocab` · `export_module` · `app_settings` |
@@ -27,7 +27,7 @@ remove, or rename a module, update this page in the same commit (see
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its
 entry says otherwise. The modules that spawn threads or subprocesses are
-`usb_camera`, `eeg_module`, `pyav_player`, `review_label_tab`, `sessions_tab`,
+`usb_camera`, `eeg_module`, `pyav_player`, `review_label_screen`, `sessions_screen`,
 and `export_module`; see the [threading model](threading-model.md).
 
 ---
@@ -75,8 +75,8 @@ hide behaviour; `SidebarItem` is one nav button. **Called by:** `brain_battle_ma
 and must be refreshed (`refresh_folder_card`) whenever the recordings folder or
 its free space changes.
 
-### `sessions_tab.py`
-The Sessions home library (DESIGN §1). `SessionsTab` renders the session table,
+### `sessions_screen.py`
+The Sessions home library (DESIGN §1). `SessionsScreen` renders the session table,
 search, status-filter chips with counts, sort, the interrupted-recording
 banner, and "Show in Finder". Folder discovery and sizing run **off the UI
 thread** in `_ScanWorker`/`_SizeWorker` (QThreads) so a big folder never freezes
@@ -102,8 +102,8 @@ t0_unix)` and threads it into every camera and headband — this is the capture
 clock ([ADR-0001](../decisions/adr-0001-capture-time-clock.md)); do not stamp
 sources from separate clocks.
 
-### `review_label_tab.py`
-The merged Review & Label screen (DESIGN §6). `ReviewLabelTab` opens a session,
+### `review_label_screen.py`
+The merged Review & Label screen (DESIGN §6). `ReviewLabelScreen` opens a session,
 shows labels and the timeline **immediately**, then loads media in the
 background (`_MediaLoadWorker`, a QThread) and attaches a
 `pyav_player.PlayerController`. Sub-widgets: `VideoGrid`/`VideoTile` (the 2×2
@@ -115,8 +115,8 @@ scrubbable phases/labels timeline). Labelling drives `labels_store.LabelsStore`
 on one `t_session_seconds` playhead — there is no separate alignment step; see
 [the playback-clock flow](key-flows.md#the-playback-clock).
 
-### `settings_tab.py`
-The real Settings screen (DESIGN §7). `SettingsTab` is five cards: recordings
+### `settings_screen.py`
+The real Settings screen (DESIGN §7). `SettingsScreen` is five cards: recordings
 folder, headbands (known-device dropdowns + BLE search with a same-headband
 guard), video quality (resolution **and** bitrate, with the GB/hour copy and the
 disk estimate both computed from the bitrate), session defaults + round bell +
@@ -128,10 +128,10 @@ recolour, keys renumbered 1..n). Everything autosaves with a brief "✓ Saved".
 GB/hour and disk-estimate numbers are **derived** from the bitrate (not
 hardcoded) — `tests/test_settings_screen.py` asserts this.
 
-### `docs_tab.py`
+### `docs_screen.py`
 The in-app Documentation screen. Renders the Markdown under `docs/` at runtime
 using Qt's `QTextDocument.setMarkdown` via `QTextBrowser` — **no QtWebEngine**.
-`DocsTab` provides the nav tree, always-visible search with highlighting, and
+`DocsScreen` provides the nav tree, always-visible search with highlighting, and
 back/forward. `_ContentBrowser` scales images to the reading column;
 `_apply_typography`/`_style_code_runs` tune the reading experience in code (Qt's
 Markdown importer ignores most stylesheets). `MAX_IMG_WIDTH = 720` is the
@@ -145,7 +145,7 @@ Qt-free logic for the docs screen and its tests: `nav.yml` loading, GitHub-style
 heading `slugify`, the search index (`build_search_index`/`search`/`_snippet`),
 and link/image/anchor extraction for the link checker. Kept Qt-free and
 headlessly testable, the same way `session_controller` and `label_vocab` are.
-**Called by:** `docs_tab`, `tests/test_docs.py`. **Gotcha:** only pages listed
+**Called by:** `docs_screen`, `tests/test_docs.py`. **Gotcha:** only pages listed
 in `nav.yml` are "published"; a `.md` file can exist mid-draft without being
 shown anywhere.
 
@@ -217,7 +217,7 @@ A documented per-sensor EEG contact-quality heuristic (`channel_status` →
 flat/clipped/noisy/good; `summarise` → a plain-language line like "Weak contact:
 left ear"). `assess_window`/`assess_at` assess a dataframe window. `SENSOR_NAME`
 maps channel codes to plain names. **Called by:** `headband_source`,
-`record_flow`, `review_label_tab`, `contact_log`.
+`record_flow`, `review_label_screen`, `contact_log`.
 
 ### `contact_log.py`
 `ContactLogWriter` appends a per-sensor contact-quality row into the recording
@@ -238,7 +238,7 @@ at stop).
 `RoundBell(QObject)` plays `assets/sounds/round_bell.wav` (a real boxing-bell
 recording — see [credits](../project/credits.md)) through `QSoundEffect`;
 `bundled_bell_path` resolves the WAV's path regardless of cwd. **Called by:**
-`record_flow` (round start) and `settings_tab` (Test sound). **Note:** this was
+`record_flow` (round start) and `settings_screen` (Test sound). **Note:** this was
 once `sync_beep.py` / `SyncBeep`, named for an audio-xcorr sync engine that has
 since been removed (see
 [ADR-0002](../decisions/adr-0002-remove-audio-xcorr.md)); it was renamed once
@@ -257,7 +257,7 @@ sidecar times + frame-accurate seek/decode), `MultiCamDecoder` (the four
 cameras, pure/synchronous, no Qt), `DecodeWorker` (a QThread that **coalesces**
 seek requests — only the latest pending `t` is decoded), and `PlayerController`
 (transport timed against the real monotonic clock so 1× is honest 1×).
-**Called by:** `review_label_tab`. **Thread:** `DecodeWorker` runs off the UI
+**Called by:** `review_label_screen`. **Thread:** `DecodeWorker` runs off the UI
 thread. **Gotcha:** the pure layers (`PyAVCamera`/`MultiCamDecoder`) import no
 Qt, which is what `tests/test_player.py` exercises headlessly; the Qt layers are
 defined inside a `try: import PyQt6` block.
@@ -274,8 +274,8 @@ origin/source-start records; `create_session` makes a folder named
 Discovery/classification (`list_sessions`, `session_info`,
 `is_interrupted_session`, `scan_interrupted_sessions`) and the disk-space verdict
 (`disk_space_verdict`, `estimate_session_bytes`) also live here. **Called by:**
-`record_flow`, `sessions_tab`, `review_label_tab`, `export_module`,
-`settings_tab`. **Gotcha:** sessions are discovered **by manifest, not folder
+`record_flow`, `sessions_screen`, `review_label_screen`, `export_module`,
+`settings_screen`. **Gotcha:** sessions are discovered **by manifest, not folder
 prefix** — do not reintroduce a prefix check.
 
 ### `labels_store.py`
@@ -285,13 +285,13 @@ mutating call records an inverse op). `new_label(...)` makes a label
 `migrate_v1_to_v2` upgrades old files (writing a `.v1.bak`); `events_timeline`
 merges labels with phase markers. Pure logic, no Qt
 ([ADR-0006](../decisions/adr-0006-labels-v2.md)). **Called by:**
-`review_label_tab`, `export_module`, the demo generator, tests.
+`review_label_screen`, `export_module`, the demo generator, tests.
 
 ### `label_vocab.py`
 The shared team label list, stored as `label_list.json` **in the recordings
 folder** (so a shared folder shares one vocabulary), seeded from the DESIGN
 default palette. `load`/`save`/`renumber`/`next_color`. Pure logic, no Qt.
-**Called by:** `settings_tab` (editor), `review_label_tab` (place labels).
+**Called by:** `settings_screen` (editor), `review_label_screen` (place labels).
 **Gotcha:** the list order **is** the 1–9 key mapping; `renumber` keeps keys
 contiguous.
 
@@ -299,7 +299,7 @@ contiguous.
 The append-only `history.jsonl` per recording: `log_event(root, event, details)`
 (flush+fsync), `read_history` (tolerant reader), and the `EVENT_*` constants.
 Each line records time, OS user, app version, event, details. **Called by:**
-`record_flow`, `review_label_tab`, `sessions_tab`. **Gotcha:** `EVENT_*`
+`record_flow`, `review_label_screen`, `sessions_screen`. **Gotcha:** `EVENT_*`
 constants are documented in [file formats](../research-and-data/file-formats.md)
 (honesty test); `user_source: "os"` is a placeholder for future accounts.
 
@@ -310,7 +310,7 @@ sidecars, manifest, history, README) straight from the recording folder;
 `build_coregistered_eeg` merges both bands onto one uniform 256 Hz
 `t_session_seconds` grid; `VideoExportWorker(QThread)` is the optional 2×2 merge
 (hardware-encoder-validated with a libx264 fallback). `ExportOptionsDialog` runs
-it with a progress bar. **Called by:** `review_label_tab`. **Thread:** export
+it with a progress bar. **Called by:** `review_label_screen`. **Thread:** export
 runs on a worker thread. **Gotcha:** the combined video is **optional and off by
 default** — most analysis wants the data, not a preview.
 
@@ -324,7 +324,7 @@ headband→Boxer A/B mapping + known-headbands list, session defaults, round bel
 and video quality (resolution + bitrate). `capture_dir_resolved()` resolves the
 recordings folder (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set); `gb_per_hour`
 derives the GB/hour copy from the bitrate ([ADR-0010](../decisions/adr-0010-app-settings-store.md)).
-**Called by:** `settings_tab`, `record_flow`, `sessions_tab`, `eeg_module`,
+**Called by:** `settings_screen`, `record_flow`, `sessions_screen`, `eeg_module`,
 `usb_camera` path. **Gotcha:** this replaced the hardcoded
 `eeg_module.BOXER_LABELS` and `usb_camera`'s fixed resolution/bitrate — read
 settings, don't hardcode.

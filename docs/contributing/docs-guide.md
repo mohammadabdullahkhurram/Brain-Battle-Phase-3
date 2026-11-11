@@ -25,7 +25,7 @@ link to each other instead of repeating themselves.
 Plain Markdown under `docs/`, rendered three ways:
 
 1. **GitHub** — the repo's normal Markdown rendering. Nothing special needed.
-2. **Inside the app** — a *Documentation* tab (`docs_tab.py`) reads the same
+2. **Inside the app** — a *Documentation* tab (`docs_screen.py`) reads the same
    files at runtime and renders them with Qt's built-in Markdown support (no
    browser engine, no bundled web assets).
 3. Nowhere else — **no separate website, no hosting, no build step** that
@@ -287,7 +287,7 @@ screenshot would mislead.
 
 ## Reading column & typography
 
-`docs_tab.py` renders Markdown through Qt's `QTextDocument`/`QTextBrowser`,
+`docs_screen.py` renders Markdown through Qt's `QTextDocument`/`QTextBrowser`,
 not a browser, so the reading experience is tuned in code rather than CSS
 (Qt's Markdown importer ignores most of a default stylesheet — only inline/
 character styling and table borders get through):

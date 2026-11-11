@@ -27,8 +27,8 @@ freeze. It doesn't, by design.
 | **`_MuseDirectReader`** | 1 per band | recording/live | BLE read loop (muselsl `Muse` via `bleak`) | `eeg_module.py` |
 | **EEG CSV-writer thread** | 1 per band | recording | append EEG chunks to disk (flush+fsync) | `eeg_module.py` |
 | **`DecodeWorker`** | 1 | review | decode the frame-at-`t` for all cameras | `pyav_player.py` |
-| **`_MediaLoadWorker`** | 1 | review (brief) | open videos + EEG when a session opens | `review_label_tab.py` |
-| **`_ScanWorker` / `_SizeWorker`** | 1 each | Sessions | scan folders + compute sizes off-UI | `sessions_tab.py` |
+| **`_MediaLoadWorker`** | 1 | review (brief) | open videos + EEG when a session opens | `review_label_screen.py` |
+| **`_ScanWorker` / `_SizeWorker`** | 1 each | Sessions | scan folders + compute sizes off-UI | `sessions_screen.py` |
 | **`SessionExportWorker` / `VideoExportWorker`** | 1 | export | build the zip / merge the video | `export_module.py` |
 
 ## How they communicate
@@ -64,9 +64,9 @@ A `QThread` that is destroyed while still running aborts the whole process
 and **wait** for its thread before dropping the reference:
 
 - `CameraSlot.shutdown()` → `self._thread.wait(2500)`.
-- `ReviewLabelTab.shutdown()` → waits on `_MediaLoadWorker`, then
+- `ReviewLabelScreen.shutdown()` → waits on `_MediaLoadWorker`, then
   `PlayerController.shutdown()` stops the timer and `DecodeWorker` (`wait(2000)`).
-- `SessionsTab.shutdown()` → waits on its scan/size workers.
+- `SessionsScreen.shutdown()` → waits on its scan/size workers.
 
 **The lesson — late signals can orphan a live thread.** A camera thread's
 `finished` signal can be delivered *late* — after the slot has already stopped it

@@ -1,5 +1,5 @@
 """
-docs_tab.py
+docs_screen.py
 ───────────
 The in-app Documentation screen. Renders the same Markdown files under
 `docs/` that GitHub renders, using Qt's built-in Markdown support
@@ -20,7 +20,7 @@ intro, and images/diagrams that scale down to the current content width at
 every window size (so a horizontal scrollbar never appears).
 
 Public surface used by the app shell:
-  • DocsTab(parent)
+  • DocsScreen(parent)
   • .open_page(page_id, anchor=None) — used by Help (?) buttons elsewhere.
 """
 from __future__ import annotations
@@ -375,10 +375,10 @@ def _nav_qss() -> str:
     """
 
 
-class DocsTab(QWidget):
+class DocsScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(f"DocsTab {{ background: {dt.canvas_bg()}; }}")
+        self.setStyleSheet(f"DocsScreen {{ background: {dt.canvas_bg()}; }}")
         self._nav = docs_nav.load_nav()
         self._search_index = docs_nav.build_search_index(self._nav)
         self._history: list[tuple[str, str | None]] = []
@@ -695,4 +695,4 @@ class DocsTab(QWidget):
             self._reveal_cursor(selections[0].cursor)
 
 
-__all__ = ["DocsTab"]
+__all__ = ["DocsScreen"]

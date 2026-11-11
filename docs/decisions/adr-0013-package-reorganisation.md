@@ -63,10 +63,10 @@ lookup scattered across several modules each deriving the repo root from its own
   folder is still `REPO_ROOT/Captures`. Both are deferred to **ROADMAP Phase 6**
   (ship assets/docs/sounds/fonts as package data; default the recordings folder
   to the user's Documents for the packaged app).
-- **Deferred rename.** The `*Tab` screen classes (`SessionsTab`,
-  `ReviewLabelTab`, `SettingsTab`, `DocsTab`) keep their historical names this
-  pass to bound the diff; renaming them to `*Screen` is tracked as a later
-  ROADMAP cleanup item.
+- **Deferred rename (since done).** The screen classes kept their historical
+  `*Tab` names in this pass to bound the diff. They were renamed to `*Screen`
+  (`SessionsScreen`, `ReviewLabelScreen`, `SettingsScreen`, `DocsScreen`), with
+  their module files, in v3.0.0-beta.2.
 - **No behaviour change** — this is structure, packaging, and cleanup; all 27
   test scripts pass, and `python3 -m brain_battle` plus the shim both launch.
 

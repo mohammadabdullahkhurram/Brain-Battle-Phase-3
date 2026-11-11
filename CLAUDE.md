@@ -145,7 +145,7 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
 - `test_smoke.py` — the "loads and stands up" floor and **acceptance gate for
   deletions/refactors**: fresh-subprocess import of every first-party module,
   import-time `_HW_ENCODER` == post-import detection, headless construction of
-  the screens (RecordFlow, ReviewLabelTab, SessionsTab, SettingsTab) + the
+  the screens (RecordFlow, ReviewLabelScreen, SessionsScreen, SettingsScreen) + the
   `BrainBattleApp` shell, `__version__` in the window title. Run before/after
   any deletion/refactor.
 - `test_player.py` — the PyAV single-clock player: frame-for-t correctness vs a
@@ -173,7 +173,7 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
   real EEG reader flush path, and the co-registered EEG export.
 - `test_demo_session.py` — `tools/generate_demo_session.py` end to end: sidecar
   rows == MP4 frames (incl. the drift camera), EEG columns/rate, a headless
-  `ReviewLabelTab.load_session_folder`, the `--interrupted` fixture, marker-token
+  `ReviewLabelScreen.load_session_folder`, the `--interrupted` fixture, marker-token
   forms, `demo:true` manifests, and the generator's refuse-real-folder guard.
 - `test_sessions.py` — Sessions discovery/status/search/filter/sort, the
   interrupted banner + dismissal persistence, off-UI-thread scanning, demo
@@ -183,7 +183,7 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
   streamed EEG recorder under SIGKILL; crash-safe H.264 recording; interrupted-
   session detection + disk-space branches; the append-only history log + its
   hooks (recording start/finish, opened_for_review, labels add/remove, driven
-  through ReviewLabelTab).
+  through ReviewLabelScreen).
 - `test_light_theme.py` — light-only guard (no dark tokens / theme machinery).
 - `test_layout_fit.py` — every shell page fits (nothing clipped) at 1440×900,
   1280×800 AND the minimum window size; a visible scrollbar is chrome, not an
@@ -234,7 +234,7 @@ Set up → Record → Saved), replacing the Live Monitor (`live_session_tab.py`,
 `session_setup_dialog.py`, the old camera grid — all removed). It records moments
 (M), prevents sleep, logs per-sensor contact quality, and stops cleanly early;
 moments surface in Review as unnamed labels. **Settings is now the real screen**
-(`settings_tab.py`, DESIGN §7 — Phase 3 step 7, the final placeholder removed):
+(`settings_screen.py`, DESIGN §7 — Phase 3 step 7, the final placeholder removed):
 recordings folder (Change folder…/Show in Finder, a `BRAIN_BATTLE_CAPTURE_DIR`
 override note), headbands (known-device dropdowns + BLE search, a same-headband
 guard), video quality (Standard/High/Light — resolution AND bitrate wired into
@@ -252,7 +252,7 @@ differences" note for the handful of places this build intentionally reads
 differently than DESIGN.md's mockup text.
 
 **In-app documentation (step D1 of 3, inserted before Phase 5) is also
-shipped.** A new **Documentation** screen (`docs_tab.py` + `docs_nav.py`,
+shipped.** A new **Documentation** screen (`docs_screen.py` + `docs_nav.py`,
 sidebar item just above Settings) renders the Markdown under `docs/` at
 runtime — no QtWebEngine, Qt's own `QTextDocument.setMarkdown` — with a
 nav tree, always-visible search (titles/headings/body, with highlighting),
@@ -279,7 +279,7 @@ build**, not as a separate phase: every label is tied to a boxer (A/B/Both),
 labels are point or duration events on the numeric `t_session_seconds` axis, a
 shared team vocabulary is stored with the sessions (not committed to the repo),
 and frame-stepping, 0.25×/0.5× playback, undo/redo and an editable list of
-placed labels all ship in `review_label_tab.py` + `labels_store.py` +
+placed labels all ship in `review_label_screen.py` + `labels_store.py` +
 `label_vocab.py`. `docs/ROADMAP.md`'s Phase 4 section is marked accordingly.
 
 For the long-form history behind the current architecture — the unified
@@ -295,7 +295,7 @@ grouped by responsibility into `ui/` · `capture/` · `playback/` · `data/` ·
 `support/`. Four DESIGN screens sit behind a light sidebar shell —
 **Sessions** (home library), **New recording** (a full-screen guided flow,
 `ui/record_flow.py`), **Review & Label** (one merged screen), and **Settings**
-(`ui/settings_tab.py`). Review & Label playback is app-driven on a single
+(`ui/settings_screen.py`). Review & Label playback is app-driven on a single
 `t_session_seconds` playhead via **PyAV** (`playback/pyav_player.py`): there is
 no VLC, no Qt-Multimedia, and no audio-xcorr. Labels are `labels.json` v2
 (`data/labels_store.py`) with a shared team vocabulary (`data/label_vocab.py`);
@@ -315,10 +315,10 @@ launcher shim.
 | `paths.py` | Single source of repo-relative paths: `REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`, default `Captures/` |
 | `ui/sidebar_shell.py` | DESIGN shell: 232px sidebar, 72px rail on Review & Label, fully hidden for the full-screen record flow; app opens on Sessions |
 | `ui/record_flow.py` | The guided New-recording flow (DESIGN §2–§5): Connect → Set up → Record → Saved; owns the device slots + SessionController; emits `session_saved` / `exit_flow` |
-| `ui/review_label_tab.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, jargon-free brain card, timeline, labelling |
-| `ui/sessions_tab.py` | Sessions home library (discovery, status, search/filter/sort, interrupted banner, background scan + sizing) |
-| `ui/settings_tab.py` | The real Settings screen (DESIGN §7): recordings folder, headbands, video quality, session defaults + bell, shared label-list editor; autosaves with a "✓ Saved" confirmation |
-| `ui/docs_tab.py` | The in-app Documentation screen: Markdown rendering via `QTextBrowser`/`QTextDocument.setMarkdown` (no QtWebEngine), nav tree, always-visible search with highlighting, back/forward |
+| `ui/review_label_screen.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, jargon-free brain card, timeline, labelling |
+| `ui/sessions_screen.py` | Sessions home library (discovery, status, search/filter/sort, interrupted banner, background scan + sizing) |
+| `ui/settings_screen.py` | The real Settings screen (DESIGN §7): recordings folder, headbands, video quality, session defaults + bell, shared label-list editor; autosaves with a "✓ Saved" confirmation |
+| `ui/docs_screen.py` | The in-app Documentation screen: Markdown rendering via `QTextBrowser`/`QTextDocument.setMarkdown` (no QtWebEngine), nav tree, always-visible search with highlighting, back/forward |
 | `ui/design_tokens.py` | **Light-only** design system (docs/DESIGN.md tokens) + QSS factories |
 | `ui/fonts.py` | Registers the bundled Inter font (from `assets/fonts/` via `paths.ASSETS_DIR`) |
 | `capture/usb_camera.py` | `USBCameraThread` (cv2, or a simulated capture) + `FrameEncoder` — crash-safe fragmented H.264 per-camera ffmpeg subprocess + row-per-frame sidecar; no audio; preview downscale |
@@ -340,7 +340,7 @@ launcher shim.
 | `data/export_module.py` | `SessionExportWorker` + `ExportOptionsDialog` (analysis zip), `VideoExportWorker` (optional 2×2 merge), `build_coregistered_eeg` |
 | `data/app_settings.py` | User-config store: headband→Boxer A/B mapping + known-headbands list (replaces hard-coded `BOXER_LABELS`), session defaults, round bell, video quality (resolution + bitrate), capture dir (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set) |
 | `support/log_setup.py` | Logging configuration (console + file handlers) |
-| `support/docs_nav.py` | Qt-free docs logic: `docs/nav.yml` loading, heading slugify, search index, internal link/image/anchor extraction — used by `ui/docs_tab.py` and `tests/test_docs.py` |
+| `support/docs_nav.py` | Qt-free docs logic: `docs/nav.yml` loading, heading slugify, search index, internal link/image/anchor extraction — used by `ui/docs_screen.py` and `tests/test_docs.py` |
 | `../brain_battle_main.py` | Thin launcher shim at the repo root — re-exports from `brain_battle.app`; `python3 brain_battle_main.py` still works |
 
 (Removed with the guided flow: `live_session_tab.py` (Live Monitor),
