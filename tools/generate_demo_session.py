@@ -1,60 +1,37 @@
 """
 generate_demo_session.py
 ─────────────────────────
-Generates a realistic fake Brain Battle v3 session folder so the rest of the
+Generates a realistic fake Brain Battle recording folder so the rest of the
 app can be built and tested without hardware (see AGENTS.md "Project
-situation" — real cameras/Muse-S bands are currently unavailable).
+situation" — real cameras / Muse-S bands are currently unavailable).
 
-What's REUSED from the real pipeline (so the demo can never silently drift
-from the format the app actually reads/writes):
-  - `session_storage.create_session` / `SessionLayout.set_capture_origin` /
-    `.append_marker` / `.add_phase` / `.record_source_start` — the EXACT
-    manifest + phase_markers.csv writers the live app uses.
-  - `session_controller._build_timeline` — the EXACT phase-plan logic
-    (baseline → rounds → breaks, no break after the last round) a live
-    session would run.
-  - `usb_camera.FrameEncoder` — the EXACT crash-safe fragmented-H.264 encoder
-    + row-per-encoded-frame sidecar the live recorder uses. We drive it
-    synchronously (no capture thread / queue needed offline), feeding
-    synthetic frames + capture timestamps, so the demo's video container and
-    sidecar can't drift from the real on-disk format.
-  - `eeg_module._MuseDirectReader._on_eeg` / `.start_recording` /
-    `.stop_recording` — the EXACT per-chunk accumulation + CSV flush path
-    the real BLE pipeline uses (the same technique
-    `tests/test_capture_clock.py::test_reader_writes_t_session_column`
-    already proved works headlessly). We feed it synthetic 12-sample
-    chunks instead of real BLE callbacks.
-  - `usb_camera_panel._SLOT_SPECS`, `eeg_module.BOXER_LABELS`, and
-    `live_session_tab._muse_friendly`/`._default_capture_root` — so camera
-    labels, boxer↔device mapping, and filenames can never diverge from the
-    real app's naming.
+It REUSES the real writers, so the demo can never silently drift from the
+format the app actually reads and writes:
+  - `session_storage.create_session` / `SessionLayout` — the manifest and
+    phase_markers.csv writers the live app uses.
+  - `session_controller._build_timeline` — the real phase plan (rest → rounds →
+    breaks, no break after the last round).
+  - `usb_camera.FrameEncoder` — the real crash-safe fragmented-H.264 encoder +
+    row-per-frame sidecar, driven synchronously with synthetic frames.
+  - `eeg_module._MuseDirectReader` — the real per-chunk CSV streaming path
+    (`_on_eeg` / `_on_sensor` / `start_recording` / `stop_recording`), fed
+    synthetic chunks instead of Bluetooth callbacks.
+  - `session_xdf.build_session_xdf` — the real recording.xdf builder.
 
-What's RE-IMPLEMENTED here (no headless-callable equivalent exists):
-  - The actual video FRAME pixels (burned-in text, phase-marker flashes) —
-    there is no synthetic-frame generator anywhere in the real pipeline;
-    `USBCameraThread.run()`'s frame loop is tied to a real `cv2.VideoCapture`.
-    We render frames with cv2 and hand them to the real `FrameEncoder`, so the
-    encoding + container (H.264 fragmented MP4, 960x540) matches exactly.
-  - The synthetic EEG SIGNAL itself (noise/alpha/blink/motion/marker-spike) —
-    there is no synthetic-EEG generator in `eeg_module.py` to reuse; this is
-    plausible fake data, not real physiology.
-  - The PhaseRecord start/end analytics timestamps and the marker CSV's
-    `unix_time` column are stamped against the synthetic session timeline we
-    compute here (not real wall-clock generation time) — straightforward
-    arithmetic, not pipeline logic, so there's nothing to "reuse" for it.
-    Nothing in the alignment/review path reads these fields; only
-    `capture_clock.t0_unix`/`t0_monotonic` (set via the real
-    `set_capture_origin`) and each source's own `t_session_seconds` matter,
-    and those ARE on one consistent synthetic axis throughout.
+What is synthetic: the video pixels (burned-in text + a white flash at every
+phase marker), the EEG / movement signals (plausible noise, a little alpha,
+blinks, more movement during rounds, a sharp spike at every phase marker), and
+the timeline itself (stamped on one made-up but consistent axis rather than in
+real time).
 
 Usage:
-    python3 tools/generate_demo_session.py
+    python3 tools/generate_demo_session.py --out /tmp/demo
     python3 tools/generate_demo_session.py --out /tmp/demo --rounds 3 --seed 7
-    python3 tools/generate_demo_session.py --interrupted
+    python3 tools/generate_demo_session.py --out /tmp/demo --interrupted
+    python3 tools/generate_demo_session.py --out /tmp/library --library
 
-Deterministic for a given --seed. Default config (baseline 20s, 2 rounds of
-60s with a 20s break between = 160s of session time) generates in well
-under a minute on ordinary hardware.
+Deterministic for a given --seed. Default config (rest 20 s, 2 rounds of 60 s
+with a 20 s break = 160 s) generates in well under a minute.
 """
 from __future__ import annotations
 
@@ -87,8 +64,12 @@ _SLOT_SPECS = [
     (1, "SIDE 01", "side"), (2, "SIDE 02", "side"),
     (3, "POV 01", "pov"),   (4, "POV 02", "pov"),
 ]
-from brain_battle.capture.eeg_module import _MuseDirectReader, boxer_labels, muse_friendly as _muse_friendly  # noqa: E402
+import brain_battle.capture.clock as capture_clock  # noqa: E402
+import brain_battle.data.app_settings as app_settings  # noqa: E402
+import brain_battle.data.session_xdf as session_xdf  # noqa: E402
+from brain_battle.capture.eeg_module import _MuseDirectReader, muse_friendly as _muse_friendly  # noqa: E402
 from brain_battle.data.app_settings import default_capture_root as _default_capture_root  # noqa: E402
+from brain_battle.data.signals import SENSORS  # noqa: E402
 
 # PyQt requires a live Python reference to the QApplication singleton or it
 # can be garbage-collected even though QApplication.instance() still reports
@@ -294,7 +275,8 @@ def _synth_eeg_signal(rng, n_samples, sr, phase_windows, marker_times, start_off
 
 def _generate_eeg_band(muse_dir, device_name, boxer_letter, rng, t0_unix,
                        total_duration, phase_windows, marker_times):
-    reader = _MuseDirectReader(address=f"demo-{boxer_letter}", name=device_name)
+    reader = _MuseDirectReader(address=f"demo-{boxer_letter}", name=device_name,
+                               motion=True)
     fn = f"session_{_muse_friendly(device_name)}.csv"
     path = muse_dir / _ILLEGAL.sub("-", fn)
 
@@ -316,6 +298,25 @@ def _generate_eeg_band(muse_dir, device_name, boxer_letter, rng, t0_unix,
         data[4] = aux[start:end]
         ts = t0_unix + start_offset + np.arange(start, end) / SR_EEG
         reader._on_eeg(data, ts.astype(np.float64))
+
+    # Movement sensors: gravity + a bounce that is 4x bigger during rounds.
+    for kind in ("ACC", "GYRO"):
+        rate = SENSORS[kind][0]
+        n = max(0, round((total_duration - start_offset) * rate))
+        t_s = start_offset + np.arange(n) / rate
+        moving = np.ones(n)
+        for p_start, p_end, phase_kind in phase_windows:
+            if phase_kind == "round":
+                moving[(t_s >= p_start) & (t_s < p_end)] = 4.0
+        bounce = np.sin(2 * np.pi * 1.5 * t_s) * moving
+        if kind == "ACC":
+            sig = np.array([[0.02], [0.05], [0.98]]) + 0.05 * bounce + rng.normal(0, 0.01, (3, n))
+        else:
+            sig = 10.0 * bounce + rng.normal(0, 2.0, (3, n))
+        for start in range(0, n, 3):
+            end = min(start + 3, n)
+            reader._on_sensor(kind, sig[:, start:end].astype(np.float32),
+                              t0_unix + t_s[start:end])
 
     written = reader.stop_recording()
     return {
@@ -348,14 +349,16 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     base_dir = out or _default_capture_root()
     os.makedirs(base_dir, exist_ok=True)
     # REAL writer: folder (named by boxers) + continuous/ + initial manifest
+    settings = app_settings.load()
+    headbands = {who: settings.headband_for(who) for who in ("A", "B")}
     layout = create_session(
         base_dir, cfg, started_at=started_at, demo=True,
-        boxer_a={"name": boxer_a, "headband": "MuseS-7538"} if boxer_a else None,
-        boxer_b={"name": boxer_b, "headband": "MuseS-7564"} if boxer_b else None)
+        boxer_a={"name": boxer_a, "headband": headbands["A"]},
+        boxer_b={"name": boxer_b, "headband": headbands["B"]})
 
-    t0_monotonic = time.monotonic()
-    t0_unix = time.time()
-    layout.set_capture_origin(t0_monotonic, t0_unix)   # REAL writer
+    origin = capture_clock.session_origin()            # the REAL clock origin
+    t0_monotonic, t0_unix = origin["t0_monotonic"], origin["t0_unix"]
+    layout.set_capture_origin(**origin)                # REAL writer
 
     phase_records, markers, total_duration = _phase_plan(cfg, interrupted)
 
@@ -411,8 +414,9 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
                      r["phase"].value) for r in phase_records]
 
     eeg_bands = []
-    for eeg_idx, (device_name, boxer_label) in enumerate(boxer_labels().items(), start=1):
-        boxer_letter = boxer_label.replace("BOXER ", "")
+    for eeg_idx, (boxer_letter, device_name) in enumerate(headbands.items(), start=1):
+        if not device_name:
+            continue
         info = _generate_eeg_band(
             muse_dir, device_name, boxer_letter, rng, t0_unix,
             total_duration, phase_windows, marker_times)
@@ -420,8 +424,13 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
         if info["first_unix"] is not None:
             layout.record_source_start(f"EEG_{eeg_idx:02d}", info["first_unix"])  # REAL writer
 
+    # A crashed recording has no recording.xdf until the app finds it again and
+    # rebuilds it, so the --interrupted fixture leaves it out too.
+    xdf = None if interrupted else session_xdf.build_session_xdf(layout.root)   # REAL builder
+
     return {
         "root": str(layout.root),
+        "xdf": xdf,
         "total_duration_sec": total_duration,
         "interrupted": interrupted,
         "drift_camera": DRIFT_CAMERA_LABEL,
@@ -495,7 +504,8 @@ def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
 
 
 def _write_demo_labels(session_root, labels):
-    """Write a minimal labels.json (schema matches brain_battle_main)."""
+    """Write a minimal version-1 labels.json (the app upgrades it to version 2
+    the first time the recording is opened — which exercises that upgrade)."""
     import json as _json
     data = {
         "schema_version": 1,
@@ -591,6 +601,8 @@ def main(argv=None):
         print(f"    {e['device_name']:<12} ({e['boxer']})  start+{e['start_offset_sec']*1000:.0f}ms  "
               f"{e['n_samples']} samples -> {e['path']}")
     print(f"  markers: {len(result['markers'])}")
+    if result.get("xdf"):
+        print(f"  everything on one clock: {result['xdf']}")
     return 0
 
 

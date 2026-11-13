@@ -3,74 +3,82 @@ headband_source.py
 ──────────────────
 One boxer's headband for the guided recording flow. It owns a real
 ``eeg_module._MuseDirectReader`` (or, under BRAIN_BATTLE_SIMULATE, the
-``simulation.SimMuseReader`` subclass — same reader code, synthetic BLE), keeps
-a short rolling buffer for the live trace, and exposes battery + per-sensor
-contact quality (DESIGN §2/§4). Recording calls straight through to the real
-reader's streamed-to-disk CSV path.
+``simulation.SimMuseReader`` subclass — same reader code, synthetic Bluetooth),
+keeps a short rolling buffer for the live EEG display, and exposes battery +
+per-sensor contact quality. Recording calls straight through to the reader's
+streamed-to-disk CSV path; when an ``LslPublisher`` is attached, every chunk is
+also published as a live LSL stream.
 
 Like CameraSlot this is a QObject the flow owns across steps (connect in step 1,
 record in step 3), with the step widgets rendering it as a view.
 """
 from __future__ import annotations
 
-from typing import Optional
-
 import logging
+from typing import Optional
 
 import numpy as np
 from PyQt6.QtCore import QObject, pyqtSignal, Qt
 
 import brain_battle.capture.contact_quality as cq
+import brain_battle.data.app_settings as app_settings
+from brain_battle.capture.eeg_module import (
+    _RingBuffer, _MuseDirectReader, EEG_CHANNELS, SAMPLE_RATE)
 
 log = logging.getLogger(__name__)
-from brain_battle.capture.eeg_module import _RingBuffer, _MuseDirectReader
 
-_CHANNELS = ["TP9", "AF7", "AF8", "TP10"]
-_SR = 256
-_BUF = 6 * _SR            # ~6 s rolling buffer for the live trace / contact
+_CONTACT_CHANNELS = EEG_CHANNELS[:4]     # the four skin sensors (not AUX)
+_BUF = 32 * SAMPLE_RATE                  # rolling buffer: the longest live timebase
 
 
 class HeadbandSlot(QObject):
-    changed           = pyqtSignal()        # samples / battery / status changed
+    changed            = pyqtSignal()       # samples / battery / status changed
     connection_changed = pyqtSignal(bool)   # True on connect, False on loss
 
     def __init__(self, which: str, parent=None):
         super().__init__(parent)
         self.which = which.upper()
         self.device: Optional[dict] = None
+        self.publisher = None               # an LslPublisher, set by the flow
+        self.battery: Optional[int] = None
         self._reader = None
         self._connected = False
         self._lost = False
-        self.battery: Optional[int] = None
         self._ts = _RingBuffer(_BUF, dtype=np.float64)
-        self._chan = {c: _RingBuffer(_BUF, dtype=np.float32) for c in _CHANNELS}
-        self._t0 = 0.0
+        self._chan = {c: _RingBuffer(_BUF, dtype=np.float32) for c in EEG_CHANNELS}
         self._recording = False
+        self._rec_path = None
+        self._rec_origin = None
 
     # ── lifecycle ──
     def assign(self, device: Optional[dict]) -> None:
         self.device = device
         self.changed.emit()
 
+    @property
+    def device_name(self) -> str:
+        return (self.device or {}).get("name", "")
+
+    def _make_reader(self):
+        import brain_battle.capture.simulation as simulation
+        s = app_settings.load()
+        kw = dict(address=(self.device or {}).get("address", ""), name=self.device_name,
+                  motion=s.record_motion, ppg=s.record_ppg, parent=self)
+        if simulation.enabled():
+            return simulation.make_muse_reader(boxer=self.which, **kw)
+        return _MuseDirectReader(**kw)
+
     def start(self) -> None:
         if self.device is None or self._reader is not None:
             return
-        name = self.device.get("name", "")
-        addr = self.device.get("address", "")
         self._lost = False
-        try:
-            import brain_battle.capture.simulation as simulation
-            if simulation.enabled():
-                reader = simulation.make_muse_reader(addr, name, boxer=self.which, parent=self)
-            else:
-                reader = _MuseDirectReader(address=addr, name=name, parent=self)
-        except Exception:
-            reader = _MuseDirectReader(address=addr, name=name, parent=self)
-        reader.samples.connect(self._on_samples, Qt.ConnectionType.QueuedConnection)
-        reader.connected.connect(self._on_connected, Qt.ConnectionType.QueuedConnection)
-        reader.error.connect(self._on_error, Qt.ConnectionType.QueuedConnection)
-        if hasattr(reader, "battery"):
-            reader.battery.connect(self._on_battery, Qt.ConnectionType.QueuedConnection)
+        reader = self._make_reader()
+        q = Qt.ConnectionType.QueuedConnection
+        reader.samples.connect(self._on_samples, q)
+        reader.sensor.connect(self._on_sensor, q)
+        reader.connected.connect(self._on_connected, q)
+        reader.error.connect(self._on_error, q)
+        reader.battery.connect(self._on_battery, q)
         self._reader = reader
         reader.start()
         self.changed.emit()
@@ -80,38 +88,27 @@ class HeadbandSlot(QObject):
         if r is not None:
             try:
                 r.stop_recording()
-            except Exception:
-                pass
-            try:
                 r.stop()
                 r.wait(3000)
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("stopping Boxer %s's headband: %s", self.which, e)
         self._reader = None
         self._connected = False
         self._recording = False
 
-    def shutdown(self) -> None:
-        self.stop()
+    shutdown = stop
 
     def reconnect(self) -> None:
-        """Operator pressed Reconnect after a drop — tear down and re-start."""
+        """Operator pressed Reconnect after a drop — tear down and re-start. A
+        recording in progress resumes into the SAME files (append)."""
         was_recording = self._recording
-        rec_path = getattr(self, "_rec_path", None)
-        rec_origin = getattr(self, "_rec_origin", None)
         self.stop()
-        self._clear()
-        self.start()
-        if was_recording and rec_path:
-            # Resume streaming into the SAME CSV (append) so the band's data
-            # continues after a reconnect.
-            self.start_recording(rec_path, rec_origin, append=True)
-
-    def _clear(self):
         self._ts.clear()
         for b in self._chan.values():
             b.clear()
-        self._t0 = 0.0
+        self.start()
+        if was_recording and self._rec_path:
+            self.start_recording(self._rec_path, self._rec_origin, append=True)
 
     # ── recording ──
     def start_recording(self, path, origin_unix, append: bool = False) -> None:
@@ -127,12 +124,13 @@ class HeadbandSlot(QObject):
             self._recording = False
 
     def stop_recording(self):
+        self._recording = False
         if self._reader is not None:
             try:
                 return self._reader.stop_recording()
-            except Exception:
-                return None
-        self._recording = False
+            except Exception as e:
+                log.error("EEG stop_recording failed for Boxer %s: %s", self.which, e)
+        return None
 
     def last_recorded_first_unix(self):
         return getattr(self._reader, "_last_first_unix", None) if self._reader else None
@@ -149,31 +147,32 @@ class HeadbandSlot(QObject):
     def contact(self):
         """(summary_line, {channel: status}) over the most recent ~1 s."""
         statuses = {}
-        n = min(len(self._ts), _SR)
-        for ch in _CHANNELS:
+        n = min(len(self._ts), SAMPLE_RATE)
+        for ch in _CONTACT_CHANNELS:
             arr = self._chan[ch].to_array()
             statuses[ch] = cq.channel_status(arr[-n:]) if n >= 2 else "flat"
         return cq.summarise(statuses), statuses
 
     def trace(self):
-        """(ts_rel, {channel: samples}) for the live trace, or (None, None)."""
+        """(unix_timestamps, {channel: samples}) for the live display, or
+        (None, None) before any sample has arrived."""
         if len(self._ts) == 0:
             return None, None
-        ts = self._ts.to_array()
-        chans = {c: self._chan[c].to_array() for c in _CHANNELS
-                 if len(self._chan[c]) == len(ts)}
-        return ts, chans
+        return self._ts.to_array(), {c: b.to_array() for c, b in self._chan.items()}
 
     # ── signal handlers ──
     def _on_samples(self, data: np.ndarray, timestamps: np.ndarray) -> None:
-        if self._t0 == 0.0 and len(timestamps):
-            self._t0 = float(timestamps[0])
-        self._ts.extend(timestamps - self._t0)
-        nch = data.shape[1] if data.ndim == 2 else 0
-        for i, ch in enumerate(_CHANNELS):
-            if nch > i:
+        self._ts.extend(timestamps)
+        for i, ch in enumerate(EEG_CHANNELS):
+            if data.ndim == 2 and data.shape[1] > i:
                 self._chan[ch].extend(data[:, i])
+        if self.publisher is not None:
+            self.publisher.push_eeg(self.which, data, timestamps, self.device_name)
         self.changed.emit()
+
+    def _on_sensor(self, kind: str, data: np.ndarray, timestamps: np.ndarray) -> None:
+        if self.publisher is not None:
+            self.publisher.push_sensor(kind, self.which, data, timestamps, self.device_name)
 
     def _on_connected(self):
         self._connected = True
@@ -184,8 +183,8 @@ class HeadbandSlot(QObject):
     def _on_error(self, msg: str):
         # Finalise the CSV segment recorded so far (flush + close the writer)
         # before dropping the reader, so a later Reconnect can append to it.
-        r = self._reader
-        self._reader = None
+        log.warning("Boxer %s's headband: %s", self.which, msg)
+        r, self._reader = self._reader, None
         if r is not None:
             try:
                 r.stop_recording()

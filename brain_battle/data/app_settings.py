@@ -4,12 +4,12 @@ app_settings.py
 Small application-settings store (a plain JSON file in the user's config
 directory) for everything that used to be hard-coded in source: the
 headband → Boxer A/B mapping (replacing `eeg_module.BOXER_LABELS`), the
-default session plan, the round bell on/off, and the record video quality.
+default session plan, the round bell on/off, the record video quality, which
+extra headband sensors to record, and whether to publish live LSL streams.
 
 Pure stdlib + filesystem (no Qt), so it is trivially testable and usable from
-any thread. The Settings screen edits this store in a later step; for now the
-guided recording flow reads it and the defaults match today's hard-coded
-values exactly, so behaviour is unchanged until the user edits anything.
+any thread. The Settings screen edits this store; the guided recording flow
+reads it when a recording starts.
 
 Config file location (first that applies):
   • $BRAIN_BATTLE_CONFIG                      (explicit file path — tests use this)
@@ -102,6 +102,15 @@ class AppSettings:
         "num_rounds": 3, "round_sec": 180, "break_sec": 60, "baseline_sec": 60})
     round_bell:       bool = True
     video_quality:    str = "standard"
+    # Also record each headband's movement sensors (accelerometer + gyroscope)
+    # and, separately, its pulse sensor. Neither has been tried on a real band
+    # yet, so both can be switched off if they disturb the Bluetooth link.
+    record_motion:    bool = True
+    record_ppg:       bool = False
+    # Publish live signals on the local network as Lab Streaming Layer streams
+    # so LabRecorder / an LSL viewer can see them. The app's own files do not
+    # depend on this.
+    lsl_streams:      bool = True
 
     # ---- derived accessors ----
     def capture_dir_resolved(self) -> str:
@@ -201,6 +210,9 @@ def load(path: Optional[str] = None) -> AppSettings:
         s.round_bell = data["round_bell"]
     if data.get("video_quality") in VIDEO_QUALITY:
         s.video_quality = data["video_quality"]
+    for key in ("record_motion", "record_ppg", "lsl_streams"):
+        if isinstance(data.get(key), bool):
+            setattr(s, key, data[key])
     return s
 
 

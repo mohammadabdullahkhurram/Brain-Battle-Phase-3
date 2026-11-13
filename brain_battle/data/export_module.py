@@ -1,35 +1,24 @@
 """
-export_module.py  —  Brain Battle export pipeline
+export_module.py — "Export for analysis"
+────────────────────────────────────────
+One button in Review & Label → a small dialog → one zip holding everything an
+analyst needs:
 
-Two exports
-───────────
+    recording.xdf         every signal + markers + labels + video-frame times
+                          on one clock (opens in EEGLAB, MNE-Python, pyxdf)
+    labels.csv            the placed labels
+    events.csv            phase markers + labels on one timeline
+    eeg_coregistered.csv  both boxers' EEG on one time grid (for pandas / R)
+    eeg/                  the raw per-headband EEG CSVs
+    sensors/              headband movement / pulse CSVs (if recorded)
+    videos/               camera MP4s + their per-frame .timestamps.csv
+    session_manifest.json, phase_markers.csv, history.jsonl, README.txt
+    combined_2x2.mp4      optional (off by default; slow to make)
 
-1. VideoExportWorker  (QThread)
-   Merges up to 4 synced video files into a single 2x2 quad-grid MP4
-   using ffmpeg filter_complex. Each video is trimmed to its sync offset
-   and scaled to a common resolution before compositing.
-
-2. LabelsExportWorker  (QThread)
-   Writes all placed labels to a CSV with columns:
-       timestamp_sec, timestamp_str, label, color
-
-3. FullSessionExport
-   Combines both into a single zip:
-   - merged_video.mp4
-   - labels.csv
-   - sync_offsets.csv
-   - eeg/eeg_01.csv, eeg/eeg_02.csv
-   - README.txt
-
-Changes from original
-─────────────────────
-- _detect_hw_encoder() probes for GPU encoders and selects the best one:
-    Windows: h264_nvenc (NVIDIA) > h264_amf (AMD) > h264_qsv (Intel)
-    macOS:   h264_videotoolbox
-    Fallback: libx264 fast crf=23
-- VideoExportWorker uses hardware encoder when available (3-8x faster)
-- labels_config atomic write (temp+rename) moved here as a utility used
-  by LabelsExporter — labels_config.py also updated separately
+Also here: the H.264 encoder probe shared with the camera recorder
+(``_HW_ENCODER`` — a hardware encoder is only used if a test encode actually
+works), ``VideoExportWorker`` (the optional 2×2 combined video), and
+``build_coregistered_eeg``.
 """
 
 from __future__ import annotations
@@ -472,15 +461,29 @@ class SessionExportWorker(QThread):
             ep = os.path.join(tmp, "events.csv")
             _write_events_csv(self.labels, self.phase_markers, ep); files.append((ep, "events.csv"))
 
-            # raw EEG
+            # everything on one clock, in the standard LSL file format —
+            # rebuilt now so it carries the labels placed so far
+            self.progress.emit(8, "Building recording.xdf…")
+            try:
+                import brain_battle.data.session_xdf as session_xdf
+                try:
+                    xp = session_xdf.build_session_xdf(root, labels=self.labels)
+                except OSError:     # recording folder not writable: build in temp
+                    xp = session_xdf.build_session_xdf(
+                        root, labels=self.labels, out_path=os.path.join(tmp, "recording.xdf"))
+                if xp:
+                    files.append((xp, "recording.xdf"))
+            except Exception as e:
+                log.warning("recording.xdf build failed: %r", e)
+
+            # raw EEG (Boxer A's file first) + the optional movement / pulse files
             self.progress.emit(15, "Adding brain recordings…")
-            muse = os.path.join(root, "continuous", "Muse data")
-            eeg_paths = []
-            if os.path.isdir(muse):
-                for fn in sorted(os.listdir(muse)):
-                    if fn.endswith(".csv"):
-                        p = os.path.join(muse, fn)
-                        eeg_paths.append(p); files.append((p, f"eeg/{fn}"))
+            import brain_battle.data.session_storage as session_storage
+            eeg_paths = [p for _who, p in sorted(session_storage.eeg_files(root).items())]
+            for p in eeg_paths:
+                files.append((p, f"eeg/{os.path.basename(p)}"))
+            for p in sorted(session_storage.sensor_files(root).values()):
+                files.append((p, f"sensors/{os.path.basename(p)}"))
 
             # co-registered EEG
             self.progress.emit(25, "Building co-registered EEG…")
@@ -579,6 +582,10 @@ def _export_readme(root, n_labels):
         f"Labels:     {n_labels}",
         "",
         "Contents:",
+        "  recording.xdf         every signal, the round markers, your labels and",
+        "                        every video frame's time on ONE clock, in the",
+        "                        standard Lab Streaming Layer format. Opens in",
+        "                        EEGLAB (load_xdf), MNE-Python and pyxdf.",
         "  labels.csv            placed labels (id, label, who, kind, t_start,",
         "                        t_end, color, created_by, created_at). Times are",
         "                        seconds on the recording's shared clock.",
@@ -586,6 +593,7 @@ def _export_readme(root, n_labels):
         "                        (t_start, t_end, source[phase|label], who, label).",
         "  eeg_coregistered.csv  both boxers' EEG on one t_session_seconds grid.",
         "  eeg/                  raw per-band EEG recordings.",
+        "  sensors/              headband movement / pulse recordings (if any).",
         "  videos/               camera MP4s + their .timestamps.csv sidecars",
         "                        (one row per frame: frame time on the shared clock).",
         "  session_manifest.json, phase_markers.csv, history.jsonl",
@@ -626,6 +634,7 @@ class ExportOptionsDialog(QDialog):
                             f"font-size: {dt.SIZE_LG}px; font-weight: 700;")
         v.addWidget(title)
         incl = QLabel("The export is a single .zip containing:\n"
+                      "  • recording.xdf — everything on one timeline for EEGLAB / Python\n"
                       "  • labels.csv and events.csv\n"
                       "  • both boxers' brain activity on one timeline (eeg_coregistered.csv)\n"
                       "  • the raw brain recordings and camera videos with their timing files\n"

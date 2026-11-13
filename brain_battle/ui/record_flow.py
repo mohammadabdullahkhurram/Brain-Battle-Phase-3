@@ -27,12 +27,12 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import time
-from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRectF, QPointF
-from PyQt6.QtGui import QPainter, QColor, QFont, QImage, QPolygonF, QIcon
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRectF
+from PyQt6.QtGui import QPainter, QColor, QFont, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, QFrame,
     QSizePolicy, QLineEdit, QCheckBox, QScrollArea, QMessageBox, QStackedWidget,
@@ -44,15 +44,20 @@ import logging
 import brain_battle.ui.design_tokens as dt
 import brain_battle.data.app_settings as app_settings
 import brain_battle.capture.camera_source as camera_source
+import brain_battle.capture.clock as clock
 import brain_battle.capture.contact_log as contact_log
 import brain_battle.data.session_history as session_history
+import brain_battle.data.session_xdf as session_xdf
+from brain_battle.capture.lsl_outlets import LslPublisher
 from brain_battle.capture.headband_source import HeadbandSlot
+from brain_battle.data.signals import EEG_CHANNELS
+from brain_battle.ui.eeg_viewer import EEGViewer
 from brain_battle.capture.camera_source import CameraSlot
 from brain_battle.capture.session_controller import SessionController, SessionConfig, Phase, _build_timeline
 from brain_battle.data.session_storage import (
     create_session, SessionLayout, PhaseRecord, estimate_session_bytes,
     human_bytes, session_total_seconds, disk_space_verdict,
-    video_bytes_per_sec_for_mbps,
+    video_bytes_per_sec_for_mbps, folder_size_bytes, read_phase_markers, short_phase,
 )
 from brain_battle.capture.round_bell import RoundBell
 from brain_battle.capture.keep_awake import KeepAwake
@@ -162,7 +167,7 @@ class CameraTile(QFrame):
         super().__init__(parent)
         self.slot = slot
         self.compact = compact
-        self.setMinimumSize(200, 150 if not compact else 110)
+        self.setMinimumSize(200 if not compact else 150, 150 if not compact else 84)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._change = None
         if not compact:
@@ -238,53 +243,6 @@ class CameraTile(QFrame):
         return "…", "Connecting", "#FDE68A"
 
 
-# ── live mini EEG trace ────────────────────────────────────────────────────────
-
-class MiniTrace(QWidget):
-    """Four thin stacked channel lines for one HeadbandSlot's rolling window."""
-
-    def __init__(self, slot: HeadbandSlot, parent=None):
-        super().__init__(parent)
-        self.slot = slot
-        self.setMinimumHeight(54)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
-    def paintEvent(self, e):
-        p = QPainter(self)
-        try:
-            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            W, H = self.width(), self.height()
-            p.fillRect(self.rect(), QColor(dt.canvas_bg()))
-            ts, chans = self.slot.trace()
-            if not self.slot.connected or ts is None or not chans:
-                p.setPen(QColor(dt.text_tertiary())); p.setFont(QFont("Inter", 9))
-                msg = "Waiting for signal…" if self.slot.device else "No headband"
-                p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, msg)
-                return
-            cols = ["#0E7490", "#3D4FD6", "#7C3AED", "#B45309"]
-            keys = list(chans.keys())
-            band_h = H / max(1, len(keys))
-            import numpy as np
-            for ci, ch in enumerate(keys):
-                seg = chans[ch]
-                if len(seg) < 2:
-                    continue
-                seg = seg[-min(len(seg), 6 * 256):]
-                y_mid = band_h * ci + band_h / 2
-                scale = max(1.0, 3.0 * float(np.std(seg)))
-                n = len(seg)
-                xs = (np.arange(n) / max(1, n - 1)) * W
-                ys = y_mid - np.clip(seg / scale, -1, 1) * (band_h * 0.42)
-                poly = QPolygonF()
-                step = max(1, n // (W + 1))
-                for k in range(0, n, step):
-                    poly.append(QPointF(float(xs[k]), float(ys[k])))
-                p.setPen(QColor(cols[ci % 4])); p.setBrush(Qt.BrushStyle.NoBrush)
-                p.drawPolyline(poly)
-        finally:
-            p.end()
-
-
 # ── headband view (badge + battery + 4 sensor chips + trace) ───────────────────
 
 _SENSOR_CHIPS = [("TP9", "Left ear"), ("AF7", "Left forehead"),
@@ -303,14 +261,17 @@ _WEAK_TIPS = {
 
 class HeadbandView(QFrame):
     """One boxer's headband block (DESIGN §2): badge + name + battery, four
-    sensor chips with a plain tip when weak, and a live trace. ``compact`` drops
-    the trace height for the recording screen."""
+    sensor chips with a plain tip when weak, and the live EEG (a standard
+    viewer: one labelled trace per channel, µV scale bar, time axis, event
+    markers). ``compact`` is the smaller recording-screen variant."""
     reconnect_requested = pyqtSignal(str)
 
-    def __init__(self, slot: HeadbandSlot, name_getter, compact=False, parent=None):
+    def __init__(self, slot: HeadbandSlot, flow, compact=False, parent=None):
         super().__init__(parent)
         self.slot = slot
-        self._name_getter = name_getter
+        self.compact = compact
+        self._flow = flow
+        self._name_getter = flow.boxer_name
         self.setObjectName("card")
         self.setStyleSheet(f"QFrame#card {{ background: {dt.card_bg()}; "
                            f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_LG}px; }}")
@@ -340,15 +301,23 @@ class HeadbandView(QFrame):
             chip.setToolTip("")
             self._chips[code] = chip
             chips.addWidget(chip)
+            chip.setVisible(not compact)
         chips.addStretch()
-        v.addLayout(chips)
+        if not compact:     # the recording screen says it in the status line instead
+            v.addLayout(chips)
         self._tip = QLabel(""); self._tip.setWordWrap(True)
         self._tip.setStyleSheet(f"color: {dt.warning_color()}; font-family: {dt.FONT_UI}; "
                                 f"font-size: {dt.SIZE_XS}px;")
         self._tip.setVisible(False)
         v.addWidget(self._tip)
-        self._trace = MiniTrace(slot)
-        self._trace.setMinimumHeight(44 if compact else 64)
+        # Recording screen: the four skin electrodes, 5 s across. Connect
+        # screen: all five inputs, 10 s across. The scale fits itself to the
+        # signal (the scale bar always says what it currently is).
+        self._trace = EEGViewer(channels=EEG_CHANNELS[:4] if compact else EEG_CHANNELS,
+                                live=True, color=dt.boxer_colors(slot.which)[2],
+                                min_row_px=11 if compact else 13)
+        self._trace.set_timebase(5 if compact else 10)
+        self._trace.set_scale(None)
         v.addWidget(self._trace, 1)
         self.refresh()
 
@@ -357,7 +326,7 @@ class HeadbandView(QFrame):
         name = self._name_getter(s.which)
         dev = (s.device or {}).get("name", "") if s.device else ""
         head_txt = f"Boxer {s.which}" + (f" · {name}" if name else "")
-        if dev:
+        if dev and not (self.compact and name):   # recording screen: keep it short
             head_txt += f" · {dev}"
         self._title.setText(head_txt)
         if s.lost:
@@ -395,14 +364,30 @@ class HeadbandView(QFrame):
                 chip.setStyleSheet(self._chip_css(dt._p().warning_text, dt.warning_color(),
                                                   dt._p().warning_bg))
                 weak_names.append(plain)
-        if weak_names:
+        if weak_names and not self.compact:
             tip = _WEAK_TIPS.get(weak_names[0], "Re-seat the sensor so it sits flat "
                                  "against the skin.")
             self._tip.setText(f"Weak contact: {weak_names[0].lower()}. {tip}")
             self._tip.setVisible(True)
         else:
             self._tip.setVisible(False)
-        self._trace.update()
+        if self.compact and s.connected and not s.lost:
+            # one line instead of the chips: contact quality + battery
+            batt = f" · battery {s.battery}%" if s.battery is not None else ""
+            if weak_names:
+                self._status.setText("! Weak contact: " + ", ".join(n.lower() for n in weak_names) + batt)
+                colour = dt.warning_color()
+            else:
+                self._status.setText("✓ Good contact" + batt)
+                colour = dt.success_color()
+            self._status.setStyleSheet(f"color: {colour}; font-family: {dt.FONT_UI}; "
+                                       f"font-size: {dt.SIZE_XS}px;")
+        # live EEG: seconds-ago before recording, the session clock during it
+        ts, chans = s.trace() if s.connected else (None, None)
+        self._trace.empty_text = "Waiting for signal…" if s.device else "No headband"
+        self._trace.set_time_origin(self._flow.session_origin_unix())
+        self._trace.set_markers(self._flow.live_markers())
+        self._trace.set_data(ts, chans or {})
 
     def _chip_css(self, fg, border, bg="transparent"):
         return (f"background: {bg}; color: {fg}; border: 1px solid {border}; "
@@ -566,7 +551,7 @@ class ConnectStep(QWidget):
         hv.addWidget(_body("Headbands", bold=True, size=dt.SIZE_MD))
         self._hbviews = []
         for which in ("A", "B"):
-            view = HeadbandView(flow._bands[which], flow.boxer_name)
+            view = HeadbandView(flow._bands[which], flow)
             view.reconnect_requested.connect(flow.reconnect_band)
             hv.addWidget(view)
             self._hbviews.append(view)
@@ -900,7 +885,7 @@ class RecordingStep(QWidget):
         side.addWidget(prev_card, 1)
         self._hbviews = []
         for which in ("A", "B"):
-            view = HeadbandView(flow._bands[which], flow.boxer_name, compact=True)
+            view = HeadbandView(flow._bands[which], flow, compact=True)
             view.reconnect_requested.connect(flow.reconnect_band)
             side.addWidget(view)
             self._hbviews.append(view)
@@ -980,8 +965,10 @@ class SavedStep(QWidget):
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        host = QWidget(); host.setStyleSheet(f"background: {dt.canvas_bg()};")
+        host = QWidget(); host.setObjectName("savedHost")
+        host.setStyleSheet(f"#savedHost {{ background: {dt.canvas_bg()}; }}")
         self._list = QVBoxLayout(host); self._list.setContentsMargins(0, 0, 0, 0); self._list.setSpacing(8)
+        self._xdf_row = None
         scroll.setWidget(host)
         root.addWidget(scroll, 1)
 
@@ -1009,6 +996,24 @@ class SavedStep(QWidget):
         bar.addStretch(); bar.addWidget(finder)
         root.addLayout(bar)
 
+    _XDF_BUSY = "Putting everything on one timeline for analysis (recording.xdf)…"
+    _XDF_OK = "Everything on one timeline for analysis (recording.xdf) saved"
+    _XDF_FAIL = ("The single analysis file (recording.xdf) could not be made. Nothing is "
+                 "lost — it is rebuilt when you export.")
+
+    def set_xdf_state(self, ok: bool):
+        """The background build of recording.xdf finished."""
+        if self._xdf_row is None:
+            return
+        try:
+            icon, text = self._xdf_row.findChildren(QLabel)[:2]
+            color = dt.success_color() if ok else dt.warning_color()
+            icon.setText("✓" if ok else "!")
+            icon.setStyleSheet(f"color: {color}; font-size: 15px;")
+            text.setText(self._XDF_OK if ok else self._XDF_FAIL)
+        except RuntimeError:            # the row was already replaced
+            self._xdf_row = None
+
     def _row(self, icon, text, color=None):
         row = QFrame()
         row.setStyleSheet(f"QFrame {{ background: {dt.surface()}; border: 1px solid {dt.border()}; "
@@ -1028,6 +1033,8 @@ class SavedStep(QWidget):
         self._meta.setText(info["meta"])
         for icon, text, color in info["checklist"]:
             self._list.addWidget(self._row(icon, text, color))
+        self._xdf_row = self._row("…", self._XDF_BUSY, dt.text_tertiary())
+        self._list.addWidget(self._xdf_row)
         worth = info["worth_checking"]
         if worth:
             self._list.addWidget(_body("Worth checking", bold=True, size=dt.SIZE_MD))
@@ -1043,6 +1050,7 @@ class RecordFlow(QWidget):
     session_saved  = pyqtSignal(str)     # "Start labelling" (session root)
     exit_flow      = pyqtSignal()        # Cancel / "Back to sessions"
     help_requested = pyqtSignal(str)     # the CURRENT step's doc anchor
+    _xdf_done      = pyqtSignal(str, bool)   # (session root, built OK) — from the build thread
 
     STEP_CONNECT, STEP_SETUP, STEP_RECORD, STEP_SAVED = 0, 1, 2, 3
     _STEP_ANCHORS = {
@@ -1067,6 +1075,7 @@ class RecordFlow(QWidget):
         self._session_t0 = None
         self._session_t0_unix = None
         self._moments = []
+        self._live_markers = []
         self._contact_writer = None
         self._active_phase = None
         self._stopping_early = False
@@ -1074,6 +1083,11 @@ class RecordFlow(QWidget):
         self._band_rec_paths = {}
         self._saved_root = None
         self._scan_thread = None
+        self._lsl: Optional[LslPublisher] = None
+        self._xdf_thread: Optional[threading.Thread] = None
+        self._xdf_root: Optional[str] = None     # recording waiting for its XDF
+        self._xdf_wait_started = 0.0
+        self._xdf_done.connect(self._on_xdf_done)
         self.setStyleSheet(f"RecordFlow {{ background: {dt.canvas_bg()}; }}")
         self._build()
         self._wire_controller()
@@ -1082,12 +1096,17 @@ class RecordFlow(QWidget):
         self._tick.timeout.connect(self._on_ui_tick)
         self._contact_timer = QTimer(self); self._contact_timer.setInterval(1000)
         self._contact_timer.timeout.connect(self._log_contact)
+        # After a recording stops, wait for every camera file to be closed
+        # before building recording.xdf from the finished files.
+        self._xdf_timer = QTimer(self); self._xdf_timer.setInterval(150)
+        self._xdf_timer.timeout.connect(self._maybe_build_xdf)
 
     # ── construction ──
     def _build(self):
         root = QVBoxLayout(self); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
-        bar = QFrame(); bar.setFixedHeight(60)
-        bar.setStyleSheet(f"background: {dt.surface()}; border-bottom: 1px solid {dt.border()};")
+        bar = QFrame(); bar.setFixedHeight(60); bar.setObjectName("topBar")
+        bar.setStyleSheet(f"#topBar {{ background: {dt.surface()}; "
+                          f"border-bottom: 1px solid {dt.border()}; }}")
         h = QHBoxLayout(bar); h.setContentsMargins(20, 10, 20, 10); h.setSpacing(16)
         self._cancel = QPushButton("Cancel"); self._cancel.setMinimumHeight(40)
         self._cancel.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1127,6 +1146,13 @@ class RecordFlow(QWidget):
         self._settings = app_settings.load()
         self._reset_session_state()
         self._stop_devices()
+        # Live LSL streams (LabRecorder / LSL viewers can see them from now on).
+        self._lsl = LslPublisher(enabled=self._settings.lsl_streams)
+        self._lsl.open_markers()
+        for slot in self._cams:
+            self._lsl.open_video(slot.stem)
+        for band in self._bands.values():
+            band.publisher = self._lsl
         self._set_step(self.STEP_CONNECT)
         self._scan_and_assign()
         self._tick.start()
@@ -1154,6 +1180,7 @@ class RecordFlow(QWidget):
     def _reset_session_state(self):
         self._layout = None; self._cfg = None
         self._moments = []; self._active_phase = None
+        self._live_markers = []
         self._stopping_early = False
         self._cam_rec_paths = {}; self._band_rec_paths = {}
         self._saved_root = None
@@ -1242,8 +1269,6 @@ class RecordFlow(QWidget):
         c.phase_changed.connect(self._on_phase_changed)
         c.tick.connect(self._on_phase_tick)
         c.session_finished.connect(self._on_session_finished)
-        if self._bell:
-            pass  # bell wired per-session in begin_recording
 
     def begin_recording(self):
         if self._controller.is_running:
@@ -1322,11 +1347,13 @@ class RecordFlow(QWidget):
     def _on_session_started(self):
         if self._layout is None:
             return
-        self._session_t0 = time.monotonic()
-        self._session_t0_unix = time.time()
-        clock = (self._session_t0, self._session_t0_unix)
+        # ONE origin for every source, on the one capture clock.
+        origin = clock.session_origin()
+        self._session_t0 = origin["t0_monotonic"]
+        self._session_t0_unix = origin["t0_unix"]
+        cam_clock = (self._session_t0, self._session_t0_unix)
         try:
-            self._layout.set_capture_origin(self._session_t0, self._session_t0_unix)
+            self._layout.set_capture_origin(**origin)
         except Exception as e:
             log.error("capture origin write failed: %s", e)
         session_history.log_event(self._layout.root, session_history.EVENT_RECORDING_STARTED,
@@ -1338,7 +1365,7 @@ class RecordFlow(QWidget):
         for slot in self._cams:
             if slot.is_live:
                 path = slot.recording_path(cont)
-                slot.start_recording(path, clock)
+                slot.start_recording(path, cam_clock, self._lsl)
                 self._cam_rec_paths[slot.index] = path
         # headbands
         from brain_battle.capture.eeg_module import muse_friendly
@@ -1364,6 +1391,7 @@ class RecordFlow(QWidget):
                 norm = label.upper().replace(" ", "_")
                 marker = f"{norm}_START" if phase_id != "done" else norm
                 self._layout.append_marker(t, phase_id, marker, round_num)
+                self._publish_marker(marker, t)
             except Exception as e:
                 log.warning("marker write failed: %s", e)
         if self._layout is None:
@@ -1402,6 +1430,7 @@ class RecordFlow(QWidget):
             try:
                 t = time.monotonic() - self._session_t0
                 self._layout.append_marker(t, "done", "SESSION_END", 0)
+                self._publish_marker("SESSION_END", t)
                 if stopped_early:
                     self._layout.mark_stopped_early(t)
             except Exception as e:
@@ -1429,10 +1458,70 @@ class RecordFlow(QWidget):
         self._remove_key_filter()
         if self._layout is not None:
             session_history.log_event(self._layout.root, session_history.EVENT_RECORDING_FINISHED)
-            self._saved_root = str(self._layout.root)
+            self._saved_root = self._xdf_root = str(self._layout.root)
+            self._xdf_wait_started = time.monotonic()
+            self._xdf_timer.start()
         if goto_saved and self._saved_root:
             self._saved_step.populate(self._build_saved_info())
             self._set_step(self.STEP_SAVED)
+
+    def _publish_marker(self, text, t_session):
+        """A phase start / marked moment happened: show it on the live EEG and
+        publish it on the LSL marker stream."""
+        if self._session_t0 is None:
+            return
+        pretty = "Moment" if text == session_xdf.MOMENT_MARKER else short_phase(text)
+        colour = dt.record_red() if text == session_xdf.MOMENT_MARKER else dt.text_secondary()
+        self._live_markers.append((self._session_t0_unix + t_session, pretty, colour))
+        if self._lsl is not None:
+            self._lsl.push_marker(text, self._session_t0 + t_session)
+
+    def live_markers(self):
+        """[(unix time, text, colour)] for the live EEG display."""
+        return self._live_markers
+
+    def session_origin_unix(self):
+        """The running recording's start (Unix seconds), or None when idle."""
+        return self._session_t0_unix if self._controller.is_running else None
+
+    # ── recording.xdf (built from the finished files, off the UI thread) ──
+    def _maybe_build_xdf(self):
+        waited = time.monotonic() - self._xdf_wait_started
+        if not all(s.recording_finalised for s in self._cams) and waited < 20.0:
+            return
+        if self._xdf_thread is not None:
+            return                      # a build is running; try again next tick
+        self._xdf_timer.stop()
+        root, self._xdf_root = self._xdf_root, None
+        if not root:
+            return
+
+        def work():
+            try:
+                ok = session_xdf.build_session_xdf(root) is not None
+            except Exception as e:
+                log.error("building recording.xdf failed: %r", e)
+                ok = False
+            self._xdf_done.emit(root, ok)
+
+        self._xdf_thread = threading.Thread(target=work, name="xdf-build", daemon=True)
+        self._xdf_thread.start()
+
+    def _on_xdf_done(self, root, ok):
+        self._xdf_thread = None
+        if root == self._saved_root:
+            self._saved_step.set_xdf_state(ok)
+
+    def wait_for_xdf(self, timeout: float = 30.0) -> bool:
+        """Block (processing events) until the pending recording.xdf build has
+        finished. Used on shutdown and by tests."""
+        from PyQt6.QtWidgets import QApplication
+        deadline = time.monotonic() + timeout
+        while (self._xdf_timer.isActive() or self._xdf_thread is not None) \
+                and time.monotonic() < deadline:
+            QApplication.processEvents()
+            time.sleep(0.01)
+        return not self._xdf_timer.isActive() and self._xdf_thread is None
 
     # ── mark this moment ──
     def mark_moment(self):
@@ -1441,6 +1530,7 @@ class RecordFlow(QWidget):
         t = time.monotonic() - self._session_t0
         entry = self._layout.add_moment(t)
         self._moments.append(entry)
+        self._publish_marker(session_xdf.MOMENT_MARKER, t)
         try:
             session_history.log_event(self._layout.root, session_history.EVENT_MOMENT_MARKED,
                                       {"t_session_seconds": entry["t_session_seconds"]})
@@ -1524,8 +1614,6 @@ class RecordFlow(QWidget):
     # ── Saved-screen data (from REAL files) ──
     def _build_saved_info(self):
         import datetime as _dt
-        from brain_battle.data.session_storage import folder_size_bytes, session_total_seconds
-        from brain_battle.ui.review_label_screen import read_phase_markers
         root = self._saved_root
         a, b = self._names.get("A"), self._names.get("B")
         vs = f"{a or 'Boxer A'} vs {b or 'Boxer B'}"
@@ -1666,6 +1754,10 @@ class RecordFlow(QWidget):
             slot.shutdown()
         for b in self._bands.values():
             b.shutdown()
+            b.publisher = None
+        if self._lsl is not None:
+            self._lsl.close()
+            self._lsl = None
 
     def shutdown(self):
         try:
@@ -1683,7 +1775,8 @@ class RecordFlow(QWidget):
         except Exception: pass
         self._remove_key_filter()
         self._tick.stop()
-        self._stop_devices()
+        self._stop_devices()          # closes every camera file …
+        self.wait_for_xdf()           # … so the pending recording.xdf can finish
 
 
 __all__ = ["RecordFlow"]

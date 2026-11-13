@@ -27,31 +27,24 @@ import getpass
 import os
 import time
 
-import numpy as np
-
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QPointF, QRect, QRectF, QEvent, QThread
-from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QFont, QPolygonF, QIcon
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QRect, QRectF, QEvent, QThread
+from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QFont, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QScrollArea, QSizePolicy, QLineEdit, QButtonGroup, QToolTip, QApplication,
-    QDialog,
+    QScrollArea, QSizePolicy, QButtonGroup, QToolTip, QApplication,
+    QDialog, QComboBox, QStackedWidget,
 )
 
 import brain_battle.ui.design_tokens as dt
+import brain_battle.ui.eeg_viewer as eeg_viewer
+from brain_battle.data.signals import EEG_CHANNELS
 import brain_battle.data.label_vocab as label_vocab
 import brain_battle.data.labels_store as labels_store
 import brain_battle.capture.contact_quality as cq
 import brain_battle.data.session_history as session_history
-from brain_battle.playback.pyav_player import open_session_cameras, PlayerController, FRAME_PERIOD
-
-# EEG channel → plain-language sensor (DESIGN vocabulary). Channel CODES never
-# appear in the UI — only these names, and only in the legend/tooltip.
-CH_CODES = ["TP9", "AF7", "AF8", "TP10"]
-CH_NAMES = ["Left ear", "Left forehead", "Right forehead", "Right ear"]
-CH_COLORS = ["#0E7490", "#3D4FD6", "#7C3AED", "#B45309"]
-EEG_SR = 256
-BANDS = [("Delta", 1, 4), ("Theta", 4, 8), ("Alpha", 8, 12),
-         ("Beta", 12, 30), ("Gamma", 30, 45)]
+import brain_battle.data.session_storage as session_storage
+from brain_battle.data.session_storage import read_phase_markers, friendly_phase, short_phase
+from brain_battle.playback.pyav_player import open_session_cameras, PlayerController
 
 
 # ── small helpers ──────────────────────────────────────────────────────────────
@@ -98,56 +91,6 @@ def _discover_cameras(root: str) -> list[tuple[str, str]]:
         if name not in order:
             specs.append((path, name))
     return specs[:4] if len(specs) >= 4 else specs
-
-
-def read_phase_markers(root: str) -> list[tuple]:
-    """(t_session_seconds, phase_id, label) rows, time-sorted."""
-    p = os.path.join(root, "phase_markers.csv")
-    out = []
-    if not os.path.isfile(p):
-        return out
-    try:
-        with open(p, encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                try:
-                    out.append((float(row["t_session_seconds"]),
-                                row.get("phase_id", ""), row.get("label", "")))
-                except (KeyError, TypeError, ValueError):
-                    continue
-    except OSError:
-        pass
-    out.sort(key=lambda r: r[0])
-    return out
-
-
-def friendly_phase(label: str) -> str:
-    """Marker token → full DESIGN vocabulary name."""
-    import re
-    u = (label or "").upper()
-    if u.startswith("BASELINE"):
-        return "Rest before round 1"
-    if u.startswith("ROUND"):
-        m = re.search(r"(\d+)", u)
-        return f"Round {m.group(1)}" if m else "Round"
-    if u.startswith("BREAK"):
-        return "Break"
-    if u.startswith("SESSION_END") or u == "DONE":
-        return "Finished"
-    return label or ""
-
-
-def short_phase(label: str) -> str:
-    """Shortest sensible form for a narrow timeline band."""
-    u = (label or "").upper()
-    if u.startswith("BASELINE"):
-        return "Rest"
-    if u.startswith("ROUND"):
-        return friendly_phase(label)       # "Round N" is already short
-    if u.startswith("BREAK"):
-        return "Break"
-    if u.startswith("SESSION_END") or u == "DONE":
-        return "End"
-    return friendly_phase(label)
 
 
 # ── video ──────────────────────────────────────────────────────────────────────
@@ -266,145 +209,44 @@ class VideoGrid(QWidget):
                 self.tiles[i].set_image(img)
 
 
-# ── brain activity (jargon-free) ─────────────────────────────────────────────────
+# ── brain activity: a standard EEG viewer per boxer ─────────────────────────────
 
-class BrainTrace(QWidget):
-    """One boxer's compact brain view: four thin stacked channel lines in a ±5 s
-    window with the playhead fixed in the centre, or five band-power bars. No
-    channel codes, no per-channel axis numbers (the card carries the legend)."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setMinimumHeight(60)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self._t = None
-        self._chans = None
-        self._has = False
-        self._play = 0.0
-        self._mode = "waveform"
-        self._bp = None
-        self._last_bp_t = None
-        self.setToolTip("Top to bottom: " + " · ".join(CH_NAMES))
-
-    def set_mode(self, mode):
-        self._mode = mode; self._last_bp_t = None; self.update()
-
-    def load(self, df):
-        if df is None or "t_session_seconds" not in getattr(df, "columns", []):
-            self._has = False; self.update(); return
-        self._t = df["t_session_seconds"].to_numpy(dtype=float)
-        self._chans = [df[c].to_numpy(dtype=float) if c in df.columns
-                       else np.zeros(len(self._t)) for c in CH_CODES]
-        self._has = True
-        self.update()
-
-    def set_no_data(self):
-        self._has = False; self.update()
-
-    def set_playhead(self, t):
-        self._play = float(t)
-        if self._mode == "bandpower":
-            if self._last_bp_t is None or abs(t - self._last_bp_t) >= 0.2:
-                self._compute_bp(); self._last_bp_t = t
-        self.update()
-
-    def _window(self, half=5.0):
-        i0 = int(np.searchsorted(self._t, self._play - half))
-        i1 = int(np.searchsorted(self._t, self._play + half))
-        return i0, i1
-
-    def _compute_bp(self):
-        if not self._has:
-            self._bp = None; return
-        from scipy.signal import welch
-        i0, i1 = self._window()
-        if i1 - i0 < 32:
-            self._bp = None; return
-        powers = np.zeros(len(BANDS))
-        for ch in self._chans:
-            seg = ch[i0:i1]
-            f, pxx = welch(seg, fs=EEG_SR, nperseg=min(256, len(seg)))
-            for bi, (_n, lo, hi) in enumerate(BANDS):
-                powers[bi] += np.trapz(pxx[(f >= lo) & (f < hi)],
-                                       f[(f >= lo) & (f < hi)]) if np.any((f >= lo) & (f < hi)) else 0.0
-        self._bp = powers / max(1e-9, powers.max())
-
-    def paintEvent(self, e):
-        p = QPainter(self)
-        try:
-            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            W, H = self.width(), self.height()
-            p.fillRect(self.rect(), QColor(dt.card_bg()))
-            if not self._has:
-                p.setPen(QColor(dt.text_tertiary())); p.setFont(QFont("Inter", 10))
-                p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                           "No brain recording for this boxer")
-                return
-            if self._mode == "bandpower":
-                self._paint_bands(p, W, H)
-            else:
-                self._paint_waves(p, W, H)
-        finally:
-            p.end()
-
-    def _paint_waves(self, p, W, H):
-        i0, i1 = self._window()
-        n = i1 - i0
-        band_h = H / 4.0
-        for ci in range(4):
-            y_mid = band_h * ci + band_h / 2
-            col = QColor(CH_COLORS[ci])
-            if n >= 2:
-                seg = self._chans[ci][i0:i1]
-                t = self._t[i0:i1]
-                scale = max(1.0, 3.0 * float(np.std(seg)))
-                xs = (t - (self._play - 5.0)) / 10.0 * W
-                ys = y_mid - np.clip(seg / scale, -1, 1) * (band_h * 0.42)
-                poly = QPolygonF()
-                step = max(1, n // (W + 1))
-                for k in range(0, n, step):
-                    poly.append(QPointF(float(xs[k]), float(ys[k])))
-                p.setPen(QPen(col, 1.0)); p.setBrush(Qt.BrushStyle.NoBrush)
-                p.drawPolyline(poly)
-            else:
-                p.setPen(QPen(col, 1.0))
-                p.drawLine(0, int(y_mid), W, int(y_mid))
-        # centre playhead
-        p.setPen(QPen(QColor(dt.accent()), 1.2))
-        p.drawLine(W // 2, 0, W // 2, H)
-
-    def _paint_bands(self, p, W, H):
-        if self._bp is None:
-            self._compute_bp()
-        vals = self._bp if self._bp is not None else np.zeros(len(BANDS))
-        nb = len(BANDS); gap = 10
-        bw = (W - (nb + 1) * gap) / nb
-        for bi, (name, _lo, _hi) in enumerate(BANDS):
-            x = gap + bi * (bw + gap)
-            bh = max(2.0, vals[bi] * (H - 24))
-            p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(dt.accent()))
-            p.drawRoundedRect(QRectF(x, H - 18 - bh, bw, bh), 3, 3)
-            p.setPen(QColor(dt.text_tertiary())); p.setFont(QFont("Inter", 8))
-            p.drawText(QRectF(x - 4, H - 16, bw + 8, 14),
-                       Qt.AlignmentFlag.AlignHCenter, name)
+def _small_combo(items, current, tip):
+    c = QComboBox()
+    for text, value in items:
+        c.addItem(text, value)
+    c.setCurrentIndex(max(0, c.findData(current)))
+    c.setToolTip(tip)
+    c.setMinimumHeight(26)
+    c.setCursor(Qt.CursorShape.PointingHandCursor)
+    c.setStyleSheet(
+        f"QComboBox {{ background: {dt.surface()}; color: {dt.text_primary()}; "
+        f"border: 1px solid {dt.border_strong()}; border-radius: {dt.RADIUS_SM}px; "
+        f"padding: 2px 8px; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_XS}px; }}"
+        f"QComboBox:hover {{ border-color: {dt.accent()}; }}")
+    return c
 
 
 class BrainActivityCard(QFrame):
+    """Both boxers' EEG, drawn as a conventional EEG viewer (ui/eeg_viewer.py):
+    one stacked, labelled trace per channel in µV, a shared time axis, timebase
+    and scale controls, and the recording's event markers. The playhead stays
+    in the centre and the signal moves under it."""
+    HEIGHT_NORMAL, HEIGHT_TALL = 300, 480
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("card")
         self.setStyleSheet(f"QFrame#card {{ background: {dt.card_bg()}; "
                            f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_LG}px; }}")
-        v = QVBoxLayout(self); v.setContentsMargins(12, 8, 12, 8); v.setSpacing(3)
-        head = QHBoxLayout()
-        title = QLabel("Brain activity")
+        v = QVBoxLayout(self); v.setContentsMargins(12, 8, 12, 8); v.setSpacing(4)
+        head = QHBoxLayout(); head.setSpacing(6)
+        title = QLabel("Brain activity (EEG)")
         title.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
                             f"font-size: {dt.SIZE_MD}px; font-weight: 700;")
-        head.addWidget(title); head.addStretch()
-        self._status = QLabel("")
-        self._status.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                                   f"font-size: {dt.SIZE_XS}px;")
-        head.addWidget(self._status)
+        title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        title.setMinimumWidth(96)       # may shorten on a narrow window, never push
+        head.addWidget(title, 1)
         self._waves = QPushButton("Waves"); self._band = QPushButton("Band power")
         for b in (self._waves, self._band):
             b.setCheckable(True); b.setMinimumHeight(26)
@@ -412,24 +254,34 @@ class BrainActivityCard(QFrame):
         self._waves.clicked.connect(lambda: self._set_mode("waveform"))
         self._band.clicked.connect(lambda: self._set_mode("bandpower"))
         head.addWidget(self._waves); head.addWidget(self._band)
+        self._timebase = _small_combo(
+            [(f"{s} s", s) for s in eeg_viewer.TIMEBASES], eeg_viewer.DEFAULT_TIMEBASE,
+            "Timebase: how many seconds fit across the display")
+        self._timebase.currentIndexChanged.connect(self._apply_view)
+        self._scale = _small_combo(
+            [("Auto scale", None)] + [(f"{s} µV", s) for s in eeg_viewer.SCALES],
+            eeg_viewer.DEFAULT_SCALE,
+            "Scale: how many microvolts the scale bar stands for")
+        self._scale.currentIndexChanged.connect(self._apply_view)
+        self._filter = QPushButton("Filter 1–45 Hz"); self._filter.setCheckable(True)
+        self._filter.setChecked(True); self._filter.setMinimumHeight(26)
+        self._filter.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._filter.setToolTip("Display filter only — the recorded data is never changed. "
+                                "Switch it off to see the raw signal.")
+        self._filter.clicked.connect(self._apply_view)
+        self._tall = QPushButton("⤢"); self._tall.setCheckable(True)
+        self._tall.setFixedSize(28, 26); self._tall.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._tall.setToolTip("Make the EEG display taller / shorter")
+        self._tall.setStyleSheet(dt.qss_chip(False) + " QPushButton { padding: 0; }")
+        self._tall.clicked.connect(self._apply_height)
+        for w in (self._timebase, self._scale, self._filter, self._tall):
+            head.addWidget(w)
         v.addLayout(head)
-        # legend (colour dot + plain sensor name) on its own row; labels may
-        # shrink (Ignored policy) so the card fits narrow windows.
-        leg = QHBoxLayout(); leg.setSpacing(4)
-        for name, col in zip(CH_NAMES, CH_COLORS):
-            dot = QLabel("●"); dot.setStyleSheet(f"color: {col}; font-size: 10px;")
-            lab = QLabel(name)
-            lab.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                              f"font-size: {dt.SIZE_XS}px;")
-            leg.addWidget(dot); leg.addWidget(lab); leg.addSpacing(6)
-        leg.addStretch()
-        v.addLayout(leg)
 
-        self._traces = []
-        self._names = []
-        self._contacts = []
+        self.viewers, self._bars, self._stacks = [], [], []
+        self._names, self._contacts = [], []
         self._dfs = [None, None]
-        for which in ("A", "B"):
+        for i, which in enumerate(("A", "B")):
             row = QHBoxLayout(); row.setSpacing(8)
             badge = QLabel(which); badge.setFixedSize(20, 20)
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -439,20 +291,26 @@ class BrainActivityCard(QFrame):
             name = QLabel(f"Boxer {which}")
             name.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
                                f"font-size: {dt.SIZE_SM}px; font-weight: 600;")
-            contact = QLabel("")
+            contact = QLabel(""); contact.setWordWrap(True)
             contact.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
                                   f"font-size: {dt.SIZE_XS}px;")
-            left = QVBoxLayout(); left.setSpacing(2)
+            left = QVBoxLayout(); left.setSpacing(2); left.setContentsMargins(0, 0, 0, 0)
             hdr = QHBoxLayout(); hdr.setSpacing(6)
-            hdr.addWidget(badge); hdr.addWidget(name); hdr.addStretch()
-            left.addLayout(hdr); left.addWidget(contact)
-            lw = QWidget(); lw.setLayout(left); lw.setFixedWidth(150)
-            trace = BrainTrace()
-            row.addWidget(lw); row.addWidget(trace, 1)
+            hdr.addWidget(badge); hdr.addWidget(name, 1)
+            left.addLayout(hdr); left.addWidget(contact); left.addStretch()
+            lw = QWidget(); lw.setLayout(left); lw.setFixedWidth(128)
+            viewer = eeg_viewer.EEGViewer(color=text)
+            viewer.show_marker_labels = (i == 0)     # event names along the top …
+            viewer.show_axis = (i == 1)              # … the shared time axis at the bottom
+            bars = eeg_viewer.BandPowerBars(color=line)
+            stack = QStackedWidget(); stack.addWidget(viewer); stack.addWidget(bars)
+            row.addWidget(lw); row.addWidget(stack, 1)
             rw = QWidget(); rw.setLayout(row)
             v.addWidget(rw, 1)
-            self._traces.append(trace); self._names.append(name); self._contacts.append(contact)
+            self.viewers.append(viewer); self._bars.append(bars); self._stacks.append(stack)
+            self._names.append(name); self._contacts.append(contact)
         self._mode = "waveform"; self._set_mode("waveform")
+        self._apply_view(); self._apply_height()
         self.set_loading()
 
     def _set_mode(self, mode):
@@ -460,26 +318,53 @@ class BrainActivityCard(QFrame):
         self._waves.setChecked(mode == "waveform"); self._band.setChecked(mode == "bandpower")
         self._waves.setStyleSheet(dt.qss_chip(mode == "waveform"))
         self._band.setStyleSheet(dt.qss_chip(mode == "bandpower"))
-        for t in self._traces:
-            t.set_mode(mode)
+        for stack in self._stacks:
+            stack.setCurrentIndex(0 if mode == "waveform" else 1)
+        self._refresh_bars()
+
+    def _apply_view(self, *_):
+        self._filter.setStyleSheet(dt.qss_chip(self._filter.isChecked()))
+        for vw in self.viewers:
+            vw.set_timebase(self._timebase.currentData())
+            vw.set_scale(self._scale.currentData())
+            vw.set_filter(self._filter.isChecked())
+        self._refresh_bars()
+
+    def _apply_height(self, *_):
+        self.setFixedHeight(self.HEIGHT_TALL if self._tall.isChecked() else self.HEIGHT_NORMAL)
+
+    def _refresh_bars(self):
+        if self._mode == "bandpower":
+            for vw, bars in zip(self.viewers, self._bars):
+                bars.set_window(*vw.visible_samples())
 
     def set_loading(self):
-        self._status.setText("Loading brain activity…")
+        for vw in self.viewers:
+            vw.empty_text = "Loading brain activity…"
+            vw.set_data(None, {})
 
     def load(self, dfs, names):
         self._dfs = dfs
-        self._status.setText("")
         for i, (df, name) in enumerate(zip(dfs, names)):
+            self.viewers[i].empty_text = "No brain recording for this boxer"
             self._names[i].setText(name)
-            if df is not None:
-                self._traces[i].load(df)
+            if df is not None and "t_session_seconds" in getattr(df, "columns", []):
+                self.viewers[i].set_data(
+                    df["t_session_seconds"].to_numpy(dtype=float),
+                    {c: df[c].to_numpy(dtype=float) for c in EEG_CHANNELS if c in df.columns})
             else:
-                self._traces[i].set_no_data()
-        self._set_mode(self._mode)
+                self._dfs[i] = None
+                self.viewers[i].set_data(None, {})
+
+    def set_markers(self, markers):
+        """``[(t_session_seconds, text, colour), …]`` drawn on both viewers."""
+        for vw in self.viewers:
+            vw.set_markers(markers)
 
     def set_playhead(self, t):
-        for tr in self._traces:
-            tr.set_playhead(t)
+        for vw in self.viewers:
+            vw.set_view(t)
+        self._refresh_bars()
 
     def update_contact(self, t):
         for i, line in enumerate(self._contacts):
@@ -671,19 +556,20 @@ class ReviewLabelScreen(QWidget):
         self._scroll = QScrollArea(); self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        content = QWidget(); content.setStyleSheet(f"background: {dt.canvas_bg()};")
+        content = QWidget(); content.setObjectName("reviewContent")
+        content.setStyleSheet(f"#reviewContent {{ background: {dt.canvas_bg()}; }}")
         cv = QVBoxLayout(content); cv.setContentsMargins(0, 0, 0, 0); cv.setSpacing(10)
 
         self._grid = VideoGrid([("", "Side camera 1"), ("", "Side camera 2"),
                                 ("", "Boxer A view"), ("", "Boxer B view")])
         grid_wrap = QFrame()
-        grid_wrap.setStyleSheet(f"background: #0E0F12; border-radius: {dt.RADIUS_LG}px;")
+        grid_wrap.setObjectName("videoWrap")
+        grid_wrap.setStyleSheet(f"#videoWrap {{ background: #0E0F12; border-radius: {dt.RADIUS_LG}px; }}")
         gw = QVBoxLayout(grid_wrap); gw.setContentsMargins(8, 8, 8, 8); gw.addWidget(self._grid)
         grid_wrap.setMinimumHeight(200)
         cv.addWidget(grid_wrap, 1)
 
         self._brain = BrainActivityCard()
-        self._brain.setMinimumHeight(140); self._brain.setMaximumHeight(190)
         cv.addWidget(self._brain)
 
         self._timeline_card = self._build_timeline_card()
@@ -698,8 +584,9 @@ class ReviewLabelScreen(QWidget):
         root.addLayout(body, 1)
 
     def _build_topbar(self):
-        bar = QFrame(); bar.setFixedHeight(58)
-        bar.setStyleSheet(f"background: {dt.surface()}; border-bottom: 1px solid {dt.border()};")
+        bar = QFrame(); bar.setFixedHeight(58); bar.setObjectName("topBar")
+        bar.setStyleSheet(f"#topBar {{ background: {dt.surface()}; "
+                          f"border-bottom: 1px solid {dt.border()}; }}")
         h = QHBoxLayout(bar); h.setContentsMargins(16, 8, 20, 8); h.setSpacing(12)
         back = QPushButton("←  Sessions"); back.setMinimumHeight(38)
         back.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -775,7 +662,8 @@ class ReviewLabelScreen(QWidget):
     def _tbtn(self, text, slot, primary=False):
         b = QPushButton(text); b.setMinimumHeight(36); b.setMinimumWidth(44)
         b.setCursor(Qt.CursorShape.PointingHandCursor)
-        b.setStyleSheet(dt.qss_primary_button() if primary else dt.qss_secondary_button())
+        b.setStyleSheet((dt.qss_primary_button() if primary else dt.qss_secondary_button())
+                        + " QPushButton { padding: 0 6px; }")   # keep the glyph visible when narrow
         b.clicked.connect(slot)
         return b
 
@@ -812,7 +700,8 @@ class ReviewLabelScreen(QWidget):
         v.addWidget(self._placed_head)
         self._placed_scroll = QScrollArea(); self._placed_scroll.setWidgetResizable(True)
         self._placed_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._placed_host = QWidget(); self._placed_host.setStyleSheet(f"background: {dt.card_bg()};")
+        self._placed_host = QWidget(); self._placed_host.setObjectName("placedHost")
+        self._placed_host.setStyleSheet(f"#placedHost {{ background: {dt.card_bg()}; }}")
         self._placed_layout = QVBoxLayout(self._placed_host)
         self._placed_layout.setContentsMargins(0, 0, 0, 0); self._placed_layout.setSpacing(4)
         self._placed_layout.addStretch()
@@ -880,13 +769,13 @@ class ReviewLabelScreen(QWidget):
                 pass
         # Unnamed "Mark this moment" marks recorded during capture — shown as
         # moments to name here (DESIGN §4/§6).
-        import brain_battle.data.session_storage as session_storage
         self._moments = session_storage.read_moments(root)
         self._refresh_placed()
         self._strip.set_session(self._duration, self._phases, self._timeline_labels())
         mins = max(1, round(self._duration / 60)) if self._duration else 0
         self._subtitle.setText(self._subtitle_text(mins, rounds, a, b))
         self._brain.set_loading()
+        self._brain.set_markers(self._eeg_markers())
         try:
             session_history.log_event(root, session_history.EVENT_OPENED_FOR_REVIEW)
         except Exception:
@@ -905,26 +794,9 @@ class ReviewLabelScreen(QWidget):
                 + (f" · Boxer A {a}" if a else "") + (f" · Boxer B {b}" if b else ""))
 
     def _eeg_plan(self, root) -> dict:
-        """{0: pathA, 1: pathB} — which CSV is each boxer's band."""
-        muse = os.path.join(root, "continuous", "Muse data")
-        plan = {}
-        try:
-            from brain_battle.capture.eeg_module import boxer_labels, muse_friendly as _muse_friendly
-            BOXER_LABELS = boxer_labels()
-        except Exception:
-            BOXER_LABELS, _muse_friendly = {}, (lambda x: x)
-        files = sorted(f for f in os.listdir(muse)) if os.path.isdir(muse) else []
-        files = [f for f in files if f.endswith(".csv")]
-        for device, boxer in BOXER_LABELS.items():
-            idx = 0 if boxer.replace("BOXER ", "").strip() == "A" else 1
-            fr = _muse_friendly(device)
-            match = next((f for f in files if fr in f), None)
-            if match:
-                plan[idx] = os.path.join(muse, match)
-        if not plan and files:
-            for i, f in enumerate(files[:2]):
-                plan[i] = os.path.join(muse, f)
-        return plan
+        """{0: Boxer A's EEG file, 1: Boxer B's} from the recording's manifest."""
+        files = session_storage.eeg_files(root)
+        return {i: files[who] for i, who in enumerate(("A", "B")) if who in files}
 
     def _on_media_loaded(self, decoder, dfs):
         eeg_dur = 0.0
@@ -1105,6 +977,24 @@ class ReviewLabelScreen(QWidget):
         self._autosave_and_history(added, removed)
         self._refresh_placed()
         self._strip.set_labels(self._timeline_labels())
+        self._brain.set_markers(self._eeg_markers())
+
+    def _eeg_markers(self):
+        """Every event of the recording as (time, text, colour) for the EEG
+        display: phase starts, marked moments, and the placed labels."""
+        pal = dt._p()
+        fg = {"baseline": pal.phase_rest[1], "round": pal.phase_round[1],
+              "break": pal.phase_break[1], "done": pal.phase_rest[1]}
+        out = [(t, short_phase(label), fg.get(pid, dt.text_secondary()))
+               for t, pid, label in self._phases]
+        out += [(float(m["t_session_seconds"]), "Moment", dt.record_red()) for m in self._moments]
+        for lab in self._store.labels:
+            col = lab.get("color", dt.accent())
+            text = f"{lab.get('label', '')} · {lab.get('who', '')}"
+            out.append((float(lab["t_start"]), text, col))
+            if lab.get("t_end") is not None:
+                out.append((float(lab["t_end"]), f"{lab.get('label', '')} ends", col))
+        return out
 
     # ---- marked moments (unnamed until named here) ----
     def _moment_pseudo_labels(self):
@@ -1135,11 +1025,7 @@ class ReviewLabelScreen(QWidget):
         self._store.add(lab)
         # consume the moment from the manifest so it isn't offered again
         if self._root:
-            try:
-                import brain_battle.data.session_storage as session_storage
-                session_storage.consume_moment(self._root, t)
-            except Exception:
-                pass
+            session_storage.consume_moment(self._root, t)
         self._moments = [m for m in self._moments
                          if abs(float(m["t_session_seconds"]) - t) >= 1e-3]
         self._after_change(added=lab)

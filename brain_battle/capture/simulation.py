@@ -18,9 +18,10 @@ byte-for-byte what real hardware would produce:
   • Headbands → ``SimMuseReader`` (a subclass of the real
     ``eeg_module._MuseDirectReader``) that synthesises 12-sample chunks at
     256 Hz and feeds them through the reader's real ``_on_eeg`` /
-    ``start_recording`` / ``stop_recording`` path, plus a simulated battery
-    telemetry signal and a deliberately weak sensor on Boxer B so the
-    contact-quality warnings can be seen.
+    ``start_recording`` / ``stop_recording`` path, plus synthetic movement and
+    pulse sensors, battery telemetry, and a deliberately weak sensor on Boxer B
+    so the contact-quality warnings can be seen. Because it is the real reader,
+    the live LSL streams and ``recording.xdf`` come out of simulation too.
 
 Failure injection (also env-gated, for the failure-path screens/tests):
   • BRAIN_BATTLE_SIMULATE_MISSING_CAMERA=1  → only 3 cameras enumerate.
@@ -30,7 +31,6 @@ Failure injection (also env-gated, for the failure-path screens/tests):
 from __future__ import annotations
 
 import os
-import threading
 import time
 
 import numpy as np
@@ -183,22 +183,20 @@ def _sim_reader_cls():
     if _SIM_READER_CLS is not None:
         return _SIM_READER_CLS
 
-    from PyQt6.QtCore import pyqtSignal
-    from brain_battle.capture.eeg_module import _MuseDirectReader
+    import brain_battle.capture.clock as clock
+    from brain_battle.capture.eeg_module import _MuseDirectReader, SENSORS
 
     class SimMuseReader(_MuseDirectReader):
-        """Generates synthetic 256 Hz EEG and feeds it through the real reader's
-        ``_on_eeg`` path (so recording/flush are the real code). Emits
-        ``connected``/``samples`` like the real reader plus a ``battery``
-        telemetry signal. Boxer B's right-ear sensor is kept weak so the
-        contact-quality warning is visible; optionally drops mid-recording."""
+        """Generates synthetic headband data and feeds it through the real
+        reader's callbacks (``_on_eeg`` / ``_on_imu`` / ``_on_sensor`` /
+        ``_on_telemetry``), so recording, flushing, the Qt signals and the LSL
+        streams are all the real code. Boxer B's right-ear sensor is kept weak
+        so the contact-quality warning is visible; optionally drops
+        mid-recording."""
 
-        battery = pyqtSignal(int)
-
-        def __init__(self, address, name="", boxer="", parent=None):
-            super().__init__(address=address, name=name, parent=parent)
+        def __init__(self, address, name="", boxer="", **kw):
+            super().__init__(address=address, name=name, **kw)
             self._boxer = (boxer or "").upper()
-            self._sim_running = False
             self._rec_start_mono = None
             self._battery_level = 82 if self._boxer == "A" else 76
 
@@ -207,46 +205,52 @@ def _sim_reader_cls():
             return super().start_recording(path, origin_unix=origin_unix, append=append)
 
         def stop(self):
-            self._sim_running = False
             self._running = False
 
         def run(self):
             self._running = True
-            self._sim_running = True
             self._first_chunk_seen = False
-            sr, chunk = 256, 12
             rng = np.random.default_rng(abs(hash(self.name)) % (2**32))
-            t_start = time.monotonic()
-            sample_i = 0
-            drop_after = drop_headband_after()
-            last_batt = 0.0
             ph = rng.uniform(0, 2 * np.pi)
-            self._emit_battery(self._battery_level)
-            while self._running and self._sim_running:
+            t_start = time.monotonic()
+            drop_after = drop_headband_after()
+            # (kind, rate, chunk, samples sent so far)
+            streams = [["EEG", 256, 12, 0]]
+            if self.motion:
+                streams += [["ACC", SENSORS["ACC"][0], 3, 0], ["GYRO", SENSORS["GYRO"][0], 3, 0]]
+            if self.ppg:
+                streams += [["PPG", SENSORS["PPG"][0], 6, 0]]
+            last_batt = 0.0
+            self._on_telemetry(clock.unix_now(), self._battery_level)
+            while self._running:
                 now = time.monotonic()
-                due = int((now - t_start) * sr)
-                if due - sample_i < chunk:
-                    time.sleep(chunk / sr / 2)
-                    continue
-                data = self._make_chunk(sample_i, chunk, sr, rng, ph)
-                ts = time.time() + np.arange(chunk) / sr
-                try:
-                    self._on_eeg(data, ts.astype(np.float64))
-                except Exception:
-                    pass
-                sample_i += chunk
+                busy = False
+                for st in streams:
+                    kind, sr, chunk, sent = st
+                    if int((now - t_start) * sr) - sent < chunk:
+                        continue
+                    busy = True
+                    # the chunk's last sample was "just received" (like Bluetooth)
+                    ts = clock.unix_now() - np.arange(chunk - 1, -1, -1) / sr
+                    try:
+                        if kind == "EEG":
+                            self._on_eeg(self._make_chunk(sent, chunk, sr, rng, ph), ts)
+                        else:
+                            self._on_sensor(kind, self._make_sensor(kind, sent, chunk, sr, rng), ts)
+                    except Exception:
+                        pass
+                    st[3] = sent + chunk
+                if not busy:
+                    time.sleep(0.004)
                 if now - last_batt > 3.0:
                     last_batt = now
                     self._battery_level = max(1, self._battery_level - 1)
-                    self._emit_battery(self._battery_level)
+                    self._on_telemetry(clock.unix_now(), self._battery_level)
                 if (drop_after is not None and self._boxer == _WEAK_BOXER
                         and self._rec_start_mono is not None
                         and now - self._rec_start_mono > drop_after):
                     self._running = False
-                    try:
-                        self.error.emit("The headband turned off or moved out of range.")
-                    except Exception:
-                        pass
+                    self.error.emit("The headband turned off or moved out of range.")
                     return
 
         def _make_chunk(self, start, n, sr, rng, ph):
@@ -260,19 +264,24 @@ def _sim_reader_cls():
             data[4] = rng.normal(0.0, 4.0, n)       # AUX
             return data
 
-        def _emit_battery(self, level):
-            try:
-                self.battery.emit(int(level))
-            except Exception:
-                pass
+        def _make_sensor(self, kind, start, n, sr, rng):
+            t = (start + np.arange(n)) / sr
+            sway = np.sin(2 * np.pi * 1.5 * t)       # a boxer bouncing at 1.5 Hz
+            if kind == "ACC":                        # g: gravity on Z + sway
+                base = np.array([[0.02], [0.05], [0.98]])
+                return (base + 0.15 * sway + rng.normal(0, 0.01, (3, n))).astype(np.float32)
+            if kind == "GYRO":                       # degrees / second
+                return (25.0 * sway + rng.normal(0, 2.0, (3, n))).astype(np.float32)
+            pulse = np.sin(2 * np.pi * 1.8 * t)      # ~108 bpm
+            return (60000 + 400 * pulse + rng.normal(0, 30, (3, n))).astype(np.float32)
 
     _SIM_READER_CLS = SimMuseReader
     return _SIM_READER_CLS
 
 
-def make_muse_reader(address: str, name: str, boxer: str = "", parent=None):
-    """A simulated reader standing in for _MuseDirectReader over fake BLE."""
-    return _sim_reader_cls()(address=address, name=name, boxer=boxer, parent=parent)
+def make_muse_reader(address: str, name: str, boxer: str = "", **kw):
+    """A simulated reader standing in for _MuseDirectReader over fake Bluetooth."""
+    return _sim_reader_cls()(address=address, name=name, boxer=boxer, **kw)
 
 
 __all__ = [

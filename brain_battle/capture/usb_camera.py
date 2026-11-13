@@ -239,8 +239,12 @@ class FrameEncoder:
     def __init__(self, path, width: int, height: int, fps: float,
                  clock: Optional[tuple[float, float]] = None,
                  encoder: Optional[str] = None,
-                 bitrate_mbps: float = REC_BITRATE_MBPS):
+                 bitrate_mbps: float = REC_BITRATE_MBPS,
+                 on_frame=None):
         self.path = str(path)
+        # Optional callback(frame_index, t_monotonic) fired for every frame that
+        # reached the encoder — used to publish frame times as a live LSL stream.
+        self._on_frame = on_frame
         self._w = int(width)
         self._h = int(height)
         self._fps = float(fps)
@@ -377,9 +381,6 @@ class FrameEncoder:
             log.warning("could not open timestamp sidecar %s: %s", ts_path, e)
 
     def _write_sidecar_row(self, t_monotonic: float) -> None:
-        if self._ts_file is None:
-            self._frame_idx += 1
-            return
         clock = self._clock
         if clock is not None:
             t0_mono, t0_unix = clock
@@ -392,10 +393,16 @@ class FrameEncoder:
         t_session = t_monotonic - t0_mono
         t_unix = t0_unix + t_session
         try:
-            self._ts_file.write(
-                f"{self._frame_idx},{t_session:.6f},{t_monotonic:.6f},{t_unix:.6f}\n")
+            if self._ts_file is not None:
+                self._ts_file.write(
+                    f"{self._frame_idx},{t_session:.6f},{t_monotonic:.6f},{t_unix:.6f}\n")
         except OSError:
             pass  # a sidecar write failure must not stop capture
+        if self._on_frame is not None:
+            try:
+                self._on_frame(self._frame_idx, t_monotonic)
+            except Exception:
+                pass  # a listener must never stop capture either
         self._frame_idx += 1
 
     def _close_sidecar(self) -> None:
@@ -482,6 +489,9 @@ class USBCameraThread(QThread):
         self._writer_thread:   Optional[threading.Thread] = None
         self._dropped_frames:  int = 0
         self._last_drop_log:   float = 0.0
+        # Optional callback(frame_index, t_monotonic) per recorded frame (see
+        # FrameEncoder). Set before start_recording().
+        self.frame_hook = None
 
     # ── Public API (thread-safe; uses flags the run-loop polls) ──────────
     def set_preview_width(self, w: int) -> None:
@@ -514,6 +524,13 @@ class USBCameraThread(QThread):
     @property
     def is_recording(self) -> bool:
         return self._recording
+
+    @property
+    def recording_finalised(self) -> bool:
+        """True once no recording is running AND the last one's video +
+        sidecar are fully written and closed (safe to read from disk)."""
+        return (not self._recording and self._writer_thread is None
+                and self._rec_req_path is None)
 
     @property
     def dropped_frames(self) -> int:
@@ -696,7 +713,8 @@ class USBCameraThread(QThread):
     # (docs/archive/ARCHITECTURE_AND_EVALUATION.md §1.6).
 
     def _start_recording_encoder(self, path, fw, fh, fps, clock) -> None:
-        enc = FrameEncoder(path, fw, fh, fps, clock, bitrate_mbps=self._bitrate_mbps)
+        enc = FrameEncoder(path, fw, fh, fps, clock, bitrate_mbps=self._bitrate_mbps,
+                           on_frame=self.frame_hook)
         if not enc.start():
             self.state_changed.emit("error: could not start video encoder")
             self.record_error.emit(

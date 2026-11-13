@@ -22,15 +22,14 @@ from PyQt6.QtGui import QImage
 import brain_battle.data.app_settings as app_settings
 from brain_battle.capture.usb_camera import USBCameraThread, CameraDevice
 
-# Slot specs mirror usb_camera_panel._SLOT_SPECS so the recorded filenames and
-# the Review screen's camera names line up exactly.
+# The four camera slots: (index, name shown in the UI, kind).
 SLOT_SPECS = [
     (1, "Side camera 1", "side"),
     (2, "Side camera 2", "side"),
     (3, "Boxer A view",  "pov"),
     (4, "Boxer B view",  "pov"),
 ]
-# File stem per slot (matches the old USBCameraPanel: "SIDE 01" etc.).
+# File stem per slot: the video is continuous/<folder>/session_<stem>.mp4.
 _SLOT_STEM = {1: "SIDE_01", 2: "SIDE_02", 3: "POV_01", 4: "POV_02"}
 _SLOT_SUB = {"side": "Side Cams", "pov": "POV Cams"}
 
@@ -96,11 +95,27 @@ class CameraSlot(QObject):
         sub = _SLOT_SUB.get(self.kind, "Side Cams")
         return str(continuous_dir / sub / f"session_{_SLOT_STEM[self.index]}.mp4")
 
-    def start_recording(self, path, clock) -> None:
+    @property
+    def stem(self) -> str:
+        """File stem of this camera's recording, e.g. ``SIDE_01``."""
+        return _SLOT_STEM[self.index]
+
+    def start_recording(self, path, clock, publisher=None) -> None:
+        """Start recording to ``path``. With an ``LslPublisher``, every
+        recorded frame's number + capture time is also published live."""
         if self._thread is None:
             return
         self.rec_failed = False; self.dropped = 0
+        stem = self.stem
+        self._thread.frame_hook = (
+            (lambda i, t: publisher.push_frame(stem, i, t)) if publisher is not None else None)
         self._thread.start_recording(path, clock=clock)
+
+    @property
+    def recording_finalised(self) -> bool:
+        """True when this camera's files are completely written (or it never
+        recorded)."""
+        return self._thread is None or self._thread.recording_finalised
 
     def stop_recording(self) -> None:
         if self._thread is not None:

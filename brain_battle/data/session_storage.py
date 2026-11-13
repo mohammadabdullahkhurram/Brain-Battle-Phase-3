@@ -1,29 +1,24 @@
 """
 session_storage.py
 ──────────────────
-Owns the on-disk layout for a capture session (v2.x continuous-recording
-model — one take per camera for the whole session, phases as timestamps):
+Owns the on-disk layout of a recording (one continuous take per source for the
+whole session; rounds and breaks are timestamps, not folders):
 
-    Brain Battle <timestamp>/
+    2026-10-27 14-05 Sam vs Alex/
         continuous/
-            Side Cams/*.mp4      # one MP4 per camera, entire session
-            POV Cams/*.mp4       # (subfolders created lazily by the
-            Muse data/*.csv      #  recording code when a slot records)
-        phase_markers.csv        # t_session_seconds, phase_id, label,
-                                 # round_num, unix_time — one row per
-                                 # phase transition (appended live)
-        session_manifest.json
+            Side Cams/*.mp4 + *.timestamps.csv   one video per camera
+            POV Cams/*.mp4  + *.timestamps.csv
+            Muse data/*.csv                      one EEG file per headband
+            Muse sensors/*.csv                   movement / pulse (optional)
+        phase_markers.csv        one row per phase transition (appended live)
+        session_manifest.json    names, plan, clock origin, moments
+        recording.xdf            everything above on one clock (session_xdf.py)
 
-Recording never stops between baseline → rounds → breaks; downstream tools
-derive phase boundaries from phase_markers.csv rather than from folders.
-The manifest additionally records the session config and each phase's
-start/end wall-clock + monotonic timestamps for analytics.
+This module also finds the files of an existing recording (``eeg_files``,
+``camera_files``, ``read_phase_markers``), classifies recordings for the
+Sessions screen, and does the disk-space estimate.
 
-(The v1.x per-phase model — baseline/, Round 1/, … each with their own
-recordings — is gone; its folder-resolution API was removed with it.)
-
-This module is pure filesystem logic: no Qt, no subprocess, no audio.
-That keeps it easy to unit-test.
+Pure filesystem logic: no Qt, no subprocess, no audio — easy to unit-test.
 """
 
 from __future__ import annotations
@@ -38,23 +33,18 @@ from pathlib import Path
 from typing import Optional
 
 from brain_battle.capture.session_controller import SessionConfig, Phase
+from brain_battle.data.signals import EEG_DIR_NAME, SENSOR_DIR_NAME, SENSORS
 from brain_battle.version import __version__
 
 
 # ─── Directory naming ─────────────────────────────────────────────────────────
 
-_SAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
 # Illegal on Windows (and '/' on macOS): the above + ASCII control chars.
 _ILLEGAL_FS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _WIN_RESERVED = {"CON", "PRN", "AUX", "NUL",
                  *(f"COM{i}" for i in range(1, 10)),
                  *(f"LPT{i}" for i in range(1, 10))}
 _NAME_MAXLEN = 40   # per boxer name, to keep folder names sane
-
-
-def _safe(name: str) -> str:
-    """Strip characters that are illegal on Windows filesystems."""
-    return _SAFE_CHARS.sub('-', name).strip()
 
 
 def sanitize_name(name: str, maxlen: int = _NAME_MAXLEN) -> str:
@@ -142,6 +132,7 @@ class SessionLayout:
     # Fixes the "three assumed zeros" of ARCHITECTURE_AND_EVALUATION.md §1.6/§2.4.
     capture_t0_monotonic: Optional[float] = None
     capture_t0_unix:      Optional[float] = None
+    capture_t0_lsl:       Optional[float] = None   # same instant on the LSL clock
     # Measured per-source first-sample time (Unix), so each source's startup
     # latency is recorded, not assumed. Keyed by source id (e.g. "EEG_01").
     source_starts:        dict = field(default_factory=dict)
@@ -214,12 +205,16 @@ class SessionLayout:
 
     # ---- capture-time clock bridge ------------------------------------------
 
-    def set_capture_origin(self, t0_monotonic: float, t0_unix: float) -> None:
-        """Record the shared capture-time origin captured at recording start.
-        This is the authoritative bridge review/label read to place markers,
-        camera frames, and EEG samples on ONE axis."""
+    def set_capture_origin(self, t0_monotonic: float, t0_unix: float,
+                           t0_lsl: Optional[float] = None) -> None:
+        """Record the shared capture-time origin captured at recording start
+        (see ``capture/clock.session_origin``). This is the authoritative
+        bridge that places markers, camera frames, and EEG samples on ONE
+        axis; ``t0_lsl`` is the same instant on the LSL clock, used for the
+        timestamps inside recording.xdf."""
         self.capture_t0_monotonic = float(t0_monotonic)
         self.capture_t0_unix = float(t0_unix)
+        self.capture_t0_lsl = None if t0_lsl is None else float(t0_lsl)
         self._write_manifest()
 
     def record_source_start(self, source_id: str, first_unix: float) -> None:
@@ -261,6 +256,7 @@ class SessionLayout:
             "capture_clock":  {
                 "t0_monotonic": self.capture_t0_monotonic,
                 "t0_unix":      self.capture_t0_unix,
+                "t0_lsl":       self.capture_t0_lsl,
             },
             "source_starts":  self.source_starts,
             "config":         asdict(self.config),
@@ -303,13 +299,7 @@ def create_session(base_dir: str | os.PathLike,
     # actually records, so absent folders mean "nothing connected for that
     # source" rather than "feature broken".
     (root / "continuous").mkdir(parents=True, exist_ok=True)
-    (root / "continuous" / "Muse data").mkdir(parents=True, exist_ok=True)
-
-    # NOTE: per-phase folders (baseline/, Round 1/, …) used to be created
-    # here for the v1.x per-phase-recording model. They are NOT created in
-    # v2.x — recording is continuous and phases are derived from
-    # phase_markers.csv. Downstream tools should walk continuous/ and read
-    # the markers file instead of looking for separate round folders.
+    (root / "continuous" / EEG_DIR_NAME).mkdir(parents=True, exist_ok=True)
 
     # Write an initial (empty-phases) manifest so it exists from t=0.
     layout._write_manifest()
@@ -326,6 +316,27 @@ def _read_manifest(session_root: Path) -> Optional[dict]:
         return json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+
+
+def _update_manifest(session_root, change) -> bool:
+    """Read the manifest, let ``change(manifest)`` edit it (return False to
+    abandon), and write it back atomically (temp file + rename). Returns True
+    if it was written."""
+    root = Path(session_root)
+    m = _read_manifest(root)
+    if m is None or change(m) is False:
+        return False
+    tmp = root / "session_manifest.json.tmp"
+    try:
+        tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, root / "session_manifest.json")
+        return True
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return False
 
 
 def _has_session_end(session_root: Path) -> bool:
@@ -389,47 +400,16 @@ def scan_interrupted_sessions(base_dir: str | os.PathLike) -> list["SessionLayou
 
 
 def mark_session_interrupted(session_root: str | os.PathLike) -> bool:
-    """Flag a session's manifest `interrupted: true` (atomic temp+rename) so
-    the crash-recovery prompt won't ask about it again. Does NOT fabricate a
-    SESSION_END marker — the recording genuinely never finished. Returns True
-    on success."""
-    root = Path(session_root)
-    m = _read_manifest(root)
-    if m is None:
-        return False
-    m["interrupted"] = True
-    tmp = root / "session_manifest.json.tmp"
-    try:
-        tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, root / "session_manifest.json")
-        return True
-    except OSError:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        return False
+    """Flag a session's manifest `interrupted: true` so it is reported once.
+    Does NOT fabricate a SESSION_END marker — the recording genuinely never
+    finished. Returns True on success."""
+    return _update_manifest(session_root, lambda m: m.update(interrupted=True))
 
 
 def dismiss_interrupted(session_root) -> bool:
     """Flag `interrupted_dismissed: true` so the Sessions interrupted banner
-    never shows this recording again (atomic write). Returns True on success."""
-    root = Path(session_root)
-    m = _read_manifest(root)
-    if m is None:
-        return False
-    m["interrupted_dismissed"] = True
-    tmp = root / "session_manifest.json.tmp"
-    try:
-        tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, root / "session_manifest.json")
-        return True
-    except OSError:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        return False
+    never shows this recording again. Returns True on success."""
+    return _update_manifest(session_root, lambda m: m.update(interrupted_dismissed=True))
 
 
 def read_moments(session_root) -> list:
@@ -450,36 +430,137 @@ def read_moments(session_root) -> list:
 
 def consume_moment(session_root, t_session_seconds) -> bool:
     """Remove the moment at (≈) `t_session_seconds` from the manifest once the
-    user has named it in Review (atomic temp+rename). Returns True if one was
-    removed."""
-    root = Path(session_root)
-    m = _read_manifest(root)
-    if not m:
-        return False
-    moments = m.get("moments") or []
+    user has named it in Review. Returns True if one was removed."""
     target = round(float(t_session_seconds), 3)
-    kept, removed = [], False
-    for e in moments:
-        try:
-            t = round(float(e.get("t_session_seconds")), 3)
-        except (TypeError, ValueError, AttributeError):
-            kept.append(e); continue
-        if not removed and abs(t - target) < 1e-3:
-            removed = True
-        else:
-            kept.append(e)
-    if not removed:
-        return False
-    m["moments"] = kept
-    tmp = root / "session_manifest.json.tmp"
+
+    def change(m):
+        kept, removed = [], False
+        for e in (m.get("moments") or []):
+            try:
+                t = round(float(e.get("t_session_seconds")), 3)
+            except (TypeError, ValueError, AttributeError):
+                kept.append(e)
+                continue
+            if not removed and abs(t - target) < 1e-3:
+                removed = True
+            else:
+                kept.append(e)
+        m["moments"] = kept
+        return removed
+
+    return _update_manifest(session_root, change)
+
+
+# ─── Finding a recording's files ────────────────────────────────────────────────
+
+def read_phase_markers(session_root) -> list[tuple]:
+    """phase_markers.csv as time-sorted ``(t_session_seconds, phase_id, label)``
+    rows. [] if the file is missing or unreadable; bad rows are skipped."""
+    import csv as _csv
+    p = Path(session_root) / "phase_markers.csv"
+    out = []
     try:
-        tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, root / "session_manifest.json")
-        return True
+        with open(p, encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                try:
+                    out.append((float(row["t_session_seconds"]),
+                                row.get("phase_id", ""), row.get("label", "")))
+                except (KeyError, TypeError, ValueError):
+                    continue
     except OSError:
-        try: tmp.unlink()
-        except OSError: pass
-        return False
+        return []
+    out.sort(key=lambda r: r[0])
+    return out
+
+
+# Marker tokens → the words the UI uses.
+
+def friendly_phase(label: str) -> str:
+    """Marker token → full DESIGN vocabulary name."""
+    u = (label or "").upper()
+    if u.startswith("BASELINE"):
+        return "Rest before round 1"
+    if u.startswith("ROUND"):
+        m = re.search(r"(\d+)", u)
+        return f"Round {m.group(1)}" if m else "Round"
+    if u.startswith("BREAK"):
+        return "Break"
+    if u.startswith("SESSION_END") or u == "DONE":
+        return "Finished"
+    return label or ""
+
+
+def short_phase(label: str) -> str:
+    """Shortest sensible form for a narrow timeline band."""
+    u = (label or "").upper()
+    if u.startswith("BASELINE"):
+        return "Rest"
+    if u.startswith("ROUND"):
+        return friendly_phase(label)       # "Round N" is already short
+    if u.startswith("BREAK"):
+        return "Break"
+    if u.startswith("SESSION_END") or u == "DONE":
+        return "End"
+    return friendly_phase(label)
+
+
+def _band_file_token(headband: str) -> str:
+    """'MuseS-7538' → 'Muse S 7538', the form used in the EEG file names."""
+    return (headband or "").replace("MuseS-", "Muse S ").replace(
+        "Muse-S-", "Muse S ").replace("-", " ")
+
+
+def eeg_files(session_root) -> dict:
+    """``{"A": path, "B": path}`` — which EEG CSV belongs to which boxer.
+
+    Decided by the headband names stored in THIS recording's manifest (so it
+    stays right even if the headband assignment in Settings changes later).
+    Recordings whose manifest names no headbands fall back to file-name order
+    (first file = A)."""
+    root = Path(session_root)
+    muse = root / "continuous" / EEG_DIR_NAME
+    files = sorted(p for p in muse.glob("*.csv")) if muse.is_dir() else []
+    boxers = (_read_manifest(root) or {}).get("boxers") or {}
+    out, used = {}, set()
+    for who in ("A", "B"):
+        token = _band_file_token((boxers.get(who) or {}).get("headband") or "")
+        match = next((p for p in files if token and token in p.name and p not in used), None)
+        if match is not None:
+            out[who] = str(match)
+            used.add(match)
+    rest = [p for p in files if p not in used]
+    for who in ("A", "B"):
+        if who not in out and rest:
+            out[who] = str(rest.pop(0))
+    return out
+
+
+def sensor_files(session_root) -> dict:
+    """``{("A", "ACC"): path, …}`` for the optional movement / pulse CSVs,
+    matched to boxers through their EEG file's name."""
+    root = Path(session_root)
+    out = {}
+    for who, eeg in eeg_files(root).items():
+        stem = Path(eeg).stem
+        for kind in SENSORS:
+            p = root / "continuous" / SENSOR_DIR_NAME / f"{stem}_{kind}.csv"
+            if p.is_file():
+                out[(who, kind)] = str(p)
+    return out
+
+
+def camera_files(session_root) -> list[tuple]:
+    """``[(stem, mp4_path, sidecar_path), …]`` for every recorded camera, e.g.
+    stem ``SIDE_01``; side cameras first, then the boxer views."""
+    cont = Path(session_root) / "continuous"
+    out = []
+    for sub in ("Side Cams", "POV Cams"):
+        d = cont / sub
+        if d.is_dir():
+            for mp4 in sorted(d.glob("*.mp4")):
+                out.append((mp4.stem.replace("session_", ""), str(mp4),
+                            str(mp4.with_suffix(".timestamps.csv"))))
+    return out
 
 
 @dataclass
@@ -634,6 +715,10 @@ def flag_new_interrupted(base_dir) -> int:
                     info.root, session_history.EVENT_RECORDING_INTERRUPTED)
             except Exception:
                 pass
+            # The crash happened before recording.xdf was made — build it now
+            # from what was saved (never raises).
+            import brain_battle.data.session_xdf as session_xdf
+            session_xdf.ensure_session_xdf(info.root)
     return n
 
 
@@ -728,6 +813,7 @@ __all__ = [
     "is_interrupted_session", "scan_interrupted_sessions", "flag_new_interrupted",
     "mark_session_interrupted", "dismiss_interrupted",
     "read_moments", "consume_moment",
+    "read_phase_markers", "friendly_phase", "short_phase", "eeg_files", "sensor_files", "camera_files",
     "session_info", "list_sessions", "folder_size_bytes",
     "session_total_seconds", "estimate_session_bytes", "disk_space_verdict",
     "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",
