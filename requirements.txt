@@ -4,9 +4,9 @@
 # abstractly (lower bounds) and the package metadata. Derived from the actual
 # `import` statements across the repo (grepped, not copied from an old pip
 # line) and pinned to the versions this environment's tests/ suite passed
-# against. matplotlib is intentionally absent — nothing has imported it since
-# the pyqtgraph port (93888f4). ffmpeg-python was removed too: nothing imports
-# it (only the ffmpeg *binary* is called, via subprocess).
+# against. matplotlib and pyqtgraph are intentionally absent — every plot in the
+# app (including the EEG viewer) is drawn with Qt's own painter. Only the
+# ffmpeg *binary* is called (via subprocess); there is no ffmpeg Python package.
 #
 # One more runtime dependency is NOT here because it is a system install, not
 # a pip package:
@@ -16,8 +16,10 @@
 #
 PyQt6==6.10.2
 opencv-python==4.11.0.86
-pyqtgraph==0.14.0
+# Lab Streaming Layer: pylsl publishes the live streams, pyxdf reads
+# recording.xdf back (tests + the documented loading examples).
 pylsl==1.18.1
+pyxdf==1.18.0
 muselsl==2.3.1
 scipy==1.15.3
 pandas==2.2.3

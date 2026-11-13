@@ -56,6 +56,11 @@ def check(name, cond, detail=""):
     print(f"{'PASS' if ok else 'FAIL'}  {name}  {detail}")
 
 
+def ss_markers(root):
+    import brain_battle.data.session_storage as ss
+    return ss.read_phase_markers(root)
+
+
 def pump(secs):
     t0 = time.time()
     while time.time() - t0 < secs:
@@ -99,6 +104,16 @@ def test_end_to_end():
         check("step 1: all 6 devices connect",
               sum(s.is_live for s in flow._cams) == 4
               and sum(b.connected for b in flow._bands.values()) == 2)
+        # live LSL streams are on the network from the Connect step onwards
+        import pylsl
+        live = {i.name(): i for i in pylsl.resolve_streams(wait_time=1.5)
+                if i.name().startswith("BrainBattle_")}
+        check("LSL: both EEG streams, the markers and 4 camera streams are published",
+              {"BrainBattle_EEG_A", "BrainBattle_EEG_B", "BrainBattle_Markers"} <= set(live)
+              and sum(n.startswith("BrainBattle_Video_") for n in live) == 4, str(sorted(live)))
+        marker_inlet = pylsl.StreamInlet(live["BrainBattle_Markers"]) if "BrainBattle_Markers" in live else None
+        if marker_inlet:
+            marker_inlet.open_stream(timeout=3)
         _setup_short(flow)
         flow.begin_recording()
         check("sleep prevention requested while recording", flow._keep_awake.is_active())
@@ -125,6 +140,53 @@ def test_end_to_end():
               and len(glob.glob(root + "/continuous/**/*.timestamps.csv", recursive=True)) == 4)
         check("2 EEG CSVs written",
               len(glob.glob(root + "/continuous/Muse data/*.csv")) == 2)
+        check("movement-sensor CSVs written next to the EEG (2 bands x ACC+GYRO)",
+              len(glob.glob(root + "/continuous/Muse sensors/*.csv")) == 4)
+        check("manifest stores the LSL-clock origin", man["capture_clock"].get("t0_lsl") is not None)
+
+        # the live LSL marker stream carried the same events, on the LSL clock
+        if marker_inlet:
+            got, got_ts = [], []
+            while True:
+                smp, ts = marker_inlet.pull_sample(timeout=0.3)
+                if smp is None:
+                    break
+                got.append(smp[0]); got_ts.append(ts + marker_inlet.time_correction(timeout=1))
+            check("LSL markers: every phase start, the moment and SESSION_END arrived",
+                  got[0] == "BASELINE_START" and got[-1] == "SESSION_END" and "MOMENT" in got
+                  and "ROUND_2_START" in got, str(got))
+            check("LSL marker times are session-start + t_session (within 5 ms)",
+                  abs((got_ts[-1] - got_ts[0])
+                      - (ss_markers(root)[-1][0] - ss_markers(root)[0][0])) < 0.005,
+                  f"{got_ts[-1] - got_ts[0]:.4f}")
+
+        # recording.xdf: built in the background from the finished files
+        check("recording.xdf build finished", flow.wait_for_xdf(30))
+        check("Saved screen reports the XDF", "saved" in flow._saved_step._xdf_row.findChildren(
+            __import__("PyQt6.QtWidgets", fromlist=["QLabel"]).QLabel)[1].text())
+        import pyxdf
+        streams, _ = pyxdf.load_xdf(os.path.join(root, "recording.xdf"))
+        by = {st["info"]["name"][0]: st for st in streams}
+        check("XDF holds EEG x2, ACC/GYRO x2, markers and 4 video-frame streams",
+              {"BrainBattle_EEG_A", "BrainBattle_EEG_B", "BrainBattle_ACC_A", "BrainBattle_GYRO_B",
+               "BrainBattle_Markers"} <= set(by)
+              and sum(n.startswith("BrainBattle_Video_") for n in by) == 4, str(sorted(by)))
+        t0_lsl = man["capture_clock"]["t0_lsl"]
+        mk = by["BrainBattle_Markers"]
+        check("XDF markers: first is BASELINE_START at session time 0 (within 10 ms)",
+              mk["time_series"][0][0] == "BASELINE_START" and abs(mk["time_stamps"][0] - t0_lsl) < 0.01,
+              f"{mk['time_stamps'][0] - t0_lsl:.4f}")
+        side = glob.glob(root + "/continuous/Side Cams/session_SIDE_01.timestamps.csv")[0]
+        n_rows = sum(1 for _ in open(side)) - 1
+        vid = by["BrainBattle_Video_SIDE_01"]
+        check("XDF video stream has one sample per recorded frame",
+              len(vid["time_stamps"]) == n_rows and int(vid["time_series"][-1][0]) == n_rows - 1,
+              f"{len(vid['time_stamps'])} vs {n_rows}")
+        eeg = by["BrainBattle_EEG_A"]
+        dur = eeg["time_stamps"][-1] - eeg["time_stamps"][0]
+        check("XDF EEG is continuous at ~256 Hz for the whole session",
+              abs(len(eeg["time_stamps"]) / dur - 256) < 3 and dur > 20, f"{len(eeg['time_stamps']) / dur:.1f} Hz")
+
         check("phase markers + contact log + history written",
               os.path.isfile(root + "/phase_markers.csv")
               and os.path.isfile(root + "/contact_quality.csv")

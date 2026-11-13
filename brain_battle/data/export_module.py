@@ -488,8 +488,7 @@ class SessionExportWorker(QThread):
             # co-registered EEG
             self.progress.emit(25, "Building co-registered EEG…")
             try:
-                import pandas as pd
-                dfs = [pd.read_csv(p) for p in eeg_paths]
+                dfs = [session_storage.read_csv_tolerant(p).dropna() for p in eeg_paths]
                 coreg = build_coregistered_eeg(dfs, self.phase_markers)
                 if coreg is not None:
                     cp = os.path.join(tmp, "eeg_coregistered.csv")

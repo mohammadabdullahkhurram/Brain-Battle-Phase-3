@@ -66,11 +66,14 @@ def test_no_stray_placeholder_copy():
           "; ".join(f"{r}:{i} {ph!r}" for r, i, ph, _ in offenders))
 
 
-# EEG channel codes + the old "UPLOAD CSV" placeholder must never be shown in
-# the UI (DESIGN vocabulary: plain sensor names only). We flag channel codes
-# only inside widget-text calls, so data-key usages (dict keys, column names)
-# don't false-positive.
+# EEG channel codes (TP9 …) are shown in exactly ONE place: the EEG viewer,
+# which is deliberately a conventional EEG display with standard electrode
+# names (docs/decisions/adr-0016-standard-eeg-viewer.md). Everywhere else the UI
+# keeps to plain sensor names ("left ear"), so a channel code inside any other
+# widget-text call is still flagged. Data-key uses (dict keys, column names)
+# don't match the pattern. The old "UPLOAD CSV" text must never come back.
 _CHANNEL_CODES = ["TP9", "AF7", "AF8", "TP10"]
+_CHANNEL_CODES_ALLOWED_IN = {os.path.join("brain_battle", "ui", "eeg_viewer.py")}
 _DISPLAY_CALL = re.compile(
     r'(QLabel|setText|setToolTip|setWindowTitle|LabelItem|addLabel|setPlaceholderText)\s*\(')
 
@@ -83,12 +86,13 @@ def test_no_channel_codes_or_upload_in_ui():
             low = line.lower()
             if "upload csv" in low:
                 offenders.append((rel, i, "UPLOAD CSV", line.strip()[:80]))
-            # a channel code inside a widget-text call = jargon shown to users
+            if rel in _CHANNEL_CODES_ALLOWED_IN:
+                continue
             if _DISPLAY_CALL.search(line):
                 for code in _CHANNEL_CODES:
                     if re.search(rf'["\']{code}["\']', line):
                         offenders.append((rel, i, code, line.strip()[:80]))
-    check("no EEG channel codes or UPLOAD text in the UI", not offenders,
+    check("no EEG channel codes outside the EEG viewer, no UPLOAD text", not offenders,
           "; ".join(f"{r}:{i} {c!r}" for r, i, c, _ in offenders))
 
 

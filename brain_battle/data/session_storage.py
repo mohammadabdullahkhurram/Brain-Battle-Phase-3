@@ -473,6 +473,25 @@ def read_phase_markers(session_root) -> list[tuple]:
     return out
 
 
+def read_csv_tolerant(path):
+    """pandas.read_csv that ignores a last line with no line ending — the row
+    a crash interrupted mid-write, which may hold a half-written number."""
+    import io
+    import pandas as pd      # imported here: the rest of this module needs no pandas
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        if size == 0:
+            return pd.DataFrame()
+        f.seek(size - 1)
+        complete = f.read(1) == b"\n"
+        if complete:
+            return pd.read_csv(path, on_bad_lines="skip")
+        f.seek(0)
+        raw = f.read()
+    return pd.read_csv(io.BytesIO(raw[:raw.rfind(b"\n") + 1]), on_bad_lines="skip")
+
+
 # Marker tokens → the words the UI uses.
 
 def friendly_phase(label: str) -> str:
@@ -813,7 +832,7 @@ __all__ = [
     "is_interrupted_session", "scan_interrupted_sessions", "flag_new_interrupted",
     "mark_session_interrupted", "dismiss_interrupted",
     "read_moments", "consume_moment",
-    "read_phase_markers", "friendly_phase", "short_phase", "eeg_files", "sensor_files", "camera_files",
+    "read_phase_markers", "read_csv_tolerant", "friendly_phase", "short_phase", "eeg_files", "sensor_files", "camera_files",
     "session_info", "list_sessions", "folder_size_bytes",
     "session_total_seconds", "estimate_session_bytes", "disk_space_verdict",
     "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",

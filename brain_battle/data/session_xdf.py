@@ -69,7 +69,7 @@ def _read_signal_csv(path: str, channels, t0_unix: Optional[float]):
     ``t_session_seconds`` column existed."""
     import pandas as pd
     try:
-        df = pd.read_csv(path, on_bad_lines="skip")
+        df = session_storage.read_csv_tolerant(path)
     except Exception as e:
         log.warning("could not read %s: %r", path, e)
         return None
@@ -94,7 +94,7 @@ def _read_sidecar(path: str):
     """(frame_index, t_session) arrays from a camera's .timestamps.csv."""
     import pandas as pd
     try:
-        df = pd.read_csv(path, on_bad_lines="skip")
+        df = session_storage.read_csv_tolerant(path)
         t = pd.to_numeric(df["t_session_seconds"], errors="coerce").to_numpy(dtype=float)
         idx = pd.to_numeric(df["frame_index"], errors="coerce").to_numpy(dtype=float)
     except Exception as e:

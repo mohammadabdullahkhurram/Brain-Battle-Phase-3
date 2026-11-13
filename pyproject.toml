@@ -23,8 +23,9 @@ dynamic = ["version"]      # single source of truth: brain_battle/version.py
 dependencies = [
     "PyQt6>=6.10",
     "opencv-python>=4.11",
-    "pyqtgraph>=0.14",
+    # Lab Streaming Layer: live outlets (pylsl) + reading recording.xdf back (pyxdf).
     "pylsl>=1.18",
+    "pyxdf>=1.17",
     "muselsl>=2.3",
     "scipy>=1.15",
     "pandas>=2.2",
@@ -46,3 +47,6 @@ version = { attr = "brain_battle.version.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["brain_battle*"]
+
+[tool.setuptools.package-data]
+"brain_battle.support" = ["lsl_api.cfg"]

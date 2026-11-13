@@ -219,6 +219,7 @@ class SettingsScreen(QWidget):
         v.addWidget(self._build_headbands_card())
         v.addWidget(self._build_quality_card())
         v.addWidget(self._build_defaults_card())
+        v.addWidget(self._build_signals_card())
         v.addWidget(self._build_labels_card())
         v.addWidget(_body(f"Brain Battle v{__version__} · Constructor University",
                           color=dt.text_tertiary(), size=dt.SIZE_XS))
@@ -242,6 +243,7 @@ class SettingsScreen(QWidget):
         self._refresh_headband_combos()
         self._refresh_quality()
         self._refresh_defaults()
+        self._refresh_signals()
         self._load_labels()
 
     # ── 1. Recordings folder ──
@@ -515,7 +517,48 @@ class SettingsScreen(QWidget):
             self._beep = RoundBell(self)
         self._beep.play()
 
-    # ── 5. Label list ──
+    # ── 5. Extra signals + sharing with other lab software ──
+    _SIGNAL_OPTIONS = [
+        ("record_motion", "Record head movement (the headband's motion sensors)",
+         "Useful later for spotting moments where movement, not the brain, moved the "
+         "brain-activity trace. Saved next to the brain recordings."),
+        ("record_ppg", "Record pulse (the headband's optical sensor)",
+         "Not yet tried with real headbands. If the headbands stop connecting "
+         "reliably after you switch this on, switch it off again."),
+        ("lsl_streams", "Share live signals with other lab software on this network",
+         "Lets programs such as LabRecorder or an EEG viewer see the headbands, the "
+         "round markers and the camera frame times while this app is open (Lab "
+         "Streaming Layer). Your recordings are saved the same way whether this is on or off."),
+    ]
+
+    def _build_signals_card(self) -> QFrame:
+        card = _card()
+        v = QVBoxLayout(card); v.setContentsMargins(18, 16, 18, 16); v.setSpacing(6)
+        v.addWidget(_body("Extra signals and sharing", bold=True, size=dt.SIZE_MD))
+        self._signal_boxes = {}
+        for key, text, note in self._SIGNAL_OPTIONS:
+            box = QCheckBox(text)
+            box.setMinimumHeight(30)
+            box.setStyleSheet(f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
+                              f"font-size: {dt.SIZE_SM}px;")
+            box.toggled.connect(lambda on, k=key: self._on_signal_toggled(k, on))
+            v.addWidget(box)
+            v.addWidget(_body(note, color=dt.text_tertiary(), size=dt.SIZE_XS))
+            self._signal_boxes[key] = box
+        return card
+
+    def _refresh_signals(self):
+        for key, box in self._signal_boxes.items():
+            box.blockSignals(True)
+            box.setChecked(bool(getattr(self._settings, key)))
+            box.blockSignals(False)
+
+    def _on_signal_toggled(self, key, on):
+        setattr(self._settings, key, bool(on))
+        self._settings.save()
+        self._flash_saved()
+
+    # ── 6. Label list ──
     def _build_labels_card(self) -> QFrame:
         card = _card()
         v = QVBoxLayout(card); v.setContentsMargins(18, 16, 18, 16); v.setSpacing(10)

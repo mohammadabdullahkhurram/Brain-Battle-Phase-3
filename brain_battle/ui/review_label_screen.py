@@ -508,12 +508,12 @@ class _MediaLoadWorker(QThread):
         self._root = root; self._specs = specs; self._eeg_plan = eeg_plan
 
     def run(self):
-        import pandas as pd
         decoder = open_session_cameras(self._specs)
         dfs = {}
         for idx, path in self._eeg_plan.items():
             try:
-                dfs[idx] = pd.read_csv(path)
+                # tolerant: an interrupted recording can end in a half-written row
+                dfs[idx] = session_storage.read_csv_tolerant(path).dropna()
             except Exception:
                 dfs[idx] = None
         self.done.emit(decoder, dfs)
