@@ -54,6 +54,40 @@ headbands (Bluetooth). Four screens behind a light sidebar shell — **Sessions*
   → the owner reviews → on approval, merge `develop` into `main` (a merge
   commit) and tag the release. Don't push to `main` without that approval.
 
+### Versions & tags
+
+Git tags are how we find our way back to any earlier version of the project.
+
+- **Every merge into `main` gets a version tag** — `vX.Y.Z` or `vX.Y.Z-beta.N`
+  (e.g. `v3.0.0-beta.2`), matching `brain_battle/version.py`.
+- **A snapshot tag is created on `develop` before any large or autonomous
+  change** — `pre-<task>-<date>` (e.g. `pre-fable-2026-11-13`), so there is
+  always a known-good point to return to.
+- **`milestone/<name>` tags mark finished roadmap phases** (e.g.
+  `milestone/phase-2-data-safety`, `milestone/phase-3-redesign`).
+
+Tags are annotated (`git tag -a <name> <commit> -m "..."`) and pushed with
+`git push origin --tags`. Never move or delete an existing tag.
+
+**Look at an old version** (read-only; don't commit here):
+
+```bash
+git tag -l -n1            # list tags with their descriptions
+git checkout <tag>        # e.g. git checkout v2.1.0
+git checkout develop      # come back
+```
+
+**Start a branch from an old version** (to restore or build on it):
+
+```bash
+git switch -c restore-<name> <tag>
+```
+
+> **Warning — resetting a shared branch to a tag rewrites history.** Running
+> `git reset --hard <tag>` on `develop` or `main` (and force-pushing) discards
+> every commit after the tag for everyone. Only do this after asking the owner.
+> Prefer a `restore-<name>` branch or a revert commit.
+
 ### Documentation is part of every change
 
 **A change isn't done until its docs are.** Documentation ships in the same

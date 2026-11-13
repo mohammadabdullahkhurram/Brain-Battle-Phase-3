@@ -6,6 +6,17 @@ historical dev-log numbering, kept as history — they do not track the release
 version. `main` and `develop` are both `3.0.0-beta.2`; the 3.x dev-log entries
 are at the top.
 
+## 3.0.0-beta.2 · Versions & tags
+
+Docs/process only — no code change, no version bump. Added annotated tags
+`v2.1.0`, `milestone/phase-1-foundation`, `milestone/phase-2-data-safety`,
+`milestone/phase-3-redesign`, `milestone/docs-complete` and the snapshot
+`pre-fable-2026-11-13`, and a "Versions & tags" section to `AGENTS.md` and the
+Developer setup & workflow page: the tag naming rules (version / snapshot /
+milestone), how to look at an old version, how to branch from one, and a
+warning that resetting a shared branch to a tag rewrites history and needs the
+owner's approval.
+
 ## 3.0.0-beta.2 · Cleanup + tool-neutral handover
 
 Prepares the repo to hand over to a different AI coding tool (OpenAI Codex)
