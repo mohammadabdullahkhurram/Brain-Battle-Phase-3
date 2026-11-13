@@ -12,6 +12,10 @@ Press **Export for analysis** in the top bar of
 
 A single `.zip` file containing:
 
+- `recording.xdf` — everything on one timeline in one file: both boxers'
+  brain activity, the round markers, your labels, and the timing of every
+  video frame. This is the standard format for EEG software (EEGLAB,
+  MNE-Python); most analysts will start here
 - `labels.csv` and `events.csv` — every label you placed
 - both boxers' brain activity merged onto one shared timeline
   (`eeg_coregistered.csv`)
@@ -36,8 +40,12 @@ wherever you chose to save it.
 
 ## Where to go from here
 
-The zip's exact file formats (manifest, EEG CSV columns, the coregistered
-grid, timing guarantees) are covered in the Research & data section of these
-docs, written for whoever opens the data in Python or R — not yet published
-as of this documentation step. For now, the `README.txt` inside every export
-bundle explains the files it ships with.
+Hand the zip to whoever is doing the analysis and point them at
+[Loading the data](../research-and-data/loading-the-data.md) — it has
+copy-paste examples for Python, MNE, EEGLAB and R. The exact contents of every
+file are in the [File format reference](../research-and-data/file-formats.md),
+and the `README.txt` inside every export summarises what it ships with.
+
+Every recording folder also has its own `recording.xdf`, made automatically
+when the recording finishes; exporting refreshes it so it includes your latest
+labels.

@@ -32,6 +32,10 @@ python3 -m brain_battle
 (or the `brain-battle` console script, or the repo-root shim
 `python3 brain_battle_main.py` — all three run the same `main()`).
 
+Run the tests with `python3 tools/run_tests.py` (everything, about five and a
+half minutes) or `python3 tools/run_tests.py <word>` for the scripts whose name
+contains a word — see [testing strategy](testing-strategy.md).
+
 With no hardware, develop against the [simulation mode and demo
 generator](simulation-and-demo.md):
 

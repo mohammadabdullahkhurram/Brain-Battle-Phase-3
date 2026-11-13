@@ -177,6 +177,9 @@ _KNOWN_PHRASES = {
     "adr-0012": "QSvgRenderer",
     "adr-0013": "Reorganise into",
     "adr-0014": "Documents folder",
+    "adr-0015": "source of truth",
+    "adr-0016": "conventional EEG viewer",
+    "adr-0017": "seen through constant offsets",
     # Project (D3)
     "goals": "Community Impact Project",
     "status": "working agreement",

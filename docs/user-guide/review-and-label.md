@@ -1,7 +1,8 @@
 # Review & Label
 
 **What this page covers:** playing a recording back, what the video grid and
-brain-activity card show, and how to place, undo, and manage labels.
+the brain-activity (EEG) display show and how to read them, and how to place,
+undo, and manage labels.
 
 Open a recording from [Sessions](sessions.md) (or **Start labelling →** from
 the end of a [new recording](new-recording.md)) to get here. The top bar
@@ -15,13 +16,9 @@ the length and round count, an autosave status ("✓ All labels saved"), and
 
 - **Video grid** — all four cameras in a 2×2 grid, each tile named and with
   an enlarge button.
-- **Brain activity card** — a **Waves** / **Band power** toggle, and one row
-  per boxer: a badge and name, a plain-language contact-quality line, and a
-  trace with the current playhead fixed in the centre (the trace scrolls
-  under it, rather than a moving playhead on a fixed trace).
-  *Not yet verified on hardware:* no brain recording from a real sparring
-  session has been reviewed here yet — see the [FAQ](faq.md) on trusting
-  early brain-activity data.
+- **Brain activity (EEG)** — both boxers' brain recordings, drawn the way
+  standard EEG software draws them. See
+  [Brain activity (EEG)](#brain-activity-eeg) below.
 - **Timeline** — a read-only Phases row (rest/round/break, automatic — you
   never set these by hand), then one lane each for Boxer A, Boxer B, and
   Both, showing point ticks and duration bars for placed labels, then the
@@ -29,6 +26,40 @@ the length and round count, an autosave status ("✓ All labels saved"), and
 - **Transport** — step back one frame, play/pause, step forward one frame,
   the current time ("04:12.40 / 12:00.00"), the current phase ("Round 2 ·
   0:12 in"), and a speed control (0.25× / 0.5× / 1×).
+
+## Brain activity (EEG)
+
+One block per boxer (badge, name, and a plain-language contact-quality line such
+as "Signal good" or "Weak contact: right ear"), each showing that boxer's
+headband signals as a conventional EEG display:
+
+- **One line per sensor**, stacked, named with the standard electrode names:
+  **TP9** (left ear), **AF7** (left forehead), **AF8** (right forehead),
+  **TP10** (right ear) and **AUX** (the headband's spare input — normally a
+  flat, meaningless line). Hover over the display for this list.
+- **Height is voltage, in microvolts (µV).** The small bar at the top right
+  shows how tall the current scale value is (for example "100 µV").
+- **Left to right is time.** The time axis along the bottom is shared by both
+  boxers and by the video: the **playhead is the fixed line in the centre**,
+  and the signal slides underneath it as the recording plays.
+- **Events are vertical dashed lines** with their names along the top: the
+  start of each round and break, any moments you marked, and every label you
+  have placed.
+
+The controls in the card's top row:
+
+| Control | What it does |
+|---|---|
+| **Waves / Band power** | Switch between the traces and five bars showing how the signal's strength is spread over the classic frequency bands (delta to gamma) |
+| **Timebase** (`10 s`) | How many seconds fit across the display — 2, 5, 10, 20 or 30 |
+| **Scale** (`100 µV`) | How many microvolts the scale bar stands for. Choose a larger number if the traces overlap, a smaller one if they look flat, or **Auto scale** |
+| **Filter 1–45 Hz** | Tidies the picture by removing slow drift and mains hum. It only affects what you see — the recording itself is never changed. Switch it off to see the raw signal |
+| **⤢** | Makes the display taller (and back) |
+
+*Not yet verified on hardware:* no brain recording from a real sparring
+session has been reviewed here yet — see the [FAQ](faq.md) on trusting early
+brain-activity data. Large, slow swings during a round are most likely
+movement, not brain activity.
 
 ## Placing a label
 

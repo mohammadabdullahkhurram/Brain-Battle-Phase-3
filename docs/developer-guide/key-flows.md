@@ -13,8 +13,10 @@ restarts at a phase boundary — one continuous take per source.
 
 ![Sequence diagram: RecordFlow creates the session and sets the capture origin, starts camera and headband recording with that origin, starts the SessionController; each phase change writes a marker; on finish, sources stop and the manifest and history are written.](../diagrams/flow-recording.png)
 
-1. `RecordFlow.begin_recording` calls `session_storage.create_session`, then
-   `set_capture_origin(t0_monotonic, t0_unix)` — the capture clock.
+1. `RecordFlow.begin_recording` calls `session_storage.create_session`; when the
+   controller starts, `_on_session_started` takes `clock.session_origin()` and
+   stores it with `set_capture_origin(t0_monotonic, t0_unix, t0_lsl)` — the
+   capture clock ([ADR-0017](../decisions/adr-0017-one-capture-clock.md)).
 2. Each `CameraSlot` and `HeadbandSlot` starts recording **with that same
    origin**, so every camera frame and EEG sample lands on one
    `t_session_seconds` axis ([ADR-0001](../decisions/adr-0001-capture-time-clock.md)).
@@ -22,6 +24,17 @@ restarts at a phase boundary — one continuous take per source.
    each `phase_changed`, `RecordFlow` writes a `phase_markers.csv` row.
 4. On finish (or an early stop), sources stop, the manifest is finalised, and
    `history.jsonl` records the recording. `keep_awake` is released.
+5. A 150 ms timer then waits until every camera reports
+   `recording_finalised` (its video and sidecar are closed) and starts a
+   background thread that calls `session_xdf.build_session_xdf` — the
+   `recording.xdf` row on the Saved screen turns to a tick when it is done, and
+   any camera whose measured frame rate was more than 1 % off is added under
+   "Worth checking".
+
+Throughout steps 2–4 the same samples, markers and frame times are also pushed
+to the live LSL outlets (`lsl_outlets.LslPublisher`) if sharing is switched on;
+that path is fail-soft and nothing above depends on it
+([ADR-0015](../decisions/adr-0015-lsl-and-xdf.md)).
 
 ## Crash detection → interrupted banner → dismiss
 
@@ -97,10 +110,11 @@ Export reads straight from the recording folder and writes a self-contained zip.
 
 1. `ExportOptionsDialog` runs `SessionExportWorker` (a QThread) with the session,
    placed labels, and phase markers.
-2. The worker calls `build_coregistered_eeg` (both bands on one 256 Hz axis),
-   writes `labels.csv` (v2) and `events.csv` (labels + markers on one timeline),
-   and adds the raw videos (with sidecars), raw EEG, manifest, history, and a
-   README to the zip.
+2. The worker rebuilds `recording.xdf` with the current labels
+   (`session_xdf.build_session_xdf`), calls `build_coregistered_eeg` (both bands
+   on one 256 Hz axis), writes `labels.csv` (v2) and `events.csv` (labels +
+   markers on one timeline), and adds the raw videos (with sidecars), raw EEG and
+   sensor CSVs, manifest, history, and a README to the zip.
 3. A **combined 2×2 video** is optional and off by default (it's the slow step).
    The result is one self-contained bundle. See
    [export for analysis](../user-guide/export.md) and

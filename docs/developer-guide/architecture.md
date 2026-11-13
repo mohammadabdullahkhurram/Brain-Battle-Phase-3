@@ -65,10 +65,10 @@ work; a support layer plus a couple of package-top modules (`app`, `version`,
 
 | Subpackage | Modules | Job |
 |---|---|---|
-| **`ui/`** | `sidebar_shell`, `sessions_screen`, `record_flow`, `review_label_screen`, `settings_screen`, `docs_screen`, `design_tokens`, `fonts` | The four DESIGN screens behind a light sidebar shell, the in-app docs, and the light-only design system. |
-| **`capture/`** | `camera_source`, `headband_source`, `usb_camera`, `eeg_module`, `eeg_plot_pg`, `session_controller`, `simulation`, `contact_quality`, `contact_log`, `keep_awake`, `round_bell` | Turn live devices into files on disk during a recording (plus the dev-only simulator and the round bell). |
+| **`ui/`** | `sidebar_shell`, `sessions_screen`, `record_flow`, `review_label_screen`, `eeg_viewer`, `settings_screen`, `docs_screen`, `design_tokens`, `fonts` | The four DESIGN screens behind a light sidebar shell, the EEG display, the in-app docs, and the light-only design system. |
+| **`capture/`** | `clock`, `camera_source`, `headband_source`, `usb_camera`, `eeg_module`, `lsl_outlets`, `session_controller`, `simulation`, `contact_quality`, `contact_log`, `keep_awake`, `round_bell` | Turn live devices into files on disk during a recording (plus the dev-only simulator and the round bell). |
 | **`playback/`** | `pyav_player` | App-driven multi-camera decode on one playhead. |
-| **`data/`** | `session_storage`, `session_history`, `labels_store`, `label_vocab`, `export_module`, `app_settings` | On-disk layout, the history log, labels + the shared vocabulary, the export bundle, and the settings store. |
+| **`data/`** | `signals`, `session_storage`, `session_xdf`, `xdf_writer`, `session_history`, `labels_store`, `label_vocab`, `export_module`, `app_settings` | On-disk layout, `recording.xdf`, the history log, labels + the shared vocabulary, the export bundle, and the settings store. |
 | **`support/`** + top | `log_setup`, `docs_nav`, `paths`, `app`, `version` | Logging, Qt-free docs navigation, repo-relative paths, the app shell/`main()`, and the version. |
 
 Each module is documented in the [module reference](module-reference.md); the

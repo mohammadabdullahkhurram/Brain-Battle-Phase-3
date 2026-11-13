@@ -38,6 +38,9 @@ file is missing from this index or from `nav.yml`.
 | [ADR-0012](adr-0012-in-app-docs.md) | In-app docs: Markdown + pre-rendered diagrams | 2026-11-09 | Accepted |
 | [ADR-0013](adr-0013-package-reorganisation.md) | Reorganise into the `brain_battle` package | 2026-11-10 | Accepted |
 | [ADR-0014](adr-0014-documents-default-folder.md) | Default recordings folder in the user's Documents | 2026-11-11 | Accepted |
+| [ADR-0015](adr-0015-lsl-and-xdf.md) | Live LSL streams and one XDF file per recording | 2026-11-13 | Accepted |
+| [ADR-0016](adr-0016-standard-eeg-viewer.md) | A standard EEG viewer, with channel names | 2026-11-13 | Accepted |
+| [ADR-0017](adr-0017-one-capture-clock.md) | One capture clock, seen three ways | 2026-11-13 | Accepted |
 
 The sources behind these decisions are the planning documents
 ([DESIGN.md, ROADMAP.md, PLAYBACK_PROPOSAL.md, ARCHITECTURE_AND_EVALUATION.md,

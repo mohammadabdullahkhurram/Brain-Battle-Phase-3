@@ -47,6 +47,22 @@ built-in example recording instead (see the "Known limitations" note at the
 bottom of this page). Check with your team before treating early brain-
 activity data as research-ready.
 
+**What is `recording.xdf`, and do I need LabRecorder?**
+`recording.xdf` is one file, saved in every recording's folder, that holds
+both boxers' brain activity, the round markers, your labels and the timing of
+every video frame on one clock. It is the standard format EEG researchers
+expect (it opens in EEGLAB and in Python), so it is usually the first file an
+analyst asks for — and it is in every export. You do **not** need LabRecorder:
+Brain Battle makes the file itself. If your lab wants to record with LabRecorder
+anyway, it can — Brain Battle's signals show up there while the New recording
+screens are open (see [Settings](settings.md), "Extra signals and sharing").
+
+**What do TP9, AF7, AF8, TP10 and AUX mean on the brain-activity display?**
+They are the standard names of the headband's sensors: TP9 is behind the left
+ear, AF7 on the left forehead, AF8 on the right forehead, TP10 behind the right
+ear, and AUX is a spare input that normally shows a flat line. See
+[Review & Label](review-and-label.md#brain-activity-eeg).
+
 **Can I change which camera is "Side camera 1" versus "Side camera 2"?**
 The four camera roles are fixed, but which physical device fills each role
 is not — use the **Change** button on that tile in the Connect devices step

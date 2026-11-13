@@ -50,6 +50,19 @@ rebuilt the app onto the four DESIGN screens, removed audio-xcorr, VLC, and the
 old Review/Labelling tabs, and added the data-safety, settings, labelling, and
 documentation work. Record fresh with 3.0.
 
+### v3.0 → v3.1: the standard EEG workflow (not breaking)
+
+**3.1.0-dev** (on `develop`, tag `v3.1.0-dev.1`) makes Brain Battle a normal
+citizen of the Muse / Lab Streaming Layer tool-chain: every signal is a live LSL
+stream, every recording gets one `recording.xdf`, the EEG display is a
+conventional viewer with channel names and microvolts, the headbands' movement
+sensors are recorded, and all timestamps come from one monotonic clock
+([ADR-0015](../decisions/adr-0015-lsl-and-xdf.md),
+[ADR-0016](../decisions/adr-0016-standard-eeg-viewer.md),
+[ADR-0017](../decisions/adr-0017-one-capture-clock.md)). Recordings made with 3.0
+still open unchanged, and can be given an XDF with
+`python3 -m brain_battle.data.session_xdf "<recording folder>"`.
+
 ## Documentation steps (within 3.0.0-dev)
 
 The documentation was itself sequenced, as steps **D1–D3**, interleaved before

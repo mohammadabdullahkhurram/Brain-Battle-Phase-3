@@ -258,7 +258,8 @@ class EEGViewer(QWidget):
                 else:
                     text = _fmt_clock(k * step, decimals=step < 1)
                 p.setPen(ink)
-                p.drawText(QRectF(x - 30, plot.bottom() + 2, 60, 14),
+                lx = min(max(x - 30, 0.0), self.width() - 60.0)    # keep the end labels whole
+                p.drawText(QRectF(lx, plot.bottom() + 2, 60, 14),
                            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, text)
             k += 1
 

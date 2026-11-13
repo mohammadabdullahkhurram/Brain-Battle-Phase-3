@@ -45,6 +45,14 @@ do — organized as a symptom → cause → fix table per topic. See the
 | Playback stutters or lags | Four simultaneous video decodes is real work for a laptop | Lower the playback speed (0.25× / 0.5×), or close other heavy apps |
 | A brain-activity trace says "Weak contact" during review | The same per-sensor quality heuristic as during recording, computed from the saved signal | Informational — it tells you which stretches of that recording's signal may be less reliable, nothing to fix after the fact |
 
+## Other lab software (LabRecorder, EEG viewers)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| The computer asks whether to "allow incoming network connections" when you open New recording | Brain Battle is offering its live signals to other lab software on the network (Lab Streaming Layer) | Either answer is fine for recording. Choose Allow if you want LabRecorder or an EEG viewer on *another* computer to see the signals. To stop it asking, switch off **Share live signals with other lab software** in [Settings](settings.md) |
+| LabRecorder doesn't list any `BrainBattle_…` streams | The streams exist only while the New recording screens are open, and only if sharing is switched on | Open **New recording** first, then press LabRecorder's **Update**; check the switch in [Settings](settings.md); on another computer, check both are on the same network and the firewall allowed the connection |
+| LabRecorder lists the camera streams but they stay empty | Camera streams carry one sample per *recorded* frame, so they only fill while a recording is running | Start the recording |
+
 ## The app on quit
 
 | Symptom | Cause | Fix |

@@ -1,10 +1,83 @@
 # Brain Battle — Changelog
 
-**Current release: v3.0.0-beta.2** (authoritative source:
-`brain_battle/version.py` `__version__`). The "Phase 2.N" headings below are
-historical dev-log numbering, kept as history — they do not track the release
-version. `main` and `develop` are both `3.0.0-beta.2`; the 3.x dev-log entries
-are at the top.
+**Current version on `develop`: v3.1.0-dev** (authoritative source:
+`brain_battle/version.py` `__version__`; tag `v3.1.0-dev.1`). `main` is the
+reviewed `3.0.0-beta.2`. The "Phase 2.N" headings further down are historical
+dev-log numbering, kept as history — they do not track the release version.
+
+## 3.1.0-dev · The standard EEG workflow (LSL, XDF, EEG viewer)
+
+An owner-requested improvement pass on `develop` (full write-up:
+`docs/reviews/2026-11-fable-review.md`). Recordings made with 3.0 still open.
+
+**Added**
+- **`recording.xdf` in every recording folder** — both boxers' EEG, the
+  headbands' movement sensors, the round markers, the placed labels and one
+  timestamped sample per video frame, on one clock, in the standard Lab
+  Streaming Layer file format (opens in EEGLAB, MNE-Python, pyxdf). Built from
+  the crash-safe files when a recording finishes, rebuilt with labels on every
+  export, built for an interrupted recording when the app finds it, and by hand
+  with `python3 -m brain_battle.data.session_xdf "<folder>"`. New
+  `data/session_xdf.py`, `data/xdf_writer.py`, `data/signals.py`;
+  [ADR-0015](docs/decisions/adr-0015-lsl-and-xdf.md).
+- **Live LSL streams** while the New recording screens are open —
+  `BrainBattle_EEG_A/_B`, `_ACC_`/`_GYRO_`/`_PPG_`, `BrainBattle_Markers`, and
+  `BrainBattle_Video_<camera>` — so LabRecorder and LSL viewers work alongside
+  the app. Fail-soft; switchable in Settings. New `capture/lsl_outlets.py`.
+- **A conventional EEG viewer** (`ui/eeg_viewer.py`) in Review & Label and on
+  the Connect / Recording steps: stacked traces labelled TP9, AF7, AF8, TP10,
+  AUX in µV, a scale bar, a shared time axis, timebase and scale controls, a
+  switchable 1–45 Hz display filter, and event markers with their names.
+  DESIGN.md amended; [ADR-0016](docs/decisions/adr-0016-standard-eeg-viewer.md).
+- **Headband movement and pulse sensors** — accelerometer + gyroscope recorded
+  by default, pulse (PPG) opt-in — as CSVs in `continuous/Muse sensors/`, as LSL
+  streams and in the XDF. Real **battery level** is now read from the headband.
+  *Not yet verified on real hardware.*
+- **Settings → "Extra signals and sharing"** — the three switches above.
+- **Capture-rate drift is reported**: a camera whose real frame rate was more
+  than 1 % off appears under "Worth checking" on the Saved screen, and every XDF
+  video stream carries its `measured_fps`.
+- **`tools/run_tests.py`** — runs all test scripts several at a time with one
+  PASS/FAIL line each (about 5½ minutes instead of 11).
+- **Docs:** loading `recording.xdf` in pyxdf, MNE-Python and EEGLAB, including
+  lining up video frames with EEG samples; three new ADRs (0015–0017).
+
+**Changed**
+- **One capture clock** (`capture/clock.py`,
+  [ADR-0017](docs/decisions/adr-0017-one-capture-clock.md)): EEG is now stamped
+  from the same monotonic clock as video and markers, so a wall-clock correction
+  during a recording can no longer shift EEG against video. The manifest's
+  `capture_clock` gains `t0_lsl`.
+- Which EEG file belongs to which boxer is decided by **the recording's own
+  manifest**, not the current Settings (changing the headband assignment later
+  no longer swaps boxers in old recordings); in `eeg_coregistered.csv`, `_01` is
+  always Boxer A and `_02` Boxer B.
+- The export zip adds `recording.xdf` and `sensors/`.
+- The demo generator writes movement-sensor CSVs and `recording.xdf`, and always
+  records the headband names in the manifest.
+- The Recording screen's headband block shows one status line ("✓ Good contact ·
+  battery 77%") instead of four chips, to make room for the EEG display.
+
+**Fixed**
+- A crash-truncated last CSV row can no longer put a half-written number into
+  Review, the export or the XDF (`session_storage.read_csv_tolerant`).
+- Stray grey boxes and underlines behind labels on Review & Label, the record
+  flow's top bar, Settings and Sessions (stylesheets without a selector leaked
+  into child widgets).
+- Review's frame-step buttons lost their glyphs at the smallest window size.
+- The threads diagram said four headband readers; there are two.
+
+**Removed**
+- About 1,000 lines of dead code in `capture/eeg_module.py` (`EEGLiveWidget`,
+  `DevicePickerDialog`, `_LSLReaderThread`, `_RecordStopper` and helpers — the
+  pre-Phase-3 live monitor) and the whole `capture/eeg_plot_pg.py`; nothing
+  referenced them.
+- The `pyqtgraph` dependency (only the dead code used it). `pyxdf` was added.
+- `MiniTrace` and `BrainTrace` (replaced by `EEGViewer`), three copies of the
+  atomic manifest-write code (now `_update_manifest`), `session_storage._safe`.
+
+**Tests:** 30 scripts (three new: `test_xdf.py`, `test_lsl_streams.py`,
+`test_eeg_viewer.py`); results are in the review write-up.
 
 ## 3.0.0-beta.2 · Versions & tags
 

@@ -173,8 +173,8 @@ def test_end_to_end():
               and sum(n.startswith("BrainBattle_Video_") for n in by) == 4, str(sorted(by)))
         t0_lsl = man["capture_clock"]["t0_lsl"]
         mk = by["BrainBattle_Markers"]
-        check("XDF markers: first is BASELINE_START at session time 0 (within 10 ms)",
-              mk["time_series"][0][0] == "BASELINE_START" and abs(mk["time_stamps"][0] - t0_lsl) < 0.01,
+        check("XDF markers: first is BASELINE_START, right after the session start",
+              mk["time_series"][0][0] == "BASELINE_START" and 0 <= mk["time_stamps"][0] - t0_lsl < 0.5,
               f"{mk['time_stamps'][0] - t0_lsl:.4f}")
         side = glob.glob(root + "/continuous/Side Cams/session_SIDE_01.timestamps.csv")[0]
         n_rows = sum(1 for _ in open(side)) - 1

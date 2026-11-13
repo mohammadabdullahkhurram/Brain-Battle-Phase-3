@@ -311,7 +311,8 @@ class BrainActivityCard(QFrame):
             self._names.append(name); self._contacts.append(contact)
         self._mode = "waveform"; self._set_mode("waveform")
         self._apply_view(); self._apply_height()
-        self.set_loading()
+        for vw in self.viewers:
+            vw.empty_text = "Open a recording from Sessions to see its brain activity"
 
     def _set_mode(self, mode):
         self._mode = mode
@@ -1074,7 +1075,8 @@ class ReviewLabelScreen(QWidget):
         if lab.get("moment"):
             return self._moment_row(lab)
         row = QFrame()
-        row.setStyleSheet(f"QFrame {{ background: {dt.surface()}; border: 1px solid {dt.border()}; "
+        row.setObjectName("row")
+        row.setStyleSheet(f"QFrame#row {{ background: {dt.surface()}; border: 1px solid {dt.border()}; "
                           f"border-radius: {dt.RADIUS_SM}px; }}")
         h = QHBoxLayout(row); h.setContentsMargins(8, 5, 6, 5); h.setSpacing(6)
         tstr = _fmt_time(lab["t_start"]) + (f"–{_fmt_time(lab['t_end'])}" if lab.get("t_end") is not None else "")
@@ -1097,8 +1099,9 @@ class ReviewLabelScreen(QWidget):
     def _moment_row(self, mo):
         """A 'Marked moment — click to name' row (DESIGN §6)."""
         row = QFrame()
+        row.setObjectName("row")
         row.setStyleSheet(
-            f"QFrame {{ background: {dt._p().warning_bg}; border: 1px solid {dt.warning_color()}; "
+            f"QFrame#row {{ background: {dt._p().warning_bg}; border: 1px solid {dt.warning_color()}; "
             f"border-radius: {dt.RADIUS_SM}px; }}")
         h = QHBoxLayout(row); h.setContentsMargins(8, 5, 6, 5); h.setSpacing(6)
         t = QLabel(_fmt_time(mo["t_start"]))

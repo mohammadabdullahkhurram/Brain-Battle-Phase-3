@@ -1,4 +1,4 @@
-# Brain Battle — v3.0.0-beta.2 (main · develop)
+# Brain Battle — v3.1.0-dev (develop) · v3.0.0-beta.2 (main)
 
 > **Agent instructions.** This file is the shared, tool-neutral instructions
 > file for AI coding agents (read automatically by OpenAI Codex, and by Claude
@@ -11,9 +11,11 @@ PyQt6 desktop app for neuroscience boxing capture: 4 USB cameras + 2 Muse-S EEG
 headbands (Bluetooth). Four screens behind a light sidebar shell — **Sessions**
 (home library), **New recording** (a guided capture flow), **Review & Label**
 (one merged playback + labelling screen), and **Settings** — plus an in-app
-**Documentation** screen and an export pipeline. ~13k lines in the
-`brain_battle` package (`ui/` · `capture/` · `playback/` · `data/` ·
-`support/`).
+**Documentation** screen and an export pipeline. It follows the standard Muse
+research workflow: live **LSL** streams while recording and one
+**`recording.xdf`** per recording (EEG + markers + labels + per-frame video
+times on one clock) for EEGLAB / MNE / pyxdf. ~12k lines in the `brain_battle`
+package (`ui/` · `capture/` · `playback/` · `data/` · `support/`).
 
 ## Project situation
 
@@ -40,7 +42,8 @@ headbands (Bluetooth). Four screens behind a light sidebar shell — **Sessions*
 - The owner approves each `docs/ROADMAP.md` phase before it starts. Never
   start the next phase on your own initiative.
 - Commit locally per logical change, with a clear message.
-- Run everything in `tests/` before and after every change, and report
+- Run everything in `tests/` before and after every change
+  (`python3 tools/run_tests.py` — one PASS/FAIL line per script), and report
   pass/fail per script — not just "I ran the tests."
 - Follow the **branch policy** below for anything that reaches `main`.
 
@@ -123,6 +126,11 @@ and read like. Summary of where the product is headed:
 - **Audience is non-technical researchers and research assistants**, not
   developers. UI copy should be plain language, no jargon ("alignment",
   "capture clock", "xcorr" are implementation details, not UI vocabulary).
+  **One deliberate exception:** the brain-activity display is a conventional
+  EEG viewer and shows the standard electrode names (TP9, AF7, AF8, TP10, AUX),
+  microvolts and a time axis, because the people who must judge the signal need
+  them ([ADR-0016](docs/decisions/adr-0016-standard-eeg-viewer.md)). Channel
+  codes stay out of every other piece of UI.
 - **Light mode only.** There is no dark theme or theme toggle.
 - **Three screens plus Settings:** Sessions (home library of past/current
   sessions) → New recording (a guided capture flow) → Review & Label (one
@@ -137,6 +145,8 @@ and read like. Summary of where the product is headed:
 ```bash
 pip install -e .          # supported install for now (reads pyproject.toml)
 python3 -m brain_battle    # or: brain-battle  (or the shim: python3 brain_battle_main.py)
+python3 tools/run_tests.py # every test script, several at a time (~5½ min)
+python3 -m brain_battle.data.session_xdf "<recording folder>"   # (re)build its recording.xdf
 ```
 
 System binaries required: `ffmpeg` (per-camera H.264 **recording**, plus
@@ -169,12 +179,12 @@ configured recordings folder unless you pass `--force` (the
 Sessions screen.
 
 Each run writes a real v3 session folder — 4 camera MP4s + sidecars (one camera
-deliberately drifts: 30fps declared container vs. ~29.5fps true capture rate,
-for Phase 5's drift-detection work), 2 boxer EEG CSVs with plausible synthetic
-signal, `phase_markers.csv`, and `session_manifest.json` (`demo:true`) — by
-reusing the real writers (`session_storage`, `USBCameraThread`'s sidecar
-methods, `_MuseDirectReader`'s chunk/flush path) wherever they're headlessly
-callable, so it can't silently drift from the format the app actually
+deliberately drifts: 30fps declared container vs. ~29.5fps true capture rate),
+2 boxer EEG CSVs with plausible synthetic signal plus their movement-sensor
+CSVs, `phase_markers.csv`, `session_manifest.json` (`demo:true`) and
+`recording.xdf` — by reusing the real writers (`session_storage`,
+`usb_camera.FrameEncoder`, `_MuseDirectReader`'s chunk/flush path,
+`session_xdf.build_session_xdf`) wherever they're headlessly callable, so it can't silently drift from the format the app actually
 reads/writes. Deterministic for a given `--seed`; the default config generates
 in well under a minute.
 
@@ -191,7 +201,23 @@ seeks match the generator's own start delays exactly).
 
 ## Tests (`tests/` — plain scripts, `python3 tests/<name>.py`, nonzero exit on failure)
 
-All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
+All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC. Run them all
+with `python3 tools/run_tests.py` (several at a time, one PASS/FAIL line per
+script, ~5½ min; `python3 tools/run_tests.py xdf player` runs only matching
+scripts; a script that fails while others are running is re-run alone before it
+counts as failed).
+
+- `test_xdf.py` — the XDF writer and `recording.xdf` read back with **pyxdf**
+  (bit-exact EEG, exact frame times, markers, labels-as-events, the
+  crash-truncated-row case, older recordings), `eeg_files` boxer↔file mapping
+  from the manifest, `camera_frame_rates`, and the one capture clock against
+  `pylsl.local_clock()`.
+- `test_lsl_streams.py` — the live LSL outlets as an ordinary pylsl inlet sees
+  them (stream descriptions, intact samples, LSL-clock timestamps), a disabled
+  publisher, and a simulated headband publishing through the real path.
+- `test_eeg_viewer.py` — the EEG viewer: window follows playhead / newest
+  sample, the µV scale is what the scale bar says, the display filter never
+  touches data, markers are painted, the Review card's controls.
 
 - `test_smoke.py` — the "loads and stands up" floor and **acceptance gate for
   deletions/refactors**: fresh-subprocess import of every first-party module,
@@ -217,7 +243,8 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
 - `test_flash_sync.py` — verify-only: at every phase marker of a 12-min demo the
   white flash is within one frame period (≤34 ms) across the four tiles.
 - `test_no_placeholders.py` — acceptance gate: ZERO placeholder/temporary UI
-  copy, no EEG channel codes or "UPLOAD" text, zero placeholder screens left.
+  copy, no "UPLOAD" text, zero placeholder screens left, and EEG channel codes
+  nowhere except `ui/eeg_viewer.py`.
 - `test_capture_clock.py` — capture-clock reconciliation arithmetic, two-band
   relative skew, marker/EEG co-registration, manifest bridge round-trip, the
   real EEG reader flush path, and the co-registered EEG export.
@@ -239,9 +266,10 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
   1280×800 AND the minimum window size; a visible scrollbar is chrome, not an
   overflow.
 - `test_record_flow.py` — the guided flow end to end with simulated devices:
-  all four steps → a valid recording (sidecars, EEG CSVs, markers, manifest
-  with names + moments, history, contact log) shown in Sessions and opened in
-  Review with markers + moments; stop early; missing camera; headband
+  all four steps → a valid recording (sidecars, EEG + movement CSVs, markers,
+  manifest with names + moments, history, contact log) shown in Sessions and
+  opened in Review with markers + moments; the live LSL streams seen by a real
+  inlet during it, and the resulting `recording.xdf` read back with pyxdf; stop early; missing camera; headband
   drop+reconnect; disk-blocked start; quit-while-recording confirmation; sleep
   prevention requested/released; per-step layout fit at all three sizes; and no
   simulation text when `BRAIN_BATTLE_SIMULATE` is unset.
@@ -271,22 +299,40 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC.
 
 ## Project status
 
-**Current state: Phase 3 complete, the documentation complete, and the repo
-cleaned up and made tool-neutral for handover (`main` = `develop` =
-`3.0.0-beta.2`).** The unified capture-time clock shipped and the app was built
-onto the four DESIGN screens — Sessions, New recording, Review & Label, and
-Settings — all inside the `brain_battle` package. Review & Label is one merged
-PyAV-driven screen (single `t_session_seconds` playhead); labels are
-`labels.json` v2 with undo/redo and a shared vocabulary; Sessions is the home
-library; export produces an analysis bundle. New recording is the guided flow
-(`ui/record_flow.py`, DESIGN §2–§5: Connect → Set up → Record → Saved); it
-records moments (M), prevents sleep, logs per-sensor contact quality, and stops
-cleanly early. Settings (`ui/settings_screen.py`, DESIGN §7) owns the
-recordings folder, headbands, video quality (resolution + bitrate wired into
-the recorder), session defaults + round bell, and the shared label list — all
-autosaving. Hardware is broken, so the whole flow is built + tested against
-**simulated** devices driven through the real capture paths
-(`capture/simulation.py`, `BRAIN_BATTLE_SIMULATE`, dev-only, not shipped).
+**Current state: `develop` = `3.1.0-dev` (tag `v3.1.0-dev.1`), awaiting the
+owner's review; `main` = the reviewed `3.0.0-beta.2`.** Phase 3 and the
+documentation were complete at 3.0.0-beta.2: the unified capture-time clock
+shipped and the app was built onto the four DESIGN screens — Sessions, New
+recording, Review & Label, and Settings — all inside the `brain_battle` package.
+Review & Label is one merged PyAV-driven screen (single `t_session_seconds`
+playhead); labels are `labels.json` v2 with undo/redo and a shared vocabulary;
+Sessions is the home library; export produces an analysis bundle. New recording
+is the guided flow (`ui/record_flow.py`, DESIGN §2–§5: Connect → Set up → Record
+→ Saved); it records moments (M), prevents sleep, logs per-sensor contact
+quality, and stops cleanly early. Settings (`ui/settings_screen.py`, DESIGN §7)
+owns the recordings folder, headbands, video quality, session defaults + round
+bell, extra signals + LSL sharing, and the shared label list — all autosaving.
+
+**3.1.0-dev (the November 2026 improvement pass —
+`docs/reviews/2026-11-fable-review.md`) added the standard EEG workflow:**
+- **One capture clock** (`capture/clock.py`, ADR-0017): everything is stamped
+  from `time.monotonic()`; Unix and LSL time are fixed offsets from it.
+- **Live LSL streams** (`capture/lsl_outlets.py`, ADR-0015): EEG / movement /
+  pulse per boxer, markers, and a frame-time stream per camera — visible to
+  LabRecorder and LSL viewers while the New recording screens are open.
+- **`recording.xdf` per recording** (`data/session_xdf.py` + the built-in
+  `data/xdf_writer.py`): derived from the crash-safe files after recording,
+  rebuilt with labels on export, built for crashed recordings when found.
+- **A conventional EEG viewer** (`ui/eeg_viewer.py`, ADR-0016) in Review & Label
+  and on the Connect / Recording steps.
+- **Headband movement sensors recorded** (accelerometer + gyroscope by default,
+  pulse opt-in) and real battery telemetry.
+- ~1,000 lines of dead legacy EEG-widget code and the `pyqtgraph` dependency
+  removed.
+
+Hardware is broken, so the whole flow is built + tested against **simulated**
+devices driven through the real capture paths (`capture/simulation.py`,
+`BRAIN_BATTLE_SIMULATE`, dev-only, not shipped).
 
 **The in-app documentation is complete** — all six sections (Getting started,
 User guide, Research & data, Developer guide, Decisions/ADRs, Project) render in
@@ -305,12 +351,14 @@ the sessions (not committed to the repo), and frame-stepping, 0.25×/0.5×
 playback, undo/redo and an editable list of placed labels all ship in
 `ui/review_label_screen.py` + `data/labels_store.py` + `data/label_vocab.py`.
 
-**What's next:** the owner tests the app and reviews the handover. After that,
-**Phase 5** — the remaining report/research-value items in `docs/ROADMAP.md`
-(full per-frame sidecar for playback timing + drift detection, a single Export
-button with optional merged video, per-round clip export, Muse accelerometer/PPG,
-an EEG signal-quality view). **Phases 6 (shipping) and 7 (team & cloud) start
-only on the owner's explicit go-ahead.** Nothing starts on its own initiative.
+**What's next:** the owner reviews `develop` (start with
+`docs/reviews/2026-11-fable-review.md` — it lists the decisions waiting for
+them) and, if happy, merges it to `main` with a version tag. The most valuable
+next step is not code: **one real recording** with the buzzer/tap check. After
+that, the rest of **Phase 5** in `docs/ROADMAP.md` (per-round clip export, a
+whole-recording EEG quality summary, a drift-proof combined video, a
+clock-driven round timer). **Phases 6 (shipping) and 7 (team & cloud) start only
+on the owner's explicit go-ahead.** Nothing starts on its own initiative.
 
 For the long-form history behind the current architecture — the unified
 capture-time clock build, the package reorganisation, the prior functional-fixes
@@ -332,30 +380,35 @@ shim.
 | `paths.py` | Single source of repo-relative paths (`REPO_ROOT`, `ASSETS_DIR`, `DOCS_DIR`) + the default recordings folder (`~/Documents/Brain Battle Data`) |
 | `ui/sidebar_shell.py` | DESIGN shell: 232px sidebar, 72px rail on Review & Label, fully hidden for the full-screen record flow; app opens on Sessions |
 | `ui/record_flow.py` | The guided New-recording flow (DESIGN §2–§5): Connect → Set up → Record → Saved; owns the device slots + SessionController; emits `session_saved` / `exit_flow` |
-| `ui/review_label_screen.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, jargon-free brain card, timeline, labelling (`ReviewLabelScreen`) |
+| `ui/review_label_screen.py` | The merged Review & Label screen (DESIGN §6): labels-first open, PyAV video grid, the EEG card (one `EEGViewer` per boxer + timebase/scale/filter controls), timeline, labelling (`ReviewLabelScreen`) |
+| `ui/eeg_viewer.py` | The EEG display — a conventional EEG viewer: stacked TP9/AF7/AF8/TP10/AUX traces in µV, scale bar, time axis, event markers; review (playhead-centred) and live (scrolling) modes; `BandPowerBars`. The one module allowed to show channel codes |
 | `ui/sessions_screen.py` | Sessions home library (discovery, status, search/filter/sort, interrupted banner, background scan + sizing) (`SessionsScreen`) |
-| `ui/settings_screen.py` | The real Settings screen (DESIGN §7): recordings folder, headbands, video quality, session defaults + bell, shared label-list editor; autosaves with a "✓ Saved" confirmation (`SettingsScreen`) |
+| `ui/settings_screen.py` | The real Settings screen (DESIGN §7): recordings folder, headbands, video quality, session defaults + bell, extra signals + LSL sharing, shared label-list editor; autosaves with a "✓ Saved" confirmation (`SettingsScreen`) |
 | `ui/docs_screen.py` | The in-app Documentation screen: Markdown rendering via `QTextBrowser`/`QTextDocument.setMarkdown` (no QtWebEngine), nav tree, always-visible search with highlighting, back/forward (`DocsScreen`) |
 | `ui/design_tokens.py` | **Light-only** design system (docs/DESIGN.md tokens) + QSS factories |
 | `ui/fonts.py` | Registers the bundled Inter font (from `assets/fonts/` via `paths.ASSETS_DIR`) |
 | `capture/usb_camera.py` | `USBCameraThread` (cv2, or a simulated capture) + `FrameEncoder` — crash-safe fragmented H.264 per-camera ffmpeg subprocess + row-per-frame sidecar; no audio; preview downscale |
 | `capture/camera_source.py` | `CameraSlot` — one camera for the flow (wraps `USBCameraThread`: preview, fps, recording/dropped/encoder state) |
-| `capture/headband_source.py` | `HeadbandSlot` — one boxer's headband (wraps `_MuseDirectReader`: connection, battery, per-sensor contact, live trace, reconnect/append) |
-| `capture/eeg_module.py` | Muse-S BLE scan/connect/stream, `_RingBuffer`, `EEGLiveWidget` (pyqtgraph) |
-| `capture/eeg_plot_pg.py` | pyqtgraph live EEG plots (plain sensor names, no channel codes) |
+| `capture/headband_source.py` | `HeadbandSlot` — one boxer's headband (wraps `_MuseDirectReader`: connection, battery, per-sensor contact, live EEG buffer, reconnect/append, pushes to the LSL publisher) |
+| `capture/clock.py` | The one capture clock: `time.monotonic()` plus fixed offsets to Unix and LSL time; `session_origin()` |
+| `capture/eeg_module.py` | Muse-S Bluetooth scan/connect/stream (`_MuseDirectReader`: EEG, movement + pulse sensors, battery), crash-safe `_CsvStreamWriter`, `_RingBuffer` |
+| `capture/lsl_outlets.py` | `LslPublisher` — live LSL outlets (EEG/sensors per boxer, markers, per-camera frame times); fail-soft |
 | `capture/session_controller.py` | Pure-logic phase state machine (headless-testable), 1 Hz QTimer |
-| `capture/simulation.py` | **Dev-only, not shipped** — `BRAIN_BATTLE_SIMULATE` simulated cameras + headbands through the real capture paths; failure injection (missing camera, headband drop) |
+| `capture/simulation.py` | **Dev-only, not shipped** — `BRAIN_BATTLE_SIMULATE` simulated cameras + headbands (EEG, movement, pulse, battery) through the real capture paths, so the CSVs, LSL streams and XDF all come out of simulation; failure injection (missing camera, headband drop) |
 | `capture/contact_quality.py` | Per-sensor EEG contact-quality heuristic (plain language) |
 | `capture/contact_log.py` | Per-sensor contact-quality log written during recording + weak-period summary for Saved/Review |
 | `capture/keep_awake.py` | Prevent sleep while recording (caffeinate / SetThreadExecutionState) |
 | `capture/round_bell.py` | `RoundBell` — round-start boxing bell via `QSoundEffect` |
 | `playback/pyav_player.py` | `PyAVCamera` / `MultiCamDecoder` / `DecodeWorker` / `PlayerController` — single-clock decode off the UI thread |
-| `data/session_storage.py` | On-disk layout, manifest (boxers, capture_clock, demo, moments, stopped_early), `phase_markers.csv`, Sessions discovery/classification/disk verdict |
+| `data/signals.py` | Shared facts: EEG channels + rate, extra sensors, folder names, LSL/XDF stream names |
+| `data/session_storage.py` | On-disk layout, manifest (boxers, capture_clock, demo, moments, stopped_early), `phase_markers.csv`, finding a recording's files (`eeg_files`, `camera_files`, `read_phase_markers`, `read_csv_tolerant`, `camera_frame_rates`), Sessions discovery/classification/disk verdict |
+| `data/session_xdf.py` | `build_session_xdf` — one `recording.xdf` per recording from its crash-safe files (+ a command line) |
+| `data/xdf_writer.py` | Minimal pure-Python XDF 1.0 writer (numeric + marker streams), verified with pyxdf |
 | `data/session_history.py` | Append-only `history.jsonl` per recording — flush+fsync, tolerant reader |
 | `data/labels_store.py` | `labels.json` v2 (schema, v1 migration, undo/redo, events timeline) |
 | `data/label_vocab.py` | Shared team label list (`label_list.json` in the recordings folder) |
-| `data/export_module.py` | `SessionExportWorker` + `ExportOptionsDialog` (analysis zip), `VideoExportWorker` (optional 2×2 merge), `build_coregistered_eeg` |
-| `data/app_settings.py` | User-config store: headband→Boxer A/B mapping + known-headbands list, session defaults, round bell, video quality (resolution + bitrate), capture dir (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set) |
+| `data/export_module.py` | `SessionExportWorker` + `ExportOptionsDialog` (analysis zip incl. `recording.xdf` rebuilt with labels), `VideoExportWorker` (optional 2×2 merge), `build_coregistered_eeg` |
+| `data/app_settings.py` | User-config store: headband→Boxer A/B mapping + known-headbands list, session defaults, round bell, video quality (resolution + bitrate), movement/pulse recording + LSL sharing switches, capture dir (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set) |
 | `support/log_setup.py` | Logging configuration (console + file handlers) |
 | `support/docs_nav.py` | Qt-free docs logic: `docs/nav.yml` loading, heading slugify, search index, internal link/image/anchor extraction — used by `ui/docs_screen.py` and `tests/test_docs.py` |
 | `../brain_battle_main.py` | Thin launcher shim at the repo root — re-exports from `brain_battle.app`; `python3 brain_battle_main.py` still works |
@@ -367,18 +420,20 @@ by writing more code. This is NOT the project backlog (that's
 `docs/ROADMAP.md`); these are the loose ends that need a real capture session.
 
 0. **UNVERIFIED: EEG capture-time alignment.** EEG samples are placed on the
-   shared session axis by `t_session = muse_timestamp - capture_t0_unix`. The
-   *arithmetic* is unit-tested (`tests/test_capture_clock.py`), but the EEG
-   *clock source* is not: muselsl derives its timestamps from `time.time()`
-   corrected by a per-band regression, and BLE transport adds latency — neither
-   is confirmable without a real Muse band. *Why it matters:* between-brain
+   shared session axis by `t_session = sample_time - capture_t0_unix`, where
+   both come from the one capture clock (`capture/clock.py`). The *arithmetic*
+   is unit-tested (`tests/test_capture_clock.py`, `tests/test_xdf.py`), but two
+   things are not: muselsl spreads each packet's arrival time over its samples
+   with a per-band regression, and BLE transport adds latency — neither is
+   confirmable without a real Muse band. *Why it matters:* between-brain
    synchrony timing depends on where each band sits on the axis. The app logs
    this warning at every EEG session start (labeled in `capture/eeg_module.py`).
    *Unblocked by:* a real 2-band session — record a known simultaneous physical
    event (e.g. both boxers tap in view of a camera at one buzzer), then check
    the EEG artifact lands at the same `t_session` as the camera frame. **The
-   exported `eeg_coregistered.csv` inherits this** — its between-brain skew is
-   measured-but-hardware-unverified; the same buzzer check discharges it too.
+   exported `eeg_coregistered.csv` and `recording.xdf` inherit this** — their
+   between-brain skew is measured-but-hardware-unverified; the same buzzer check
+   discharges it too.
 
 1. **Eyes-on-glass visual check — real signals.** Synced playback (decode,
    4-cam lockstep, automatic capture-clock alignment) and the brain-activity
@@ -396,10 +451,22 @@ by writing more code. This is NOT the project backlog (that's
    discharges #0's EEG-clock check). The generated demo session (above) is the
    stand-in fixture for everything here except the real-signal question.
 
+2. **UNVERIFIED: movement / pulse sensors and live LSL with real headbands.**
+   The accelerometer, gyroscope and pulse (PPG) recording go through muselsl's
+   standard callbacks and are exercised end to end with *simulated* headbands,
+   but have never been received from a real band here; the pulse sensor also
+   assumes the headband's "p50" preset (`_MuseDirectReader.run`), which is why
+   it is off by default. Nobody knows yet whether the extra Bluetooth traffic is
+   comfortable with two bands. *Unblocked by:* a short real session with the
+   switches on (Settings → Extra signals and sharing) and LabRecorder running
+   alongside; check the `Muse sensors/` CSVs fill at ~52 Hz and the EEG stays
+   stable. If not, switch them off in Settings — no code change needed.
+
 Not hardware-blocked, but noted: the drift camera the demo generates (30fps
-declared vs ~29.5fps true) is a real, reproduced alignment defect — using the
-full per-frame sidecar for playback timing (rather than the first row only) is
-tracked in `docs/ROADMAP.md` Phase 5, not here.
+declared vs ~29.5fps true) is handled by playback and by `recording.xdf` (both
+use every frame's own time) and is now reported to the operator; the one
+remaining seam — the optional combined 2×2 export video — is tracked in
+`docs/ROADMAP.md` Phase 5, not here.
 
 ## Conventions & gotchas
 
@@ -419,3 +486,13 @@ tracked in `docs/ROADMAP.md` Phase 5, not here.
 - Repo-relative paths (assets, docs, the default recordings folder) are all
   resolved through `brain_battle/paths.py` — don't re-derive them from a
   module's own `__file__`.
+- **One clock.** Stamp anything new with `time.monotonic()` and convert through
+  `capture/clock.py`; never call `time.time()` for a timestamp that will be
+  compared with another source.
+- **`recording.xdf` is derived, never a source.** The CSVs, sidecars, markers,
+  manifest and `labels.json` are the originals; the XDF is rebuilt from them.
+  Don't read it back inside the app, and don't add data that exists only there.
+- **LSL is fail-soft.** Nothing in recording may depend on an outlet opening.
+- **Unscoped Qt stylesheets leak.** `w.setStyleSheet("background: …")` applies
+  to every descendant; give the widget an object name and write
+  `#name { … }` instead (this caused grey boxes behind labels until 3.1).

@@ -26,7 +26,13 @@ headbands on. When everything shows a green tick, you are ready."
   forehead, Right ear), each "Good contact" or "Weak contact." A weak
   sensor shows a plain-language tip for fixing it (e.g. "Move the band so
   the sensor sits flat against the skin behind the left ear. Brush hair out
-  of the way.").
+  of the way."). Under the chips is the **live signal**: one line per sensor
+  (TP9 = left ear, AF7 = left forehead, AF8 = right forehead, TP10 = right
+  ear, AUX = spare input), scrolling right to left, with a small bar showing
+  the current scale in microvolts (µV). A healthy sensor shows a lively,
+  wiggling line; a flat line or one swinging wildly means poor contact. How to
+  read this display is explained under
+  [Review & Label](review-and-label.md#brain-activity-eeg).
 - The bottom bar totals it up: "N of 6 devices ready." **Search again**
   re-scans; **Continue →** is allowed even with something missing — the
   summary tells you plainly what won't be recorded if you continue anyway.
@@ -70,7 +76,9 @@ in Step 3 (see below) rather than failing the whole recording.
   whole-session phase bar with a marker for where you are now.
 - The side panel shows a health line ("✓ All 4 cameras and 2 headbands are
   recording," or exactly what's wrong), small camera previews, and each
-  boxer's headband with a live trace and contact quality.
+  boxer's headband: a one-line status ("✓ Good contact · battery 77%" or
+  "! Weak contact: right ear") and the live signal, with a dashed line marking
+  each round start and each moment you mark.
 
 **Marking a moment:** press **M** or the **Mark this moment** button at any
 time. It shows "Moment marked at 05:12 · 3 marked so far. You can name them
@@ -96,7 +104,10 @@ A checklist of what was recorded: the four camera videos (and whether any
 lost frames), both brain recordings, rounds and breaks (marked
 automatically — no action needed), how many moments you marked, and a
 **"Worth checking"** section for anything that might need a second look
-(for example, weak headband contact for part of a round). Exactly where it
+(for example, weak headband contact for part of a round). The last line of the
+checklist — "Everything on one timeline for analysis (recording.xdf)" — is the
+single file analysts usually want; it takes a moment to appear after the
+recording stops. Exactly where it
 saved to and its total size are shown at the bottom.
 
 Three ways forward: **Start labelling →** (opens the recording directly in

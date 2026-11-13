@@ -969,6 +969,7 @@ class SavedStep(QWidget):
         host.setStyleSheet(f"#savedHost {{ background: {dt.canvas_bg()}; }}")
         self._list = QVBoxLayout(host); self._list.setContentsMargins(0, 0, 0, 0); self._list.setSpacing(8)
         self._xdf_row = None
+        self._has_worth = False
         scroll.setWidget(host)
         root.addWidget(scroll, 1)
 
@@ -1014,9 +1015,19 @@ class SavedStep(QWidget):
         except RuntimeError:            # the row was already replaced
             self._xdf_row = None
 
+    def add_worth_checking(self, text: str):
+        """Append a "Worth checking" line after the screen was first filled in."""
+        at = self._list.count() - 1                     # before the trailing stretch
+        if not self._has_worth:
+            self._list.insertWidget(at, _body("Worth checking", bold=True, size=dt.SIZE_MD))
+            self._has_worth = True
+            at += 1
+        self._list.insertWidget(at, self._row("!", text, dt.warning_color()))
+
     def _row(self, icon, text, color=None):
         row = QFrame()
-        row.setStyleSheet(f"QFrame {{ background: {dt.surface()}; border: 1px solid {dt.border()}; "
+        row.setObjectName("row")
+        row.setStyleSheet(f"QFrame#row {{ background: {dt.surface()}; border: 1px solid {dt.border()}; "
                           f"border-radius: {dt.RADIUS_MD}px; }}")
         h = QHBoxLayout(row); h.setContentsMargins(14, 10, 14, 10); h.setSpacing(10)
         ic = QLabel(icon); ic.setStyleSheet(f"color: {color or dt.success_color()}; font-size: 15px;")
@@ -1036,6 +1047,7 @@ class SavedStep(QWidget):
         self._xdf_row = self._row("…", self._XDF_BUSY, dt.text_tertiary())
         self._list.addWidget(self._xdf_row)
         worth = info["worth_checking"]
+        self._has_worth = bool(worth)
         if worth:
             self._list.addWidget(_body("Worth checking", bold=True, size=dt.SIZE_MD))
             for text in worth:
@@ -1511,6 +1523,27 @@ class RecordFlow(QWidget):
         self._xdf_thread = None
         if root == self._saved_root:
             self._saved_step.set_xdf_state(ok)
+            for text in self._frame_rate_notes(root):
+                self._saved_step.add_worth_checking(text)
+
+    def _frame_rate_notes(self, root) -> list:
+        """A line for each camera whose real frame rate was more than 1 % off
+        the rate it was asked for (only knowable once its file is closed)."""
+        from brain_battle.data.session_storage import camera_frame_rates
+        want = float(self._settings.video_dims()[2])
+        titles = {s.stem: s.title for s in self._cams}
+        notes = []
+        try:
+            for stem, _n, fps in camera_frame_rates(root):
+                if abs(fps - want) / want > 0.01:
+                    notes.append(
+                        f"{titles.get(stem, stem)} recorded {fps:.1f} frames per second instead "
+                        f"of {want:.0f}. Playback and the analysis files use each frame's real "
+                        f"time, so nothing is out of step — but the camera or its cable may "
+                        f"need a look.")
+        except Exception as e:
+            log.warning("frame-rate check failed: %r", e)
+        return notes
 
     def wait_for_xdf(self, timeout: float = 30.0) -> bool:
         """Block (processing events) until the pending recording.xdf build has

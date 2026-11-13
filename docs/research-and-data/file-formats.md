@@ -31,7 +31,7 @@ by `session_storage.SessionLayout._write_manifest`. One JSON object:
 | `moments` | array | "Mark this moment" presses — each `{t_session_seconds, unix_time}` |
 | `stopped_early` | bool | `true` if the operator pressed Stop and save before the plan finished |
 | `stopped_t_session` | number \| null | Where it was stopped (session seconds), else `null` |
-| `capture_clock` | object | The shared clock origin: `{t0_monotonic, t0_unix}` |
+| `capture_clock` | object | The shared clock origin, one instant on three time scales: `{t0_monotonic, t0_unix, t0_lsl}` (`t0_lsl` is `null` in recordings made before version 3.1) |
 | `source_starts` | object | Per source, its measured first sample: `{first_unix, first_t_session}` |
 | `config` | object | The round plan: `{num_rounds, round_sec, break_sec, baseline_sec}` (seconds) |
 | `phases` | array | One entry per baseline / round / break (see below) |
@@ -68,7 +68,8 @@ Example (trimmed):
   "stopped_early": false,
   "stopped_t_session": null,
   "capture_clock": {
-    "t0_monotonic": 1352412.95, "t0_unix": 1794241570.96
+    "t0_monotonic": 1352412.95, "t0_unix": 1794241570.96,
+    "t0_lsl": 1352412.95
   },
   "source_starts": {
     "EEG_01": {"first_unix": 1794241571.24, "first_t_session": 0.28}
@@ -174,7 +175,7 @@ One CSV per boxer's headband, streamed during recording by `eeg_module`
 | `AF8` | float | µV | Right forehead sensor |
 | `TP10` | float | µV | Right ear sensor |
 | `AUX` | float | µV | Spare/auxiliary channel (usually unused) |
-| `timestamps` | float | seconds | muselsl's wall-clock (Unix) time for the sample |
+| `timestamps` | float | seconds | The sample's time as Unix seconds, taken from the app's one capture clock (`capture/clock.py`) and smoothed per band by muselsl |
 | `t_session_seconds` | float | seconds | The sample on the shared session clock (`timestamps − capture_clock.t0_unix`) |
 
 The four EEG sensors map to the plain-language names the app shows (per
@@ -187,11 +188,74 @@ TP9,AF7,AF8,TP10,AUX,timestamps,t_session_seconds
 -13.274,9.513,-6.448,10.994,-2.012,1794241571.240364,0.279209
 ```
 
-> **Not yet verified on hardware.** `timestamps` come from muselsl's
-> time.time()-derived, per-band-corrected clock; whether they're accurate to
-> within tens of milliseconds over Bluetooth is unconfirmed without a real Muse
-> band (`eeg_module` logs this warning at every EEG session start). The derived
-> `t_session_seconds` inherits that. See [Timing & accuracy](timing-and-accuracy.md).
+> **Not yet verified on hardware.** A sample is stamped when its Bluetooth
+> packet reaches the computer; whether that is accurate to within tens of
+> milliseconds is unconfirmed without a real Muse band (`eeg_module` logs this
+> warning at every EEG session start). The derived `t_session_seconds` inherits
+> that. See [Timing & accuracy](timing-and-accuracy.md).
+
+### Movement and pulse sensors (`continuous/Muse sensors/*.csv`)
+
+Optional (Settings → *Extra signals and sharing*). One CSV per headband per
+sensor, named after that headband's EEG file with `_ACC`, `_GYRO` or `_PPG`
+added, written the same crash-safe way by the same reader. Every file ends with
+the same two time columns as the EEG: `timestamps` and `t_session_seconds`.
+
+| File | Columns before the time columns | Rate | Unit | What it is |
+|---|---|---|---|---|
+| `…_ACC.csv` | `X`, `Y`, `Z` | 52 Hz | g | Accelerometer — head movement and impacts |
+| `…_GYRO.csv` | `X`, `Y`, `Z` | 52 Hz | degrees per second | Gyroscope — head rotation |
+| `…_PPG.csv` | `PPG1`, `PPG2`, `PPG3` | 64 Hz | raw sensor counts | The optical pulse sensor's three light channels |
+
+```csv
+X,Y,Z,timestamps,t_session_seconds
+0.021,0.048,0.979,1794241571.236458,0.275303
+```
+
+The headband delivers three movement samples per Bluetooth packet under one
+arrival time; the app spreads them back over the three sample periods they
+cover. **Not yet verified on hardware** — see [Known limitations](limitations.md).
+
+## `recording.xdf`
+
+Everything in the recording on **one clock**, in XDF — the file format of the
+Lab Streaming Layer (LSL) ecosystem, which EEGLAB, MNE-Python and pyxdf open
+directly. Built by `session_xdf.build_session_xdf` from the files described
+above (it is a derived copy; see
+[ADR-0015](../decisions/adr-0015-lsl-and-xdf.md)). How to load it is under
+[Loading the data](loading-the-data.md).
+
+| Stream name | Type | Channels | Rate | Contents |
+|---|---|---|---|---|
+| `BrainBattle_EEG_A`, `BrainBattle_EEG_B` | `EEG` | `TP9`, `AF7`, `AF8`, `TP10`, `AUX` | 256 Hz | Each boxer's EEG, float32, in microvolts |
+| `BrainBattle_ACC_A` / `_B` | `ACC` | `X`, `Y`, `Z` | 52 Hz | Accelerometer (g), if recorded |
+| `BrainBattle_GYRO_A` / `_B` | `GYRO` | `X`, `Y`, `Z` | 52 Hz | Gyroscope (degrees per second), if recorded |
+| `BrainBattle_PPG_A` / `_B` | `PPG` | `PPG1`, `PPG2`, `PPG3` | 64 Hz | Pulse sensor, if recorded |
+| `BrainBattle_Markers` | `Markers` | one string | irregular | The `phase_markers.csv` labels (`BASELINE_START` … `SESSION_END`) and `MOMENT` for each un-named "Mark this moment" |
+| `BrainBattle_Labels` | `Markers` | one string | irregular | The placed labels (present once there are any) — see below |
+| `BrainBattle_Video_SIDE_01`, `BrainBattle_Video_SIDE_02`, `BrainBattle_Video_POV_01`, `BrainBattle_Video_POV_02` | `VideoFrames` | `frame_index` (int32) | irregular | One sample per recorded video frame: the value is the frame's number in that camera's MP4, the timestamp is when it was captured |
+
+**Timestamps** are seconds on the LSL clock: `capture_clock.t0_lsl +
+t_session_seconds`. Every stream's description carries the session start as
+`session_start` (inside a `brain_battle` element, next to `recording`,
+`app_version`, and — per stream — `boxer` and `headband`, or `video_file` and
+`measured_fps`), so
+
+    t_session_seconds = timestamp − session_start
+
+and the first marker, `BASELINE_START`, comes a few hundredths of a second
+after session time 0 (the moment the devices were told to start). Recordings made
+before version 3.1 have no `t0_lsl`; their XDF timestamps are simply
+`t_session_seconds`.
+
+**Label events** are written as text: `<label>/<who>` for a moment label (for
+example `Jab/A`), and two events — `<label>/<who>/start` and
+`<label>/<who>/end` — for a label that lasts a while (`Clinch/Both/start`).
+
+The same stream names are published **live** over LSL while the New recording
+screens are open (`lsl_outlets.LslPublisher`), so a file LabRecorder makes from
+them matches this one; the live set has no `BrainBattle_Labels` stream (labels
+are placed later).
 
 ## `contact_quality.csv`
 
@@ -310,14 +374,16 @@ interrupted-recording banner in Sessions.
 
 "Export for analysis" builds a self-contained zip — written by
 `export_module.SessionExportWorker`. It's a copy of the recording's key files
-plus three derived CSVs. Contents:
+plus three derived CSVs and the XDF. Contents:
 
 | Entry | What it is |
 |---|---|
+| `recording.xdf` | [Everything on one clock](#recordingxdf), rebuilt at export time so it includes the labels |
 | `labels.csv` | The placed labels, one row each (columns below) |
 | `events.csv` | Phase markers + labels merged onto one timeline |
 | `eeg_coregistered.csv` | Both boxers' EEG resampled onto one shared clock |
 | `eeg/` | The raw per-boxer EEG CSVs, unchanged |
+| `sensors/` | The movement / pulse CSVs, unchanged (only if they were recorded) |
 | `videos/` | The camera `.mp4` files and their `.timestamps.csv` sidecars |
 | `session_manifest.json` | A copy of the manifest |
 | `phase_markers.csv` | A copy of the markers |
@@ -355,15 +421,16 @@ share one clock and one set of rows.
 | Column | Type | Unit | Meaning |
 |---|---|---|---|
 | `t_session_seconds` | float | seconds | The shared time grid |
-| `TP9_01`, `AF7_01`, `AF8_01`, `TP10_01`, `AUX_01` | float | µV | Boxer 1's channels (the `_01` band) |
-| `TP9_02`, `AF7_02`, `AF8_02`, `TP10_02`, `AUX_02` | float | µV | Boxer 2's channels (the `_02` band) |
+| `TP9_01`, `AF7_01`, `AF8_01`, `TP10_01`, `AUX_01` | float | µV | Boxer A's channels (the `_01` band) |
+| `TP9_02`, `AF7_02`, `AF8_02`, `TP10_02`, `AUX_02` | float | µV | Boxer B's channels (the `_02` band) |
 | `phase_id` | string | — | The active phase at that row (forward-filled) |
 | `phase_label` | string | — | The active phase's label |
 | `marker` | string | — | Non-empty only on the exact row of a phase boundary |
 
 Each band's channels are `NaN` outside that band's own recorded range (an
-honest "no sample here"). The `_01`/`_02` suffix is the band order, not the
-boxer letter — cross-check against the manifest's `boxers` if you need the name.
+honest "no sample here"). `_01` is Boxer A's headband and `_02` is Boxer B's,
+as recorded in that session's manifest (`boxers.A.headband` /
+`boxers.B.headband`).
 
 > **Not yet verified on hardware.** The *relative* alignment between the two
 > boxers in `eeg_coregistered.csv` depends on the EEG clock discussed above and

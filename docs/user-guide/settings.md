@@ -52,6 +52,23 @@ before round 1 and once at the start of each round — never during a break.
 These pre-fill the Set up step of every [new recording](new-recording.md);
 each recording can still adjust them for that session only.
 
+## Extra signals and sharing
+
+Three switches:
+
+- **Record head movement (the headband's motion sensors)** — on by default.
+  Saves each headband's movement next to its brain recording, which later helps
+  tell "the boxer moved" apart from "the brain did something".
+- **Record pulse (the headband's optical sensor)** — off by default. It has
+  not been tried with real headbands yet; if the headbands stop connecting
+  reliably after you switch it on, switch it off again.
+- **Share live signals with other lab software on this network** — on by
+  default. While the New recording screens are open, other programs that speak
+  *Lab Streaming Layer* (LabRecorder, EEG viewers) can see the headbands, the
+  round markers and the camera timing. Your recordings are saved exactly the
+  same whether this is on or off. The first time, your computer may ask whether
+  to allow incoming network connections — either answer is fine for recording.
+
 ## Label list
 
 Your team's shared set of labels — stored in the recordings folder itself,

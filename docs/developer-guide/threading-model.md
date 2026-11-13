@@ -25,7 +25,8 @@ freeze. It doesn't, by design.
 | **encoder-writer thread** | 1 per camera | recording | drain the frame queue into ffmpeg's stdin | `usb_camera.py` |
 | **`ffmpeg` subprocess** | 1 per camera | recording | encode fragmented H.264 + nothing else | spawned by `FrameEncoder` |
 | **`_MuseDirectReader`** | 1 per band | recording/live | BLE read loop (muselsl `Muse` via `bleak`) | `eeg_module.py` |
-| **EEG CSV-writer thread** | 1 per band | recording | append EEG chunks to disk (flush+fsync) | `eeg_module.py` |
+| **CSV-writer thread** | 1 per recorded signal (EEG, and each movement / pulse sensor) per band | recording | append chunks to disk (flush+fsync) | `eeg_module.py` |
+| **XDF build thread** | 1 | a few seconds after each recording stops | build `recording.xdf` from the finished files | `record_flow.py` → `session_xdf.py` |
 | **`DecodeWorker`** | 1 | review | decode the frame-at-`t` for all cameras | `pyav_player.py` |
 | **`_MediaLoadWorker`** | 1 | review (brief) | open videos + EEG when a session opens | `review_label_screen.py` |
 | **`_ScanWorker` / `_SizeWorker`** | 1 each | Sessions | scan folders + compute sizes off-UI | `sessions_screen.py` |

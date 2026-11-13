@@ -16,9 +16,11 @@ These need a working camera rig and Muse-S bands, which the project doesn't have
 
 | # | Item | What would close it |
 |---|---|---|
-| 0 | **EEG capture-time alignment is unverified.** EEG samples sit on the axis via `t_session = muse_timestamp − capture_t0_unix`; the arithmetic is unit-tested but the muselsl clock source + BLE latency are not confirmable without a band. Logged at every EEG session start (`eeg_module.py`). | A 2-band session with a known simultaneous event (buzzer/tap in view of a camera) — check the EEG artifact lands at the same `t_session` as the camera frame. Also discharges the co-registered export's between-brain skew. |
+| 0 | **EEG capture-time alignment is unverified.** EEG samples sit on the axis via `t_session = sample_time − capture_t0_unix`, both from the one capture clock; the arithmetic is unit-tested but how late Bluetooth delivers a sample is not confirmable without a band. Logged at every EEG session start (`eeg_module.py`). | A 2-band session with a known simultaneous event (buzzer/tap in view of a camera) — check the EEG artifact lands at the same `t_session` as the camera frame. Also discharges the co-registered export's between-brain skew. |
 | 1 | **Eyes-on-glass playback never watched on real signals.** Synced playback + brain traces are verified headless (correct pixels, measured scrub perf, alignment arithmetic), but nobody has watched the tab render aligned playback on real data. | The first real capture session — open it in Review & Label and watch all four cameras + both traces follow the playhead; confirm a marker at a known physical event lines up in video and EEG. |
-| — | **Raw Muse-S EEG from a sparring round has never been inspected** — noise floor, motion artifact, channel usability are all unknown. | A first real 5-minute sparring recording, before any further sync-precision or accelerometer/PPG work. |
+| — | **Raw Muse-S EEG from a sparring round has never been inspected** — noise floor, motion artifact, channel usability are all unknown. | A first real 5-minute sparring recording, before any further sync-precision work. |
+| — | **The movement and pulse sensors have never been received from a real band**, and the pulse sensor depends on an untested headband mode (preset 50). The extra Bluetooth traffic with two bands is also untested. | A short real session with them switched on in Settings; if the link gets less stable, switch them off there. |
+| — | **Live LSL streams have only met simulated headbands** and same-computer receivers. | Run LabRecorder beside a real session; try a second computer on the lab network. |
 | — | **Encoder "listed-but-no-hardware" fallback** (e.g. nvenc on a GPU-less box) is proven only by forced-probe-failure unit tests, never on real GPU-less hardware. | Running a recording/export on a machine whose listed hardware encoder can't actually encode. |
 
 The generated demo session and simulation mode are the stand-ins for everything
@@ -26,18 +28,24 @@ here **except** the real-signal questions — they can't produce a real signal.
 
 ## Code-level tech debt (tracked in ROADMAP Phase 5)
 
-- **Playback uses only the first sidecar row for a camera's start, not the full
-  per-frame sidecar.** The drift camera (30 fps declared vs ~29.5 fps true) is a
-  real, reproduced desync; using the full sidecar for playback timing is
-  [ROADMAP](../project/roadmap.md) Phase 5, not hardware-blocked. (The playback
-  clock in `pyav_player` already reads per-frame times correctly during review;
-  the Phase 5 item is about the remaining alignment seams.)
-- **`usb_camera` logs capture-rate drift but never surfaces it structurally** —
-  a warning in the log, not a flag the UI or export can see.
-- **Muse accelerometer and PPG are not recorded** — only EEG channels. Worth
-  adding once the plain EEG is confirmed usable.
-- **No per-channel EEG signal-quality view in Review** beyond the contact-quality
-  heuristic — needed before anyone trusts the signal.
+- **The optional combined 2×2 export video still aligns cameras by their first
+  frame only.** Playback (`pyav_player`) and `recording.xdf` both use every
+  frame's own time, so a camera running at 29.5 fps instead of 30 is handled
+  there; the combined video would slowly drift for such a camera. It is a
+  preview, off by default.
+- **`SessionController` counts one-second timer ticks** rather than comparing
+  against the clock, so if the UI thread stalls for several seconds a phase runs
+  that much long. The markers always record when a phase *really* started, so
+  the data stays right; only the on-screen schedule would slip.
+- **No per-channel EEG signal-quality summary for a whole recording** beyond the
+  contact-quality log and looking at the EEG display — worth adding once real
+  recordings exist to calibrate it against.
+- **A non-editable install still cannot find `assets/` and `docs/`** (ROADMAP
+  Phase 6).
+
+Closed in 3.1.0-dev: capture-rate drift is now reported (Saved screen "Worth
+checking", and `measured_fps` in each XDF video stream); the headbands' movement
+and pulse sensors can be recorded.
 
 ## Documentation drift found while writing the Developer guide
 

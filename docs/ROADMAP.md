@@ -6,6 +6,8 @@ wording elsewhere in the repo. See `AGENTS.md`'s "Project situation" and
 
 - **The owner approves each phase below before it starts.** Do not start the
   next phase on your own initiative, even if the current one is finished.
+  (Phase 3.1 below was such an approval: an explicit owner request for an
+  open-ended improvement pass on `develop`.)
 - Hardware is currently broken and nobody has inspected real Muse-S EEG from
   a sparring round yet (see `AGENTS.md`). Everything through Phase 6 is
   built and tested against the **generated demo session** from Phase 1, not
@@ -309,61 +311,78 @@ the handful of places the build deliberately reads differently, and why:
 
 ---
 
+## Phase 3.1 — The standard EEG workflow — **DONE on `develop` (2026-11-13), awaiting owner review**
+
+Not one of the original phases: an owner-requested pass (see
+[`docs/reviews/2026-11-fable-review.md`](reviews/2026-11-fable-review.md)) to
+make the app fit the standard Muse workflow — headband → LSL stream →
+LabRecorder → XDF → EEGLAB / Python.
+
+- ~~**Live LSL streams**~~ **DONE.** EEG, movement and pulse sensors per boxer,
+  a marker stream, and one frame-time stream per camera
+  (`capture/lsl_outlets.py`); fail-soft; switchable in Settings.
+- ~~**One XDF per recording**~~ **DONE.** `recording.xdf`, built from the
+  crash-safe files by `data/session_xdf.py` with the built-in
+  `data/xdf_writer.py`; rebuilt with labels on export; verified with pyxdf
+  ([ADR-0015](decisions/adr-0015-lsl-and-xdf.md)).
+- ~~**A standard EEG viewer**~~ **DONE.** `ui/eeg_viewer.py`
+  ([ADR-0016](decisions/adr-0016-standard-eeg-viewer.md)); DESIGN.md amended.
+- ~~**One capture clock**~~ **DONE.** `capture/clock.py`
+  ([ADR-0017](decisions/adr-0017-one-capture-clock.md)).
+- ~~**Loading documented**~~ **DONE** for pandas, pyxdf, MNE-Python, EEGLAB and R.
+
+---
+
 ## Phase 5 — Remaining report items and research value
 
-- **[RAISED PRIORITY] Use the FULL per-frame sidecar for playback timing**
-  (not just the first row); detect and flag capture-rate drift.
-  *Why:* `_read_frame_sidecar_start` (`brain_battle_main.py`) reads only the
-  sidecar's first row today — any mid-session frame-rate drift (which
-  `usb_camera.py` already logs a warning for, but never surfaces
-  structurally) is invisible to alignment. **Confirmed eyes-on-glass on the
-  demo session (2026-10-21):** the deliberately-drifting camera visibly
-  desyncs — at the same displayed frame 283, POV 01 reads
-  `t_session 9.653` while POV 02 reads `9.487` (~166 ms apart and growing).
-  So this is a real, reproduced alignment defect, not a theoretical one —
-  worth doing earlier in Phase 5 than the items below it, or pulling forward
-  into the Phase 3 Review & Label merge where the playback path is already
-  being reworked.
-  *Files:* `brain_battle_main.py` (`_read_frame_sidecar_start`, the
-  `_align` path), `usb_camera.py` (where drift is logged but not reported).
+- ~~**Use the FULL per-frame sidecar for playback timing; detect and flag
+  capture-rate drift.**~~ **DONE.** Playback has used every frame's own sidecar
+  time since the PyAV player (`playback/pyav_player.py`,
+  `PyAVCamera.index_for_t`); `recording.xdf` carries one timestamped sample per
+  frame; and since 3.1 a camera whose measured rate is more than 1 % off is
+  reported on the Saved screen ("Worth checking") and as `measured_fps` in its
+  XDF stream (`session_storage.camera_frame_rates`). *Remaining seam:* the
+  optional combined 2×2 export video still aligns cameras by their first frame
+  only (`export_module.SessionExportWorker`) — listed below.
 
-- **Downscale live preview frames before emitting; configurable record
-  resolution/fps.**
-  *Why:* `usb_camera.py` hardcodes 960×540/30fps and a fixed preview-FPS
-  cap; the Settings screen (Phase 3) needs a real control to back it.
-  *Files:* `usb_camera.py` (`USBCameraThread.__init__` defaults,
-  `PREVIEW_FPS_CAP`), `usb_camera_slot.py`, `usb_camera_panel.py`.
+- ~~**Downscale live preview frames before emitting; configurable record
+  resolution/fps.**~~ **DONE** in Phase 3 (preview downscale in `usb_camera`,
+  Standard / High / Light in Settings).
 
-- **Single "Export for analysis" button; merged 2×2 video optional, off by
-  default; add one master events file (markers + labels).**
-  *Why:* today's export always attempts the slow quad-grid video merge and
-  ships phase markers and labels as separate files; most analysis work
-  wants the data, not a preview video, and wants markers+labels on one
-  timeline rather than cross-referenced by hand.
-  *Files:* `export_module.py` (`FullSessionExportWorker`,
-  `VideoExportWorker`, `build_coregistered_eeg`), `brain_battle_main.py`
-  (`_export_synced_data`).
+- ~~**Single "Export for analysis" button; merged 2×2 video optional, off by
+  default; add one master events file (markers + labels).**~~ **DONE** in
+  Phase 3 (`export_module.SessionExportWorker`, `events.csv`); 3.1 added
+  `recording.xdf` to the bundle.
 
-- **Optional per-round clip export using markers.**
+- **Optional per-round clip export using markers.** *Open.*
   *Why:* `phase_markers.csv` already has exact round boundaries; cutting
   per-round clips for sharing/review is a natural, cheap extension.
-  *Files:* `export_module.py` (new worker using `phase_markers` +
-  `ffmpeg -ss`/`-t`), `brain_battle_main.py` (`_read_markers_for_export`
-  already has the needed data).
+  *Files:* `data/export_module.py` (a new worker using `phase_markers` +
+  `ffmpeg -ss`/`-t`).
 
-- **Record Muse accelerometer and PPG alongside EEG.**
-  *Why:* the Muse-S exposes these channels and movement artifact/
-  physiological covariates matter for a boxing synchrony study — but only
-  once the plain EEG channels are confirmed usable (see "Deferred until
-  hardware works" below).
-  *Files:* `eeg_module.py` (`_MuseDirectReader`, `EEGLiveWidget`/
-  `_RingBuffer` — currently EEG-channel-only).
+- ~~**Record Muse accelerometer and PPG alongside EEG.**~~ **DONE (3.1),
+  unverified on hardware.** Accelerometer + gyroscope are recorded by default,
+  the pulse sensor is opt-in (`capture/eeg_module.py`, Settings → Extra signals
+  and sharing); CSVs in `continuous/Muse sensors/`, streams in `recording.xdf`.
+  *Why it was pulled forward despite "only once plain EEG is confirmed usable":*
+  movement is exactly the covariate needed to judge whether sparring EEG is
+  usable at all, so it should be in the very first real recording — and it can
+  be switched off in Settings if it disturbs the Bluetooth link.
 
-- **EEG signal-quality view per channel in review.**
-  *Why:* per `AGENTS.md`'s "Project situation," nobody has inspected real
-  Muse-S EEG from a sparring round — a quality view (noise/flatline/contact
-  indicator) is needed before anyone trusts what they're looking at.
-  *Files:* `eeg_module.py` (`EEGReviewWidget`), `eeg_plot_pg.py`.
+- **EEG signal-quality view per channel in review.** *Partly done.* Review now
+  shows every channel in µV with a time axis and a switchable filter
+  (`ui/eeg_viewer.py`), next to the contact-quality line. *Still open:* a
+  whole-recording summary ("AF7 usable 71 % of round 2") — wait for real
+  recordings to calibrate it against.
+
+- **Make the optional combined 2×2 video drift-proof.** *Open (new).* Use each
+  camera's per-frame times instead of only its first frame's offset.
+  *Files:* `data/export_module.py` (`VideoExportWorker`).
+
+- **Drive the round timer from the clock, not tick counts.** *Open (new).*
+  `SessionController` counts 1 Hz timer ticks; a stalled UI thread makes a phase
+  run long. The data stays right (markers record when phases really start).
+  *Files:* `capture/session_controller.py`, `tests/test_round_bell.py`.
 
 - ~~**Delete dormant `sync_engine.py` code (move `SourceOffset`/`SyncResult`
   out).**~~ **DONE** (`c21fac0`, 2026-11-01 — "Merged Review & Label screen
@@ -381,13 +400,9 @@ the handful of places the build deliberately reads differently, and why:
   timing/alignment (the audio-xcorr `sync_engine` it once referenced is removed,
   per the item above).
 
-- **Extend tests to the new flows.**
-  *Why:* `tests/` currently covers the capture-clock + ring-buffer + smoke
-  floor only; none of Phases 2-5's new flows (autosave, drift detection,
-  duration labels, quality view, the demo-session generator itself) have
-  any coverage yet.
-  *Files:* new `tests/test_*.py` files per flow; `tests/test_smoke.py`
-  (module-discovery will need to pick up every new module).
+- ~~**Extend tests to the new flows.**~~ **DONE** — every flow added since has
+  its own script (see `AGENTS.md`'s test list); `tools/run_tests.py` runs them
+  all in about five and a half minutes.
 
 ---
 
@@ -513,8 +528,8 @@ rig and Muse-S bands, which the project doesn't currently have.
   sync work.**
   *Why:* per "Project situation," nobody has inspected real Muse-S EEG from
   a sparring round — this gates whether the capture-clock investment is
-  even measuring something usable, and whether Phase 5's accelerometer/PPG
-  and quality-view items are worth building yet.
+  even measuring something usable. Record it with the movement sensors on
+  (the default) and open `recording.xdf` in an EEG tool.
   *Files:* none (data collection); informs `eeg_module.py`/
   `export_module.py` decisions afterward.
 
@@ -523,8 +538,14 @@ rig and Muse-S bands, which the project doesn't currently have.
   *Why:* `AGENTS.md` deferred work items #0/#1 — logic-verified by unit
   tests but never watched on real data; the arithmetic is confirmed, the
   EEG's actual position on the shared axis is not.
-  *Files:* none directly; validates `brain_battle_main.py`'s Review
-  alignment path and `eeg_module.py`'s `EEGReviewWidget`.
+  *Files:* none directly; validates the Review & Label alignment path and
+  `recording.xdf`.
+
+- **Movement / pulse sensors and live LSL streams with real headbands.**
+  *Why:* both are built and tested against simulated headbands only; the pulse
+  sensor additionally assumes the headband's "p50" mode.
+  *Files:* none; if the pulse mode is wrong, `capture/eeg_module.py`
+  (`_MuseDirectReader.run`, the `preset=` line).
 
 - **NVIDIA LocateAnything auto-detection** (only after labels and EEG
   quality are proven).

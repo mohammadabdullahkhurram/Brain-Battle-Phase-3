@@ -1,7 +1,9 @@
 %%{init: {'themeVariables': {'fontSize': '16px'}}}%%
 flowchart TB
     CAMS["4 cameras"] -->|"video +<br/>frame timestamps"| FOLDER
-    BANDS["2 headbands"] -->|"EEG CSV +<br/>contact log"| FOLDER
-    FOLDER[("Recording folder<br/>videos · EEG · markers<br/>manifest · contact log")]
+    BANDS["2 headbands"] -->|"EEG + movement CSV<br/>+ contact log"| FOLDER
+    CAMS -.->|"live LSL streams"| LSL["Other lab software<br/>LabRecorder · LSL viewers"]
+    BANDS -.->|"live LSL streams"| LSL
+    FOLDER[("Recording folder<br/>videos · EEG · markers<br/>manifest · contact log<br/>recording.xdf")]
     FOLDER -->|"open a session"| REVIEW["Review &amp; Label<br/>adds labels.json<br/>and history.jsonl"]
-    REVIEW -->|"Export for analysis"| ZIP["Analysis bundle (.zip)<br/>labels · events ·<br/>co-registered EEG"]
+    REVIEW -->|"Export for analysis"| ZIP["Analysis bundle (.zip)<br/>recording.xdf · labels ·<br/>events · co-registered EEG"]

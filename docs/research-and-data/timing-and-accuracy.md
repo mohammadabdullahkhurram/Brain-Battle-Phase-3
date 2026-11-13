@@ -13,17 +13,24 @@ Everything in a recording is placed on a single timeline:
 EEG sample, and a round marker with the same `t_session_seconds` are meant to
 be the same instant.
 
-That works because, at the moment recording starts, the app captures **one
-shared origin** — a monotonic-clock reading and a Unix-clock reading, stored as
-`capture_clock` in the manifest (`session_storage.set_capture_origin`). Each
-source is then placed relative to that origin:
+That works because the app stamps everything from **one clock** — the
+computer's monotonic clock, which never jumps when the wall clock is corrected —
+and, at the moment recording starts, captures **one shared origin** on it
+(`clock.session_origin`). The origin is stored as `capture_clock` in the
+manifest in three forms: the monotonic reading itself, the same instant as Unix
+time, and the same instant on the Lab Streaming Layer (LSL) clock. Those three
+are the same clock seen through constant offsets
+([ADR-0017](../decisions/adr-0017-one-capture-clock.md)). Each source is then
+placed relative to that origin:
 
 ![One shared origin feeding the camera sidecars, EEG timestamps, and phase markers onto one t_session_seconds axis](../diagrams/session-clock.png)
 
 - **Camera frames:** each frame's monotonic capture time minus
   `t0_monotonic` (`usb_camera.FrameEncoder._write_sidecar_row`).
-- **EEG samples:** each sample's muselsl wall-clock time minus `t0_unix`
-  (`eeg_module`).
+- **EEG samples:** each sample's arrival time on the same clock (expressed as
+  Unix time) minus `t0_unix` (`eeg_module`).
+- **Inside `recording.xdf`:** every timestamp is `t0_lsl + t_session_seconds`,
+  so subtracting the session start gives `t_session_seconds` back exactly.
 - **Phase markers:** written directly in `t_session_seconds`
   (`session_storage.append_marker`).
 
@@ -38,7 +45,9 @@ the files are read.
 | Camera frame times (sidecars) | **Measured** — the real capture time of each frame is recorded per row |
 | Camera-to-camera alignment | **Measured** in the demo (see the number below) |
 | The arithmetic that places EEG on the axis | **Verified** by unit tests (`tests/test_capture_clock.py`) |
-| The EEG clock *source* (muselsl timestamps) | **Assumed / Not yet verified on hardware** |
+| The computer-side EEG clock (one monotonic clock for EEG, video and markers) | **Verified** by unit tests (`tests/test_xdf.py`) — a wall-clock correction mid-recording cannot shift EEG against video |
+| The agreement between `recording.xdf`, the live LSL streams and the CSV files | **Verified** by reading them back (`tests/test_xdf.py`, `tests/test_lsl_streams.py`, `tests/test_record_flow.py`) |
+| How muselsl spreads a packet's arrival time over its 12 samples | **Assumed / Not yet verified on hardware** |
 | Bluetooth transport latency on the EEG | **Assumed negligible / Not yet verified on hardware** |
 
 The distinction that matters: the *maths* of putting EEG on the shared axis is
@@ -97,8 +106,10 @@ unknowns at once. Run it the first time real hardware is available:
    boxers.
 
 If the EEG spike and the video frame line up at the same session time, the EEG
-clock is good enough and the between-brain alignment in
-[`eeg_coregistered.csv`](file-formats.md#eeg_coregisteredcsv) is trustworthy. If
+clock is good enough and the between-brain alignment in `recording.xdf` and
+[`eeg_coregistered.csv`](file-formats.md#eeg_coregisteredcsv) is trustworthy.
+The headband's movement sensors, when recorded, make the tap easy to find: it is
+a sharp spike in the accelerometer stream. If
 they're offset by a consistent amount, that offset is the Bluetooth/clock
 latency to correct for. Until then, everything marked **Not yet verified on
 hardware** on this page stays that way — see the full list under

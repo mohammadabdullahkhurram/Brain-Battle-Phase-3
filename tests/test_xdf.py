@@ -197,6 +197,11 @@ def test_session_xdf():
           vb["video_file"][0] == "continuous/Side Cams/session_SIDE_01.mp4"
           and abs(float(vb["measured_fps"][0]) - 29.5) < 0.01, vb["measured_fps"][0])
 
+    rates = ss.camera_frame_rates(root)
+    check("camera_frame_rates reports the rate the camera really achieved",
+          len(rates) == 1 and rates[0][0] == "SIDE_01" and rates[0][1] == 400
+          and abs(rates[0][2] - 29.5) < 0.01, str(rates))
+
     # frame-by-frame alignment the way an analyst would do it
     eeg = by["BrainBattle_EEG_A"]
     frame = 200

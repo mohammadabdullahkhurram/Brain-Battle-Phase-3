@@ -28,7 +28,11 @@ out of the UI (see [design system](../developer-guide/design-system.md#vocabular
 
 | Term | Meaning |
 |---|---|
-| **Capture-time clock** | The shared origin `(t0_monotonic, t0_unix)` captured at record start and threaded into every source, so all frames and EEG samples share one axis ([ADR-0001](../decisions/adr-0001-capture-time-clock.md)). |
+| **Capture-time clock** | The shared origin `(t0_monotonic, t0_unix, t0_lsl)` captured at record start and threaded into every source, so all frames and EEG samples share one axis ([ADR-0001](../decisions/adr-0001-capture-time-clock.md), [ADR-0017](../decisions/adr-0017-one-capture-clock.md)). |
+| **`recording.xdf`** | One file per recording holding every signal, the markers, the labels and each video frame's time on one clock, in the XDF format ([ADR-0015](../decisions/adr-0015-lsl-and-xdf.md)). |
+| **Stream** | One named signal in LSL / XDF terms — for example `BrainBattle_EEG_A` — with its own samples and timestamps. |
+| **Timebase / scale** | The EEG display's two settings: how many seconds fit across, and how many microvolts the scale bar stands for. |
+| **TP9, AF7, AF8, TP10, AUX** | The headband's inputs by their standard electrode names: left ear, left forehead, right forehead, right ear, and a spare input that normally carries nothing. |
 | **`t_session_seconds`** | Seconds since the capture origin — the one axis video, EEG, markers, and labels all live on. |
 | **Sidecar** | A camera's `<stem>.timestamps.csv` with one row per encoded frame (`frame_index`, `t_session_seconds`, `t_monotonic`, `t_unix`). |
 | **Phase markers** | Rows in `phase_markers.csv` marking `BASELINE_START`, `ROUND_n_START`, `BREAK_n_START`, `SESSION_END`. |
@@ -57,4 +61,7 @@ out of the UI (see [design system](../developer-guide/design-system.md#vocabular
 | **ADR** | Architecture Decision Record — see [Decisions](../decisions/index.md). |
 | **CIP** | Community Impact Project (Constructor University) — see [goals](goals.md). |
 | **fps** | Frames per second. |
-| **PPG** | Photoplethysmography — a Muse-S channel (not yet recorded; Phase 5). |
+| **PPG** | Photoplethysmography — the Muse-S optical pulse sensor (optional, off by default, untested on real bands). |
+| **LSL** | Lab Streaming Layer — the research standard for sending signals between programs on a network with a shared clock. |
+| **XDF** | Extensible Data Format — the file format LSL recordings are saved in; read by EEGLAB, MNE-Python and pyxdf. |
+| **µV** | Microvolt — a millionth of a volt, the unit of EEG amplitude. |

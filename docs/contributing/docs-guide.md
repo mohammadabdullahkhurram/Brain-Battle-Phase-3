@@ -315,8 +315,10 @@ character styling and table borders get through):
 ## Scope of the placeholder gate
 
 `tests/test_no_placeholders.py` scans the app's own Python source (`*.py` at
-the repo root + `sync_utils/`) for placeholder UI copy and forbidden jargon in
-widget-text calls. It does **not** scan `docs/*.md` — and shouldn't: the docs
+the repo root + the `brain_battle` package) for placeholder UI copy and forbidden
+jargon in widget-text calls (EEG channel codes are allowed in exactly one
+module, the EEG viewer — see
+[ADR-0016](../decisions/adr-0016-standard-eeg-viewer.md)). It does **not** scan `docs/*.md` — and shouldn't: the docs
 (especially the Developer guide, Decisions, and Research & data sections) are
 written for developers and necessarily use the technical vocabulary
 `DESIGN.md` bans from the *app's* UI (`sync`, `align`, `capture clock`,

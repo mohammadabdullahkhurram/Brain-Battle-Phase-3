@@ -190,12 +190,10 @@ def main():
     _pump(app, 0.3)
     grab("01a_sessions-empty")
 
-    # ── Review & Label / Settings (no session open yet, but both render) ──
-    for idx, name in ((win.IDX_REVIEW, "06_review-and-label"),
-                      (win.IDX_SETTINGS, "07_settings")):
-        win._shell.set_current_index(idx)
-        _pump(app, 0.3)
-        grab(name)
+    # ── Settings (Review & Label is captured further down, with a recording open) ──
+    win._shell.set_current_index(win.IDX_SETTINGS)
+    _pump(app, 0.3)
+    grab("07_settings")
 
     # ── Documentation: a page with a screenshot, a page with a diagram, a
     # search result (not captured in --docs mode — this is screens/-only
@@ -252,7 +250,22 @@ def main():
 
     flow.stop_and_save()
     _pump(app, 0.8)
+    flow.wait_for_xdf(30)                           # so the checklist is complete
+    _pump(app, 0.2)
     grab("05_saved")
+
+    # ── Review & Label with that recording open, a few labels placed ──
+    review = win._review_page
+    win._shell.set_current_index(win.IDX_REVIEW)
+    review.load_session_folder(flow._saved_root)
+    review.wait_loaded()
+    for t, key in ((4.6, 0), (5.4, 1), (6.3, 4)):
+        review._seek(t); _pump(app, 0.1)
+        if key < len(review._vocab):
+            review._place_from_vocab(review._vocab[key])
+    review._seek(5.0)
+    _pump(app, 0.8)
+    grab("06_review-and-label")
 
     # ── Sessions, now with the recording just made ──
     win._shell.set_current_index(win.IDX_SESSIONS)   # triggers an async rescan

@@ -3,7 +3,11 @@
 Brain Battle is a PyQt6 desktop app for a neuroscience boxing study: it records a
 sparring session from **4 USB cameras + 2 Muse-S EEG headbands** onto one shared
 clock, lets a researcher review and label it on a single playhead, and exports a
-time-aligned analysis bundle. It is built at Constructor University Bremen as a
+time-aligned analysis bundle. It follows the standard Muse research workflow:
+every signal is published live as a **Lab Streaming Layer (LSL)** stream and
+every recording gets one **`recording.xdf`** — EEG, round markers, labels and
+each video frame's time on one clock — that opens directly in EEGLAB, MNE-Python
+and pyxdf. It is built at Constructor University Bremen as a
 Community Impact Project. Three screens plus Settings: **Sessions → New recording
 → Review & Label**.
 
@@ -36,6 +40,7 @@ session and simulation mode (see the Developer guide):
 ```bash
 BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle
 python3 tools/generate_demo_session.py --out /tmp/demo
+python3 tools/run_tests.py                 # every test script, PASS/FAIL per script
 ```
 
 ## Documentation
@@ -45,7 +50,7 @@ app** (the Documentation screen in the sidebar renders the same Markdown):
 
 - **[Getting started](docs/getting-started/overview.md)** — what it is, install, first run, a quick tour.
 - **[User guide](docs/user-guide/sessions.md)** — how to use each screen, troubleshooting, FAQ.
-- **[Research & data](docs/research-and-data/recording-folder.md)** — the recording folder, every file format, timing & accuracy, loading the data in Python/R.
+- **[Research & data](docs/research-and-data/recording-folder.md)** — the recording folder, every file format, timing & accuracy, and [loading the data](docs/research-and-data/loading-the-data.md) in Python (pandas, pyxdf, MNE), EEGLAB and R.
 - **[Developer guide](docs/developer-guide/architecture.md)** — architecture, a reference entry per module, key flows, the threading model, testing, and how to extend it.
 - **[Decisions (ADRs)](docs/decisions/index.md)** — why the app is built the way it is.
 - **[Project](docs/project/goals.md)** — goals & research context, current status, roadmap, version history, glossary.
@@ -58,11 +63,12 @@ the bundled Inter font.
 
 ## Current status
 
-**Phase 3 and the documentation are complete; the app is organised into the
-`brain_battle` package and the repo has been cleaned up and made tool-neutral
-for handover** (`main` and `develop` = `3.0.0-beta.2`). The four DESIGN screens,
-the capture-time clock, labelling, data safety, and the in-app docs all shipped;
-Phase 5 (remaining research-value items) is next, gated on owner approval.
+**`main` is the reviewed `3.0.0-beta.2`; `develop` is `3.1.0-dev`** (tag
+`v3.1.0-dev.1`), which adds the LSL / XDF workflow, a conventional EEG viewer and
+recording of the headbands' movement sensors, and awaits the owner's review —
+see [the review write-up](docs/reviews/2026-11-fable-review.md). The four DESIGN
+screens, the capture-time clock, labelling, data safety, and the in-app docs all
+shipped in 3.0.
 **The hardware is currently broken**, so everything is
 built and tested against a generated demo session and simulated devices — the
 real-signal and eyes-on-glass checks remain open. See
@@ -75,7 +81,7 @@ real-signal and eyes-on-glass checks remain open. See
 |---|---|
 | Institution | Constructor University Bremen (Community Impact Project) |
 | Author | Mohammad Abdullah Khurram · supervisor Prof. Jakob Fruchtmann |
-| Version | `main` & `develop` v3.0.0-beta.2 (authoritative: `brain_battle/version.py`) |
+| Version | `main` v3.0.0-beta.2 · `develop` v3.1.0-dev (authoritative: `brain_battle/version.py`) |
 | GitHub | https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3 |
 
 Development history is in [`CHANGELOG.md`](CHANGELOG.md); current project context,

@@ -16,5 +16,10 @@ and pre-3.0 sessions recorded without that data are NOT supported — there is
 no legacy-fallback alignment path. The "-dev" pre-release label was carried on
 `develop`; the first shipped pre-release was "3.0.0-beta.1". "3.0.0-beta.2" is
 the handover/cleanup release (tool-neutral AGENTS.md, package tidy-ups).
+
+"3.1.0-dev" (on `develop`, tagged v3.1.0-dev.1) adds the standard Muse / Lab
+Streaming Layer workflow: live LSL streams, one recording.xdf per recording, a
+conventional EEG viewer, and one capture clock. Recordings made with 3.0 still
+open; they simply have no `capture_clock.t0_lsl`.
 """
-__version__ = "3.0.0-beta.2"
+__version__ = "3.1.0-dev"

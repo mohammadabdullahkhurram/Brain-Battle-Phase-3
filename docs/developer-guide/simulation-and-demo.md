@@ -25,11 +25,14 @@ BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle
 | Faked | Real (unchanged) |
 |---|---|
 | `SimCapture` — a cv2-shaped synthetic camera yielding generated frames | `USBCameraThread`, the ffmpeg encoder, the sidecar writer |
-| `SimMuseReader` — a simulated Muse band yielding synthetic EEG | `_MuseDirectReader`'s streaming/flush path, the CSV writer |
+| `SimMuseReader` — a simulated Muse band yielding synthetic EEG, movement, pulse and battery data | `_MuseDirectReader`'s callbacks and streaming/flush path, the CSV writers, the live LSL outlets |
 | Device discovery (`camera_devices`, `muse_devices`) | the record flow, markers, manifest, history, contact log |
 
 Because the real paths run, a simulated recording produces a **real** v3 session
-folder you can open in Review & Label. This is how `test_record_flow.py` drives
+folder — including `recording.xdf` — that you can open in Review & Label, and
+while it runs the simulated signals are real LSL streams: start LabRecorder or
+any LSL viewer next to a simulated session to try the whole
+[LSL workflow](../decisions/adr-0015-lsl-and-xdf.md) without hardware. This is how `test_record_flow.py` drives
 the whole flow end to end.
 
 ### Failure injection
@@ -67,11 +70,14 @@ recordings folder unless you pass `--force` (the `_refuse_real_folder` guard).
 
 ### It reuses the real writers
 
-Each run writes a real v3 session — 4 camera MP4s + sidecars, 2 EEG CSVs,
-`phase_markers.csv`, and a `session_manifest.json` with `demo:true` — by calling
-the **same** writers the app uses (`session_storage.SessionLayout`,
-`session_controller._build_timeline`, `USBCameraThread`'s sidecar methods,
-`_MuseDirectReader`'s chunk/flush path) wherever they're headlessly callable. So
+Each run writes a real v3 session — 4 camera MP4s + sidecars, 2 EEG CSVs, the
+headbands' movement-sensor CSVs, `phase_markers.csv`, a `session_manifest.json`
+with `demo:true`, and `recording.xdf` — by calling the **same** writers the app
+uses (`session_storage.SessionLayout`, `session_controller._build_timeline`,
+`usb_camera.FrameEncoder`, `_MuseDirectReader`'s chunk/flush path,
+`session_xdf.build_session_xdf`) wherever they're headlessly callable. (The
+`--interrupted` fixture has no `recording.xdf`, exactly like a real crash; the
+app builds it when it finds the recording.) So
 the fixture **can't silently drift** from the format the app actually reads and
 writes. Output is deterministic for a given `--seed`.
 

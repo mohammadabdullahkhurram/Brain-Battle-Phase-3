@@ -6,6 +6,7 @@ sequenceDiagram
     participant Z as export .zip
     U->>ED: Export for analysis
     ED->>W: run(session, labels, markers)
+    W->>W: rebuild recording.xdf (with labels)
     W->>W: build_coregistered_eeg()
     W->>W: write labels.csv + events.csv
     W->>Z: add raw videos + EEG + manifest

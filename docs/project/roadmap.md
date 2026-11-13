@@ -19,7 +19,8 @@ initiative.
 | **3** | Structure & design (the four DESIGN screens, light-only, capture clock) | Done (2026-11-06) |
 | **4** | Labelling | Delivered inside Phase 3's Review & Label build |
 | **D1–D3** | Documentation (the six doc sections + the honesty tests) | Done |
-| **5** | Remaining report & research-value items | **Next (not started)** |
+| **3.1** | Standard EEG workflow: LSL streams, `recording.xdf`, EEG viewer, movement sensors | Done on `develop` (2026-11-13), awaiting owner review |
+| **5** | Remaining report & research-value items | Partly done in 3.1; the rest is next |
 | **6** | Shipping (double-click app, bundled ffmpeg + docs, README rewrite) | Future |
 | **7** | Team & cloud (shared storage, accounts, questionnaires, analysis mode) | Future, not scheduled |
 
@@ -27,17 +28,21 @@ initiative.
 
 The research-value and report items still open, built against the demo session:
 
-- Use the **full per-frame sidecar** for playback timing (not just the first row)
-  and detect/flag capture-rate drift.
-- **Configurable record resolution/fps** backed by Settings.
-- A single **Export for analysis** button; the merged 2×2 video optional and off
-  by default; one master events file.
+Done (several of them before or during 3.1): per-frame sidecar times for
+playback and for `recording.xdf`; capture-rate drift detected and reported;
+record resolution and bitrate set in Settings; one **Export for analysis**
+button with the combined video optional and one events file; the headbands'
+**accelerometer, gyroscope and (optional) pulse sensor** recorded; a per-channel
+EEG view in Review.
+
+Still open, built against the demo session:
+
 - Optional **per-round clip export** using the markers.
-- Record Muse **accelerometer and PPG** alongside EEG (once plain EEG is confirmed
-  usable).
-- A per-channel **EEG signal-quality view** in Review.
-- Housekeeping: fix the stale `sync_beep.py` docstring; the already-removed
-  `sync_engine.py` deletion item is moot (see
+- A **whole-recording EEG signal-quality summary** (how much of each channel was
+  usable), once real recordings exist to calibrate it.
+- Make the optional **combined 2×2 video** use per-frame times (today it aligns
+  cameras by their first frame only).
+- Drive the round timer from the clock rather than counting ticks (see
   [known issues](../developer-guide/known-issues.md)).
 
 ## Phase 6 — shipping (future)

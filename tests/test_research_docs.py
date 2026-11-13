@@ -10,8 +10,10 @@ not against memory:
      history.jsonl event type, and every export-zip entry the code ACTUALLY
      writes appears, backticked, in file-formats.md. Add a field to the code
      without documenting it and this test goes red.
-  2. The Python loading examples in loading-the-data.md run green against a
-     freshly generated demo export.
+     The same goes for recording.xdf: every stream name, type, channel label
+     and description key found in a real exported file must be documented.
+  2. The Python loading examples in loading-the-data.md (pandas AND pyxdf) run
+     green against a freshly generated demo export.
   3. The R examples run too, if Rscript + readr/dplyr are available; otherwise
      they are reported "not automatically tested" (per the page's own note).
 
@@ -174,6 +176,51 @@ def test_eeg_csv_documented():
     check("every plain-language sensor name is documented", not missing, str(missing))
 
 
+def test_sensor_csvs_documented():
+    text = _formats_text()
+    d = os.path.join(DEMO_ROOT, "continuous", "Muse sensors")
+    files = sorted(os.listdir(d)) if os.path.isdir(d) else []
+    check("the fixture has movement-sensor CSVs", len(files) >= 2, str(files))
+    cols = set()
+    for fn in files:
+        cols.update(_csv_header(os.path.join(d, fn)))
+    _assert_all_documented(text, cols, "movement/pulse sensor CSV column")
+    from brain_battle.data.signals import SENSORS
+    for kind, (_rate, channels, _unit, _type) in SENSORS.items():
+        _assert_all_documented(text, list(channels) + [f"…_{kind}.csv"],
+                               f"{kind} sensor name")
+
+
+def test_xdf_streams_documented():
+    """Every stream actually present in the exported recording.xdf — its name,
+    its type, its channel labels — and every key of the brain_battle
+    description block appears in file-formats.md."""
+    import pyxdf
+    text = _formats_text()
+    streams, _ = pyxdf.load_xdf(os.path.join(EXPORT_DIR, "recording.xdf"))
+    names, types, labels, keys = set(), set(), set(), set()
+    for st in streams:
+        info = st["info"]
+        names.add(info["name"][0]); types.add(info["type"][0])
+        desc = info["desc"][0]
+        labels.update(c["label"][0] for c in desc["channels"][0]["channel"])
+        keys.update(desc["brain_battle"][0].keys())
+    check("the exported XDF has EEG, markers, labels and video-frame streams",
+          {"BrainBattle_EEG_A", "BrainBattle_EEG_B", "BrainBattle_Markers",
+           "BrainBattle_Labels", "BrainBattle_Video_SIDE_01"} <= names, str(sorted(names)))
+    # Boxer B's streams are documented as "`BrainBattle_EEG_A` / `_B`".
+    def documented(n):
+        return _documented_backtick(text, n) or (
+            n.endswith("_B") and _documented_backtick(text, n[:-2] + "_A")
+            and _documented_backtick(text, "_B"))
+    missing = sorted(n for n in names if not documented(n))
+    check("every XDF stream name is documented in file-formats.md", not missing, str(missing))
+    _assert_all_documented(text, types, "XDF stream type")
+    _assert_all_documented(text, labels - {"marker"}, "XDF channel label")
+    _assert_all_documented(text, keys, "XDF description key")
+    _assert_all_documented(text, ["MOMENT", "Jab/A", "Clinch/Both/start"], "XDF marker text")
+
+
 def test_contact_log_documented():
     text = _formats_text()
     _assert_all_documented(text, contact_log._HEADER, "contact_quality.csv column")
@@ -291,11 +338,13 @@ if __name__ == "__main__":
     test_phase_markers_documented()
     test_camera_sidecar_documented()
     test_eeg_csv_documented()
+    test_sensor_csvs_documented()
     test_contact_log_documented()
     test_labels_json_documented()
     test_label_list_documented()
     test_history_events_documented()
     test_export_entries_documented()
+    test_xdf_streams_documented()
     test_python_examples_run()
     test_r_examples()
 

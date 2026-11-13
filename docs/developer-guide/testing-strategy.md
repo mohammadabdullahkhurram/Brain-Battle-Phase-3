@@ -21,11 +21,19 @@ python3 tests/test_smoke.py
 ```
 
 ```bash
-for t in tests/test_*.py; do python3 "$t" || echo "FAILED: $t"; done
+python3 tools/run_tests.py              # everything, one PASS/FAIL line per script
+python3 tools/run_tests.py xdf player   # only scripts whose name contains a word
 ```
 
+`tools/run_tests.py` runs several scripts at once (about five and a half
+minutes for everything, instead of eleven one after another). Scripts that
+measure real time or publish LSL streams under fixed names are kept in a single
+serial lane, and a script that fails while others are running is re-run on its
+own before it counts as failed — so a busy laptop doesn't produce false alarms.
+Full output for every script is kept in a log folder printed at the end.
+
 `tests/test_flash_sync.py` is **slow** — it generates and verifies a 12-minute
-demo session — so a full run takes a few minutes; everything else is quick. The
+demo session, about five minutes on its own; everything else is quick. The
 `tests/_*_runner.py` files are helper subprocesses launched by the kill tests
 (`test_eeg_streaming`, `test_video_recording`, `test_crash_recovery`,
 `test_history_log`), not standalone tests.
@@ -44,6 +52,9 @@ demo session — so a full run takes a few minutes; everything else is quick. Th
 | `test_flash_sync.py` | Flash within one frame across tiles | **slow** |
 | `test_no_placeholders.py` | No placeholder/jargon UI copy (gate) | fast |
 | `test_capture_clock.py` | Capture-clock arithmetic + co-registration | fast |
+| `test_xdf.py` | XDF writer + `recording.xdf` read back with pyxdf; the one capture clock | fast |
+| `test_lsl_streams.py` | Live LSL outlets as a real LSL receiver sees them | moderate |
+| `test_eeg_viewer.py` | EEG viewer: window, honest µV scale, filter, markers, controls | fast |
 | `test_demo_session.py` | The demo generator end to end | moderate |
 | `test_sessions.py` | Sessions discovery/status/search/sort/banner | moderate |
 | `test_ring_buffer.py` | Ring-buffer ordering | fast |
@@ -70,8 +81,8 @@ Run them before and after any change in their area:
   of every first-party module, headless construction of every screen + the app
   shell, `__version__` in the window title. **Run before and after every
   deletion/refactor.**
-- **`test_no_placeholders.py`** — zero placeholder/temporary UI copy, no jargon
-  or EEG channel codes in UI strings, zero placeholder screens.
+- **`test_no_placeholders.py`** — zero placeholder/temporary UI copy, zero
+  placeholder screens, and EEG channel codes nowhere except the EEG viewer.
 - **`test_layout_fit.py`** — every page fits all three window sizes with nothing
   clipped.
 - **The docs honesty gates** — `test_docs.py` (links/images/diagrams resolve,
@@ -94,6 +105,9 @@ Run them before and after any change in their area:
    `tools/generate_demo_session.generate_demo_session(...)` rather than inventing
    a fixture by hand — it reuses the real writers, so it can't drift.
 4. Exit nonzero on failure (the `sys.exit(1 if _failures else 0)` pattern).
-5. If you add a new module, `test_smoke.py`'s module discovery and
+5. For a new file a recording contains, read it back with the tool an analyst
+   would use (as `test_xdf.py` does with pyxdf) rather than with the code that
+   wrote it.
+6. If you add a new module, `test_smoke.py`'s module discovery and
    `test_developer_docs.py`'s module-reference check will both require it to be
    wired in and documented — that's intentional.

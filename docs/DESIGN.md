@@ -2,8 +2,11 @@
 
 Source: clickable mockups approved by the owner. This file is the source of truth for all UI work. If code and this file disagree, ask; don't guess.
 
+**Amended 2026-11-13** (owner request; reasons in `docs/decisions/adr-0016-standard-eeg-viewer.md`): the brain-activity display is now a standard EEG viewer that shows the electrode names TP9, AF7, AF8, TP10 and AUX, microvolts, a time axis, timebase/scale controls and event markers. The sections changed are marked "(amended)". Everything else stands as approved.
+
 ## Principles
-- Users are non-technical researchers. Plain language only. Never show: sync, align, offset, xcorr, capture clock, POV, DSLR, EEG channel codes (TP9 etc.), baseline, monotonic.
+- Users are non-technical researchers. Plain language only. Never show: sync, align, offset, xcorr, capture clock, POV, DSLR, baseline, monotonic.
+- (amended) EEG channel codes (TP9 etc.) appear in exactly one place — the EEG display, where they are the standard labels an EEG reader needs — and always with the plain-language location available beside them ("left ear"). Everywhere else (contact chips, tips, warnings) plain sensor names only.
 - Light mode only. No theme toggle, no dark palette.
 - Every status uses icon + text, never colour alone. Minimum click target 44 px. Text contrast WCAG AA (4.5:1).
 - Fits a 13–14" MacBook (1440×900 points) with nothing clipped; usable down to 1280×800.
@@ -12,7 +15,7 @@ Source: clickable mockups approved by the owner. This file is the source of trut
 ## Vocabulary (UI word ← internal name)
 - Side camera 1 / Side camera 2 ← DSLR/Side cams
 - Boxer A view / Boxer B view ← POV 01 / POV 02
-- Headband ← Muse-S; Brain activity ← EEG
+- Headband ← Muse-S; Brain activity ← EEG (the display's title is "Brain activity (EEG)")
 - Rest before round 1 ← baseline
 - Round N, Break ← phase markers
 - Recording ← session capture; Recordings folder ← capture dir
@@ -47,7 +50,7 @@ Left sidebar (232 px): logo, Sessions, New recording, Review & Label, then at th
 ### 2. Record — Connect devices (step 1)
 - "Connect the cameras and headbands" / "Plug in the cameras and switch both headbands on. When everything shows a green tick, you are ready."
 - Cameras card: 2×2 tiles (Side camera 1, Side camera 2, Boxer A view, Boxer B view), each with live preview, ✓/! icon, status text ("Connected · 30 frames per second" or the not-found message), and a Change button (pick a different device). A missing camera tile gets a red border.
-- Headbands card: one block per boxer: "Boxer A · Muse-S 7538", "Connected · battery 82%", then four sensor chips (Left ear, Left forehead, Right forehead, Right ear) each "Good contact" or "Weak contact". A weak sensor shows a tip: "Move the band so the sensor sits flat against the skin behind the left ear. Brush hair out of the way."
+- Headbands card: one block per boxer: "Boxer A · Muse-S 7538", "Connected · battery 82%", then four sensor chips (Left ear, Left forehead, Right forehead, Right ear) each "Good contact" or "Weak contact". A weak sensor shows a tip: "Move the band so the sensor sits flat against the skin behind the left ear. Brush hair out of the way." (amended) Below the chips, the live EEG display: five stacked traces (TP9, AF7, AF8, TP10, AUX), 10 s across, newest at the right, automatic µV scale shown on a scale bar.
 - Bottom bar: summary "5 of 6 devices ready" + explanation; [Search again] [Continue →]. Continue is allowed with a missing device but the summary says it won't be recorded.
 
 ### 3. Record — Set up session (step 2)
@@ -63,16 +66,16 @@ Left sidebar (232 px): logo, Sessions, New recording, Review & Label, then at th
 - Stop asks inline: "Stop recording now? Round 2 is still running. Everything recorded so far is kept, but the rest of the session will not happen." [Keep recording] [Stop and save].
 - Main card: phase chip, "Round 2 of 3" (44 px), countdown "1:48" (~128 px) "left in this round", progress bar, "Next: Break, 1 min · the bell rings when round 3 starts", whole-session phase bar with a now-marker.
 - Mark this moment: M key or button; shows "Moment marked at 05:12 · 3 marked so far. You can name them later in Review."
-- Side: health line ("✓ All 4 cameras and 2 headbands are recording" or what's wrong), 2×2 small camera previews with ✓ OK / problem text (dropped frames, encoder died), per-boxer headband row with live trace + contact quality.
+- Side: health line ("✓ All 4 cameras and 2 headbands are recording" or what's wrong), 2×2 small camera previews with ✓ OK / problem text (dropped frames, encoder died), (amended) per-boxer headband block: one status line ("✓ Good contact · battery 77%" / "! Weak contact: right ear") and the live EEG display (the four skin electrodes, 5 s across, session time on the axis, a dashed line at each round start and marked moment).
 
 ### 5. Record — Saved
 - ✓ "Recording saved", "<date, time> · <A> vs <B> · 12 min · 3 rounds".
-- Checklist: 4 camera videos (lost frames if any), 2 brain recordings, rounds and breaks marked automatically, n moments you marked, and "Worth checking" warnings (e.g. weak contact for ~2 min in round 2).
+- Checklist: 4 camera videos (lost frames if any), 2 brain recordings, rounds and breaks marked automatically, n moments you marked, (amended) "Everything on one timeline for analysis (recording.xdf) saved", and "Worth checking" warnings (e.g. weak contact for ~2 min in round 2).
 - "Saved in <folder> › <recording folder> · 1.7 GB" [Show in Finder]. Buttons: [Start labelling →] [Back to sessions] [Record another].
 
 ### 6. Review & Label (one merged screen; replaces both old Review and Labelling tabs)
 - Top bar: ← Sessions · title "<date, time> · <A> vs <B>" · subtitle "12 min · 3 rounds · Boxer A <name> · Boxer B <name>" · autosave status "✓ All labels saved" · [Export for analysis].
-- Left: 2×2 video grid with camera name chips and an enlarge button per tile. Brain activity card: [Waves | Band power] toggle, one row per boxer (badge + name, contact-quality line, trace with the playhead fixed in the centre). Timeline card: Phases row (Rest/Round/Break bands, automatic and read-only), lanes "Boxer A", "Boxer B", "Both" with point ticks and duration bars, then a scrubber. Transport: back-one-frame, play/pause, forward-one-frame, "04:12.40 / 12:00.00", current-phase chip ("Round 2 · 0:12 in"), Speed [0.25× | 0.5× | 1×].
+- Left: 2×2 video grid with camera name chips and an enlarge button per tile. (amended) Brain activity (EEG) card: controls [Waves | Band power] [Timebase 2/5/10/20/30 s] [Scale Auto/10…1000 µV] [Filter 1–45 Hz] [⤢ taller]; one block per boxer (badge + name, contact-quality line) with a standard EEG display — stacked traces labelled TP9, AF7, AF8, TP10, AUX in the boxer's colour, a µV scale bar, the playhead fixed in the centre, event markers (round/break starts, marked moments, placed labels) as dashed lines named along the top, and one shared time axis along the bottom. Timeline card: Phases row (Rest/Round/Break bands, automatic and read-only), lanes "Boxer A", "Boxer B", "Both" with point ticks and duration bars, then a scrubber. Transport: back-one-frame, play/pause, forward-one-frame, "04:12.40 / 12:00.00", current-phase chip ("Round 2 · 0:12 in"), Speed [0.25× | 0.5× | 1×].
 - Right panel "Labels": "1 · Who did it?" [A · name] [B · name] [Both]; "2 · What happened?" 2-column label buttons with colour swatch and key 1–9 ("Click or press the number. It is placed at the current moment."); clinch note ("press 6 when it starts and again when it ends"); "Placed labels (n)" list, newest first, rows: time · who · label · delete, plus [Undo]. Footer: "Space play / pause · ← → one frame · 1–9 place a label · Tab switch boxer · ⌘Z undo".
 - Moments marked during recording appear as unnamed labels to be named here.
 
@@ -81,6 +84,7 @@ Left sidebar (232 px): logo, Sessions, New recording, Review & Label, then at th
 - Headbands: Boxer A → device dropdown, Boxer B → device dropdown; [Search for a new headband].
 - Video quality: Standard 960×540 30 fps (recommended, "about 2.2 GB per hour per camera") · High 1280×720 30 fps · Light 640×360.
 - Session defaults: rounds, round length, break, rest before round 1; "Ring a bell when each round starts" + [Test sound].
+- (amended) Extra signals and sharing: three checkboxes, each with one line of explanation — "Record head movement (the headband's motion sensors)" (on), "Record pulse (the headband's optical sensor)" (off; not yet tried with real headbands), "Share live signals with other lab software on this network" (on).
 - Label list (stored in the recordings folder, shared by the team): key, swatch, name, "Moment"/"Lasts a while", remove; [+ Add label]. Removing a label keeps already-placed ones.
 - Footer: "Brain Battle <version> · Constructor University".
 

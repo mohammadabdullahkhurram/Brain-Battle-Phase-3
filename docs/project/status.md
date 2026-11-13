@@ -6,12 +6,14 @@ hardware situation that shapes all of it.
 
 ## In one line
 
-**Phase 3 and the documentation are complete; the app is organised into the
-`brain_battle` package and the repo has been cleaned up and made tool-neutral
-for handover** (`main` and `develop` are both `3.0.0-beta.2`; the package
-reorganisation is [ADR-0013](../decisions/adr-0013-package-reorganisation.md)).
-Phase 5 is next, gated on owner approval. The hardware is broken, so everything
-is built and tested against a generated demo session and simulated devices.
+**Phase 3 and the documentation are complete, and `develop` (`3.1.0-dev`) adds
+the standard EEG workflow on top**: live Lab Streaming Layer streams, one
+`recording.xdf` per recording, a conventional EEG viewer, and recording of the
+headbands' movement sensors (see
+[the review write-up](../reviews/2026-11-fable-review.md) for that pass).
+`main` is the reviewed `3.0.0-beta.2`; `develop` awaits the owner's review
+before it is merged. The hardware is broken, so everything is built and tested
+against a generated demo session and simulated devices.
 
 ## What's complete
 
@@ -28,6 +30,15 @@ is built and tested against a generated demo session and simulated devices.
 - **The in-app Documentation screen** and the documentation itself — Getting
   started, User guide, Research & data, and (this step, D3) Developer guide,
   Decisions, and Project.
+- **The standard EEG workflow (3.1.0-dev, on `develop`)** — every signal is
+  published live as an LSL stream and saved as `recording.xdf`, which EEGLAB,
+  MNE-Python and pyxdf open directly, with video frames, EEG and markers on one
+  clock ([ADR-0015](../decisions/adr-0015-lsl-and-xdf.md),
+  [ADR-0017](../decisions/adr-0017-one-capture-clock.md)); the brain-activity
+  display is a conventional EEG viewer
+  ([ADR-0016](../decisions/adr-0016-standard-eeg-viewer.md)); the headbands'
+  accelerometer, gyroscope and (optionally) pulse sensor are recorded; and a
+  camera that runs off its nominal frame rate is reported.
 - **The `brain_battle` package** — all modules reorganised into
   `ui/ · capture/ · playback/ · data/ · support/`, installable with
   `pip install -e .`, run with `python3 -m brain_battle`
@@ -38,11 +49,14 @@ see [Version history](version-history.md) and [Project history](../archive/histo
 
 ## What's next
 
-**Phase 5** — the remaining report/research-value items: using the full per-frame
-sidecar for playback timing + drift detection, configurable record resolution/fps,
-a single Export button with optional merged video, per-round clip export, Muse
-accelerometer/PPG, and an EEG signal-quality view. **Phases 6 and 7** (shipping;
-team & cloud) follow. See the [Roadmap](roadmap.md). Per the working agreement, no
+**First, real hardware.** Most open questions can only be answered by one real
+recording: the buzzer/tap timing check, a first look at Muse EEG during
+sparring, and whether the movement sensors and live LSL streams behave with two
+real headbands (see [known limitations](../research-and-data/limitations.md)).
+
+**Then the rest of Phase 5** — per-round clip export, a whole-recording EEG
+signal-quality summary, and making the optional combined video drift-proof.
+**Phases 6 and 7** (shipping; team & cloud) follow. See the [Roadmap](roadmap.md). Per the working agreement, no
 phase starts without the owner's approval.
 
 ## The working agreement

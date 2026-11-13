@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QProgressBar, QFileDialog,
-    QInputDialog, QMessageBox, QWidget,
+    QWidget,
 )
 
 
@@ -333,7 +333,8 @@ def build_coregistered_eeg(eeg_dfs, phase_markers, sr: int = 256):
     cross-reference of two CSVs on different clocks.
 
     Inputs
-      eeg_dfs       — list of per-band DataFrames, each carrying a
+      eeg_dfs       — [Boxer A's DataFrame, Boxer B's] (either may be None),
+                      each carrying a
                       `t_session_seconds` column (from the v3 capture-time
                       clock) + the 5 Muse channels. Bands lacking that column
                       are skipped (v3 always writes it).
@@ -359,8 +360,12 @@ def build_coregistered_eeg(eeg_dfs, phase_markers, sr: int = 256):
     import numpy as np
     import pandas as pd
 
-    bands = [df for df in eeg_dfs
-             if df is not None and "t_session_seconds" in getattr(df, "columns", [])]
+    # Keep each band's POSITION in the input list: the first is always _01
+    # (Boxer A), the second _02 (Boxer B), even if one of them is missing.
+    numbered = [(i, df) for i, df in enumerate(eeg_dfs, start=1)
+                if df is not None and len(df)
+                and "t_session_seconds" in getattr(df, "columns", [])]
+    bands = [df for _i, df in numbered]
     if not bands:
         return None
 
@@ -370,7 +375,7 @@ def build_coregistered_eeg(eeg_dfs, phase_markers, sr: int = 256):
     grid = t_min + np.arange(n) / sr
 
     out = {"t_session_seconds": np.round(grid, 6)}
-    for bi, df in enumerate(bands, start=1):
+    for bi, df in numbered:
         ts = df["t_session_seconds"].to_numpy(dtype=float)
         for ch in _EEG_CHANNELS:
             if ch in df.columns:
@@ -479,8 +484,9 @@ class SessionExportWorker(QThread):
             # raw EEG (Boxer A's file first) + the optional movement / pulse files
             self.progress.emit(15, "Adding brain recordings…")
             import brain_battle.data.session_storage as session_storage
-            eeg_paths = [p for _who, p in sorted(session_storage.eeg_files(root).items())]
-            for p in eeg_paths:
+            eeg_by_boxer = session_storage.eeg_files(root)
+            eeg_paths = [eeg_by_boxer.get(who) for who in ("A", "B")]   # None = no file
+            for p in filter(None, eeg_paths):
                 files.append((p, f"eeg/{os.path.basename(p)}"))
             for p in sorted(session_storage.sensor_files(root).values()):
                 files.append((p, f"sensors/{os.path.basename(p)}"))
@@ -488,7 +494,8 @@ class SessionExportWorker(QThread):
             # co-registered EEG
             self.progress.emit(25, "Building co-registered EEG…")
             try:
-                dfs = [session_storage.read_csv_tolerant(p).dropna() for p in eeg_paths]
+                dfs = [session_storage.read_csv_tolerant(p).dropna() if p else None
+                       for p in eeg_paths]
                 coreg = build_coregistered_eeg(dfs, self.phase_markers)
                 if coreg is not None:
                     cp = os.path.join(tmp, "eeg_coregistered.csv")

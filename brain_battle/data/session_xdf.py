@@ -24,7 +24,7 @@ repeated in every stream's description as ``session_start``). So
 
     t_session_seconds = xdf_timestamp − session_start
 
-and the first marker, ``BASELINE_START``, sits at session time 0.
+and the first marker, ``BASELINE_START``, follows within a fraction of a second.
 
 The file is derived from the recording's crash-safe source files (EEG CSVs,
 camera sidecars, phase_markers.csv, the manifest, labels.json), not written

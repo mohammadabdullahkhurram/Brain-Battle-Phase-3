@@ -53,8 +53,21 @@ developers. The UI uses plain words; the implementation terms stay out of sight.
 | "Weak contact: left ear" | per-channel signal quality (TP9 etc.) |
 
 Words that must **never** appear in the app's UI: `sync`, `align`, `offset`,
-`xcorr`, `capture clock`, `POV`, `DSLR`, EEG channel codes (`TP9` etc.),
-`baseline`, `monotonic`.
+`xcorr`, `capture clock`, `POV`, `DSLR`, `baseline`, `monotonic`.
+
+**EEG channel codes** (`TP9`, `AF7`, `AF8`, `TP10`, `AUX`) are shown in exactly
+one place: the EEG display (`ui/eeg_viewer.py`), which is deliberately a
+conventional EEG viewer ([ADR-0016](../decisions/adr-0016-standard-eeg-viewer.md)).
+Everywhere else — contact chips, tips, warnings — use the plain names ("left
+ear"). The gate enforces this split.
+
+### The EEG display
+
+`EEGViewer` is the one widget for showing EEG, live or recorded. Keep it
+conventional: stacked labelled traces, µV scale bar, time axis, dashed event
+markers. Traces take the boxer's text colour (A teal, B orange) and AUX is grey.
+Anything that alters the *picture* (drift removal, the display filter) must stay
+display-only and be labelled as such; never write processed values back.
 
 ### The placeholder/jargon gate
 

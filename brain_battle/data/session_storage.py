@@ -492,6 +492,23 @@ def read_csv_tolerant(path):
     return pd.read_csv(io.BytesIO(raw[:raw.rfind(b"\n") + 1]), on_bad_lines="skip")
 
 
+def camera_frame_rates(session_root) -> list[tuple]:
+    """``[(stem, frames, measured_fps), …]`` — the frame rate each camera
+    ACTUALLY achieved, from its per-frame sidecar (frames − 1 over the time
+    between the first and last frame). A camera that reports 30 fps but
+    delivers 29.5 shows up here; playback and recording.xdf already use the
+    per-frame times, so this is for telling the operator."""
+    out = []
+    for stem, _mp4, sidecar in camera_files(session_root):
+        try:
+            t = read_csv_tolerant(sidecar)["t_session_seconds"].to_numpy(dtype=float)
+        except Exception:
+            continue
+        if len(t) >= 2 and t[-1] > t[0]:
+            out.append((stem, len(t), (len(t) - 1) / float(t[-1] - t[0])))
+    return out
+
+
 # Marker tokens → the words the UI uses.
 
 def friendly_phase(label: str) -> str:
@@ -832,7 +849,7 @@ __all__ = [
     "is_interrupted_session", "scan_interrupted_sessions", "flag_new_interrupted",
     "mark_session_interrupted", "dismiss_interrupted",
     "read_moments", "consume_moment",
-    "read_phase_markers", "read_csv_tolerant", "friendly_phase", "short_phase", "eeg_files", "sensor_files", "camera_files",
+    "read_phase_markers", "read_csv_tolerant", "camera_frame_rates", "friendly_phase", "short_phase", "eeg_files", "sensor_files", "camera_files",
     "session_info", "list_sessions", "folder_size_bytes",
     "session_total_seconds", "estimate_session_bytes", "disk_space_verdict",
     "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",
