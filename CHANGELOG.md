@@ -59,8 +59,9 @@ their labels are migrated automatically.
 - **Mac and Windows:** every platform difference in
   `support/platform_utils.py`; "Show in Finder" reads "Show in Explorer" on
   Windows and opens Explorer; shortcuts are written the right way for each.
-- **GitHub Actions** runs the whole test suite on macOS and Windows
-  (`.github/workflows/tests.yml`).
+- **GitHub Actions** is set up to run the whole test suite on macOS and
+  Windows (`.github/workflows/tests.yml`). Its first run had not finished when
+  this was tagged; treat Windows as unverified until it is green.
 - History lines record the labeller's name and the computer's name
   (`user_source: "labeller_name"`, `computer`); new event `labels_claimed`.
 - Tests: `test_labellers.py`, `test_privacy.py`, `test_platform.py`,
