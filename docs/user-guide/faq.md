@@ -14,7 +14,7 @@ shared drive you've pointed it at) — see [Settings](settings.md). Nothing
 leaves that folder unless you export it or copy it yourself.
 
 **Can I rename a boxer after I've started recording?**
-Not from the app. Boxer names are set on the Set up session step, before
+Not from the app. Boxer names are typed on the Get ready screen, before
 you press Start recording.
 
 **What happens if I close my laptop's lid while recording?**
@@ -23,8 +23,25 @@ recording is in progress, specifically to avoid this. Still, it's best
 practice to keep the laptop awake and plugged in for the whole session.
 
 **Can two people label the same recording at the same time?**
-Not safely yet — labelling one recording from two copies of the app at once
-isn't supported. Label one recording from one place at a time.
+Yes. Each person's labels are saved in their own file inside the recording, so
+nobody overwrites anybody — even on two computers sharing one recordings
+folder. Each person labels as themselves ("Your name" in Settings), and the
+**Compare** tab in Review & Label shows another person's labels beside yours
+with how far you agree. See
+[Review & Label](review-and-label.md#comparing-with-another-labeller).
+
+**How does the app know who I am? Is there a password?**
+No accounts and no password. The app asks for your name once and uses it from
+then on; change it in Settings. Use the same name on every computer.
+
+**Can I hide the boxers' names?**
+Yes, in two ways: on screen (the **Hide names** switch in the sidebar) and in
+an export (tick **Replace boxer names with Boxer A / Boxer B**). See the
+[Personal data note](../research-and-data/personal-data.md).
+
+**Does it work on Windows as well as Mac?**
+Yes; the lab uses both. See [Installation](../getting-started/installation.md).
+Recordings made on one open on the other.
 
 **Can I undo a label after placing it?**
 Yes — **Undo** (or ⌘Z) in [Review & Label](review-and-label.md) reverses
@@ -65,15 +82,16 @@ ear, and AUX is a spare input that normally shows a flat line. See
 
 **Can I change which camera is "Side camera 1" versus "Side camera 2"?**
 The four camera roles are fixed, but which physical device fills each role
-is not — use the **Change** button on that tile in the Connect devices step
+is not — use the **Change** button on that picture on the Get ready screen
 to pick a different camera for that role.
 
 ## Known limitations
 
 - Hardware verification is still pending for this build — see the note
   above about brain-activity data.
-- Shared-folder labelling is single-writer only (see "two people labelling"
-  above).
+- A shared recordings folder works for labelling and exporting from several
+  computers. Recording straight onto a network drive is not recommended (see
+  [Troubleshooting](troubleshooting.md)).
 - There's no built-in way to merge two separate recordings of the same
   session.
 

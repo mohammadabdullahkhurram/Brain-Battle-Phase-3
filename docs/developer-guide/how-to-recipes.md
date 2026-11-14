@@ -45,7 +45,7 @@ otherwise, on purpose.
   `labels_store.py`: add the constant, handle it in `new_label`, the placement
   logic in `review_label_screen._handle_duration`/`_commit_label`, the timeline
   rendering (`TimelineStrip`), and the export (`export_module._write_events_csv`).
-  Update `tests/test_labels_v2.py`, the `labels.json` section of
+  Update `tests/test_labels_v2.py`, the labels-file section of
   [file-formats.md](../research-and-data/file-formats.md), and — if it's a
   significant model change — write an ADR.
 

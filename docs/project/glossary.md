@@ -23,6 +23,12 @@ out of the UI (see [design system](../developer-guide/design-system.md#vocabular
 | Moment | a `mark_moment` timestamp, shown later as an unnamed label |
 | "Weak contact: left ear" etc. | per-channel signal quality (`TP9` = left ear, `AF7` = left forehead, `AF8` = right forehead, `TP10` = right ear) |
 | Worth checking | a contact-log weak period over 30 s |
+| Your name / labeller | the typed name labels are saved under (`app_settings.labeller_name`); one labels file per labeller |
+| Compare · "the same event" | another labeller's labels beside yours; two labels matched by `label_agreement` (same label, same boxer, start within the tolerance) |
+| Hide names | `hide_names_on_screen` — show "Boxer A / Boxer B" instead of names |
+| Replace boxer names with Boxer A / Boxer B | a name-free export (`hide_names`) |
+| Get ready | the first New-recording screen (devices + plan); formerly the Connect devices and Set up session steps |
+| Show in Finder / Show in Explorer | reveal in the file manager (`platform_utils`) |
 
 ## Technical terms (developer docs)
 

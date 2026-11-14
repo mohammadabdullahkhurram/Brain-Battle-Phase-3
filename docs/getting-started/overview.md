@@ -39,7 +39,7 @@ the left:
 | Screen | What you do there |
 |---|---|
 | **Sessions** | The home screen — every past recording, searchable and sortable. Open one to watch it back. This is where the app opens. |
-| **New recording** | A guided, four-step flow: connect the cameras and headbands, set up the session (boxer names, rounds), record, and a summary when you're done. |
+| **New recording** | Three screens: get ready (check the cameras and headbands, type the boxer names, set the rounds), record, and a summary when you're done. |
 | **Review & Label** | Watch a recording back with both boxers' brain activity alongside the video, and mark events. |
 
 Settings (at the bottom of the sidebar) holds everything you'd want to

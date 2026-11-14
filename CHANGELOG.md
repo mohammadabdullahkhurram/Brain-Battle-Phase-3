@@ -1,11 +1,100 @@
 # Brain Battle — Changelog
 
 **Current version on `develop`: v3.1.0-dev** (authoritative source:
-`brain_battle/version.py` `__version__`; tag `v3.1.0-dev.1`). `main` is the
+`brain_battle/version.py` `__version__`; tag `v3.1.0-dev.2`). `main` is the
 reviewed `3.0.0-beta.2`. The "Phase 2.N" headings further down are historical
 dev-log numbering, kept as history — they do not track the release version.
 
-## 3.1.0-dev · The standard EEG workflow (LSL, XDF, EEG viewer)
+## 3.1.0-dev · Redesign, several labellers, Mac + Windows, shared folders (tag `v3.1.0-dev.2`)
+
+A second owner-approved pass on `develop` (full write-up with before/after
+pictures: `docs/reviews/2026-11-redesign.md`; snapshot before it:
+`pre-redesign-2026-11-13`). Recordings made with earlier versions still open;
+their labels are migrated automatically.
+
+**Redesigned** ([ADR-0018](docs/decisions/adr-0018-november-2026-redesign.md),
+`docs/DESIGN.md` rewritten)
+- **The frame:** New recording is the one primary button in the sidebar; the
+  sidebar shows who is labelling and a one-click Hide names switch; larger
+  type; one shared component set (`ui/widgets.py`).
+- **Sessions:** one row of controls, one clean clickable list, who labelled
+  each recording, a Label / Open button that reflects whether *you* have
+  labelled it, and export straight from a row's ⋯ menu.
+- **New recording:** four steps became three screens. "Connect devices" and
+  "Set up session" are now one **Get ready** screen — devices on top, the plan
+  and Start underneath.
+- **Recording:** a status strip that is green or says what is wrong, a
+  phase-tinted card with a much larger countdown, a very large Mark this moment
+  button, and the four sensor-contact indicators back on screen.
+- **Review & Label:** transport and timeline pinned under the videos; the EEG
+  card can be folded away and yields height on small windows; lane names in a
+  gutter; 2× speed; jump to previous/next label (↑ ↓); one-second skip
+  (Shift+← →).
+- **Settings:** a section list on the left; new "You" and "Boxer names and
+  privacy" sections.
+- **Export window** redesigned; ends with Show in Finder / Explorer.
+
+**Added**
+- **More than one labeller per recording**
+  ([ADR-0019](docs/decisions/adr-0019-one-labels-file-per-labeller.md)): each
+  labeller's labels are in their own file, `labels/<labeller>.json`; "Your
+  name" is asked once (Settings → You); the **Compare** tab shows another
+  labeller's labels beside yours with plain-language agreement; marked moments
+  can be named by every labeller. `recording.xdf` has one label stream per
+  labeller (`BrainBattle_Labels_<labeller>`); `labels.csv` / `events.csv` have
+  a `labeller` column; exports with two or more labellers include
+  `agreement.csv`. New `data/label_agreement.py`.
+- **Automatic migration** of an old single `labels.json` (kept as
+  `labels.json.v2.bak`), with "These are mine" to take the labels over.
+- **Boxer names in `recording.xdf`** (`boxer_a_name`, `boxer_b_name`,
+  `boxer_name`), and two ways to hide names
+  ([ADR-0021](docs/decisions/adr-0021-boxer-names-and-hiding.md)): per export
+  ("Replace boxer names with Boxer A / Boxer B", default in Settings) and on
+  screen (sidebar switch, ⇧⌘H / Ctrl+Shift+H). New `data/privacy.py`.
+- **Shared recordings folder support**
+  ([ADR-0020](docs/decisions/adr-0020-shared-folder-safety.md)): atomic writes
+  everywhere, a lock for shared settings files, merge-on-save for one person on
+  two computers, a scan that re-reads only what changed, and clear messages
+  when the folder cannot be reached. New `data/safe_io.py`.
+- **Mac and Windows:** every platform difference in
+  `support/platform_utils.py`; "Show in Finder" reads "Show in Explorer" on
+  Windows and opens Explorer; shortcuts are written the right way for each.
+- **GitHub Actions** runs the whole test suite on macOS and Windows
+  (`.github/workflows/tests.yml`).
+- History lines record the labeller's name and the computer's name
+  (`user_source: "labeller_name"`, `computer`); new event `labels_claimed`.
+- Tests: `test_labellers.py`, `test_privacy.py`, `test_platform.py`,
+  `test_shared_folder.py`; `tests/_env.py` isolates every script from the real
+  user's settings.
+- Docs: every page brought up to date, new screenshots, four ADRs
+  (0018–0021), a new "Cross-platform & CI" page, server notes in ROADMAP
+  Phase 7.
+
+**Changed**
+- **The docs lead with the app's own `recording.xdf`**; LabRecorder is an
+  optional, advanced extra (owner decision).
+- Labels schema version 3 (per-labeller file; the label entries are unchanged).
+- Marked moments are no longer removed from the manifest when named.
+- Help-button anchors: `step-1-get-ready`, `step-2-recording`, `step-3-saved`.
+- Demo recordings are labelled by "Demo labeller" in the new layout.
+
+**Fixed**
+- **Dates used `%-d`, which Windows' Python rejects** — the app could not show
+  a recording's date on Windows. Fixed everywhere; a test forbids such codes.
+- Saving labels or history into a recording whose folder had disappeared
+  silently created an empty folder with the same name. It now fails, says so,
+  and retries.
+- A crash when the Sessions screen was closed while it was still measuring
+  folder sizes.
+- A failed start no longer waits for a key press in a console that a windowed
+  Windows launch does not have.
+- The session manifest was written in place during recording; it is now
+  written atomically.
+
+**Not verified** — a real Windows computer, a real network drive, and real
+hardware. See `docs/reviews/2026-11-redesign.md`.
+
+## 3.1.0-dev · The standard EEG workflow (LSL, XDF, EEG viewer) (tag `v3.1.0-dev.1`)
 
 An owner-requested improvement pass on `develop` (full write-up:
 `docs/reviews/2026-11-fable-review.md`). Recordings made with 3.0 still open.

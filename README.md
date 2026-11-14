@@ -7,7 +7,9 @@ time-aligned analysis bundle. It follows the standard Muse research workflow:
 every signal is published live as a **Lab Streaming Layer (LSL)** stream and
 every recording gets one **`recording.xdf`** — EEG, round markers, labels and
 each video frame's time on one clock — that opens directly in EEGLAB, MNE-Python
-and pyxdf. It is built at Constructor University Bremen as a
+and pyxdf. More than one person can label the same recording and compare their
+labels; it runs on **macOS and Windows**; and the recordings folder can be
+shared between computers. It is built at Constructor University Bremen as a
 Community Impact Project. Three screens plus Settings: **Sessions → New recording
 → Review & Label**.
 
@@ -19,8 +21,9 @@ Community Impact Project. Three screens plus Settings: **Sessions → New record
 ## Install & run
 
 Python 3.10+, plus `ffmpeg` on your `PATH` (per-camera H.264 recording, export,
-probing; `brew install ffmpeg` on macOS). Review & Label playback is in-process
-via PyAV — no VLC needed.
+probing): `brew install ffmpeg` on macOS, `winget install Gyan.FFmpeg` on
+Windows. Review & Label playback is in-process via PyAV — no VLC needed. Full
+steps for both systems: [Installation](docs/getting-started/installation.md).
 
 ```bash
 pip install -e .          # editable install (the supported install for now)
@@ -64,9 +67,12 @@ the bundled Inter font.
 ## Current status
 
 **`main` is the reviewed `3.0.0-beta.2`; `develop` is `3.1.0-dev`** (tag
-`v3.1.0-dev.1`), which adds the LSL / XDF workflow, a conventional EEG viewer and
-recording of the headbands' movement sensors, and awaits the owner's review —
-see [the review write-up](docs/reviews/2026-11-fable-review.md). The four DESIGN
+`v3.1.0-dev.2`) and awaits the owner's review. It adds, in two passes: the LSL /
+XDF workflow, a conventional EEG viewer and the headbands' movement sensors
+([write-up](docs/reviews/2026-11-fable-review.md)); then a redesign of every
+screen, several labellers per recording, hiding boxer names, Windows support
+and shared-folder safety, with the tests run on macOS and Windows by GitHub
+Actions ([write-up](docs/reviews/2026-11-redesign.md)). The four DESIGN
 screens, the capture-time clock, labelling, data safety, and the in-app docs all
 shipped in 3.0.
 **The hardware is currently broken**, so everything is

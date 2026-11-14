@@ -1,18 +1,17 @@
 %%{init: {'themeVariables': {'fontSize': '16px'}}}%%
 flowchart TD
-    Start(["Press<br/>'New recording'"]) --> Connect["Step 1<br/>Connect devices"]
-    Connect -->|"device<br/>missing"| ConnectWarn["Tile shows a<br/>not-found message.<br/>Search again, or<br/>Continue anyway."]
-    ConnectWarn --> Connect
-    Connect -->|"connected, or<br/>Continue"| Setup["Step 2<br/>Set up session"]
-    Setup --> Disk{"Enough<br/>disk space?"}
-    Disk -->|"no"| DiskBlock["Start is disabled.<br/>Free up space or<br/>shorten the session."]
-    DiskBlock --> Setup
-    Disk -->|"yes, or low<br/>space confirmed"| Record["Step 3<br/>Recording"]
+    Start(["Press<br/>'New recording'"]) --> Ready["Step 1<br/>Get ready<br/>(devices + plan)"]
+    Ready -->|"device<br/>missing"| ReadyWarn["Picture shows a<br/>not-found message.<br/>Search again, or<br/>record without it."]
+    ReadyWarn --> Ready
+    Ready --> Disk{"Folder reachable<br/>and enough<br/>disk space?"}
+    Disk -->|"no"| DiskBlock["Start is switched off.<br/>Reconnect the drive,<br/>free up space or<br/>shorten the session."]
+    DiskBlock --> Ready
+    Disk -->|"yes: press<br/>Start recording"| Record["Step 2<br/>Recording"]
     Record -->|"headband<br/>disconnects"| Reconnect["Reconnect button<br/>appears. Brain<br/>recording resumes."]
     Reconnect --> Record
-    Record -->|"M key or<br/>Mark moment"| Moment["Moment marked —<br/>name it in Review"]
+    Record -->|"M key or<br/>Mark this moment"| Moment["Moment marked —<br/>name it in Review"]
     Moment --> Record
-    Record -->|"Stop and save,<br/>or it finishes"| Saved["Step 4<br/>Saved"]
-    Saved --> Label["Start labelling<br/>(Review &amp; Label)"]
+    Record -->|"Stop and save,<br/>or it finishes"| Saved["Step 3<br/>Saved"]
+    Saved --> Label["Label this recording<br/>(Review &amp; Label)"]
     Saved --> Sessions["Back to<br/>sessions"]
     Saved --> Another["Record<br/>another"]

@@ -58,7 +58,7 @@ on a background thread so the screen is usable in well under half a second.
 
 ![Sequence diagram: ReviewLabelScreen reads labels and markers and shows them at once, then a MediaLoadWorker opens videos and EEG on a background thread and signals back; a PlayerController is created and the video grid and brain traces become ready.](../diagrams/flow-open-review.png)
 
-1. `ReviewLabelScreen.load_session_folder` reads `labels.json` and
+1. `ReviewLabelScreen.load_session_folder` opens the current labeller's labels file (`labels/<labeller>.json`, migrating an old `labels.json` first) and
    `phase_markers.csv` and renders the labels panel and timeline right away.
 2. `_MediaLoadWorker` (a QThread) opens the four videos and both EEG files off
    the UI thread.
@@ -91,12 +91,12 @@ have no audio).
 
 Every label change is persisted immediately and is undoable.
 
-![Sequence diagram: the user presses a number key, ReviewLabelScreen adds a label to the LabelsStore which records an inverse op, then saves labels.json and appends history.jsonl and shows "All labels saved"; Undo pops the inverse op and saves again.](../diagrams/flow-label-autosave.png)
+![Sequence diagram: the user presses a number key, ReviewLabelScreen adds a label to the LabelsStore which records an inverse op, then saves the labeller's own labels file and appends history.jsonl and shows "All labels saved"; Undo pops the inverse op and saves again.](../diagrams/flow-label-autosave.png)
 
 1. A number key (or click) calls `_place_from_vocab`; `ReviewLabelScreen` builds a
    label with `labels_store.new_label` (who A/B/Both, point or duration) and
    `LabelsStore.add`s it. The store records an inverse op for undo.
-2. `labels.json` is saved atomically and `history.jsonl` gets an append; the
+2. The labeller's file (`labels/<labeller>.json`) is saved atomically — after merging in anything that appeared on disk since it was read — and `history.jsonl` gets an append; the
    header shows "All labels saved".
 3. **Undo** (`⌘Z`) replays the inverse op and saves again. Duration labels place
    on the first key press and close on the second (DESIGN §6). See

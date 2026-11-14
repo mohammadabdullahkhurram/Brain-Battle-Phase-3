@@ -5,5 +5,5 @@ flowchart TB
     CAMS -.->|"live LSL streams"| LSL["Other lab software<br/>LabRecorder · LSL viewers"]
     BANDS -.->|"live LSL streams"| LSL
     FOLDER[("Recording folder<br/>videos · EEG · markers<br/>manifest · contact log<br/>recording.xdf")]
-    FOLDER -->|"open a session"| REVIEW["Review &amp; Label<br/>adds labels.json<br/>and history.jsonl"]
+    FOLDER -->|"open a session"| REVIEW["Review &amp; Label<br/>adds labels/ (one file<br/>per labeller)<br/>and history.jsonl"]
     REVIEW -->|"Export for analysis"| ZIP["Analysis bundle (.zip)<br/>recording.xdf · labels ·<br/>events · co-registered EEG"]

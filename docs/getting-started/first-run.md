@@ -7,14 +7,21 @@ before your first real session.
 ## The empty Sessions screen
 
 The app opens on **Sessions**, titled "Sessions" with the subtitle "Every
-recording in your recordings folder. Open one to watch it back and add
-labels." On a fresh install this is empty:
+recording in your recordings folder. Click one to watch it back and label
+it." On a fresh install this is empty:
 
 > No recordings yet. Press New recording to make your first one.
 
 That's expected — there's nothing to show until you record something. The
-**New recording** and **Show folder in Finder** buttons at the top are
-there from the start.
+**New recording** button is there from the start — at the top of the screen
+and, on every screen, at the top of the sidebar.
+
+## Tell the app who you are
+
+Near the bottom of the sidebar is **Set your name**. Click it and type your
+name. Labels you place are saved under it, separately from anyone else's — see
+[Review & Label](../user-guide/review-and-label.md#who-is-labelling). If you
+skip this, the app asks the first time you label.
 
 ## Where recordings are saved
 
@@ -49,11 +56,27 @@ Open **Settings** from the bottom of the sidebar and look at, in order:
    disk space, and the "about X GB per hour per camera" figure next to each
    option updates to match.
 4. **Session defaults** — rounds, round length, break length, and rest
-   before round 1. These pre-fill the **Set up session** step of every new
-   recording, so set them once here instead of re-typing them every time.
+   before round 1. These pre-fill the plan on the **Get ready** screen of
+   every new recording, so set them once here instead of re-typing them
+   every time.
+5. **Boxer names and privacy** — whether exports replace the boxers' names
+   with "Boxer A" and "Boxer B" by default.
 
 Everything in Settings saves automatically as you change it — there's no
 Save button, just a brief "✓ Saved" confirmation.
+
+## Trying it without cameras or headbands
+
+You can look around with a made-up recording. In Terminal, from the project
+folder:
+
+```bash
+python3 tools/generate_demo_session.py --library \
+    --out "/path/to/an/empty/folder"
+```
+
+Then choose that folder in **Settings → Recordings folder**. The recordings it
+makes are marked "Demo" so they are never mistaken for real ones.
 
 ## Next
 

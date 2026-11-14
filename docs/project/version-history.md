@@ -8,8 +8,9 @@ narrative is in [Project history](../archive/history.md).
 ## The authoritative version
 
 The single source of truth for the version is `brain_battle/version.py`
-(`__version__`). Today: **`main` and `develop` are both `3.0.0-beta.2`** — the
-handover/cleanup release. `3.0.0-beta.1` was the first tagged pre-release, cut
+(`__version__`). Today: **`main` is `3.0.0-beta.2`** — the handover/cleanup
+release — **and `develop` is `3.1.0-dev`** (tags `v3.1.0-dev.1` and
+`v3.1.0-dev.2`, see below). `3.0.0-beta.1` was the first tagged pre-release, cut
 when `develop` merged to `main` alongside the
 [package reorganisation](../decisions/adr-0013-package-reorganisation.md);
 `beta.2` added the tool-neutral `AGENTS.md`, the `*Screen` renames, and the
@@ -62,6 +63,19 @@ sensors are recorded, and all timestamps come from one monotonic clock
 [ADR-0017](../decisions/adr-0017-one-capture-clock.md)). Recordings made with 3.0
 still open unchanged, and can be given an XDF with
 `python3 -m brain_battle.data.session_xdf "<recording folder>"`.
+
+**3.1.0-dev, second pass** (tag `v3.1.0-dev.2`; snapshot before it:
+`pre-redesign-2026-11-13`) redesigned every screen
+([ADR-0018](../decisions/adr-0018-november-2026-redesign.md)), let more than
+one person label a recording
+([ADR-0019](../decisions/adr-0019-one-labels-file-per-labeller.md)), made a
+shared recordings folder safe
+([ADR-0020](../decisions/adr-0020-shared-folder-safety.md)), put boxer names in
+`recording.xdf` with options to hide them
+([ADR-0021](../decisions/adr-0021-boxer-names-and-hiding.md)), and made the app
+work on Windows as well as macOS. Not breaking: an older recording's single
+`labels.json` is moved to `labels/<name>.json` the first time it is opened, and
+the original is kept as `labels.json.v2.bak`.
 
 ## Documentation steps (within 3.0.0-dev)
 

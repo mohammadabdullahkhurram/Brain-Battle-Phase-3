@@ -7,14 +7,39 @@ progress.
 
 ![The Settings screen.](../images/settings.png)
 
+The list on the left jumps to each section.
+
+## You
+
+**Your name** — who is labelling on this computer. It is saved with every label
+you place, and your labels are kept in your own file inside each recording, so
+several people can label the same recording without overwriting each other.
+Use the same name on every computer you label on; names that differ only in
+capitals or spacing count as the same person. There are no accounts or
+passwords — it is simply a name. The sidebar shows it on every screen.
+
 ## Recordings folder
 
 Shows the folder's name, full path, and free space. By default this is a
 **Brain Battle Data** folder inside your **Documents** folder. **Change
 folder…** picks an existing folder or lets you create a new one; **Show in
-Finder** opens it. Recordings already in the old folder are **not** moved — you're
-only changing where new ones go. If a folder is shared (for example on a
-shared drive), everyone pointed at it sees the same sessions and labels.
+Finder** (Mac) / **Show in Explorer** (Windows) opens it. Recordings already in
+the old folder are **not** moved — you're only changing where new ones go.
+
+**A shared folder.** The folder can be on a shared drive that several computers
+use — Macs and Windows PCs alike. Everyone pointed at it sees the same
+recordings, the same label list and each other's labels, and nobody overwrites
+anybody's work, because each labeller's labels are stored separately. The card
+says "on a shared (network) drive" when it recognises one. Two things to know:
+
+- **Label on the shared drive; record to this computer if you can.** Recording
+  four videos straight onto a network drive can lose video if the connection
+  drops. It is safer to record into a folder on the computer and copy the
+  finished recording's folder to the shared drive afterwards. The Get ready
+  screen reminds you when the folder is on a network drive.
+- If the drive is not connected, the app says "The recordings folder can't be
+  reached" rather than showing an empty list. Reconnect it and press
+  **Try again** in Sessions.
 
 If the `BRAIN_BATTLE_CAPTURE_DIR` environment variable is set, the folder
 path is shown with a note that it's set outside the app, and **Change
@@ -69,17 +94,32 @@ Three switches:
   same whether this is on or off. The first time, your computer may ask whether
   to allow incoming network connections — either answer is fine for recording.
 
+## Boxer names and privacy
+
+Boxer names are kept with each recording, in its analysis file
+(`recording.xdf`) and in exports, so the team can keep track of who is who.
+Two switches hide them where you don't want them:
+
+- **Replace boxer names with Boxer A / Boxer B in exports** — sets what the
+  export window starts with; you can still choose for each export. A name-free
+  export has no names in its files or its file name.
+- **Hide boxer names on screen** — shows "Boxer A" and "Boxer B" instead of
+  names in Sessions and Review & Label, for presenting or sharing your screen.
+  The same switch is in the sidebar (**Hide names**), and on the keyboard:
+  ⇧⌘H on a Mac, Ctrl+Shift+H on Windows.
+
+Neither switch changes a recording on disk, and neither hides the boxers'
+faces in the videos. See the
+[Personal data note](../research-and-data/personal-data.md).
+
 ## Label list
 
-Your team's shared set of labels — stored in the recordings folder itself,
-so everyone pointed at that folder sees the same list. Each row: a number
-key (1–9, set by its position in the list), a colour swatch (click to
-change it), an editable name, whether it's a **Moment** or **Lasts a
-while**, and reorder (↑/↓) and remove buttons. **+ Add label** appends a new
-one with an unused colour from the palette, ready to rename.
-
-Removing a label from this list does **not** touch labels already placed
-with it in any recording — those keep their own name and colour.
+The labels offered in Review & Label — one list for the whole team, stored in
+the recordings folder so everyone sharing the folder has the same one. Each
+row: the number key that places it, its colour, its name, and whether it is a
+**Moment** or **Lasts a while**. Use ↑ ↓ to reorder (the order is the number
+keys 1–9), ✕ to remove, and **+ Add label** to add one. Removing a label from
+the list never removes labels that were already placed.
 
 ## Footer
 

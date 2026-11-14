@@ -7,10 +7,13 @@ hardware situation that shapes all of it.
 ## In one line
 
 **Phase 3 and the documentation are complete, and `develop` (`3.1.0-dev`) adds
-the standard EEG workflow on top**: live Lab Streaming Layer streams, one
-`recording.xdf` per recording, a conventional EEG viewer, and recording of the
-headbands' movement sensors (see
-[the review write-up](../reviews/2026-11-fable-review.md) for that pass).
+two passes on top.** The first: the standard EEG workflow — live Lab Streaming
+Layer streams, one `recording.xdf` per recording, a conventional EEG viewer,
+and the headbands' movement sensors
+([write-up](../reviews/2026-11-fable-review.md)). The second: a redesign of
+every screen, more than one labeller per recording, hiding boxer names, Mac and
+Windows support, and a recordings folder shared between computers
+([write-up](../reviews/2026-11-redesign.md)).
 `main` is the reviewed `3.0.0-beta.2`; `develop` awaits the owner's review
 before it is merged. The hardware is broken, so everything is built and tested
 against a generated demo session and simulated devices.
@@ -19,12 +22,22 @@ against a generated demo session and simulated devices.
 
 - **The unified capture-time clock** — alignment is driven by recorded timestamps
   on one `t_session_seconds` axis ([ADR-0001](../decisions/adr-0001-capture-time-clock.md)).
-- **The four DESIGN screens** — Sessions (home library), New recording (the guided
-  Connect → Set up → Record → Saved flow), Review & Label (one merged playback +
-  labelling screen), and Settings (everything formerly hardcoded).
+- **The four DESIGN screens** — Sessions (home library), New recording (Get
+  ready → Recording → Saved), Review & Label (one merged playback + labelling
+  screen), and Settings (everything formerly hardcoded) — redesigned in
+  November 2026 ([ADR-0018](../decisions/adr-0018-november-2026-redesign.md)).
 - **Labelling** (what would have been Phase 4) was delivered inside the Review &
-  Label build — `labels.json` v2 with who A/B/Both, point/duration, undo/redo, a
-  shared team vocabulary, and an analysis-bundle export.
+  Label build — labels with who A/B/Both, point/duration, undo/redo, a shared
+  team vocabulary, and an analysis-bundle export.
+- **Several labellers per recording** — each person's labels in their own file,
+  comparison with plain-language agreement, automatic migration of older
+  recordings ([ADR-0019](../decisions/adr-0019-one-labels-file-per-labeller.md)).
+- **Boxer names kept, with options to hide them** in an export and on screen
+  ([ADR-0021](../decisions/adr-0021-boxer-names-and-hiding.md)).
+- **Mac and Windows**, with the test suite run automatically on both, and **a
+  recordings folder shared between computers**
+  ([ADR-0020](../decisions/adr-0020-shared-folder-safety.md),
+  [Cross-platform & CI](../developer-guide/cross-platform-and-ci.md)).
 - **Data safety** — EEG streamed to disk, crash-safe fragmented H.264,
   crash-recovery on next launch, a disk-space pre-flight.
 - **The in-app Documentation screen** and the documentation itself — Getting
@@ -53,6 +66,10 @@ see [Version history](version-history.md) and [Project history](../archive/histo
 recording: the buzzer/tap timing check, a first look at Muse EEG during
 sparring, and whether the movement sensors and live LSL streams behave with two
 real headbands (see [known limitations](../research-and-data/limitations.md)).
+
+**Second, a real Windows computer and a real shared drive.** Windows has only
+been exercised by the automatic test run with simulated devices; see
+[Cross-platform & CI](../developer-guide/cross-platform-and-ci.md).
 
 **Then the rest of Phase 5** — per-round clip export, a whole-recording EEG
 signal-quality summary, and making the optional combined video drift-proof.

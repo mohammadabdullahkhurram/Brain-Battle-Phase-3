@@ -122,7 +122,7 @@ Settings · Troubleshooting · FAQ.
 
 For the person who needs to *load the data*, not operate the app: recording
 folder anatomy, every file format (manifest, `phase_markers.csv`, camera
-sidecars, EEG CSVs, contact log, `labels.json` v2, `label_list.json`,
+sidecars, EEG CSVs, contact log, the per-labeller labels files, `label_list.json`,
 `history.jsonl`, the export zip), the timing & accuracy model (what "aligned"
 actually means and to what tolerance), loading data in Python/R, and a list of
 what is and isn't verified yet.
@@ -341,7 +341,7 @@ then reads the field names straight back out —
 - manifest keys recursively from `session_manifest.json`,
 - CSV columns from each file's header (markers, camera sidecars, EEG, contact
   log, co-registered EEG, labels, events),
-- `labels.json` / `label_list.json` fields from `labels_store` / `label_vocab`,
+- labels-file / `label_list.json` fields from `labels_store` / `label_vocab`,
 - history event types from `session_history.EVENT_*`,
 - export-zip entries from the zip's `namelist()` —
 

@@ -48,6 +48,11 @@ Recordings land in `~/Documents/Brain Battle Data` by default (change it in
 Settings, or set `BRAIN_BATTLE_CAPTURE_DIR`); see
 [ADR-0014](../decisions/adr-0014-documents-default-folder.md).
 
+The same command works on Windows (`pip install -e .` in Terminal or
+PowerShell). Every push to `develop` or `main` runs the whole test suite on
+macOS and Windows through GitHub Actions — see
+[Cross-platform & CI](cross-platform-and-ci.md).
+
 ## Branch policy: `main` and `develop`
 
 - **`main` is the stable, reviewed version.** It only ever advances when the

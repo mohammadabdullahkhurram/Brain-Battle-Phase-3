@@ -26,7 +26,7 @@ do — organized as a symptom → cause → fix table per topic. See the
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| "✕ Not enough space" on Set up session, Start recording disabled | Free space is below what this session is estimated to need | Free up space, shorten the session (fewer/shorter rounds), or pick a smaller [video quality](settings.md) |
+| "Not enough space" on Get ready, Start recording switched off | Free space is below what this session is estimated to need | Free up space, shorten the session (fewer/shorter rounds), or pick a smaller [video quality](settings.md) |
 | "! Low space" warning, but you can still start | Free space is tight but above the hard minimum | You can continue, but consider freeing up space before a long session |
 | The sidebar's free-space bar turns amber or red | Same idea, shown continuously rather than just at Set up | Free up space, or change the [recordings folder](settings.md) to a drive with more room |
 
@@ -52,6 +52,27 @@ do — organized as a symptom → cause → fix table per topic. See the
 | The computer asks whether to "allow incoming network connections" when you open New recording | Brain Battle is offering its live signals to other lab software on the network (Lab Streaming Layer) | Either answer is fine for recording. Choose Allow if you want LabRecorder or an EEG viewer on *another* computer to see the signals. To stop it asking, switch off **Share live signals with other lab software** in [Settings](settings.md) |
 | LabRecorder doesn't list any `BrainBattle_…` streams | The streams exist only while the New recording screens are open, and only if sharing is switched on | Open **New recording** first, then press LabRecorder's **Update**; check the switch in [Settings](settings.md); on another computer, check both are on the same network and the firewall allowed the connection |
 | LabRecorder lists the camera streams but they stay empty | Camera streams carry one sample per *recorded* frame, so they only fill while a recording is running | Start the recording |
+
+## A shared or external recordings folder
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Sessions says "The recordings folder can't be reached" | The drive the folder is on is not connected (unplugged, asleep, or the network is down) | Reconnect the drive, then press **Try again**. Or choose another folder in [Settings](settings.md) |
+| "This computer is not allowed to save into the recordings folder" | The shared drive is read-only for your login | Ask whoever manages the drive for permission to write, or choose another folder |
+| Review & Label turns red: "Not saved — the recordings folder can't be reached" | The drive went away while you were labelling | Keep the window open. Your labels are held in memory and saved by themselves when the drive is back. Don't quit until it says "All labels saved" |
+| Get ready warns that the folder is on a network drive | Recording four videos straight to a network drive can lose video if the connection drops | Safer: set the recordings folder to one on this computer for recording, then copy the finished recording's folder to the shared drive |
+| Someone else's labels don't show up | They appear under **Compare**, not among your own; and only after that person has placed at least one | Open the **Compare** tab in Review & Label. Their new labels arrive within a few seconds |
+| My labels are missing on another computer | "Your name" is spelled differently there, so the app treats you as a different person | Set the same name in [Settings](settings.md) on both computers. Nothing is lost — the labels are under the other spelling, visible in Compare |
+| The Sessions list is slow to appear the first time | Reading every recording over a network takes a moment | Later visits are fast: only recordings that changed are read again |
+
+## Windows
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| "The video tool ffmpeg was not found" | ffmpeg is not installed, or the app was started before it was | Run `winget install Gyan.FFmpeg` in Terminal, then close and reopen Terminal and the app |
+| No cameras found | Windows is blocking desktop apps from the camera | *Settings → Privacy & security → Camera* → allow desktop apps |
+| Headbands not found | Bluetooth is off, or the headband is connected to a phone | Switch Bluetooth on in Windows; close the Muse phone app |
+| A firewall question appears on New recording | The app offers its live signals to other lab software on the network | Either answer is fine for recording |
 
 ## The app on quit
 

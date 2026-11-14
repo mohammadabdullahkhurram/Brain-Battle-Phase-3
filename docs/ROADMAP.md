@@ -333,6 +333,37 @@ LabRecorder → XDF → EEGLAB / Python.
 
 ---
 
+## Phase 3.2 — Redesign, labellers, Mac + Windows, shared folder — **DONE on `develop` (2026-11-13), awaiting owner review**
+
+A second owner-approved pass (write-up: `docs/reviews/2026-11-redesign.md`;
+snapshot before it: tag `pre-redesign-2026-11-13`; result: tag
+`v3.1.0-dev.2`). Owner decisions that shaped it: the built-in `recording.xdf`
+is the primary route (LabRecorder stays an optional extra); AUX stays shown;
+movement sensors and live sharing stay on by default; boxer names stay in the
+XDF and exports, with an option to hide them; `main` is not touched until the
+owner has tested `develop`.
+
+- **A real redesign of every screen** — `docs/DESIGN.md` rewritten,
+  [ADR-0018](decisions/adr-0018-november-2026-redesign.md). New recording went
+  from four steps to three screens (Get ready → Recording → Saved).
+- **More than one labeller per recording** — one labels file per labeller,
+  "Your name", Compare with plain-language agreement, automatic migration;
+  [ADR-0019](decisions/adr-0019-one-labels-file-per-labeller.md). *(This
+  delivers the "per-labeller label sets" item that was parked in Phase 7.)*
+- **Boxer names kept, with options to hide them** in an export and on screen;
+  [ADR-0021](decisions/adr-0021-boxer-names-and-hiding.md).
+- **Mac and Windows** — every platform difference in one module, the `%-d`
+  date bug fixed, a GitHub Actions run of the whole suite on both systems.
+- **A recordings folder shared between computers** — atomic writes, a lock for
+  shared settings files, clear messages when the drive is gone;
+  [ADR-0020](decisions/adr-0020-shared-folder-safety.md).
+
+Still open from this pass: everything in "Never tried on a real Windows
+machine" (`docs/developer-guide/cross-platform-and-ci.md`) and a real network
+drive.
+
+---
+
 ## Phase 5 — Remaining report items and research value
 
 - ~~**Use the FULL per-frame sidecar for playback timing; detect and flag
@@ -465,9 +496,54 @@ LabRecorder → XDF → EEGLAB / Python.
 The owner's longer-term goals. Not scheduled; captured here so earlier phases
 don't paint us into a corner. **Constraint for ALL earlier phases: keep each
 recording folder fully self-contained** (video + sidecars + EEG + markers +
-manifest + `labels.json` + `history.jsonl` + any moments/questionnaire data all
+manifest + `labels/` + `history.jsonl` + any moments/questionnaire data all
 inside the one dated folder) so a recording can later be uploaded or synced as
 a single unit without hunting for pieces elsewhere.
+
+### Server design considerations (noted 2026-11-13; nothing here is built)
+
+A server for storing and sharing recordings across the team is planned but not
+available yet. Phase 3.2 made the app safe on a plain shared folder; these are
+the properties a server can rely on, and the questions it has to answer.
+
+**What already holds, and must keep holding**
+
+- **A recording is one folder and nothing else.** Everything about it is inside
+  (`labels/`, `history.jsonl`, manifest, signals, video, `recording.xdf`). The
+  only thing outside is the team's `label_list.json` in the recordings folder.
+- **Files fall into three kinds**, which is exactly what a sync needs to know:
+  1. *Written once, then never changed* — videos, sidecars, EEG and sensor
+     CSVs, `phase_markers.csv`. Large. Upload once; verify by size + checksum.
+  2. *Owned by one person* — `labels/<labeller>.json`. Small. Last write by
+     that person wins; there is no cross-person conflict by construction.
+  3. *Append-only* — `history.jsonl`. Merge by taking the union of lines.
+  Plus `session_manifest.json` (small, rarely edited after recording, edited
+  under a lock) and `recording.xdf` (derived — never sync it as a source;
+  rebuild it).
+- **Every write is whole-file and atomic**, so a sync tool never picks up half
+  a file.
+- **Identity is already a field**, not an assumption: history lines carry
+  `user`, `user_source` and `computer`; labels carry `labeller`. Real accounts
+  would add `user_source: "account"` and an id without changing the format.
+
+**Questions for whoever designs the server**
+
+- *Sync or mount?* A server that syncs folders to each computer (work offline,
+  fast video) versus one mounted as a drive (simpler, but video playback and
+  recording depend on the network). The app works with either today; recording
+  should stay local-then-upload in both.
+- *Video is the cost.* 1–2 GB per recording. Labellers need video; analysts
+  mostly need `recording.xdf`. Consider downloading video on demand.
+- *Identity.* "Your name" is a typed name. A server needs sign-in; map each
+  account to a labeller name so existing label files keep their owner.
+- *The label list* is the one shared, edited file. On a server it should become
+  a proper shared setting with history, not a file two admins can both edit.
+- *Deleting and renaming.* The app never deletes or renames a recording. A
+  server needs a deliberate, logged way to do both.
+- *Freezing.* "Labelling finished" (below) is a server-side state; label files
+  would become read-only for that recording.
+- *Data protection first* — see the blocker in the first item below. Hidden
+  names in an export do not make the data anonymous.
 
 - **Shared storage across every copy of the app.**
   *Why:* the real workflow is split across people and machines — one team
@@ -510,12 +586,11 @@ a single unit without hunting for pieces elsewhere.
   *Why:* analysts need to explore a frozen, labelled session and add their own
   interpretation without any risk of changing the labelling team's work.
 
-- **"Labelling finished" step that freezes labels before analysis; per-labeller
-  label sets so two labellers never overwrite each other** (also enables
-  inter-rater agreement checks).
-  *Why:* analysis must run on a stable label set, and two people labelling the
-  same session must not clobber each other — separate per-labeller sets both
-  prevent that and make agreement measurable.
+- **"Labelling finished" step that freezes labels before analysis.**
+  *Why:* analysis must run on a stable label set. *(The other half of this item
+  — per-labeller label sets, and agreement between labellers — was delivered in
+  Phase 3.2.)* Still to design: how two labellers' sets are reconciled into the
+  one set an analysis uses.
 
 ---
 

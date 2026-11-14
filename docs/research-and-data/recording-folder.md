@@ -31,7 +31,9 @@ A recording folder is named for when it started and who was in it, e.g.
 ├── phase_markers.csv           where each baseline/round/break begins
 ├── contact_quality.csv         per-sensor contact quality, ~1×/second
 ├── history.jsonl               append-only log of what happened
-├── labels.json                 the labels you place in Review & Label
+├── labels/                     the labels placed in Review & Label —
+│   ├── maya-k.json                 one file per labeller
+│   └── jonas-r.json
 ├── recording.xdf               everything on one clock, for EEGLAB / Python
 └── continuous/
     ├── Side Cams/
@@ -57,7 +59,7 @@ session clock (see [Timing & accuracy](timing-and-accuracy.md)).
 
 Some files are written **while you record**; others are added **later**, when
 you open the session in Review & Label or export it. This matters for
-analysis: a freshly captured session has no `labels.json` until someone labels
+analysis: a freshly captured session has no `labels/` folder until someone labels
 it.
 
 | File / folder | What it is | Written by | When |
@@ -71,7 +73,7 @@ it.
 | `phase_markers.csv` | The instant each baseline / round / break starts | `session_storage.SessionLayout.append_marker` | During recording |
 | `contact_quality.csv` | Each sensor's contact quality, ~once per second | `contact_log.ContactLogWriter` | During recording |
 | `history.jsonl` | Append-only log: recording started/finished, opened for review, labels added/removed, exported | `session_history.log_event` | During recording **and** later |
-| `labels.json` | The labels placed on the timeline | `labels_store.LabelStore` | Later, in Review & Label |
+| `labels/<labeller>.json` | One labeller's labels on the timeline (one file per person) | `labels_store.LabelsStore` | Later, in Review & Label |
 | `../label_list.json` | The shared team label vocabulary (one per recordings folder) | `label_vocab` | First time a recording folder is used |
 
 ## How the data flows

@@ -18,11 +18,11 @@ remove, or rename a module, update this page in the same commit (see
 | Group (subpackage) | Modules |
 |---|---|
 | **Package top** | `app` · `version` · `paths` · (root shim `brain_battle_main`) |
-| **`ui/`** | `sidebar_shell` · `sessions_screen` · `record_flow` · `review_label_screen` · `eeg_viewer` · `settings_screen` · `docs_screen` · `design_tokens` · `fonts` |
+| **`ui/`** | `sidebar_shell` · `sessions_screen` · `record_flow` · `review_label_screen` · `eeg_viewer` · `settings_screen` · `docs_screen` · `design_tokens` · `widgets` · `fonts` |
 | **`capture/`** | `clock` · `usb_camera` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
-| **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_vocab` · `export_module` · `app_settings` |
-| **`support/`** | `log_setup` · `docs_nav` |
+| **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `privacy` · `safe_io` · `export_module` · `app_settings` |
+| **`support/`** | `log_setup` · `docs_nav` · `platform_utils` |
 | **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its
@@ -69,59 +69,82 @@ modules can move between subpackages without breaking asset lookup. **Called
 by:** `fonts`, `round_bell`, `docs_nav`, `app_settings`.
 
 ### `sidebar_shell.py`
-The DESIGN "App structure" shell: a 232 px sidebar (logo, the screen buttons, a
-recordings-folder card with a live free-space bar, Settings at the bottom) that
-collapses to a 72 px icon rail on Review & Label and is fully hidden for the
-record flow. `SidebarShell.add_page(...)` registers each page with its collapse/
-hide behaviour; `SidebarItem` is one nav button. **Called by:** `brain_battle_main`.
-**Gotcha:** the folder card's free-space bar colour comes from `_disk_status`
-and must be refreshed (`refresh_folder_card`) whenever the recordings folder or
-its free space changes.
+The app's frame (DESIGN "App structure"): a 244 px sidebar — the brand, **New
+recording** as the one primary button, Sessions and Review & Label, then who is
+labelling ("Your name"), the quick **Hide names** switch, the recordings-folder
+card (name, free space, a red state when the folder cannot be reached), and
+Documentation and Settings. It collapses to a 72 px icon rail on Review & Label
+and is hidden for the record flow. `SidebarShell.add_page(..., primary=True)`
+makes an entry the primary button; `set_labeller`, `set_names_hidden` and the
+`identity_clicked` / `names_hidden_changed` signals connect it to the app.
+**Called by:** `app`. **Gotcha:** `refresh_folder_card` must be called whenever
+the recordings folder or its free space may have changed (the app calls it on
+every page change).
 
 ### `sessions_screen.py`
-The Sessions home library (DESIGN §1). `SessionsScreen` renders the session table,
-search, status-filter chips with counts, sort, the interrupted-recording
-banner, and "Show in Finder". Folder discovery and sizing run **off the UI
-thread** in `_ScanWorker`/`_SizeWorker` (QThreads) so a big folder never freezes
-the list. `filter_sort_sessions`, `status_counts`, and `reveal_in_finder` are
-pure helpers (headlessly tested). **Calls:** `session_storage` (discovery,
-status, sizing). **Gotcha:** the banner's dismissal is persisted via
-`session_storage.dismiss_interrupted`, so dismissing is durable across launches.
+The Sessions home library (DESIGN §1). `SessionsScreen` renders one row per
+recording (click anywhere to open), the status tabs with counts, search, sort,
+the interrupted-recording banner, the "folder can't be reached" banner, and a
+per-row **⋯** menu (export without opening; show in Finder / Explorer). The
+row's button says **Label** until the current labeller has labelled it
+(`SessionInfo.labels_by`). Folder discovery and sizing run **off the UI thread**
+in `_ScanWorker`/`_SizeWorker` (QThreads); the scan worker also reports whether
+the folder exists at all. `filter_sort_sessions`, `status_counts`,
+`length_text`, `labels_text` and `reveal_in_finder` are pure helpers. **Calls:**
+`session_storage`, `safe_io`, `privacy`, `platform_utils`, `widgets`.
+**Gotchas:** worker signals are connected to bound methods, never lambdas, so
+Qt drops the connection if the screen is destroyed first; the banner's
+dismissal is persisted via `session_storage.dismiss_interrupted`.
 
 ### `record_flow.py`
-The full-screen guided New-recording flow (DESIGN §2–§5): Connect devices → Set
-up session → Record → Saved. `RecordFlow` owns the device slots
-(`camera_source.CameraSlot`, `headband_source.HeadbandSlot`) and the
-`session_controller.SessionController`, and emits `session_saved`/`exit_flow`.
-The four steps are `ConnectStep`, `SetupStep`, `RecordingStep`, `SavedStep`;
-supporting widgets include `CameraTile`, `HeadbandView` (which shows the live
-EEG with `eeg_viewer.EEGViewer`), `PhaseBar`, and `Stepper`. It records moments
-(`mark_moment`), prevents sleep (`keep_awake`), logs contact quality
-(`contact_log`), stops cleanly early, owns the `lsl_outlets.LslPublisher` for
-the live LSL streams, and — once a recording has stopped and every camera file
-is closed — builds `recording.xdf` on a background thread (`_maybe_build_xdf`;
-`wait_for_xdf` blocks until it is done). Runs on the UI thread (devices run on
-their own threads). **Calls:** `camera_source`, `headband_source`,
-`session_controller`, `session_storage`, `session_history`, `session_xdf`,
-`lsl_outlets`, `clock`, `contact_log`, `keep_awake`, `app_settings`,
-`round_bell`. **Gotcha:** `_on_session_started` takes one origin from
+The full-screen New-recording flow (DESIGN §2–§4): **Get ready → Recording →
+Saved**. `RecordFlow` owns the device slots (`camera_source.CameraSlot`,
+`headband_source.HeadbandSlot`) and the `session_controller.SessionController`,
+and emits `session_saved`/`exit_flow`. "Get ready" is one page (`_ReadyPage`)
+holding the devices (`ConnectStep`) above the plan and Start button
+(`SetupStep`) — they used to be two steps
+([ADR-0018](../decisions/adr-0018-november-2026-redesign.md)), which is why
+`STEP_CONNECT` and `STEP_SETUP` are both `STEP_READY`. `RecordingStep` is the
+phase-tinted countdown screen; `SavedStep` the summary. Supporting widgets:
+`CameraTile`, `HeadbandView` (status, `ContactStrip` for the four sensors, and
+the live EEG via `eeg_viewer.EEGViewer`), `PhaseBar`, `Stepper`. It records
+moments (`mark_moment`), prevents sleep (`keep_awake`), logs contact quality
+(`contact_log`), stops cleanly early, refuses to start into a folder that is
+missing or read-only (`safe_io.folder_status`), owns the
+`lsl_outlets.LslPublisher`, and — once a recording has stopped and every camera
+file is closed — builds `recording.xdf` on a background thread
+(`_maybe_build_xdf`; `wait_for_xdf` blocks until it is done). Runs on the UI
+thread (devices run on their own threads). **Calls:** `camera_source`,
+`headband_source`, `session_controller`, `session_storage`, `session_history`,
+`session_xdf`, `lsl_outlets`, `clock`, `contact_log`, `keep_awake`,
+`app_settings`, `safe_io`, `platform_utils`, `round_bell`, `widgets`.
+**Gotcha:** `_on_session_started` takes one origin from
 `clock.session_origin()` and threads it into every camera and headband — this
 is the capture clock ([ADR-0001](../decisions/adr-0001-capture-time-clock.md),
 [ADR-0017](../decisions/adr-0017-one-capture-clock.md)); do not stamp sources
 from separate clocks.
 
 ### `review_label_screen.py`
-The merged Review & Label screen (DESIGN §6). `ReviewLabelScreen` opens a session,
-shows labels and the timeline **immediately**, then loads media in the
-background (`_MediaLoadWorker`, a QThread) and attaches a
-`pyav_player.PlayerController`. Sub-widgets: `VideoGrid`/`VideoTile` (the 2×2
-grid), `BrainActivityCard` (one `eeg_viewer.EEGViewer` per boxer plus the
-timebase / scale / filter controls), `TimelineStrip` (the scrubbable
-phases/labels timeline). Labelling drives `labels_store.LabelsStore`
-(add/undo/redo), autosaves `labels.json`, and appends `history.jsonl`. **Calls:**
-`pyav_player`, `eeg_viewer`, `labels_store`, `label_vocab`, `session_storage`,
-`session_history`, `contact_quality`, `export_module`. **Gotcha:** everything is
-on one `t_session_seconds` playhead — there is no separate alignment step; see
+The merged Review & Label screen (DESIGN §5). `ReviewLabelScreen` opens a
+recording, shows the current labeller's labels and the timeline
+**immediately**, then loads media in the background (`_MediaLoadWorker`, a
+QThread) and attaches a `pyav_player.PlayerController`. Sub-widgets:
+`VideoGrid`/`VideoTile` (the 2×2 grid), `BrainActivityCard` (one
+`eeg_viewer.EEGViewer` per boxer plus timebase / scale / filter controls; it
+can be folded away and shrinks on a small window so the videos keep the room),
+`TimelineStrip` (phases, the labeller's three lanes, and a grey lane per
+compared labeller). You label **as yourself**: `_open_labels` migrates an old
+`labels.json` and opens `labels_store.open_for_labeller(root, name)`; other
+labellers' files are read-only here, re-read every few seconds
+(`_reload_others`), and compared through `label_agreement` on the Compare tab.
+With no name set the panel asks for one and `_place_from_vocab` places nothing.
+A save that fails (shared drive gone) keeps the labels in memory, says so, and
+retries (`_save_now` / `_retry_save`). Every change autosaves and appends to
+`history.jsonl` with the labeller's name. **Calls:** `pyav_player`,
+`eeg_viewer`, `labels_store`, `label_agreement`, `label_vocab`, `privacy`,
+`session_storage`, `session_history`, `contact_quality`, `export_module`,
+`app_settings`, `platform_utils`, `widgets`. **Gotcha:** everything is on one
+`t_session_seconds` playhead — there is no separate alignment step; see
 [the playback-clock flow](key-flows.md#the-playback-clock).
 
 ### `eeg_viewer.py`
@@ -343,7 +366,7 @@ both by the live LSL outlets and inside `recording.xdf`.
 `brain_battle/data/session_xdf.py` — builds `recording.xdf` for a recording
 folder ([ADR-0015](../decisions/adr-0015-lsl-and-xdf.md)).
 `build_session_xdf(root, labels=None)` reads the EEG / sensor CSVs, the camera
-sidecars, `phase_markers.csv`, the manifest and `labels.json` and writes every
+sidecars, `phase_markers.csv`, the manifest and every labeller's labels file and writes every
 stream with timestamps `t0_lsl + t_session_seconds`, replacing the file
 atomically; `ensure_session_xdf` builds it only if missing (used when an
 interrupted recording is found). Also a command line:
@@ -361,13 +384,32 @@ block. Verified by reading files back with pyxdf (`tests/test_xdf.py`). **Called
 by:** `session_xdf`.
 
 ### `labels_store.py`
-`labels.json` schema v2 + an in-memory `LabelsStore` with undo/redo (each
-mutating call records an inverse op). `new_label(...)` makes a label
-(`who ∈ {A, B, Both}`, `kind ∈ {point, duration}`, numeric `t_start`/`t_end`);
-`migrate_v1_to_v2` upgrades old files (writing a `.v1.bak`); `events_timeline`
-merges labels with phase markers. Pure logic, no Qt
-([ADR-0006](../decisions/adr-0006-labels-v2.md)). **Called by:**
-`review_label_screen`, `export_module`, the demo generator, tests.
+Labels on disk and in memory. **One file per labeller**:
+`<recording>/labels/<labeller>.json` (schema 3), so two people never write to
+the same file ([ADR-0019](../decisions/adr-0019-one-labels-file-per-labeller.md);
+the label entries themselves are unchanged from
+[ADR-0006](../decisions/adr-0006-labels-v2.md)). `LabelsStore` holds one
+labeller's labels with undo/redo and, bound to its file by
+`open_for_labeller`, saves atomically — first merging anything that appeared in
+the file since it was read (`merge_from_disk`: the same person on two
+computers). `read_all` / `all_labels` / `labeller_counts` read every labeller
+(and a not-yet-migrated `labels.json`) without writing; `migrate_legacy` moves
+an old single file into `labels/` (original kept as `labels.json.v2.bak`);
+`claim_legacy` is "These are mine"; `labeller_slug` turns a name into a safe
+file name; `events_timeline` merges labels with phase markers. Pure logic, no
+Qt. **Called by:** `review_label_screen`, `session_storage`, `session_xdf`,
+`export_module`, the demo generator, tests. **Gotcha:** `save` creates only the
+`labels/` folder, never its parents — if the recording folder is gone it must
+fail, not create an empty look-alike.
+
+### `label_agreement.py`
+How far two labellers agree. `compare(a, b, …, tolerance)` matches labels that
+have the same text and the same boxer and start within `tolerance` seconds (or,
+for lasting labels, overlap), closest first, each at most once, and returns an
+`Agreement` (matched / only-a / only-b, `percent`, and a plain-language
+`sentence`). `pairwise` does it for every pair. Deliberately counts rather than
+a chance-corrected statistic. Pure logic, no Qt. **Called by:**
+`review_label_screen` (Compare tab), `export_module` (`agreement.csv`, README).
 
 ### `label_vocab.py`
 The shared team label list, stored as `label_list.json` **in the recordings
@@ -379,21 +421,49 @@ contiguous.
 
 ### `session_history.py`
 The append-only `history.jsonl` per recording: `log_event(root, event, details)`
-(flush+fsync), `read_history` (tolerant reader), and the `EVENT_*` constants.
-Each line records time, OS user, app version, event, details. **Called by:**
-`record_flow`, `review_label_screen`, `sessions_screen`. **Gotcha:** `EVENT_*`
-constants are documented in [file formats](../research-and-data/file-formats.md)
-(honesty test); `user_source: "os"` is a placeholder for future accounts.
+(one whole line per write, flush+fsync, via `safe_io.append_line`),
+`read_history` (tolerant reader), and the `EVENT_*` constants. Each line records
+time, who (`current_user`: the saved "Your name", else the OS login —
+`user_source` says which), the computer's name, app version, event, details.
+**Called by:** `record_flow`, `review_label_screen`, `sessions_screen`,
+`export_module`. **Gotchas:** `EVENT_*` constants are documented in
+[file formats](../research-and-data/file-formats.md) (honesty test); it never
+creates the recording folder — an event for a folder that is not there is
+dropped.
+
+### `privacy.py`
+Boxer names and hiding them. `shown_name` / `versus` are what screens call to
+print a name (honouring "Hide names on screen"); `scrub_manifest`, `scrub_text`
+and `neutral_recording_name` make the name-free copies a "Replace boxer names"
+export contains. Pure logic, no Qt. **Called by:** `sessions_screen`,
+`review_label_screen`, `session_xdf`, `export_module`. See
+[Personal data note](../research-and-data/personal-data.md).
+
+### `safe_io.py`
+Writing safely in a folder several computers share
+([ADR-0020](../decisions/adr-0020-shared-folder-safety.md)).
+`atomic_write_text` / `atomic_write_json` (unique temp name, fsync, swap, with
+a short retry for Windows / network "file in use"), `read_json` (tolerant),
+`append_line`, `FolderLock` + `update_json` (an advisory lock file for
+read-change-write edits; stale locks are taken over; never hangs),
+`folder_status` / `folder_problem_text` (is the folder there and writable, and
+what to tell the user), `is_network_path` (best effort). Stdlib only. **Called
+by:** `session_storage`, `labels_store`, `label_vocab`, `session_history`,
+`app_settings`, `session_xdf`, `export_module`, and the screens.
 
 ### `export_module.py`
 The analysis bundle. `SessionExportWorker(QThread)` builds the export zip
-(`recording.xdf` rebuilt with the current labels, labels.csv v2, events.csv,
-`eeg_coregistered.csv`, raw EEG + sensor CSVs + videos with sidecars, manifest,
-history, README) straight from the recording folder; `build_coregistered_eeg`
+(`recording.xdf` rebuilt with every labeller's labels, `labels.csv` and
+`events.csv` with a `labeller` column, `agreement.csv` when two or more people
+labelled, `eeg_coregistered.csv`, raw EEG + sensor CSVs + videos with sidecars,
+manifest, history, README) straight from the recording folder. With
+`hide_names=True` the XDF, manifest copy, history copy, README and suggested
+file name carry no boxer names (`privacy`); the recording itself is untouched. `build_coregistered_eeg`
 merges both bands onto one uniform 256 Hz `t_session_seconds` grid (`_01` is
 always Boxer A, `_02` Boxer B); `VideoExportWorker(QThread)` is the optional 2×2 merge
 (hardware-encoder-validated with a libx264 fallback). `ExportOptionsDialog` runs
-it with a progress bar. **Called by:** `review_label_screen`. **Thread:** export
+it with a progress bar and the two choices (replace names; combined video).
+**Called by:** `review_label_screen`, `app` (Sessions → ⋯ → Export). **Thread:** export
 runs on a worker thread. **Gotcha:** the combined video is **optional and off by
 default** — most analysis wants the data, not a preview.
 
@@ -405,7 +475,8 @@ default** — most analysis wants the data, not a preview.
 The user-config store: one JSON file in the OS config directory holding the
 headband→Boxer A/B mapping + known-headbands list, session defaults, round bell,
 video quality (resolution + bitrate), whether to record the headbands' movement
-and pulse sensors, and whether to publish live LSL streams. `capture_dir_resolved()` resolves the
+and pulse sensors, whether to publish live LSL streams, the labeller's name
+("Your name"), and the two name-hiding switches. `capture_dir_resolved()` resolves the
 recordings folder (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set); `gb_per_hour`
 derives the GB/hour copy from the bitrate ([ADR-0010](../decisions/adr-0010-app-settings-store.md)).
 **Called by:** `settings_screen`, `record_flow`, `sessions_screen`, `eeg_module`,
@@ -415,9 +486,32 @@ settings, don't hardcode.
 
 ### `design_tokens.py`
 The **light-only** design system (DESIGN tokens) + QSS factories (`qss_*`), the
-palette accessors, boxer/phase colours, and bundled-font helpers. There is no
+palette accessors, boxer/phase colours, the icon set, and font helpers
+(`number_font` gives equal-width digits for timers). There is no
 dark palette and no theme switching ([ADR-0007](../decisions/adr-0007-light-only-design.md),
 guarded by `tests/test_light_theme.py`). **Called by:** every UI module.
+
+### `widgets.py`
+`brain_battle/ui/widgets.py` — the shared building blocks every screen uses, so
+a button or a status line looks the same everywhere: text helpers (`title`,
+`heading`, `body`, `muted`, `caption`), `Card`, `Banner`, the button factories
+(`primary_button`, `secondary_button`, `ghost_button`, `danger_button`,
+`icon_button`, `help_button`), `Segmented`, `StatusLine` (icon + text; each
+state has its own icon shape), `pill`, `boxer_badge` / `boxer_chip`,
+`TimerLabel` (hand-painted, equal-width digits), `Dot`, `clear_layout`.
+**Called by:** every screen. **Gotcha:** `Card` gives itself a unique object
+name and scopes its stylesheet to it, so its background never leaks into child
+widgets.
+
+### `platform_utils.py`
+`brain_battle/support/platform_utils.py` — the few things that differ between
+macOS and Windows, in one place: `format_date` / `format_date_time` /
+`format_iso` (no `%-d`, which Windows rejects), `file_manager_name` /
+`show_in_file_manager_label` / `reveal_in_file_manager` / `open_folder`
+(Finder vs. Explorer), `shortcut` (⌘Z vs. Ctrl+Z), `computer_name`,
+`ffmpeg_install_hint`. Stdlib only; every function takes an optional
+`platform_name` so tests exercise both systems on one machine. See
+[Cross-platform & CI](cross-platform-and-ci.md).
 
 ### `fonts.py`
 `register_fonts()` registers the bundled Inter font with Qt so the UI looks the
@@ -494,14 +588,19 @@ named constant in the script so it can be re-run after changing one. See
 Plain scripts (`python3 tests/<name>.py`, nonzero exit on failure). See
 [testing strategy](testing-strategy.md) for how to run them and the acceptance
 gates. The `_*_runner.py` files are helper subprocesses invoked by the kill
-tests, not standalone tests.
+tests, and `_env.py` (imported first by every script) points the app at a
+throwaway settings file with a labeller name — neither is a standalone test.
 
 | Test file | Guards |
 |---|---|
 | `test_smoke.py` | Import/construct floor; acceptance gate for deletions/refactors. |
 | `test_player.py` | PyAV single-clock player: frame-for-t, pacing, scrub coalescing. |
 | `test_review_tab.py` | Review & Label label side: fast open, duration flow, undo/redo, autosave. |
-| `test_labels_v2.py` | `labels_store` v2 schema, v1→v2 migration, undo/redo, timeline. |
+| `test_labels_v2.py` | Label entry schema, v1 migration, undo/redo, timeline. |
+| `test_labellers.py` | One file per labeller, automatic migration + "These are mine", merge-on-save, agreement, Compare in Review & Label, moments for every labeller. |
+| `test_privacy.py` | Names kept in `recording.xdf` by default; a name-free export has no name in any file; hide names on screen. |
+| `test_platform.py` | Mac/Windows differences: dates without `%-d`, Finder vs. Explorer, shortcuts, paths, Windows-safe names, encoder fallback, keep-awake. |
+| `test_shared_folder.py` | Atomic writes, the folder lock, several processes labelling at once, a folder that disappears, the scan cache. |
 | `test_label_vocab.py` | Shared `label_list.json`: seed, round-trip, tolerant load. |
 | `test_contact_quality.py` | Per-sensor heuristic + plain-language summary. |
 | `test_export.py` | Analysis bundle contents + events.csv ordering. |

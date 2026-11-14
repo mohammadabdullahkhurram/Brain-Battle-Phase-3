@@ -26,7 +26,28 @@ These need a working camera rig and Muse-S bands, which the project doesn't have
 The generated demo session and simulation mode are the stand-ins for everything
 here **except** the real-signal questions — they can't produce a real signal.
 
+## Not verified on Windows or on a network drive
+
+The app is developed on macOS. Windows is covered by the automatic test run
+with simulated devices, and by nothing else: cameras, Bluetooth, hardware
+encoders, Explorer, display scaling and a real shared drive are all untried
+there. The list is in
+[Cross-platform & CI](cross-platform-and-ci.md#never-tried-on-a-real-windows-machine).
+These are listed, not fixed, because they need a real machine.
+
 ## Code-level tech debt (tracked in ROADMAP Phase 5)
+
+- **Other labellers' labels arrive by polling** (every five seconds while a
+  recording is open), not by a file-change notification — simple and reliable
+  on network drives, at the cost of a short delay.
+- **A labeller is only a typed name.** A misspelling makes a second labeller,
+  and nothing stops someone typing another person's name. Real accounts are
+  Phase 7.
+- **`record_flow.py` keeps the names `ConnectStep` / `SetupStep` and the
+  aliases `STEP_CONNECT` / `STEP_SETUP`** for the two halves of the one "Get
+  ready" screen. Harmless, but the names describe the old four-step flow.
+- **Code comments still cite the old DESIGN section numbers** in places
+  (Review & Label was §6 and is now §5).
 
 - **The optional combined 2×2 export video still aligns cameras by their first
   frame only.** Playback (`pyav_player`) and `recording.xdf` both use every

@@ -91,6 +91,9 @@ sections:
       - id: setup-and-workflow
         title: Developer setup & workflow
         file: developer-guide/setup-and-workflow.md
+      - id: cross-platform-and-ci
+        title: Cross-platform & CI
+        file: developer-guide/cross-platform-and-ci.md
       - id: how-to-recipes
         title: How-to recipes
         file: developer-guide/how-to-recipes.md
@@ -154,6 +157,18 @@ sections:
       - id: adr-0017
         title: ADR-0017 One capture clock
         file: decisions/adr-0017-one-capture-clock.md
+      - id: adr-0018
+        title: ADR-0018 The November 2026 redesign
+        file: decisions/adr-0018-november-2026-redesign.md
+      - id: adr-0019
+        title: ADR-0019 One labels file per labeller
+        file: decisions/adr-0019-one-labels-file-per-labeller.md
+      - id: adr-0020
+        title: ADR-0020 Shared recordings folder
+        file: decisions/adr-0020-shared-folder-safety.md
+      - id: adr-0021
+        title: ADR-0021 Boxer names and hiding them
+        file: decisions/adr-0021-boxer-names-and-hiding.md
 
   - title: Project
     pages:

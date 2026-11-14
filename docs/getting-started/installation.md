@@ -1,88 +1,109 @@
 # Installation
 
-**What this page covers:** installing Brain Battle's dependencies on macOS
-(the primary development platform) and notes for Windows, plus a step to
-verify everything is in place before your first run.
+**What this page covers:** installing Brain Battle on a **Mac** or a **Windows**
+computer — the lab uses both — and checking that everything is in place before
+your first run.
 
-Brain Battle is a Python desktop app (PyQt6) — there's no installer package
-yet (see `docs/ROADMAP.md` Phase 6 for the planned double-click build). You
-run it from a checkout of the repository.
+Brain Battle is a Python desktop app. There is no double-click installer yet
+(planned — see the [Roadmap](../project/roadmap.md)); you run it from a copy of
+the project folder.
 
 ## What you need
 
 | Requirement | Why |
 |---|---|
 | Python 3.10 or newer | The app itself |
-| The packages in `requirements.txt` | PyQt6, OpenCV, the Muse-S Bluetooth stack, and others — see that file |
-| `ffmpeg` on your system `PATH` | Recording each camera to video, and building the export bundle |
+| The packages in `requirements.txt` | The window toolkit, camera and Bluetooth support, and others |
+| `ffmpeg` | Recording each camera to video, and exporting |
 
-Camera and headband hardware is **not** required to install or explore the
-app — see [First run](first-run.md) for how to try it without any hardware
-attached.
+Cameras and headbands are **not** needed to install or explore the app — see
+[First run](first-run.md) for how to try it without any hardware.
 
-## macOS
+## Mac
 
-Install [Homebrew](https://brew.sh) if you don't have it, then install
-ffmpeg:
+1. Install [Homebrew](https://brew.sh) if you don't have it, then open
+   **Terminal** and install ffmpeg:
 
-```bash
-brew install ffmpeg
-```
+   ```bash
+   brew install ffmpeg
+   ```
 
-From the repository root, install the Python packages:
+2. In Terminal, go to the project folder and install the app:
 
-```bash
-pip install -e .
-```
+   ```bash
+   pip3 install -e .
+   ```
 
-Then continue to [Verify the install](#verify-the-install) below.
+3. Start it:
+
+   ```bash
+   python3 -m brain_battle
+   ```
+
+The first time you open **New recording**, macOS asks whether Brain Battle (or
+Terminal) may use the **camera** and **Bluetooth**. Choose **Allow** for both;
+if you chose otherwise, change it in *System Settings → Privacy & Security*.
 
 ## Windows
 
-1. Install Python 3.10+ from [python.org](https://www.python.org) (check
-   "Add python.exe to PATH" during setup).
-2. Install ffmpeg and make sure `ffmpeg.exe` is on your `PATH` — the
-   [ffmpeg.org download page](https://ffmpeg.org/download.html) has
-   Windows builds; after extracting, add the `bin` folder to your system
-   `PATH` environment variable.
+1. Install Python 3.10 or newer from [python.org](https://www.python.org). On
+   the first page of the installer tick **"Add python.exe to PATH"**.
+2. Open **Terminal** (or PowerShell) from the Start menu and install ffmpeg:
 
-From the repository root, install the Python packages:
+   ```bash
+   winget install Gyan.FFmpeg
+   ```
 
-```bash
-pip install -e .
-```
+   Close and reopen Terminal afterwards so it can find ffmpeg.
+3. In Terminal, go to the project folder and install the app:
 
-Then continue to [Verify the install](#verify-the-install) below.
+   ```bash
+   pip install -e .
+   ```
 
-Windows camera capture uses the DirectShow backend automatically
-(`usb_camera.py` picks the right OpenCV backend per platform) — nothing to
-configure by hand.
+4. Start it:
+
+   ```bash
+   python -m brain_battle
+   ```
+
+Notes for Windows:
+
+- Windows needs **Bluetooth switched on** (*Settings → Bluetooth & devices*) for
+  the headbands. You do not need to pair them in Windows first; the app finds
+  them itself.
+- The first time you open **New recording**, Windows may ask whether to allow
+  the app through the **firewall**. Either answer is fine for recording; choose
+  Allow if other lab software on the network should see the live signals.
+- If cameras are not found, check *Settings → Privacy & security → Camera* and
+  make sure desktop apps may use the camera.
+- The app picks the fastest video encoder your graphics card offers (NVIDIA, AMD
+  or Intel) and falls back to a built-in one if none works — nothing to set up.
 
 ## Verify the install
 
-First, confirm ffmpeg is on your `PATH`:
+First, confirm ffmpeg can be found. In Terminal:
 
 ```bash
 ffmpeg -version
 ```
 
-If this prints a version banner, you're set. If it says "command not found,"
-ffmpeg isn't installed or isn't on `PATH` — recording is blocked without it
-(the app checks this itself before every recording and tells you plainly if
-it's missing).
+If this prints a version, you're set. If it says the command is not found,
+ffmpeg isn't installed or Terminal was not reopened after installing it —
+recording is blocked without it (the app checks before every recording and
+tells you plainly if it's missing).
 
-Then launch the app:
+Then start the app as above. It should open on the **Sessions** screen, empty,
+with "Brain Battle" in the title bar. If it does, installation is done —
+continue to [First run](first-run.md).
 
-```bash
-python3 -m brain_battle
-```
+## The same recordings on several computers
 
-It should open on the **Sessions** screen, empty, titled "Brain Battle" —
-that confirms PyQt6 and the rest of the dependencies installed correctly.
-If the app opens, installation is done — continue to
-[First run](first-run.md).
+To let several computers — Macs, Windows PCs, or a mix — work with the same
+recordings, point each one at the same shared folder in **Settings →
+Recordings folder**. See [Settings](../user-guide/settings.md#recordings-folder).
 
 ## Troubleshooting the install
 
-See the [Troubleshooting](../user-guide/troubleshooting.md) page for
-symptom → cause → fix if something above didn't work.
+See [Troubleshooting](../user-guide/troubleshooting.md) for symptom → cause →
+fix if something above didn't work.

@@ -45,7 +45,11 @@ demo session, about five minutes on its own; everything else is quick. The
 | `test_smoke.py` | Import/construct floor; the deletion/refactor gate | fast |
 | `test_player.py` | PyAV player: frame-for-t, pacing, scrub coalescing | fast |
 | `test_review_tab.py` | Review & Label labels side: fast open, duration, undo/redo | fast |
-| `test_labels_v2.py` | `labels_store` v2 schema + v1→v2 migration | fast |
+| `test_labels_v2.py` | Label entry schema + v1 migration | fast |
+| `test_labellers.py` | One file per labeller, migration + claiming, merge-on-save, agreement, Compare | moderate |
+| `test_privacy.py` | Names in the XDF; a name-free export has no name in any file; hide on screen | moderate |
+| `test_platform.py` | Mac/Windows differences; forbids `%-d` and hard-coded "Finder" (gate) | fast |
+| `test_shared_folder.py` | Atomic writes, the lock, several processes at once, a folder that disappears | moderate |
 | `test_label_vocab.py` | Shared `label_list.json` | fast |
 | `test_contact_quality.py` | Per-sensor contact heuristic | fast |
 | `test_export.py` | Analysis-bundle contents + ordering | moderate |
@@ -71,6 +75,14 @@ demo session, about five minutes on its own; everything else is quick. The
 | `test_docs.py` | Documentation tab + docs content honesty (gate) | moderate |
 | `test_research_docs.py` | Research & data format reference matches code (gate) | moderate |
 | `test_developer_docs.py` | Developer guide + ADR + Project honesty (gate) | fast |
+
+Every script starts with `import _env` (`tests/_env.py`), which points the app
+at a throwaway settings file holding a labeller name. A test run therefore
+never reads or changes a real user's settings, and Review & Label has someone
+to save labels under.
+
+The whole suite also runs on **macOS and Windows** for every push, through
+GitHub Actions — see [Cross-platform & CI](cross-platform-and-ci.md).
 
 ## The acceptance gates
 

@@ -20,6 +20,7 @@ initiative.
 | **4** | Labelling | Delivered inside Phase 3's Review & Label build |
 | **D1–D3** | Documentation (the six doc sections + the honesty tests) | Done |
 | **3.1** | Standard EEG workflow: LSL streams, `recording.xdf`, EEG viewer, movement sensors | Done on `develop` (2026-11-13), awaiting owner review |
+| **3.2** | Redesign of every screen, several labellers per recording, hiding boxer names, Mac + Windows, a shared recordings folder | Done on `develop` (2026-11-13), awaiting owner review |
 | **5** | Remaining report & research-value items | Partly done in 3.1; the rest is next |
 | **6** | Shipping (double-click app, bundled ffmpeg + docs, README rewrite) | Future |
 | **7** | Team & cloud (shared storage, accounts, questionnaires, analysis mode) | Future, not scheduled |
@@ -64,6 +65,13 @@ the university's data-protection officer must clear any hosting choice first (se
 [personal data note](../research-and-data/personal-data.md)). A hard constraint on
 every earlier phase: keep each recording folder **fully self-contained** so it can
 be uploaded or synced as one unit.
+
+A server for storing and sharing recordings is planned but not available yet.
+Until then a plain shared folder works (phase 3.2), and `docs/ROADMAP.md`
+Phase 7 now lists what a server can rely on — each recording is one folder;
+its files are either written once, owned by one labeller, or append-only — and
+the questions its design has to answer. Per-labeller label sets, once part of
+this phase, are already delivered.
 
 ## Deferred until hardware works
 

@@ -1,51 +1,54 @@
 # Export for analysis
 
-**What this page covers:** what pressing "Export for analysis" produces, at
-a glance. The exact file formats and columns are reference material in the
-[Research & data](../research-and-data/file-formats.md) section — this page is
-just "what's in the zip and how to get it."
+**What this page covers:** turning a recording into one file you can hand to
+whoever analyses it.
 
-Press **Export for analysis** in the top bar of
-[Review & Label](review-and-label.md) to open the export dialog.
+![The export window.](../images/export.png)
+
+Press **Export for analysis** in Review & Label, or **⋯ → Export for
+analysis…** on a row in Sessions.
 
 ## What you get
 
-A single `.zip` file containing:
+One `.zip` file containing:
 
-- `recording.xdf` — everything on one timeline in one file: both boxers'
-  brain activity, the round markers, your labels, and the timing of every
-  video frame. This is the standard format for EEG software (EEGLAB,
-  MNE-Python); most analysts will start here
-- `labels.csv` and `events.csv` — every label you placed
-- both boxers' brain activity merged onto one shared timeline
-  (`eeg_coregistered.csv`)
-- the raw brain recordings and camera videos, each with its own timing file
-- the recording's details, round markers, and history
+- **`recording.xdf`** — the main file: both boxers' brain activity, the head
+  movement sensors, the round markers, **every labeller's labels** and the time
+  of every video frame, all on one clock. It opens directly in EEGLAB,
+  MNE-Python and pyxdf. Start here.
+- **`labels.csv`** and **`events.csv`** — the labels as spreadsheets, with a
+  `labeller` column saying who placed each one.
+- **`agreement.csv`** — how far each pair of labellers agree (only when two or
+  more people labelled the recording).
+- Both boxers' brain activity on one timeline as a spreadsheet
+  (`eeg_coregistered.csv`), the raw brain recordings, and the four videos with
+  their timing files.
+- The recording's details, round markers, history, and a README that explains
+  every file.
 
-There's also a checkbox, **"Also make a combined video of all four cameras
-(slow)"** — off by default, since most analysis work wants the data, not a
-preview video, and merging four videos into one is slow.
+The exact contents are listed in the
+[File format reference](../research-and-data/file-formats.md).
 
-## Steps
+## The two choices
 
-1. From Review & Label, press **Export for analysis**.
-2. Check (or leave unchecked) **"Also make a combined video of all four
-   cameras (slow)."**
-3. Confirm or change where the `.zip` saves to ("Save to:" with a
-   **Change…** button) — it defaults to the recording's own folder.
-4. Press **Export**.
+- **Replace boxer names with Boxer A / Boxer B.** Tick this to make an export
+  with no boxer names in it — not in its files and not in its file name. The
+  videos still show the boxers themselves, and the recording on your disk is
+  not changed. Whether the box starts ticked is set in
+  [Settings](settings.md); details are in the
+  [Personal data note](../research-and-data/personal-data.md).
+- **Also make one combined video of all four cameras.** Off by default because
+  it is slow. The combined video is for showing people; for analysis use the
+  four separate videos, which keep every frame's exact time.
 
-A progress bar tracks the export; when it finishes, the `.zip` is ready
-wherever you chose to save it.
+**Save as** shows where the file will go; **Change…** picks another place.
+Press **Export**. When it has finished, **Show in Finder** (Mac) / **Show in
+Explorer** (Windows) takes you to the file.
 
-## Where to go from here
+## Good to know
 
-Hand the zip to whoever is doing the analysis and point them at
-[Loading the data](../research-and-data/loading-the-data.md) — it has
-copy-paste examples for Python, MNE, EEGLAB and R. The exact contents of every
-file are in the [File format reference](../research-and-data/file-formats.md),
-and the `README.txt` inside every export summarises what it ships with.
-
-Every recording folder also has its own `recording.xdf`, made automatically
-when the recording finishes; exporting refreshes it so it includes your latest
-labels.
+- You can export as often as you like. Each export contains the labels as they
+  are at that moment, from everyone who has labelled so far.
+- The recording's status in Sessions changes to **Exported**.
+- A recording's history notes each export: who made it, whether names were
+  replaced, and whose labels it contained.

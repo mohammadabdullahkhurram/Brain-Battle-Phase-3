@@ -1,36 +1,48 @@
 # Quick tour
 
-**What this page covers:** one screenshot and two lines per screen, so you
-know what you're looking at before diving into the full
+**What this page covers:** one picture and a few lines per screen, so you know
+what you're looking at before diving into the full
 [User guide](../user-guide/sessions.md).
 
 ## Sessions
 
-![The Sessions screen: a table of recordings with search, status filters, and a New recording button.](../images/sessions.png)
+![The Sessions screen: one row per recording, with status tabs, search, and a New recording button.](../images/sessions.png)
 
-Every recording in your recordings folder, searchable and sortable. Open one
-to watch it back, or press **New recording** to start.
+Every recording in your recordings folder. Click a row to open it; the button
+says **Label** until you have labelled it. **New recording** — here and at the
+top of the sidebar — starts one.
 
 ## New recording
 
-![Step 1 of New recording: 2x2 camera tiles and headband status for both boxers.](../images/connect-devices.png)
+![Get ready: camera pictures and headbands on top, the session plan and Start underneath.](../images/get-ready.png)
 
-A guided, four-step flow: connect devices, set up the session, record, and a
-summary when you're done. See the
-[New recording](../user-guide/new-recording.md) page for all four steps.
+Three screens: **Get ready** (check the devices, type the names, press Start),
+**Recording** (a large countdown you can read from across the room), and
+**Saved**. See [New recording](../user-guide/new-recording.md).
+
+![Recording: status strip, large countdown, Mark this moment.](../images/recording.png)
 
 ## Review & Label
 
-![The Review & Label screen: a 2x2 video grid, brain activity traces, a timeline, and the labelling panel.](../images/review-and-label.png)
+![The Review & Label screen: four videos, brain activity, the timeline, and the labelling panel.](../images/review-and-label.png)
 
-Watch a recording back with both boxers' brain activity next to the video,
-and mark who did what, when — including moments you marked live while
-recording.
+Watch a recording back with both boxers' brain activity under the video, and
+mark who did what, when, in the labelling panel on the right. Several people
+can label the same recording; **Compare** shows another person's labels beside
+yours and how far you agree. See
+[Review & Label](../user-guide/review-and-label.md).
+
+## Export for analysis
+
+![The export window.](../images/export.png)
+
+One zip file with everything for analysis — led by `recording.xdf`, which
+opens directly in EEGLAB and Python. You can replace the boxers' names with
+"Boxer A" and "Boxer B". See [Export](../user-guide/export.md).
 
 ## Settings
 
-![The Settings screen: recordings folder, headbands, video quality, session defaults, and the label list.](../images/settings.png)
+![The Settings screen: a list of sections on the left, and the settings themselves.](../images/settings.png)
 
-Everything you'd otherwise have to dig through files to change — recordings
-folder, headband assignment, video quality, session defaults, and your
-team's label list. Saves automatically.
+Your name, the recordings folder, headbands, video quality, session defaults,
+privacy, and your team's label list. Everything saves by itself.

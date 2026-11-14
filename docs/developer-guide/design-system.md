@@ -30,6 +30,32 @@ app reads as one system. Two kinds of thing live there:
 A new component that needs a style gets a new `qss_*` factory in
 `design_tokens.py`.
 
+### Shared components (`ui/widgets.py`)
+
+Screens are assembled from one small component set rather than each styling
+its own buttons and cards: `title` / `heading` / `body` / `muted` / `caption`
+for text; `Card` and `Banner` for surfaces; `primary_button`,
+`secondary_button`, `ghost_button`, `danger_button`, `icon_button`,
+`help_button` and `Segmented` for actions; `StatusLine`, `pill`, `boxer_badge`
+and `boxer_chip` for status; `TimerLabel` for numbers that change (equal-width
+digits). They were introduced with the November 2026 redesign
+([ADR-0018](../decisions/adr-0018-november-2026-redesign.md)). Reach for these
+first; add to them rather than around them.
+
+Two conventions the components enforce:
+
+- **One primary button per screen** — the main action. Everything else is
+  secondary or ghost.
+- **Scoped stylesheets.** `Card` names itself and scopes its style to that
+  name, so a background never leaks into child widgets (the "grey boxes behind
+  labels" bug of 3.0).
+
+### Platform wording
+
+Anything that reads differently on Mac and Windows — the file manager's name,
+a keyboard shortcut — comes from `support/platform_utils.py`, never from a
+string in a screen. See [Cross-platform & CI](cross-platform-and-ci.md).
+
 ### Light mode only
 
 There is no dark palette, no theme toggle, and no restart-to-apply theme flow —

@@ -232,14 +232,15 @@ above (it is a derived copy; see
 | `BrainBattle_GYRO_A` / `_B` | `GYRO` | `X`, `Y`, `Z` | 52 Hz | Gyroscope (degrees per second), if recorded |
 | `BrainBattle_PPG_A` / `_B` | `PPG` | `PPG1`, `PPG2`, `PPG3` | 64 Hz | Pulse sensor, if recorded |
 | `BrainBattle_Markers` | `Markers` | one string | irregular | The `phase_markers.csv` labels (`BASELINE_START` … `SESSION_END`) and `MOMENT` for each un-named "Mark this moment" |
-| `BrainBattle_Labels` | `Markers` | one string | irregular | The placed labels (present once there are any) — see below |
+| `BrainBattle_Labels_<labeller>` | `Markers` | one string | irregular | One stream **per labeller** with the labels that person placed (present once they have placed any) — see below. `<labeller>` is the labeller's name in file-name form, e.g. `BrainBattle_Labels_maya-k` |
 | `BrainBattle_Video_SIDE_01`, `BrainBattle_Video_SIDE_02`, `BrainBattle_Video_POV_01`, `BrainBattle_Video_POV_02` | `VideoFrames` | `frame_index` (int32) | irregular | One sample per recorded video frame: the value is the frame's number in that camera's MP4, the timestamp is when it was captured |
 
 **Timestamps** are seconds on the LSL clock: `capture_clock.t0_lsl +
 t_session_seconds`. Every stream's description carries the session start as
 `session_start` (inside a `brain_battle` element, next to `recording`,
-`app_version`, and — per stream — `boxer` and `headband`, or `video_file` and
-`measured_fps`), so
+`app_version`, `boxer_a_name`, `boxer_b_name`, and — per stream — `boxer`,
+`boxer_name` and `headband`; or `video_file` and `measured_fps`; or `labeller`
+on a label stream), so
 
     t_session_seconds = timestamp − session_start
 
@@ -251,11 +252,19 @@ before version 3.1 have no `t0_lsl`; their XDF timestamps are simply
 **Label events** are written as text: `<label>/<who>` for a moment label (for
 example `Jab/A`), and two events — `<label>/<who>/start` and
 `<label>/<who>/end` — for a label that lasts a while (`Clinch/Both/start`).
+Each labeller has their own stream, and the stream's description gives their
+name as typed (`labeller`), so two people's labels are never mixed.
+
+**Boxer names** are in every stream's description (`boxer_a_name`,
+`boxer_b_name`, and `boxer_name` on a boxer's own streams). An export made
+with "Replace boxer names with Boxer A / Boxer B" contains an XDF without
+those three keys, and with the names taken out of `recording` too — see
+[Personal data note](personal-data.md).
 
 The same stream names are published **live** over LSL while the New recording
 screens are open (`lsl_outlets.LslPublisher`), so a file LabRecorder makes from
-them matches this one; the live set has no `BrainBattle_Labels` stream (labels
-are placed later).
+them matches this one; the live set has no label streams (labels are placed
+later).
 
 ## `contact_quality.csv`
 
@@ -278,16 +287,22 @@ The four status values come from `contact_quality.channel_status`: `good`,
 (motion/looseness swamping the signal). Real-signal quality during boxing is
 **Not yet verified on hardware**.
 
-## `labels.json`
+## `labels/<labeller>.json`
 
-The labels placed in Review & Label — schema **version 2**, written by
-`labels_store.LabelStore`. One JSON object:
+The labels placed in Review & Label. **Each labeller has their own file** in the
+recording's `labels/` folder, named after them in file-name form (`Maya K` →
+`labels/maya-k.json`), so two people labelling the same recording never write
+to the same file — schema **version 3**, written by `labels_store.LabelsStore`.
+One JSON object:
 
 | Key | Type | Meaning |
 |---|---|---|
-| `schema_version` | int | `2` |
+| `schema_version` | int | `3` |
 | `time_axis` | string | Always `t_session_seconds` |
-| `labels` | array | The placed labels (below) |
+| `labeller` | string | The labeller's name as they typed it |
+| `labels` | array | The labels this person placed (below) |
+| `named_moments` | array of numbers | The times of the "Mark this moment" marks this person has already named |
+| `migrated_from` | string | Only on a file made from an old single `labels.json`: its name. Removed when a labeller takes the labels over |
 
 Each entry in `labels` (from `labels_store.new_label`):
 
@@ -300,19 +315,30 @@ Each entry in `labels` (from `labels_store.new_label`):
 | `t_start` | float | seconds | When it starts (session clock) | `95.100` |
 | `t_end` | float \| null | seconds | When it ends; `null` for a point label | `null` |
 | `color` | string | — | `#RRGGBB` swatch | `"#3D4FD6"` |
-| `created_by` | string | — | Who placed it (OS user, or `migrated`) | `"casey"` |
+| `created_by` | string | — | Who placed it (the labeller's name) | `"Maya K"` |
 | `created_at` | string | — | When it was placed, ISO 8601 | `"2026-11-09T18:02:11"` |
 
 ```json
-{"schema_version": 2, "time_axis": "t_session_seconds",
+{"schema_version": 3, "time_axis": "t_session_seconds",
+ "labeller": "Maya K",
  "labels": [{"id": "a1b2c3", "label": "Jab", "who": "A",
              "kind": "point", "t_start": 95.1, "t_end": null,
-             "color": "#3D4FD6", "created_by": "casey",
-             "created_at": "2026-11-09T18:02:11"}]}
+             "color": "#3D4FD6", "created_by": "Maya K",
+             "created_at": "2026-11-09T18:02:11"}],
+ "named_moments": [312.4]}
 ```
 
-A version-1 `labels.json` is migrated to v2 on first open (the original is kept
-as `labels.json.v1.bak`).
+Names that differ only in capitals, spacing or punctuation are the same
+labeller (the same file). There are no accounts: the name is whatever the
+person typed under "Your name".
+
+**Older recordings.** Before version 3.1 a recording had one `labels.json`
+(schema version 2; before that, version 1). It is still read everywhere. The
+first time such a recording is opened in Review & Label the file is moved to
+`labels/<name>.json` — `<name>` being the `created_by` stored in its labels, or
+"Earlier labels" if there is none — and the original is kept as
+`labels.json.v2.bak` (a version-1 original also as `labels.json.v1.bak`).
+Nothing is lost and label ids are unchanged.
 
 ## `label_list.json`
 
@@ -339,8 +365,9 @@ by `session_history.log_event`. Each line:
 | Field | Type | Meaning |
 |---|---|---|
 | `time` | string | Local time, ISO 8601 with timezone offset |
-| `user` | string | OS login name at the time |
-| `user_source` | string | How `user` was obtained (always `os`) |
+| `user` | string | Who did it: the "Your name" set in Settings, or the computer login name if no name was set yet |
+| `user_source` | string | Where `user` came from: `labeller_name` or `os` |
+| `computer` | string | The name of the computer that wrote the line (useful when several computers share the folder) |
 | `app_version` | string | App version that wrote the line |
 | `event` | string | The event name (see table) |
 | `details` | object | Event-specific extra data (may be `{}`) |
@@ -355,18 +382,24 @@ The `event` values (from `session_history`):
 | `recording_recovered` | An interrupted recording was detected/recovered | — |
 | `opened_for_review` | The session is opened in Review & Label | — |
 | `moment_marked` | "Mark this moment" was pressed | the moment time |
-| `labels_added` | One or more labels placed | count / label info |
-| `labels_removed` | One or more labels deleted | count / label info |
-| `labels_migrated` | A v1 `labels.json` was upgraded to v2 | counts |
+| `labels_added` | A label was placed | the label, `who`, `t_start`, and the `labeller` |
+| `labels_removed` | A label was deleted | the same |
+| `labels_migrated` | An old single `labels.json` was moved into a per-labeller file | `to_labeller` |
+| `labels_claimed` | A labeller took over labels from before labeller names ("These are mine") | `from`, how many, the `labeller` |
 | `labels_exported` | Labels were written out | — |
-| `export_created` | An analysis bundle was built | the zip name |
+| `export_created` | An analysis bundle was built | the zip name, `names_hidden`, and the `labellers` whose labels it contains |
 
-A twelfth event, `interrupted_dismissed`, is logged when you dismiss the
+One more event, `interrupted_dismissed`, is logged when you dismiss the
 interrupted-recording banner in Sessions.
 
+The file is only ever added to, one whole line at a time, so several computers
+sharing the recordings folder can all write to it without damaging each
+other's lines.
+
 ```json
-{"time": "2026-11-09T17:26:10.9+00:00", "user": "casey",
- "user_source": "os", "app_version": "3.0.0-dev",
+{"time": "2026-11-09T17:26:10.9+00:00", "user": "Maya K",
+ "user_source": "labeller_name", "computer": "LAB-PC-2",
+ "app_version": "3.1.0-dev",
  "event": "recording_started", "details": {}}
 ```
 
@@ -374,29 +407,32 @@ interrupted-recording banner in Sessions.
 
 "Export for analysis" builds a self-contained zip — written by
 `export_module.SessionExportWorker`. It's a copy of the recording's key files
-plus three derived CSVs and the XDF. Contents:
+plus the derived CSVs and the XDF. Contents:
 
 | Entry | What it is |
 |---|---|
 | `recording.xdf` | [Everything on one clock](#recordingxdf), rebuilt at export time so it includes the labels |
-| `labels.csv` | The placed labels, one row each (columns below) |
+| `labels.csv` | Every labeller's placed labels, one row each (columns below) |
 | `events.csv` | Phase markers + labels merged onto one timeline |
+| `agreement.csv` | How far each pair of labellers agree — only present when two or more people labelled the recording |
 | `eeg_coregistered.csv` | Both boxers' EEG resampled onto one shared clock |
 | `eeg/` | The raw per-boxer EEG CSVs, unchanged |
 | `sensors/` | The movement / pulse CSVs, unchanged (only if they were recorded) |
 | `videos/` | The camera `.mp4` files and their `.timestamps.csv` sidecars |
-| `session_manifest.json` | A copy of the manifest |
+| `session_manifest.json` | A copy of the manifest (in a name-free export: with the boxer names replaced and `names_hidden` set to `true`) |
 | `phase_markers.csv` | A copy of the markers |
-| `history.jsonl` | A copy of the history log |
+| `history.jsonl` | A copy of the history log (in a name-free export: with the boxer names replaced) |
 | `README.txt` | A plain-text description of the bundle |
 | `combined_2x2.mp4` | *Optional* — a 2×2 montage of the four cameras (off by default) |
 
 ### `labels.csv`
 
-The `labels.json` entries flattened to CSV (`export_module._LABELS_V2_COLUMNS`).
-Columns: `id`, `label`, `who`, `kind`, `t_start`, `t_end`, `color`,
-`created_by`, `created_at` — same meanings as [`labels.json`](#labelsjson). A
-`null` `t_end` is written as an empty cell.
+Every labeller's labels flattened to one CSV (`export_module._LABELS_V2_COLUMNS`).
+Columns: `id`, `labeller`, `label`, `who`, `kind`, `t_start`, `t_end`, `color`,
+`created_by`, `created_at`. `labeller` is whose label it is (the name of the
+file it came from); the rest have the same meanings as in a
+[labels file](#labelslabellerjson). A `null` `t_end` is written as an empty
+cell. To work with one person's labels, filter on `labeller`.
 
 ### `events.csv`
 
@@ -410,6 +446,27 @@ before labels at the same instant) — from `labels_store.events_timeline`.
 | `source` | string | — | `phase` (a round marker) or `label` (a placed label) | `phase` |
 | `who` | string | — | `A` / `B` / `Both` for labels; empty for markers | `A` |
 | `label` | string | — | The marker or label text | `ROUND_1_START` |
+| `labeller` | string | — | Who placed the label; empty for markers | `Maya K` |
+
+### `agreement.csv`
+
+One row per pair of labellers (`label_agreement.pairwise`), so you can see at a
+glance how consistent the labelling is. Two labels count as **the same event**
+when they have the same label text, the same `who`, and start within
+`tolerance_seconds` of each other (0.5 s); for labels that last a while,
+overlapping spans also count. Each label is matched at most once.
+
+| Column | Meaning |
+|---|---|
+| `labeller_a`, `labeller_b` | The two labellers |
+| `tolerance_seconds` | How close two start times must be to count as the same event |
+| `same_event` | Events both of them marked |
+| `only_a`, `only_b` | Events only one of them marked |
+| `percent_agreement` | `same_event` ÷ (`same_event` + `only_a` + `only_b`), as a whole percent |
+| `mean_time_difference_seconds` | Average gap between the two on the events they both marked |
+
+This is a plain count, not a chance-corrected statistic such as Cohen's kappa.
+For anything more formal, compute it from `labels.csv`.
 
 ### `eeg_coregistered.csv`
 

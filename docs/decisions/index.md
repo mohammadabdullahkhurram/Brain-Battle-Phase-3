@@ -41,6 +41,10 @@ file is missing from this index or from `nav.yml`.
 | [ADR-0015](adr-0015-lsl-and-xdf.md) | Live LSL streams and one XDF file per recording | 2026-11-13 | Accepted |
 | [ADR-0016](adr-0016-standard-eeg-viewer.md) | A standard EEG viewer, with channel names | 2026-11-13 | Accepted |
 | [ADR-0017](adr-0017-one-capture-clock.md) | One capture clock, seen three ways | 2026-11-13 | Accepted |
+| [ADR-0018](adr-0018-november-2026-redesign.md) | The November 2026 redesign | 2026-11-13 | Accepted |
+| [ADR-0019](adr-0019-one-labels-file-per-labeller.md) | One labels file per labeller | 2026-11-13 | Accepted |
+| [ADR-0020](adr-0020-shared-folder-safety.md) | A recordings folder shared between computers | 2026-11-13 | Accepted |
+| [ADR-0021](adr-0021-boxer-names-and-hiding.md) | Boxer names are kept, and can be hidden | 2026-11-13 | Accepted |
 
 The sources behind these decisions are the planning documents
 ([DESIGN.md, ROADMAP.md, PLAYBACK_PROPOSAL.md, ARCHITECTURE_AND_EVALUATION.md,
