@@ -22,6 +22,9 @@ tests/test_demo_session.py, which now generates fragmented H.264.)
 Run:  python3 tests/test_video_recording.py   (nonzero exit on any failure)
 Needs: ffmpeg on PATH + a working H.264 encoder.
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import os
 import signal
 import subprocess

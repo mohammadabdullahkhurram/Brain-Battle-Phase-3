@@ -6,6 +6,9 @@ Demo generated ONCE in the __main__ guard (ProcessPool children re-import).
 
 Run:  python3 tests/test_export.py
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import csv
 import io
 import os
@@ -71,7 +74,7 @@ def test_bundle_contents():
         txt = zf.read("labels.csv").decode("utf-8")
     hdr = next(csv.reader(io.StringIO(txt)))
     check("labels.csv has v2 columns",
-          hdr == ["id", "label", "who", "kind", "t_start", "t_end", "color",
+          hdr == ["id", "labeller", "label", "who", "kind", "t_start", "t_end", "color",
                   "created_by", "created_at"], str(hdr))
 
     # export_created history event
@@ -89,7 +92,7 @@ def test_events_csv_ordering():
         rows = list(csv.DictReader(io.StringIO(zf.read("events.csv").decode("utf-8"))))
 
     check("events.csv columns",
-          list(rows[0].keys()) == ["t_start", "t_end", "source", "who", "label"],
+          list(rows[0].keys()) == ["t_start", "t_end", "source", "who", "label", "labeller"],
           str(list(rows[0].keys())))
     ts = [float(r["t_start"]) for r in rows]
     check("events.csv sorted by t_start", ts == sorted(ts))

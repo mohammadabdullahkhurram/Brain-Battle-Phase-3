@@ -4,6 +4,9 @@ timeline. Pure logic — no Qt.
 
 Run:  python3 tests/test_labels_v2.py
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import json
 import os
 import sys
@@ -57,7 +60,8 @@ def test_v1_migration():
     check("v1 file reports migrated=True", migrated is True)
     check("migrated 2 labels", len(store) == 2, str(len(store)))
     on_disk = json.loads(open(path, encoding="utf-8").read())
-    check("file rewritten to schema v2", on_disk.get("schema_version") == 2)
+    check("file rewritten to the current schema",
+          on_disk.get("schema_version") == ls.SCHEMA_VERSION)
     check("file time_axis is t_session_seconds",
           on_disk.get("time_axis") == "t_session_seconds")
     check(".v1.bak kept", os.path.isfile(path + ".v1.bak"))

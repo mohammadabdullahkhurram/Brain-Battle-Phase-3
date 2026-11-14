@@ -13,6 +13,9 @@ all three sizes — there are no exemptions.
 
 Run:  python3 tests/test_layout_fit.py   (nonzero exit on any failure)
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import os
 import sys
 

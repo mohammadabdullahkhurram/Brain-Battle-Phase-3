@@ -19,3 +19,6 @@ screens/
 # Local AI-coding-agent config (kept locally, never committed)
 .claude/
 .codex/
+
+# Test logs written by tools/run_tests.py on CI
+test-logs/

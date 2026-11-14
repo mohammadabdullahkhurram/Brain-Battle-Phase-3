@@ -18,6 +18,9 @@ Run:  python3 tests/test_demo_session.py   (nonzero exit on any failure)
 Needs: ffmpeg on PATH (video container), PyQt6 + python-vlc (stubbed if
 libVLC is absent), same as the other tests/ scripts.
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import json
 import os
 import sys

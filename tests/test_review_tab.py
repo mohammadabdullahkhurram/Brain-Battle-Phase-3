@@ -9,6 +9,9 @@ re-import this module).
 
 Run:  python3 tests/test_review_tab.py
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import json
 import os
 import sys
@@ -47,7 +50,9 @@ def _fresh_tab():
 
 
 def _labels_on_disk():
-    p = os.path.join(DEMO_ROOT, "labels.json")
+    """This labeller's own file: <recording>/labels/test-labeller.json."""
+    import brain_battle.data.labels_store as labels_store
+    p = labels_store.labeller_path(DEMO_ROOT, _env.LABELLER)
     if not os.path.isfile(p):
         return []
     return json.loads(open(p, encoding="utf-8").read()).get("labels", [])
@@ -68,10 +73,10 @@ def test_fast_open_labels_first():
     import brain_battle.data.labels_store as labels_store
     import json, time as _t
     # seed a few labels on disk so there is something to show at once
-    store = labels_store.LabelsStore()
+    store = labels_store.open_for_labeller(DEMO_ROOT, _env.LABELLER)
     for nm, t0 in (("Jab", 3.0), ("Cross", 5.0), ("Hook", 7.0)):
         store.add(labels_store.new_label(nm, "A", labels_store.POINT, t0, created_by="x"))
-    store.save(os.path.join(DEMO_ROOT, "labels.json"))
+    store.save()
 
     tab = rl.ReviewLabelScreen()
     t0 = _t.perf_counter()

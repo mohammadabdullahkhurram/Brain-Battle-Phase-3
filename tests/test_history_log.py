@@ -12,6 +12,9 @@ Covers the append-only history.jsonl:
 
 Run:  python3 tests/test_history_log.py   (nonzero exit on any failure)
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import datetime as dt
 import json
 import os
@@ -59,9 +62,19 @@ def test_log_and_read():
         e = evs[0]
         check("event + details preserved",
               e["event"] == "recording_started" and e["details"]["rounds"] == 3)
-        check("user_source is os", e.get("user_source") == "os")
+        check("user is the saved \"Your name\" (user_source labeller_name)",
+              e.get("user") == _env.LABELLER and e.get("user_source") == "labeller_name",
+              f"{e.get('user')!r} / {e.get('user_source')!r}")
         check("app_version present", bool(e.get("app_version")))
-        check("user present (OS login)", bool(e.get("user")))
+        check("the computer's name is recorded", bool(e.get("computer")))
+        import brain_battle.data.app_settings as _aps
+        _s = _aps.load(); _s.labeller_name = ""; _s.save()
+        sh.log_event(root, sh.EVENT_OPENED_FOR_REVIEW)
+        last = sh.read_history(root)[-1]
+        check("with no name set, the OS login is used (user_source os)",
+              bool(last.get("user")) and last.get("user_source") == "os")
+        _env.set_labeller()
+        evs = evs[:2]
         # time parses as ISO 8601 and carries a timezone offset
         try:
             parsed = dt.datetime.fromisoformat(e["time"])

@@ -21,6 +21,9 @@ Covers:
 
 Run:  python3 tests/test_docs.py
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import importlib.util
 import os
 import re
@@ -161,6 +164,7 @@ _KNOWN_PHRASES = {
     "setup-and-workflow": "owner-approval",
     "how-to-recipes": "honesty gates",
     "known-issues": "listed, not fixed",
+    "cross-platform-and-ci": "Never tried on a real Windows machine",
     # Decisions / ADRs (D3)
     "decisions": "Michael Nygard",
     "adr-0001": "capture-time timestamping",
@@ -180,6 +184,10 @@ _KNOWN_PHRASES = {
     "adr-0015": "source of truth",
     "adr-0016": "conventional EEG viewer",
     "adr-0017": "seen through constant offsets",
+    "adr-0018": "four steps became three screens",
+    "adr-0019": "Identity is a name",
+    "adr-0020": "seen half-written",
+    "adr-0021": "pseudonymised, not anonymous",
     # Project (D3)
     "goals": "Community Impact Project",
     "status": "working agreement",
@@ -505,11 +513,12 @@ def test_docs_images_have_no_temp_folder_name():
     src_path = os.path.join(ROOT, "tools", "render_screens.py")
     with open(src_path, "r", encoding="utf-8") as f:
         src = f.read()
-    m = re.search(r'DOCS_RECORDINGS_DIR\s*=\s*"([^"]+)"', src)
-    check("render_screens.py defines DOCS_RECORDINGS_DIR", m is not None)
-    if not m:
+    m = re.search(r'_DOCS_FOLDER_NAME\s*=\s*"([^"]+)"', src)
+    parent = re.search(r'_DOCS_PARENT\s*=\s*"([^"]+)"', src)
+    check("render_screens.py defines the docs recordings folder", bool(m and parent))
+    if not (m and parent):
         return
-    path = m.group(1)
+    path = parent.group(1) + "/" + m.group(1)
     check("the docs recordings folder is named 'Brain Battle Data'",
           os.path.basename(path) == "Brain Battle Data", path)
     # No path segment is a throwaway/random temp-folder name — the kind the
@@ -556,7 +565,7 @@ def test_help_buttons_route_to_docs():
         check("Sessions Help opens the 'sessions' page",
               win._docs_page._current_page_id() == "sessions")
 
-        win.record_flow.help_requested.emit("step-2-set-up-session")
+        win.record_flow.help_requested.emit("step-2-recording")
         check("New recording Help (step 2) opens 'new-recording'",
               win._docs_page._current_page_id() == "new-recording")
         cur = win._docs_page._browser.textCursor()

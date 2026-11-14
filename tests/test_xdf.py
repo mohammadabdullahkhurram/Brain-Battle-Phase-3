@@ -10,6 +10,9 @@ path), so this runs in a couple of seconds.
 
 Run:  python3 tests/test_xdf.py
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import json
 import os
 import sys
@@ -167,7 +170,7 @@ def test_session_xdf():
     check("XDF: EEG per boxer, movement, markers, labels and the camera's frames",
           set(by) == {"BrainBattle_EEG_A", "BrainBattle_EEG_B", "BrainBattle_ACC_A",
                       "BrainBattle_ACC_B", "BrainBattle_GYRO_A", "BrainBattle_GYRO_B",
-                      "BrainBattle_Markers", "BrainBattle_Labels", "BrainBattle_Video_SIDE_01"}
+                      "BrainBattle_Markers", "BrainBattle_Labels_t", "BrainBattle_Video_SIDE_01"}
           - ({"BrainBattle_GYRO_A", "BrainBattle_GYRO_B"} - set(by)), str(sorted(by)))
     for who in ("A", "B"):
         s = by[f"BrainBattle_EEG_{who}"]
@@ -184,7 +187,9 @@ def test_session_xdf():
     check("XDF: phase markers + the marked moment, in time order",
           [r[0] for r in mk["time_series"]] == ["BASELINE_START", "ROUND_1_START", "MOMENT", "SESSION_END"]
           and np.allclose(mk["time_stamps"] - t0, [0.0, 4.0, 6.5, 14.0], atol=1e-6))
-    lb = by["BrainBattle_Labels"]
+    lb = by["BrainBattle_Labels_t"]       # one label stream per labeller ("t" placed these)
+    check("XDF: the label stream names its labeller",
+          lb["info"]["desc"][0]["brain_battle"][0]["labeller"][0] == "t")
     check("XDF: labels become marker events (a lasting label = start + end)",
           [r[0] for r in lb["time_series"]] == ["Jab/A", "Clinch/Both/start", "Clinch/Both/end"]
           and np.allclose(lb["time_stamps"] - t0, [5.25, 8.0, 9.5], atol=1e-6))
@@ -210,11 +215,17 @@ def test_session_xdf():
           abs(eeg["time_stamps"][i] - vid["time_stamps"][frame]) <= 1 / SR + 1e-9)
 
     # default labels come from labels.json; rebuilding replaces the file
-    store = labels_store.LabelsStore(); store.add(labels[0])
-    store.save(os.path.join(root, "labels.json"))
+    store = labels_store.open_for_labeller(root, "Maya K"); store.add(labels[0])
+    store.save()
+    other = labels_store.open_for_labeller(root, "Jonas R"); other.add(labels[1])
+    other.save()
     session_xdf.build_session_xdf(root)
-    check("XDF: with no labels given, the folder's labels.json is used",
-          [r[0] for r in _load(path)["BrainBattle_Labels"]["time_series"]] == ["Jab/A"])
+    got = _load(path)
+    check("XDF: with no labels given, every labeller's file is used — one stream each",
+          [r[0] for r in got["BrainBattle_Labels_maya-k"]["time_series"]] == ["Jab/A"]
+          and [r[0] for r in got["BrainBattle_Labels_jonas-r"]["time_series"]]
+          == ["Clinch/Both/start", "Clinch/Both/end"],
+          str(sorted(k for k in got if "Labels" in k)))
     mtime = os.path.getmtime(path)
     check("ensure_session_xdf leaves an existing file alone",
           session_xdf.ensure_session_xdf(root) == path and os.path.getmtime(path) == mtime)

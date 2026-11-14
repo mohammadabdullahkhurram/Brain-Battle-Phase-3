@@ -23,6 +23,9 @@ Real-time (short durations); a few tens of seconds total.
 
 Run:  python3 tests/test_record_flow.py
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import glob
 import json
 import os

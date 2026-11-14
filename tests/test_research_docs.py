@@ -22,6 +22,9 @@ A short demo session + a real export are generated ONCE in the __main__ guard
 
 Run:  python3 tests/test_research_docs.py
 """
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import csv
 import json
 import os
@@ -207,9 +210,12 @@ def test_xdf_streams_documented():
         keys.update(desc["brain_battle"][0].keys())
     check("the exported XDF has EEG, markers, labels and video-frame streams",
           {"BrainBattle_EEG_A", "BrainBattle_EEG_B", "BrainBattle_Markers",
-           "BrainBattle_Labels", "BrainBattle_Video_SIDE_01"} <= names, str(sorted(names)))
+           "BrainBattle_Video_SIDE_01"} <= names
+          and any(n.startswith("BrainBattle_Labels_") for n in names), str(sorted(names)))
     # Boxer B's streams are documented as "`BrainBattle_EEG_A` / `_B`".
     def documented(n):
+        if n.startswith("BrainBattle_Labels_"):      # one stream per labeller
+            return _documented_backtick(text, "BrainBattle_Labels_<labeller>")
         return _documented_backtick(text, n) or (
             n.endswith("_B") and _documented_backtick(text, n[:-2] + "_A")
             and _documented_backtick(text, "_B"))
@@ -232,8 +238,11 @@ def test_labels_json_documented():
     text = _formats_text()
     sample = labels_store.new_label("Jab", "A", labels_store.POINT, 1.0)
     _assert_all_documented(text, sample.keys(), "labels.json label field")
-    _assert_all_documented(text, ["schema_version", "time_axis", "labels"],
-                           "labels.json top-level key")
+    _assert_all_documented(text, labels_store.LabelsStore(migrated_from="x").to_json().keys(),
+                           "labels file top-level key")
+    check("the per-labeller file and the migration backup are documented",
+          _documented_backtick(text, "labels/<labeller>.json")
+          and _documented_backtick(text, labels_store.LEGACY_BACKUP))
     _assert_all_documented(text, labels_store.WHO_VALUES, "labels 'who' value")
     _assert_all_documented(text, [labels_store.POINT, labels_store.DURATION],
                            "labels 'kind' value")
@@ -264,8 +273,10 @@ def test_export_entries_documented():
     _assert_all_documented(text, entries, "export-zip entry")
     # the derived CSV columns
     _assert_all_documented(text, export_module._LABELS_V2_COLUMNS, "labels.csv column")
-    _assert_all_documented(text, ["t_start", "t_end", "source", "who", "label"],
-                           "events.csv column")
+    _assert_all_documented(text, export_module._EVENTS_COLUMNS, "events.csv column")
+    _assert_all_documented(text, export_module._AGREEMENT_COLUMNS, "agreement.csv column")
+    _assert_all_documented(text, ["agreement.csv", "names_hidden", "computer"],
+                           "labeller / privacy field")
     coreg = _csv_header(os.path.join(EXPORT_DIR, "eeg_coregistered.csv"))
     _assert_all_documented(text, coreg, "eeg_coregistered.csv column")
 

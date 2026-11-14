@@ -44,7 +44,11 @@ DOCS_MODE = "--docs" in sys.argv
 # normal way (a saved setting), NOT via BRAIN_BATTLE_CAPTURE_DIR — the env
 # override would make Settings show its "set outside the app" note, which a
 # real user wouldn't see. `tests/test_docs.py` asserts this name is clean.
-DOCS_RECORDINGS_DIR = "/private/tmp/Brain Battle Data"
+_DOCS_FOLDER_NAME = "Brain Battle Data"
+# A short, stable parent so the path shown in the Settings picture is tidy:
+# /private/tmp on macOS, the system temp folder elsewhere (Windows).
+_DOCS_PARENT = "/private/tmp" if os.path.isdir("/private/tmp") else tempfile.gettempdir()
+DOCS_RECORDINGS_DIR = os.path.join(_DOCS_PARENT, _DOCS_FOLDER_NAME)
 
 _TMP_CFG = os.path.join(tempfile.mkdtemp(prefix="bb_render_cfg_"), "settings.json")
 os.environ["BRAIN_BATTLE_CONFIG"] = _TMP_CFG
@@ -108,7 +112,7 @@ if DOCS_MODE:
     os.makedirs(DOCS_RECORDINGS_DIR, exist_ok=True)
     with open(_TMP_CFG, "w", encoding="utf-8") as _f:
         import json as _json
-        _json.dump({"capture_dir": DOCS_RECORDINGS_DIR}, _f)
+        _json.dump({"capture_dir": DOCS_RECORDINGS_DIR, "labeller_name": "Maya K"}, _f)
     _TMP_CAP = DOCS_RECORDINGS_DIR
     # Fill it with a small demo library so the Sessions image shows several
     # real statuses (Needs labelling, Labelled, Exported, Interrupted). Run
@@ -126,6 +130,9 @@ if DOCS_MODE:
 else:
     _TMP_CAP = tempfile.mkdtemp(prefix="bb_render_cap_")
     os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = _TMP_CAP
+    with open(_TMP_CFG, "w", encoding="utf-8") as _f:
+        import json as _json
+        _json.dump({"labeller_name": "Maya K"}, _f)
 
 from PyQt6.QtWidgets import QApplication
 _out_args = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -139,12 +146,13 @@ DESIGN_SIZES = [(1440, 900), (1280, 800)]
 # has a curated doc equivalent; names absent here are screens/-only.
 _DOCS_NAMES = {
     "01b_sessions-with-recordings": "sessions",
-    "02_connect-devices": "connect-devices",
-    "03_set-up-session": "set-up-session",
+    "02_get-ready": "get-ready",
     "04_recording": "recording",
     "05_saved": "saved",
     "06_review-and-label": "review-and-label",
+    "06b_review-compare": "review-compare",
     "07_settings": "settings",
+    "09_export": "export",
 }
 
 
@@ -223,16 +231,13 @@ def main():
     win._shell.set_current_index(win.IDX_RECORD)   # starts the flow (scans devices)
     flow = win.record_flow
     _pump(app, 1.8)                                 # let sim cameras + bands connect
-    flow._connect_step.on_tick()
-    grab("02_connect-devices")
-
-    flow.goto_setup()
     su = flow._setup_step
     su._st_rest.set_value(4); su._st_round.set_value(30); su._st_break.set_value(0)
     su._st_rounds.set_value(1); su._name_a.setText("Sam"); su._name_b.setText("Alex")
     su._recompute()
+    flow._ready_page.on_tick()
     _pump(app, 0.2)
-    grab("03_set-up-session")
+    grab("02_get-ready")
 
     flow.begin_recording()
     # run into the round, mark a moment, then grab mid-round
@@ -257,6 +262,13 @@ def main():
     # ── Review & Label with that recording open, a few labels placed ──
     review = win._review_page
     win._shell.set_current_index(win.IDX_REVIEW)
+    # a second labeller's labels, so the screen shows what comparing looks like
+    import brain_battle.data.labels_store as _ls
+    other = _ls.open_for_labeller(flow._saved_root, "Jonas R")
+    for t, name, who, col in ((4.7, "Jab", "A", "#3D4FD6"), (5.9, "Cross", "A", "#7C3AED"),
+                              (7.4, "Hook", "B", "#0F766E")):
+        other.add(_ls.new_label(name, who, "point", t, color=col, created_by="Jonas R"))
+    other.save()
     review.load_session_folder(flow._saved_root)
     review.wait_loaded()
     for t, key in ((4.6, 0), (5.4, 1), (6.3, 4)):
@@ -266,6 +278,17 @@ def main():
     review._seek(5.0)
     _pump(app, 0.8)
     grab("06_review-and-label")
+    review._tabs.set_value("compare", emit=True)
+    _pump(app, 0.3)
+    grab("06b_review-compare")
+    review._tabs.set_value("mine", emit=True)
+
+    # ── the export window (rendered on its own) ──
+    from brain_battle.data.export_module import ExportOptionsDialog
+    dlg = ExportOptionsDialog(flow._saved_root)
+    dlg.resize(560, dlg.sizeHint().height()); dlg.show(); _pump(app, 0.3)
+    fn = os.path.join(OUT, "export.png" if DOCS_MODE else "09_export_dialog.png")
+    dlg.grab().save(fn); saved.append(fn); dlg.close()
 
     # ── Sessions, now with the recording just made ──
     win._shell.set_current_index(win.IDX_SESSIONS)   # triggers an async rescan

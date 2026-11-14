@@ -503,21 +503,17 @@ def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
     return results
 
 
-def _write_demo_labels(session_root, labels):
-    """Write a minimal version-1 labels.json (the app upgrades it to version 2
-    the first time the recording is opened — which exercises that upgrade)."""
-    import json as _json
-    data = {
-        "schema_version": 1,
-        "time_axis": "labelling_playhead_offset0",
-        "labels": [
-            {"t_seconds": float(t), "label": name, "color": "#3D4FD6",
-             "boxer": None, "end_t_seconds": None}
-            for name, t in labels
-        ],
-    }
-    with open(os.path.join(session_root, "labels.json"), "w", encoding="utf-8") as f:
-        _json.dump(data, f, indent=2)
+DEMO_LABELLER = "Demo labeller"
+
+
+def _write_demo_labels(session_root, labels, labeller: str = DEMO_LABELLER):
+    """Write a few placed labels the way the app does: in the labeller's own
+    file, ``labels/<labeller>.json`` (through the real ``labels_store``)."""
+    import brain_battle.data.labels_store as _ls
+    store = _ls.open_for_labeller(session_root, labeller)
+    for name, t in labels:
+        store.add(_ls.new_label(name, "A", _ls.POINT, float(t), created_by=labeller))
+    store.save()
 
 
 # ─── CLI ────────────────────────────────────────────────────────────────────────

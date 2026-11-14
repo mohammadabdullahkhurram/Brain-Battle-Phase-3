@@ -1,0 +1,66 @@
+# Runs every test script on macOS and Windows, headless, so a problem that only
+# shows up on one of the two systems the lab uses is caught automatically.
+# No accounts, tokens or secrets are needed. See
+# docs/developer-guide/cross-platform-and-ci.md.
+name: tests
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    env:
+      QT_QPA_PLATFORM: offscreen          # no display on the runners
+      PYTHONUTF8: "1"                     # Windows: read/write files as UTF-8
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Install the app
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e .
+
+      - name: Show versions
+        run: |
+          python --version
+          ffmpeg -version
+
+      - name: Run every test script
+        run: python tools/run_tests.py --jobs 2
+
+      - name: Keep the logs if anything failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.os }}
+          path: test-logs/
+          if-no-files-found: ignore
