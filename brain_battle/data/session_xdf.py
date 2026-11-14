@@ -11,8 +11,11 @@ Streams written (names shared with the live LSL outlets, see data/signals.py):
     BrainBattle_ACC|GYRO|PPG_A/_B headband movement / pulse sensors (if recorded)
     BrainBattle_Markers           Markers      BASELINE_START, ROUND_1_START, …,
                                                SESSION_END, and MOMENT
-    BrainBattle_Labels            Markers      the labels placed in Review & Label
-                                               ("Jab/A", "Clinch/Both/start", …)
+    BrainBattle_Labels_<labeller> Markers      the labels placed in Review & Label
+                                               ("Jab/A", "Clinch/Both/start", …),
+                                               one stream per labeller; the
+                                               labeller's name is in the stream
+                                               description (<labeller>)
     BrainBattle_Video_<camera>    VideoFrames  one sample per video frame; the
                                                value is the frame number in the
                                                MP4, the timestamp is when that
@@ -25,6 +28,12 @@ repeated in every stream's description as ``session_start``). So
     t_session_seconds = xdf_timestamp − session_start
 
 and the first marker, ``BASELINE_START``, follows within a fraction of a second.
+
+Boxer names are written into every stream's description (``boxer_a_name``,
+``boxer_b_name``, and ``boxer_name`` on a boxer's own streams) so the team can
+keep track of who is who. ``build_session_xdf(…, hide_names=True)`` — what an
+export with "Replace boxer names" uses — leaves them out and drops the names
+from the ``recording`` field too. (docs/research-and-data/personal-data.md)
 
 The file is derived from the recording's crash-safe source files (EEG CSVs,
 camera sidecars, phase_markers.csv, the manifest, labels.json), not written
@@ -49,8 +58,10 @@ import numpy as np
 
 import brain_battle.data.session_storage as session_storage
 from brain_battle.data.signals import (
-    EEG_CHANNELS, EEG_UNIT, SAMPLE_RATE, SENSORS, MARKER_STREAM, LABEL_STREAM,
-    XDF_NAME, eeg_stream_name, sensor_stream_name, video_stream_name)
+    EEG_CHANNELS, EEG_UNIT, SAMPLE_RATE, SENSORS, MARKER_STREAM,
+    XDF_NAME, eeg_stream_name, sensor_stream_name, video_stream_name, label_stream_name)
+import brain_battle.data.labels_store as labels_store
+import brain_battle.data.privacy as privacy
 from brain_battle.data.xdf_writer import XdfWriter, channels_xml, _xml
 
 log = logging.getLogger(__name__)
@@ -104,13 +115,14 @@ def _read_sidecar(path: str):
     return idx[keep].astype(np.int32), t[keep]
 
 
-def _read_labels(session_root) -> list:
-    try:
-        with open(os.path.join(str(session_root), "labels.json"), encoding="utf-8") as f:
-            data = json.load(f)
-        return [x for x in data.get("labels", []) if isinstance(x, dict) and "t_start" in x]
-    except (OSError, ValueError, AttributeError):
-        return []
+def _labels_by_labeller(labels) -> dict:
+    """``{labeller: [labels]}`` from a flat list whose items carry ``labeller``
+    (items without one are grouped under their ``created_by``, else "labels")."""
+    out: dict = {}
+    for lab in labels or []:
+        who = str(lab.get("labeller") or lab.get("created_by") or "labels")
+        out.setdefault(who, []).append(lab)
+    return out
 
 
 def label_events(labels) -> list[tuple]:
@@ -132,25 +144,34 @@ def label_events(labels) -> list[tuple]:
     return out
 
 
-def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None) -> Optional[str]:
+def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None,
+                      hide_names: bool = False) -> Optional[str]:
     """Write ``recording.xdf`` for a recording folder and return its path, or
-    None if the folder has nothing to put in it. ``labels`` defaults to the
-    folder's own labels.json. The file is replaced atomically, so a reader
-    never sees a half-written one."""
+    None if the folder has nothing to put in it.
+
+    ``labels`` defaults to every labeller's labels in the folder (a flat list
+    whose items carry ``labeller``); each labeller gets their own marker
+    stream. ``hide_names`` leaves the boxer names out. The file is replaced
+    atomically, so a reader never sees a half-written one."""
     root = Path(session_root)
     manifest = session_storage._read_manifest(root) or {}
     cc = manifest.get("capture_clock") or {}
     t0 = float(cc.get("t0_lsl") or 0.0)
     t0_unix = cc.get("t0_unix")
     boxers = manifest.get("boxers") or {}
-    common = (_xml("recording", root.name) + _xml("session_start", repr(t0))
+    names = privacy.boxer_names(manifest)
+    rec_name = privacy.neutral_recording_name(root.name) if hide_names else root.name
+    common = (_xml("recording", rec_name) + _xml("session_start", repr(t0))
               + _xml("app_version", manifest.get("version", "")))
+    if not hide_names:
+        common += _xml("boxer_a_name", names["A"] or "") + _xml("boxer_b_name", names["B"] or "")
 
     def desc(extra: str = "", chans: str = "") -> str:
         return chans + "<brain_battle>" + common + extra + "</brain_battle>"
 
     out_path = out_path or xdf_path(root)
-    tmp = out_path + ".tmp"
+    # a temp name no other computer picks (two machines may export at once)
+    tmp = f"{out_path}.{os.getpid()}-{os.urandom(4).hex()}.tmp"
     n_streams = 0
     w = XdfWriter(tmp)
     try:
@@ -162,6 +183,8 @@ def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None)
             t, data = got
             extra = _xml("boxer", who) + _xml(
                 "headband", (boxers.get(who) or {}).get("headband") or "")
+            if not hide_names:
+                extra += _xml("boxer_name", names.get(who) or "")
             sid = w.add_stream(name, type_, len(channels), rate, "float32",
                                source_id=f"brainbattle-{name}",
                                desc=desc(extra, channels_xml(channels, unit, ch_type)))
@@ -177,13 +200,13 @@ def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None)
             continuous(sensor_stream_name(kind, who), kind, channels, rate,
                        unit, ch_type, path, who)
 
-        def markers(name, events):
+        def markers(name, events, extra=""):
             nonlocal n_streams
             if not events:
                 return
             sid = w.add_stream(name, "Markers", 1, 0, "string",
                                source_id=f"brainbattle-{name}",
-                               desc=desc(chans=channels_xml(["marker"], type_="Marker")))
+                               desc=desc(extra, channels_xml(["marker"], type_="Marker")))
             w.write_samples(sid, [t0 + t for t, _ in events], [text for _, text in events])
             n_streams += 1
 
@@ -191,7 +214,11 @@ def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None)
         events += [(m["t_session_seconds"], MOMENT_MARKER)
                    for m in session_storage.read_moments(root)]
         markers(MARKER_STREAM, sorted(events, key=lambda e: e[0]))
-        markers(LABEL_STREAM, label_events(_read_labels(root) if labels is None else labels))
+        if labels is None:
+            labels = labels_store.all_labels(root)
+        for who, labs in sorted(_labels_by_labeller(labels).items()):
+            markers(label_stream_name(labels_store.labeller_slug(who)), label_events(labs),
+                    _xml("labeller", who))
 
         for stem, mp4, sidecar in session_storage.camera_files(root):
             got = _read_sidecar(sidecar) if os.path.isfile(sidecar) else None
@@ -217,7 +244,12 @@ def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None)
     if n_streams == 0:
         _unlink(tmp)
         return None
-    os.replace(tmp, out_path)
+    try:
+        from brain_battle.data.safe_io import replace_with_retry
+        replace_with_retry(tmp, out_path)
+    except OSError:
+        _unlink(tmp)
+        raise
     return out_path
 
 

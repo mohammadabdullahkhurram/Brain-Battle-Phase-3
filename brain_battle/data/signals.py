@@ -33,6 +33,12 @@ LABEL_STREAM = "BrainBattle_Labels"
 XDF_NAME = "recording.xdf"
 
 
+def label_stream_name(labeller_slug: str) -> str:
+    """One marker stream per labeller: ``BrainBattle_Labels_<labeller>``
+    (``labeller_slug`` is ``labels_store.labeller_slug(name)``)."""
+    return f"{LABEL_STREAM}_{labeller_slug}"
+
+
 def eeg_stream_name(which: str) -> str:
     return f"BrainBattle_EEG_{str(which).upper()}"
 
@@ -48,4 +54,4 @@ def video_stream_name(stem: str) -> str:
 
 __all__ = ["SAMPLE_RATE", "EEG_CHANNELS", "EEG_UNIT", "CHANNEL_PLACES", "SENSORS",
            "EEG_DIR_NAME", "SENSOR_DIR_NAME", "MARKER_STREAM", "LABEL_STREAM",
-           "XDF_NAME", "eeg_stream_name", "sensor_stream_name", "video_stream_name"]
+           "XDF_NAME", "label_stream_name", "eeg_stream_name", "sensor_stream_name", "video_stream_name"]

@@ -113,13 +113,14 @@ def load(recordings_dir, seed_if_missing: bool = True) -> list[dict]:
 
 
 def save(recordings_dir, labels) -> None:
-    """Atomically write the team label list (temp + rename)."""
+    """Write the team label list atomically, holding the folder lock so two
+    computers editing it at once cannot interleave."""
     os.makedirs(str(recordings_dir), exist_ok=True)
     p = Path(path(recordings_dir))
     data = {"schema_version": 1, "labels": _normalise(labels)}
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(p)
+    import brain_battle.data.safe_io as safe_io
+    with safe_io.FolderLock(p):
+        safe_io.atomic_write_json(p, data)
 
 
 __all__ = ["DEFAULT_LABELS", "KIND_LABEL", "POINT", "DURATION", "FILENAME",

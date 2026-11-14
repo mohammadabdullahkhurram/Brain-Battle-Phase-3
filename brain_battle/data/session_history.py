@@ -7,8 +7,9 @@ Per-recording, append-only history log: one event per line in
 Each line is a JSON object:
     {
       "time":        "2026-10-27T14:05:12.482+01:00",  # ISO 8601 with tz
-      "user":        "mohammad",                        # OS login (for now)
-      "user_source": "os",                              # how `user` was obtained
+      "user":        "Maya K",                          # who did it
+      "user_source": "labeller_name",                   # "labeller_name" | "os"
+      "computer":    "LAB-PC-2",                        # which computer
       "app_version": "3.0.0-dev",
       "event":       "labels_added",
       "details":     { ... }                            # event-specific, may be {}
@@ -20,9 +21,11 @@ Each write is flushed + fsync'd so a hard kill keeps everything up to the last
 completed line; a kill mid-line can leave a single truncated trailing line,
 which the reader skips.
 
-The `user_source: "os"` field marks that `user` came from the OS login name —
-a placeholder until Phase 7 adds real accounts, which will set e.g.
-`user_source: "account"` and a real user id.
+`user` is the "Your name" set in Settings (`user_source: "labeller_name"`), or
+the operating-system login name when no name has been set yet
+(`user_source: "os"`). `computer` is the computer's name, so a shared folder's
+history shows which machine did what. Phase 7's accounts would add
+`user_source: "account"`.
 
 Pure filesystem + stdlib: no Qt, so it's trivially testable and usable from any
 thread.
@@ -52,6 +55,7 @@ EVENT_LABELS_REMOVED        = "labels_removed"
 EVENT_LABELS_MIGRATED       = "labels_migrated"
 EVENT_LABELS_EXPORTED       = "labels_exported"
 EVENT_EXPORT_CREATED        = "export_created"
+EVENT_LABELS_CLAIMED        = "labels_claimed"
 
 
 def _os_user() -> str:
@@ -59,6 +63,18 @@ def _os_user() -> str:
         return getpass.getuser()
     except Exception:
         return os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+
+
+def current_user() -> tuple[str, str]:
+    """(name, source): "Your name" from Settings if set, else the OS login."""
+    try:
+        import brain_battle.data.app_settings as app_settings
+        name = app_settings.labeller_name()
+        if name:
+            return name, "labeller_name"
+    except Exception:
+        pass
+    return _os_user(), "os"
 
 
 def _now_iso() -> str:
@@ -80,23 +96,29 @@ def log_event(session_root: str | os.PathLike, event: str,
 
     `details` is any JSON-serialisable dict. `user`/`when` are injectable for
     testing; by default the OS login and the current local time are used."""
+    if user is None:
+        user, source = current_user()
+    else:
+        source = "labeller_name"
+    from brain_battle.support.platform_utils import computer_name
     rec = {
         "time":        when or _now_iso(),
-        "user":        user if user is not None else _os_user(),
-        "user_source": "os",
+        "user":        user,
+        "user_source": source,
+        "computer":    computer_name(),
         "app_version": __version__,
         "event":       event,
         "details":     details or {},
     }
     try:
         path = history_path(session_root)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(rec, ensure_ascii=False) + "\n"
-        # Append only; flush + fsync so a hard kill keeps every completed line.
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(line)
-            f.flush()
-            os.fsync(f.fileno())
+        # The recording folder is never created here: if it is not there (a
+        # shared drive that went away) the event is dropped, rather than an
+        # empty look-alike folder being left behind.
+        # Append only (one write per line; flush + fsync), so a hard kill keeps
+        # every completed line and several computers can add to the same file.
+        from brain_battle.data.safe_io import append_line
+        append_line(path, json.dumps(rec, ensure_ascii=False))
         return True
     except Exception:
         return False
@@ -136,4 +158,5 @@ __all__ = [
     "EVENT_OPENED_FOR_REVIEW", "EVENT_MOMENT_MARKED",
     "EVENT_LABELS_ADDED", "EVENT_LABELS_REMOVED",
     "EVENT_LABELS_MIGRATED", "EVENT_LABELS_EXPORTED", "EVENT_EXPORT_CREATED",
+    "EVENT_LABELS_CLAIMED", "current_user",
 ]

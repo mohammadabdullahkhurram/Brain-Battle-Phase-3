@@ -262,9 +262,10 @@ class SessionLayout:
             "config":         asdict(self.config),
             "phases":         [asdict(p) for p in self.phases],
         }
-        self.manifest_path().write_text(
-            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        # Atomic (temp file + swap): a reader on another computer, or a crash
+        # mid-write, never sees half a manifest.
+        import brain_battle.data.safe_io as safe_io
+        safe_io.atomic_write_json(self.manifest_path(), data)
 
 
 # ─── Public factory ───────────────────────────────────────────────────────────
@@ -309,34 +310,17 @@ def create_session(base_dir: str | os.PathLike,
 # ─── Crash recovery ─────────────────────────────────────────────────────────────
 
 def _read_manifest(session_root: Path) -> Optional[dict]:
-    p = session_root / "session_manifest.json"
-    if not p.is_file():
-        return None
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+    import brain_battle.data.safe_io as safe_io
+    data = safe_io.read_json(Path(session_root) / "session_manifest.json")
+    return data if isinstance(data, dict) else None
 
 
 def _update_manifest(session_root, change) -> bool:
     """Read the manifest, let ``change(manifest)`` edit it (return False to
-    abandon), and write it back atomically (temp file + rename). Returns True
-    if it was written."""
-    root = Path(session_root)
-    m = _read_manifest(root)
-    if m is None or change(m) is False:
-        return False
-    tmp = root / "session_manifest.json.tmp"
-    try:
-        tmp.write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, root / "session_manifest.json")
-        return True
-    except OSError:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        return False
+    abandon), and write it back atomically, under the folder lock so two
+    computers cannot overwrite each other's edit. Returns True if written."""
+    import brain_battle.data.safe_io as safe_io
+    return safe_io.update_json(Path(session_root) / "session_manifest.json", change)
 
 
 def _has_session_end(session_root: Path) -> bool:
@@ -426,29 +410,6 @@ def read_moments(session_root) -> list:
             except (TypeError, ValueError):
                 continue
     return out
-
-
-def consume_moment(session_root, t_session_seconds) -> bool:
-    """Remove the moment at (≈) `t_session_seconds` from the manifest once the
-    user has named it in Review. Returns True if one was removed."""
-    target = round(float(t_session_seconds), 3)
-
-    def change(m):
-        kept, removed = [], False
-        for e in (m.get("moments") or []):
-            try:
-                t = round(float(e.get("t_session_seconds")), 3)
-            except (TypeError, ValueError, AttributeError):
-                kept.append(e)
-                continue
-            if not removed and abs(t - target) < 1e-3:
-                removed = True
-            else:
-                kept.append(e)
-        m["moments"] = kept
-        return removed
-
-    return _update_manifest(session_root, change)
 
 
 # ─── Finding a recording's files ────────────────────────────────────────────────
@@ -617,16 +578,18 @@ STATUS_NEEDS_LABELLING = "needs_labelling"
 STATUS_UNREADABLE      = "unreadable"
 
 
-def _labels_count(root: Path) -> int:
-    p = root / "labels.json"
-    if not p.is_file():
-        return 0
+def _labeller_counts(root: Path) -> dict:
+    """{labeller name: label count} across every labeller's file (and a
+    not-yet-migrated labels.json)."""
+    import brain_battle.data.labels_store as labels_store
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        labs = data.get("labels", []) if isinstance(data, dict) else []
-        return len([x for x in labs if isinstance(x, dict)])
-    except (OSError, ValueError):
-        return 0
+        return labels_store.labeller_counts(root)
+    except Exception:
+        return {}
+
+
+def _labels_count(root: Path) -> int:
+    return sum(_labeller_counts(root).values())
 
 
 def _history_has_export(root: Path) -> bool:
@@ -684,6 +647,15 @@ class SessionInfo:
     dismissed:     bool
     readable:      bool
     demo:          bool = False
+    # {labeller name: label count} — who has labelled this recording.
+    labellers:     dict = field(default_factory=dict)
+
+    def labels_by(self, name: str) -> int:
+        """How many labels this labeller has placed here (names compared the
+        way label files are: capitals/spacing/punctuation ignored)."""
+        import brain_battle.data.labels_store as labels_store
+        return sum(n for who, n in self.labellers.items()
+                   if labels_store.same_labeller(who, name))
 
 
 def session_info(root) -> SessionInfo:
@@ -705,7 +677,8 @@ def session_info(root) -> SessionInfo:
                   + max(0, rounds - 1) * (cfg.get("break_sec", 0) or 0))
     interrupted = m.get("interrupted") is True
     dismissed = m.get("interrupted_dismissed") is True
-    labels = _labels_count(root)
+    labellers = _labeller_counts(root)
+    labels = sum(labellers.values())
     if interrupted:
         status = STATUS_INTERRUPTED
     elif _history_has_export(root):
@@ -726,13 +699,50 @@ def session_info(root) -> SessionInfo:
     return SessionInfo(str(root), name, m.get("started_at", "") or "",
                        float(m.get("started_unix") or 0.0), a, b, rounds,
                        planned, stopped, status, labels, interrupted, dismissed, True,
-                       demo=m.get("demo") is True)
+                       demo=m.get("demo") is True, labellers=labellers)
+
+
+# Scan cache: reading four small files per recording is quick on a local disk
+# but slow over a network drive, so a recording is only re-read when one of
+# those files changed (their size + modified time is the key).
+_INFO_CACHE: dict = {}
+
+
+def _scan_key(root: Path):
+    def st(p):
+        try:
+            s = os.stat(p)
+            return (s.st_mtime_ns, s.st_size)
+        except OSError:
+            return None
+    labels_dir = root / "labels"
+    files = []
+    try:
+        files = sorted(os.listdir(labels_dir))
+    except OSError:
+        pass
+    return (st(root / "session_manifest.json"), st(root / "labels.json"),
+            st(root / "history.jsonl"), st(root / "phase_markers.csv"),
+            tuple((fn, st(labels_dir / fn)) for fn in files))
+
+
+def session_info_cached(root) -> SessionInfo:
+    root = Path(root)
+    key = _scan_key(root)
+    hit = _INFO_CACHE.get(str(root))
+    if hit is not None and hit[0] == key:
+        return hit[1]
+    info = session_info(root)
+    _INFO_CACHE[str(root)] = (key, info)
+    return info
 
 
 def list_sessions(base_dir) -> list[SessionInfo]:
     """All sessions under base_dir (discovered by manifest presence), newest
-    first. Reads small files only — safe to call off the UI thread."""
-    out = [session_info(d) for d in _session_dirs(Path(base_dir))]
+    first. Reads small files only, and only for recordings that changed since
+    the last scan — safe to call off the UI thread, and quick on a network
+    drive after the first scan."""
+    out = [session_info_cached(d) for d in _session_dirs(Path(base_dir))]
     out.sort(key=lambda s: (s.started_unix, s.name), reverse=True)
     return out
 
@@ -848,9 +858,9 @@ __all__ = [
     "create_session", "sanitize_name",
     "is_interrupted_session", "scan_interrupted_sessions", "flag_new_interrupted",
     "mark_session_interrupted", "dismiss_interrupted",
-    "read_moments", "consume_moment",
+    "read_moments",
     "read_phase_markers", "read_csv_tolerant", "camera_frame_rates", "friendly_phase", "short_phase", "eeg_files", "sensor_files", "camera_files",
-    "session_info", "list_sessions", "folder_size_bytes",
+    "session_info", "session_info_cached", "list_sessions", "folder_size_bytes",
     "session_total_seconds", "estimate_session_bytes", "disk_space_verdict",
     "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",
     "video_bytes_per_sec_for_mbps", "VIDEO_RATE_HEADROOM",

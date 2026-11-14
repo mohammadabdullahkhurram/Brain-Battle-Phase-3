@@ -5,7 +5,10 @@ Small application-settings store (a plain JSON file in the user's config
 directory) for everything that used to be hard-coded in source: the
 headband → Boxer A/B mapping (replacing `eeg_module.BOXER_LABELS`), the
 default session plan, the round bell on/off, the record video quality, which
-extra headband sensors to record, and whether to publish live LSL streams.
+extra headband sensors to record, whether to publish live LSL streams, who is
+labelling on this computer ("Your name"), and whether boxer names are hidden
+in exports / on screen. These are per-computer settings; what the team shares
+(the label list) lives in the recordings folder instead.
 
 Pure stdlib + filesystem (no Qt), so it is trivially testable and usable from
 any thread. The Settings screen edits this store; the guided recording flow
@@ -111,6 +114,13 @@ class AppSettings:
     # so LabRecorder / an LSL viewer can see them. The app's own files do not
     # depend on this.
     lsl_streams:      bool = True
+    # Who is labelling on this computer ("Your name", asked once). Each
+    # labeller's labels are stored in their own file in the recording folder.
+    labeller_name:    str = ""
+    # Boxer names: replace them with "Boxer A / Boxer B" in exports by default
+    # (each export can still choose), and hide them on screen (for presenting).
+    hide_names_in_exports: bool = False
+    hide_names_on_screen:  bool = False
 
     # ---- derived accessors ----
     def capture_dir_resolved(self) -> str:
@@ -172,12 +182,10 @@ class AppSettings:
         return {"schema_version": SCHEMA_VERSION, **asdict(self)}
 
     def save(self, path: Optional[str] = None) -> None:
+        import brain_battle.data.safe_io as safe_io
         p = Path(path or config_path())
         p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self.to_json(), indent=2, ensure_ascii=False),
-                       encoding="utf-8")
-        tmp.replace(p)
+        safe_io.atomic_write_json(p, self.to_json())
 
 
 def load(path: Optional[str] = None) -> AppSettings:
@@ -210,9 +218,12 @@ def load(path: Optional[str] = None) -> AppSettings:
         s.round_bell = data["round_bell"]
     if data.get("video_quality") in VIDEO_QUALITY:
         s.video_quality = data["video_quality"]
-    for key in ("record_motion", "record_ppg", "lsl_streams"):
+    for key in ("record_motion", "record_ppg", "lsl_streams",
+                "hide_names_in_exports", "hide_names_on_screen"):
         if isinstance(data.get(key), bool):
             setattr(s, key, data[key])
+    if isinstance(data.get("labeller_name"), str):
+        s.labeller_name = data["labeller_name"].strip()[:60]
     return s
 
 
@@ -222,6 +233,23 @@ def boxer_labels() -> dict:
     """{device_name: "BOXER A"/"BOXER B"} from the saved settings — the
     drop-in replacement for the old eeg_module.BOXER_LABELS dict."""
     return load().boxer_labels()
+
+
+def labeller_name() -> str:
+    """The saved "Your name" ('' until the user has been asked)."""
+    return load().labeller_name
+
+
+def set_labeller_name(name: str) -> str:
+    """Save "Your name" and return the cleaned-up value."""
+    s = load()
+    s.labeller_name = " ".join(str(name or "").split())[:60]
+    s.save()
+    return s.labeller_name
+
+
+def hide_names_on_screen() -> bool:
+    return load().hide_names_on_screen
 
 
 def remember_headband(name: str) -> None:
@@ -240,5 +268,6 @@ def remember_headband(name: str) -> None:
 __all__ = [
     "AppSettings", "load", "config_path", "default_capture_root",
     "boxer_labels", "remember_headband", "VIDEO_QUALITY", "gb_per_hour",
+    "labeller_name", "set_labeller_name", "hide_names_on_screen",
     "SCHEMA_VERSION",
 ]
