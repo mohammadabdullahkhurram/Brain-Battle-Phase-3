@@ -37,11 +37,6 @@ def _supplementary_qss():
     list widgets, progress bars, combo boxes, group boxes, etc.)."""
     import brain_battle.ui.design_tokens as dt
     return f"""
-        QFrame#panel {{ background-color: {dt.card_bg()}; border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_MD}px; }}
-        QFrame#video_slot {{ background-color: {dt.canvas_bg()}; border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_MD}px; }}
-        QFrame#video_slot:hover {{ border-color: {dt.border_strong()}; }}
-        QLabel#panel_title {{ color: {dt.accent()}; font-size: 10px; letter-spacing: 1.8px; font-family: {dt.FONT_UI}; font-weight: 700; padding: 0px; }}
-        QLabel#timecode {{ color: {dt.accent()}; font-size: 13px; font-family: {dt.FONT_MONO}; letter-spacing: 0.8px; }}
         QSlider::groove:horizontal {{ height: 3px; background: {dt.border_strong()}; border-radius: 1px; }}
         QSlider::sub-page:horizontal {{ background: {dt.accent()}; height: 3px; border-radius: 1px; }}
         QSlider::handle:horizontal {{ background: {dt.accent()}; width: 12px; height: 12px; margin: -5px 0; border-radius: 6px; }}
@@ -50,12 +45,7 @@ def _supplementary_qss():
         QListWidget::item:selected {{ background-color: {dt.accent_ghost()}; color: {dt.accent()}; }}
         QProgressBar {{ background-color: {dt.card_bg()}; border: 1px solid {dt.border()}; height: 4px; text-align: center; color: transparent; border-radius: 2px; }}
         QProgressBar::chunk {{ background-color: {dt.accent()}; border-radius: 2px; }}
-        QStatusBar {{ background-color: {dt.canvas_bg()}; border-top: 1px solid {dt.border()}; color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; font-size: 10px; }}
-        QGroupBox {{ border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_MD}px; margin-top: 18px; padding: 12px; font-family: {dt.FONT_UI}; font-size: 10px; letter-spacing: 1.4px; font-weight: 700; color: {dt.text_tertiary()}; }}
-        QGroupBox::title {{ subcontrol-origin: margin; left: 14px; padding: 0 6px; color: {dt.text_tertiary()}; letter-spacing: 1.4px; }}
-        QComboBox {{ background-color: {dt.card_bg()}; border: 1px solid {dt.border_strong()}; border-radius: {dt.RADIUS_MD}px; color: {dt.text_primary()}; padding: 8px 12px; font-family: {dt.FONT_UI}; font-size: 12px; }}
-        QComboBox:hover {{ border-color: {dt.accent()}; }}
-    """
+    """ + dt.qss_combo()
 
 MIN_WINDOW = (1180, 720)   # smallest usable window (below the 1280×800 DESIGN
 #                            target, for the owner's smaller laptop); the Review
@@ -135,6 +125,8 @@ class BrainBattleApp(QMainWindow):
         from brain_battle.ui.settings_screen import SettingsScreen
         self._settings_page = SettingsScreen()
         self._settings_page.capture_dir_changed.connect(self._on_capture_dir_changed)
+        self._settings_page.labeller_changed.connect(self._on_labeller_changed)
+        self._settings_page.names_hidden_changed.connect(self._apply_names_hidden)
         self._settings_page.help_requested.connect(lambda: self.open_help("settings"))
         from brain_battle.ui.docs_screen import DocsScreen
         self._docs_page = DocsScreen()
@@ -143,10 +135,12 @@ class BrainBattleApp(QMainWindow):
         self.record_flow.help_requested.connect(self.open_help)
         self._review_page.help_requested.connect(lambda: self.open_help("review-and-label"))
 
+        self._sessions_page.export_session.connect(self._export_session)
         self.IDX_SESSIONS = self._shell.add_page("sessions", "Sessions", "home", self._sessions_page)
-        # New recording opens the full-screen guided flow (no sidebar).
-        self.IDX_RECORD   = self._shell.add_page("record", "New recording", "plus-circle",
-                                                 self.record_flow, hide_sidebar=True)
+        # New recording — the sidebar's one primary button — opens the
+        # full-screen guided flow (no sidebar).
+        self.IDX_RECORD   = self._shell.add_page("record", "New recording", "record",
+                                                 self.record_flow, hide_sidebar=True, primary=True)
         self.IDX_REVIEW   = self._shell.add_page("review", "Review & Label", "layers",
                                                  self._review_page, collapse_on_active=True)
         # Documentation sits just above Settings in the bottom nav group.
@@ -166,6 +160,14 @@ class BrainBattleApp(QMainWindow):
         # (re)enter the guided flow at step 1 when New recording is opened.
         self._shell.page_changed.connect(self._on_page_changed)
 
+        # Who is labelling + the quick "Hide names" switch live in the sidebar.
+        settings = app_settings.load()
+        self._shell.set_labeller(settings.labeller_name)
+        self._shell.identity_clicked.connect(self._edit_identity)
+        self._shell.names_hidden_changed.connect(self._on_hide_names_toggled)
+        self._review_page.labeller_changed.connect(self._on_labeller_changed)
+        self._apply_names_hidden(settings.hide_names_on_screen)
+
         root.addWidget(self._shell, 1)
         self._shell.set_current_index(self.IDX_SESSIONS)   # app opens on Sessions
 
@@ -176,6 +178,7 @@ class BrainBattleApp(QMainWindow):
         QTimer.singleShot(0, self._sessions_page.refresh)
 
     def _on_page_changed(self, idx):
+        self._shell.refresh_folder_card()
         if idx == self.IDX_SESSIONS:
             self._sessions_page.refresh()
         elif idx == self.IDX_RECORD:
@@ -183,6 +186,37 @@ class BrainBattleApp(QMainWindow):
             self.record_flow.start()
         elif idx == self.IDX_SETTINGS:
             self._settings_page.refresh()
+
+    # ── who is labelling / hiding names ──
+    def _edit_identity(self):
+        """The sidebar's "Your name" row: open Settings at that field."""
+        self._shell.set_current_index(self.IDX_SETTINGS)
+        self._settings_page.focus_labeller_name()
+
+    def _on_labeller_changed(self, name):
+        """"Your name" was set (in Settings, or the first time Review & Label
+        asked) — tell every place that shows or uses it."""
+        self._shell.set_labeller(name)
+        self._review_page.set_labeller(name)
+        self._sessions_page.set_labeller(name)
+        self._settings_page.refresh()
+
+    def _on_hide_names_toggled(self, hidden):
+        import brain_battle.data.app_settings as app_settings
+        s = app_settings.load(); s.hide_names_on_screen = bool(hidden); s.save()
+        self._apply_names_hidden(hidden)
+        self._settings_page.refresh()
+
+    def _apply_names_hidden(self, hidden):
+        self._shell.set_names_hidden(hidden)
+        self._sessions_page.set_names_hidden(hidden)
+        self._review_page.set_names_hidden(hidden)
+
+    def _export_session(self, session_root):
+        """Sessions → ⋯ → Export for analysis: export without opening it."""
+        from brain_battle.data.export_module import ExportOptionsDialog
+        ExportOptionsDialog(session_root, parent=self).exec()
+        self._sessions_page.refresh()
 
     def _go_to_new_recording(self):
         self._shell.set_current_index(self.IDX_RECORD)
@@ -199,10 +233,9 @@ class BrainBattleApp(QMainWindow):
         # record_flow emits an ANCHOR, not a page id, one per guided-flow step —
         # all four live on the single "new-recording" page (DESIGN: one page,
         # §2-§5). Anything else passed through is treated as a page id.
-        "step-1-connect-devices": ("new-recording", "step-1-connect-devices"),
-        "step-2-set-up-session": ("new-recording", "step-2-set-up-session"),
-        "step-3-recording": ("new-recording", "step-3-recording"),
-        "step-4-saved": ("new-recording", "step-4-saved"),
+        "step-1-get-ready": ("new-recording", "step-1-get-ready"),
+        "step-2-recording": ("new-recording", "step-2-recording"),
+        "step-3-saved": ("new-recording", "step-3-saved"),
     }
 
     def open_help(self, key: str) -> None:
@@ -220,6 +253,15 @@ class BrainBattleApp(QMainWindow):
         the guided flow reloads app_settings on its own next start())."""
         self._shell.set_capture_dir(path)
         self._sessions_page.set_capture_dir(path)
+
+    def keyPressEvent(self, event):
+        # Ctrl/⌘ + Shift + H: hide / show boxer names on screen, from anywhere.
+        mods = event.modifiers()
+        if event.key() == Qt.Key.Key_H and (mods & Qt.KeyboardModifier.ShiftModifier) and \
+                (mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)):
+            self._shell.set_names_hidden(not self._shell.names_hidden(), emit=True)
+            return
+        super().keyPressEvent(event)
 
     def _open_session_in_review(self, session_root):
         self._review_page.load_session_folder(session_root)
@@ -253,7 +295,10 @@ def main():
     try:
         window = BrainBattleApp(); window.show()
     except Exception:
-        _tb.print_exc(); input("\nPress Enter to exit..."); sys.exit(1)
+        # No input() here: a windowed launch on Windows (pythonw / a shortcut)
+        # has no console to read from, and would hang or crash a second time.
+        log.critical("could not start the app", exc_info=True)
+        _tb.print_exc(); sys.exit(1)
     def _cleanup():
         # Stop EEG streams + camera threads + loader threads before Qt
         # tears down widgets — prevents "QThread destroyed while still

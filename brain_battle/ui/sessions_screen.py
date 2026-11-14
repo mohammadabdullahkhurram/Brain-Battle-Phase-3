@@ -1,39 +1,54 @@
 """
 sessions_screen.py
 ───────────────
-The Sessions home screen (docs/DESIGN.md §1): a library of every recording in
-the recordings folder. Scanning + folder sizing run on background threads so
-the UI never blocks, even with 200+ recordings.
+The Sessions home screen (docs/DESIGN.md §1): every recording in the recordings
+folder, with the two things people come here for one click away — open a
+recording to label it, or export it.
+
+Layout: a title row (New recording), one row of controls (status tabs with
+counts · search · sort), then the list. Each recording is one row — click
+anywhere on it to open it. The row says when it was recorded and how long it
+is, who boxed, how many labels it has and from whom, and its status; the
+button on the right is "Label" until *you* have labelled it. The ⋯ menu holds
+"Export for analysis…" and "Show in Finder / Explorer".
+
+Scanning and folder sizing run on background threads so the screen never
+blocks, even with hundreds of recordings on a slow shared drive. If the
+recordings folder cannot be reached (a shared drive that is not connected) the
+screen says so and offers Try again instead of showing an empty list.
 
 Emits:
-  open_session(str)   — the user wants to open a recording (its folder path)
-  new_recording()     — the user pressed "New recording"
+  open_session(str)    — open a recording (its folder path)
+  export_session(str)  — export a recording without opening it
+  new_recording()      — "New recording"
 """
 from __future__ import annotations
 
 import datetime as _dt
 import os
-import subprocess
-import sys
 
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
-from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
-    QLineEdit, QScrollArea, QSizePolicy, QComboBox,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
+    QLineEdit, QScrollArea, QComboBox, QMenu,
 )
 
 import brain_battle.ui.design_tokens as dt
+import brain_battle.ui.widgets as ui
+import brain_battle.data.app_settings as app_settings
+import brain_battle.data.privacy as privacy
+import brain_battle.data.safe_io as safe_io
 import brain_battle.data.session_storage as ss
+from brain_battle.support import platform_utils
 
 STATUS_META = {
-    ss.STATUS_INTERRUPTED:     ("Interrupted",     "warning"),
-    ss.STATUS_EXPORTED:        ("Exported",        "connected"),
-    ss.STATUS_LABELLED:        ("Labelled",        "connected"),
-    ss.STATUS_NEEDS_LABELLING: ("Needs labelling", "baseline"),
-    ss.STATUS_UNREADABLE:      ("Can't be opened", "recording"),
+    ss.STATUS_INTERRUPTED:     ("! Interrupted",     "warning"),
+    ss.STATUS_EXPORTED:        ("✓ Exported",        "connected"),
+    ss.STATUS_LABELLED:        ("✓ Labelled",        "accent"),
+    ss.STATUS_NEEDS_LABELLING: ("Needs labelling",   "idle"),
+    ss.STATUS_UNREADABLE:      ("✕ Can't be opened", "danger"),
 }
-# Filter chips (key, label, matching statuses)
+# Status tabs (key, label, matching statuses)
 CHIPS = [
     ("all",             "All",             None),
     ("needs_labelling", "Needs labelling", {ss.STATUS_NEEDS_LABELLING}),
@@ -54,8 +69,7 @@ def _human_date(info) -> str:
     if not info.started_at:
         return ""
     try:
-        d = _dt.datetime.fromisoformat(info.started_at)
-        return d.strftime("%a %-d %b %Y")
+        return platform_utils.format_date(_dt.datetime.fromisoformat(info.started_at))
     except (ValueError, TypeError):
         return info.started_at[:10]
 
@@ -64,7 +78,7 @@ def _human_time(info) -> str:
     if not info.started_at:
         return ""
     try:
-        return _dt.datetime.fromisoformat(info.started_at).strftime("%H:%M")
+        return platform_utils.format_time(_dt.datetime.fromisoformat(info.started_at))
     except (ValueError, TypeError):
         return ""
 
@@ -80,9 +94,24 @@ def length_text(info) -> str:
     return f"{mins} min · {rounds} round{'s' if rounds != 1 else ''}"
 
 
+def labels_text(info) -> tuple[str, str]:
+    """(main line, who line) for the Labels column: '24 labels', 'Maya K, Sam'."""
+    if not info.readable:
+        return "—", ""
+    n = info.labels_count
+    if n == 0:
+        return "No labels yet", ""
+    who = [name for name, count in info.labellers.items() if count]
+    main = f"{n} label{'s' if n != 1 else ''}"
+    if len(who) > 2:
+        return main, f"{len(who)} labellers"
+    return main, ", ".join(who)
+
+
 def _searchable(info) -> str:
     bits = [info.name, info.boxer_a or "", info.boxer_b or "",
-            info.started_at[:10] if info.started_at else "", _human_date(info)]
+            info.started_at[:10] if info.started_at else "", _human_date(info),
+            " ".join(info.labellers)]
     return " ".join(bits).lower()
 
 
@@ -110,29 +139,32 @@ def status_counts(sessions) -> dict:
 
 
 def reveal_in_finder(path: str) -> None:
-    """Reveal a folder (or file) in the OS file manager, selecting it."""
-    try:
-        if sys.platform == "darwin":
-            subprocess.Popen(["open", "-R", path])
-        elif sys.platform == "win32":
-            subprocess.Popen(["explorer", "/select,", os.path.normpath(path)])
-        else:
-            subprocess.Popen(["xdg-open", os.path.dirname(path) or path])
-    except Exception:
-        pass
+    """Reveal a folder (or file) in Finder / Explorer, selecting it."""
+    platform_utils.reveal_in_file_manager(path)
 
 
 # ── background workers ────────────────────────────────────────────────────────
 
 class _ScanWorker(QThread):
     done = pyqtSignal(object)   # list[SessionInfo]
+    folder_state = pyqtSignal(str)   # safe_io.FOLDER_OK / _MISSING / _READ_ONLY
 
     def __init__(self, base_dir, parent=None):
         super().__init__(parent); self._base = base_dir
 
     def run(self):
+        # Is the folder there at all? (Checked here, off the UI thread: asking
+        # about a network drive that has gone away can take seconds.)
+        state = safe_io.FOLDER_OK
         try:
-            ss.flag_new_interrupted(self._base)   # flag fresh crashes first
+            if not os.path.isdir(self._base):
+                state = safe_io.FOLDER_MISSING
+        except OSError:
+            state = safe_io.FOLDER_MISSING
+        self.folder_state.emit(state)
+        try:
+            if state == safe_io.FOLDER_OK:
+                ss.flag_new_interrupted(self._base)   # flag fresh crashes first
             rows = ss.list_sessions(self._base)
         except Exception:
             rows = []
@@ -157,58 +189,35 @@ class _SizeWorker(QThread):
         self.done.emit(total)
 
 
-# ── widgets ───────────────────────────────────────────────────────────────────
+# ── the screen ────────────────────────────────────────────────────────────────
 
-def _badge(text, kind, parent=None):
-    lbl = QLabel(text, parent)
-    lbl.setStyleSheet(dt.qss_status_pill(kind))
-    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    return lbl
+class _Row(QFrame):
+    """One recording. Clicking anywhere on it (not on a button) opens it."""
+    clicked = pyqtSignal()
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("sessionRow")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(
+            f"QFrame#sessionRow {{ background: {dt.card_bg()}; border: none; "
+            f"border-bottom: 1px solid {dt.border()}; }}"
+            f"QFrame#sessionRow:hover {{ background: {dt.surface_subtle()}; }}")
 
-def _boxer_badge(letter, name):
-    line, soft, text = dt.boxer_colors(letter)
-    lbl = QLabel(f"{letter} · {name}" if name else "—")
-    if name:
-        lbl.setStyleSheet(
-            f"background: {soft}; color: {text}; border: 1px solid {line}; "
-            f"border-radius: {dt.RADIUS_SM}px; padding: 3px 8px; "
-            f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_XS}px; font-weight: 600;")
-    else:
-        lbl.setStyleSheet(
-            f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-            f"font-size: {dt.SIZE_SM}px; background: transparent;")
-    return lbl
-
-
-def _no_names_badge():
-    """Shown instead of two '—' badges when a recording has no boxer names."""
-    lbl = QLabel("No names")
-    lbl.setStyleSheet(
-        f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-        f"font-size: {dt.SIZE_SM}px; font-style: italic; background: transparent;")
-    return lbl
-
-
-def _demo_badge():
-    """Small 'Demo' chip (icon + text) so demo data is never mistaken for a
-    real recording."""
-    chip = QLabel("● Demo")
-    chip.setStyleSheet(
-        f"background: {dt._Palette.warning_bg}; color: #6B3205; "
-        f"border: 1px solid {dt.warning_color()}; border-radius: {dt.RADIUS_SM}px; "
-        f"padding: 2px 7px; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_XS}px; "
-        f"font-weight: 700;")
-    return chip
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self.rect().contains(e.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(e)
 
 
 class SessionsScreen(QWidget):
     open_session    = pyqtSignal(str)
+    export_session  = pyqtSignal(str)
     new_recording   = pyqtSignal()
     help_requested  = pyqtSignal()
 
     # column widths (px); the Boxers column stretches
-    _COL = dict(recorded=128, length=158, labels=58, status=138, actions=172)
+    _COL = dict(recorded=206, labels=150, status=138, actions=132)
 
     def __init__(self, capture_dir, parent=None):
         super().__init__(parent)
@@ -220,179 +229,142 @@ class SessionsScreen(QWidget):
         self._newest_first = True
         self._scan_worker = None
         self._size_worker = None
-        self.setStyleSheet(f"SessionsScreen {{ background: {dt.canvas_bg()}; }}")
+        self._scanned_once = False
+        self._folder_state = safe_io.FOLDER_OK
+        self._labeller = app_settings.labeller_name()
+        self._hide_names = app_settings.hide_names_on_screen()
+        self.setObjectName("sessionsScreen")
+        self.setStyleSheet(f"#sessionsScreen {{ background: {dt.canvas_bg()}; }}")
         self._build()
 
     # ---- construction ----
     def _build(self):
-        root = QVBoxLayout(self); root.setContentsMargins(40, 32, 40, 24); root.setSpacing(0)
+        root = QVBoxLayout(self); root.setContentsMargins(36, 28, 36, 20); root.setSpacing(0)
 
-        # Header
-        header = QHBoxLayout()
-        htext = QVBoxLayout(); htext.setSpacing(4)
-        title = QLabel("Sessions")
-        title.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
-                            f"font-size: 24px; font-weight: 700;")
-        sub = QLabel("Every recording in your recordings folder. Open one to "
-                     "watch it back and add labels.")
-        sub.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                          f"font-size: {dt.SIZE_MD}px;")
-        htext.addWidget(title); htext.addWidget(sub)
+        # Title row
+        header = QHBoxLayout(); header.setSpacing(10)
+        htext = QVBoxLayout(); htext.setSpacing(2)
+        htext.addWidget(ui.title("Sessions"))
+        htext.addWidget(ui.muted("Every recording in your recordings folder. Click one to "
+                                 "watch it back and label it.", size=dt.SIZE_MD, wrap=False))
         header.addLayout(htext); header.addStretch()
-        help_btn = QPushButton()
-        help_btn.setIcon(QIcon(dt.icon_pixmap("help-circle", color=dt.text_tertiary(), size=18)))
-        help_btn.setFixedSize(36, 36)
-        help_btn.setToolTip("Help")
-        help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        help_btn.setStyleSheet(dt.qss_secondary_button() + " QPushButton { padding: 0; }")
+        help_btn = ui.help_button()
         help_btn.clicked.connect(self.help_requested.emit)
-        header.addWidget(help_btn); header.addSpacing(10)
-        show_btn = QPushButton("Show folder in Finder")
-        show_btn.setStyleSheet(dt.qss_secondary_button()); show_btn.setMinimumHeight(44)
-        show_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        show_btn.clicked.connect(lambda: reveal_in_finder(self._capture_dir))
-        new_btn = QPushButton("New recording")
-        new_btn.setStyleSheet(dt.qss_primary_button()); new_btn.setMinimumHeight(44)
-        new_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        header.addWidget(help_btn)
+        self._show_btn = ui.secondary_button(
+            f"Open folder in {platform_utils.file_manager_name()}", icon="folder")
+        self._show_btn.clicked.connect(lambda: platform_utils.open_folder(self._capture_dir))
+        new_btn = ui.primary_button("New recording", icon="circle")
         new_btn.clicked.connect(self.new_recording.emit)
-        header.addWidget(show_btn); header.addSpacing(10); header.addWidget(new_btn)
+        header.addWidget(self._show_btn); header.addWidget(new_btn)
         root.addLayout(header)
-        root.addSpacing(16)
+        root.addSpacing(18)
+
+        # Folder problem (a shared drive that is not connected / not writable)
+        self._folder_banner = ui.Banner("bad")
+        self._folder_banner.add_action("Try again", self.refresh, primary=True)
+        self._folder_banner.setVisible(False)
+        root.addWidget(self._folder_banner)
+        self._folder_spacer = QWidget(); self._folder_spacer.setFixedHeight(12)
+        self._folder_spacer.setVisible(False)
+        root.addWidget(self._folder_spacer)
 
         # Interrupted banner (hidden unless there's an undismissed interruption)
-        self._banner = self._build_banner()
+        self._banner = ui.Banner("warn")
+        self._banner_text = self._banner._text
+        self._banner.add_action("Open it", self._on_banner_open, primary=True)
+        self._banner.add_action("Dismiss", self._on_banner_dismiss)
         self._banner.setVisible(False)
         root.addWidget(self._banner)
         self._banner_spacer = QWidget(); self._banner_spacer.setFixedHeight(12)
         self._banner_spacer.setVisible(False)
         root.addWidget(self._banner_spacer)
 
-        # Controls: search + sort
-        controls = QHBoxLayout(); controls.setSpacing(10)
-        self._search = QLineEdit(); self._search.setPlaceholderText("Search by boxer name or date")
-        self._search.setMinimumHeight(40); self._search.setStyleSheet(
-            f"QLineEdit {{ background: {dt.surface()}; border: 1px solid {dt.border_strong()}; "
-            f"border-radius: {dt.RADIUS_MD}px; padding: 8px 12px; color: {dt.text_primary()}; "
-            f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_MD}px; }}"
-            f"QLineEdit:focus {{ border-color: {dt.accent()}; }}")
+        # One row of controls: status tabs (with counts) · search · sort
+        controls = QHBoxLayout(); controls.setSpacing(8)
+        self._chips = {}
+        for key, label, _statuses in CHIPS:
+            b = ui.secondary_button(label, compact=True)
+            b.setCheckable(True); b.setMinimumHeight(36)
+            b.clicked.connect(lambda _c=False, k=key: self._on_chip(k))
+            self._chips[key] = b
+            controls.addWidget(b)
+        controls.addStretch()
+        self._search = QLineEdit(); self._search.setPlaceholderText("Search by name or date")
+        self._search.setClearButtonEnabled(True)
+        self._search.setFixedHeight(36); self._search.setMinimumWidth(180)
+        self._search.setMaximumWidth(280)
+        self._search.setStyleSheet(dt.qss_input() + " QLineEdit { padding: 5px 12px; }")
         self._search.textChanged.connect(self._on_search)
         controls.addWidget(self._search, 1)
         self._sort = QComboBox(); self._sort.addItems(["Newest first", "Oldest first"])
-        self._sort.setMinimumHeight(40)
+        self._sort.setFixedHeight(36)
+        self._sort.setStyleSheet(dt.qss_combo() + " QComboBox { padding: 5px 12px; }")
         self._sort.currentIndexChanged.connect(self._on_sort)
         controls.addWidget(self._sort)
         root.addLayout(controls)
-        root.addSpacing(10)
-
-        # Status chips
-        self._chip_row = QHBoxLayout(); self._chip_row.setSpacing(8)
-        self._chips = {}
-        for key, label, _statuses in CHIPS:
-            b = QPushButton(label); b.setCheckable(True); b.setMinimumHeight(32)
-            b.setCursor(Qt.CursorShape.PointingHandCursor)
-            b.clicked.connect(lambda _c=False, k=key: self._on_chip(k))
-            self._chips[key] = b
-            self._chip_row.addWidget(b)
-        self._chip_row.addStretch()
-        root.addLayout(self._chip_row)
-        root.addSpacing(10)
+        root.addSpacing(12)
         self._style_chips()
 
-        # Table header
+        # The list: one card — a quiet header row, then the recordings
+        self._list_card = ui.Card()
+        lc = QVBoxLayout(self._list_card); lc.setContentsMargins(1, 1, 1, 1); lc.setSpacing(0)
         self._table_header = self._build_table_header()
-        root.addWidget(self._table_header)
-
-        # Scrollable rows
+        lc.addWidget(self._table_header)
         self._scroll = QScrollArea(); self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._rows_host = QWidget()
         self._rows_host.setObjectName("rowsHost")
-        self._rows_host.setStyleSheet(f"#rowsHost {{ background: {dt.canvas_bg()}; }}")
+        self._rows_host.setStyleSheet(f"#rowsHost {{ background: {dt.card_bg()}; }}")
         self._rows_layout = QVBoxLayout(self._rows_host)
         self._rows_layout.setContentsMargins(0, 0, 0, 0); self._rows_layout.setSpacing(0)
         self._rows_layout.addStretch()
         self._scroll.setWidget(self._rows_host)
-        root.addWidget(self._scroll, 1)
+        lc.addWidget(self._scroll, 1)
+        root.addWidget(self._list_card, 1)
 
-        # Empty state (overlaps the scroll area region when shown)
+        # Empty state (takes the list's place when there is nothing to show)
         self._empty = self._build_empty()
         root.addWidget(self._empty, 1)
         self._empty.setVisible(False)
 
         # Footer
-        self._footer = QLabel("")
-        self._footer.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                                   f"font-size: {dt.SIZE_SM}px;")
-        root.addSpacing(8); root.addWidget(self._footer)
-
-    def _build_banner(self):
-        f = QFrame(); f.setObjectName("banner")
-        f.setStyleSheet(
-            f"QFrame#banner {{ background: {dt._Palette.warning_bg}; "
-            f"border: 1px solid {dt.warning_color()}; border-radius: {dt.RADIUS_MD}px; }}")
-        h = QHBoxLayout(f); h.setContentsMargins(16, 10, 12, 10); h.setSpacing(10)
-        self._banner_text = QLabel("")
-        self._banner_text.setWordWrap(True)
-        self._banner_text.setStyleSheet(
-            f"color: {dt._Palette.warning_text}; font-family: {dt.FONT_UI}; "
-            f"font-size: {dt.SIZE_SM}px; background: transparent; border: none;")
-        h.addWidget(self._banner_text, 1)
-        open_btn = QPushButton("Open it"); open_btn.setMinimumHeight(32)
-        open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        open_btn.setStyleSheet(
-            f"QPushButton {{ background: {dt.warning_color()}; color: #FFFFFF; border: none; "
-            f"border-radius: {dt.RADIUS_SM}px; padding: 6px 14px; font-weight: 600; "
-            f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; }}")
-        open_btn.clicked.connect(self._on_banner_open)
-        dismiss_btn = QPushButton("Dismiss"); dismiss_btn.setMinimumHeight(32)
-        dismiss_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        dismiss_btn.setStyleSheet(
-            f"QPushButton {{ background: #FFFFFF; color: {dt._Palette.warning_text}; "
-            f"border: 1px solid {dt.warning_color()}; border-radius: {dt.RADIUS_SM}px; "
-            f"padding: 6px 14px; font-weight: 600; font-family: {dt.FONT_UI}; "
-            f"font-size: {dt.SIZE_SM}px; }}")
-        dismiss_btn.clicked.connect(self._on_banner_dismiss)
-        h.addWidget(open_btn); h.addWidget(dismiss_btn)
-        return f
+        self._footer = ui.muted("", size=dt.SIZE_SM, wrap=False)
+        root.addSpacing(10); root.addWidget(self._footer)
 
     def _build_table_header(self):
-        w = QWidget(); w.setFixedHeight(28)
-        h = QHBoxLayout(w); h.setContentsMargins(12, 0, 12, 0); h.setSpacing(12)
+        w = QFrame(); w.setObjectName("tableHead"); w.setFixedHeight(36)
+        w.setStyleSheet(f"#tableHead {{ background: {dt.surface_subtle()}; border: none; "
+                        f"border-bottom: 1px solid {dt.border()}; "
+                        f"border-top-left-radius: {dt.RADIUS_LG - 1}px; "
+                        f"border-top-right-radius: {dt.RADIUS_LG - 1}px; }}")
+        h = QHBoxLayout(w); h.setContentsMargins(20, 0, 16, 0); h.setSpacing(14)
         def hd(text, width=None, stretch=0):
-            l = QLabel(text); l.setStyleSheet(
-                f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                f"font-size: {dt.SIZE_CAPTION}px; font-weight: 700; letter-spacing: 0.6px;")
+            l = ui.caption(text)
             if width: l.setFixedWidth(width)
             h.addWidget(l, stretch)
-            return l
-        hd("RECORDED", self._COL["recorded"])
-        hd("BOXERS", stretch=1)
-        hd("LENGTH", self._COL["length"])
-        hd("LABELS", self._COL["labels"])
-        hd("STATUS", self._COL["status"])
+        hd("Recorded", self._COL["recorded"])
+        hd("Boxers", stretch=1)
+        hd("Labels", self._COL["labels"])
+        hd("Status", self._COL["status"])
         hd("", self._COL["actions"])
         return w
 
     def _build_empty(self):
-        f = QFrame(); f.setObjectName("emptyCard")
-        f.setStyleSheet(f"QFrame#emptyCard {{ background: {dt.card_bg()}; "
-                        f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_LG}px; }}")
+        f = ui.Card()
         v = QVBoxLayout(f); v.setAlignment(Qt.AlignmentFlag.AlignCenter); v.setSpacing(10)
-        icon = QLabel(); icon.setPixmap(dt.icon_pixmap("home", color=dt.text_tertiary(), size=40))
+        icon = QLabel(); icon.setPixmap(dt.icon_pixmap("video", color=dt.border_strong(), size=48))
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet("background: transparent; border: none;")
-        self._empty_title = QLabel("No recordings yet")
+        self._empty_title = ui.heading("No recordings yet", size=dt.SIZE_XL)
         self._empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_title.setStyleSheet(
-            f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
-            f"font-size: {dt.SIZE_LG}px; font-weight: 600; background: transparent; border: none;")
-        self._empty_sub = QLabel("Press New recording to make your first one.")
+        self._empty_sub = ui.muted("Press New recording to make your first one.", size=dt.SIZE_MD)
         self._empty_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_sub.setStyleSheet(
-            f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-            f"font-size: {dt.SIZE_MD}px; background: transparent; border: none;")
+        self._empty_btn = ui.primary_button("New recording", icon="circle")
+        self._empty_btn.clicked.connect(self.new_recording.emit)
         v.addWidget(icon); v.addWidget(self._empty_title); v.addWidget(self._empty_sub)
+        v.addSpacing(6)
+        v.addWidget(self._empty_btn, 0, Qt.AlignmentFlag.AlignCenter)
         return f
 
     # ---- data flow ----
@@ -400,13 +372,27 @@ class SessionsScreen(QWidget):
         """Settings' [Change folder…] changed the active recordings folder —
         point future scans at it and refresh immediately."""
         self._capture_dir = capture_dir
+        self._scanned_once = False
         self.refresh()
+
+    def set_labeller(self, name: str) -> None:
+        """"Your name" changed: the Label / Open buttons depend on it."""
+        self._labeller = name or ""
+        self._rebuild_rows()
+
+    def set_names_hidden(self, hidden: bool) -> None:
+        if bool(hidden) != self._hide_names:
+            self._hide_names = bool(hidden)
+            self._update_banner(); self._rebuild_rows()
 
     def refresh(self):
         """Rescan the folder (off the UI thread) and rebuild the list."""
         if self._scan_worker is not None and self._scan_worker.isRunning():
             return
+        if not self._scanned_once:
+            self._footer.setText("Looking for recordings…")
         self._scan_worker = _ScanWorker(self._capture_dir, self)
+        self._scan_worker.folder_state.connect(self._on_folder_state)
         self._scan_worker.done.connect(self._on_scanned)
         self._scan_worker.start()
 
@@ -427,19 +413,33 @@ class SessionsScreen(QWidget):
         self.shutdown()
         super().closeEvent(event)
 
+    def _on_folder_state(self, state):
+        self._folder_state = state
+        problem = safe_io.folder_problem_text(self._capture_dir, state)
+        self._folder_banner.set_tone_and_text("bad", problem)
+        self._folder_banner.setVisible(bool(problem))
+        self._folder_spacer.setVisible(bool(problem))
+
     def _on_scanned(self, sessions):
+        self._scanned_once = True
         self._sessions = sessions
         self._update_banner()
         self._rebuild_rows()
         # Folder sizes on a second background thread; footer fills in as they land.
         if self._size_worker is not None and self._size_worker.isRunning():
             self._size_worker.requestInterruption()
-        self._sizes = {}
-        roots = [s.root for s in sessions]
+        known = {s.root for s in sessions}
+        self._sizes = {r: b for r, b in self._sizes.items() if r in known}
+        roots = [s.root for s in sessions if s.root not in self._sizes]   # only the new ones
         self._size_worker = _SizeWorker(roots, self)
         self._size_worker.one.connect(self._on_one_size)
-        self._size_worker.done.connect(lambda _t: self._update_footer())
+        # a bound method, not a lambda: Qt drops the connection by itself if this
+        # screen is destroyed while the worker is still finishing
+        self._size_worker.done.connect(self._on_sizes_done)
         self._size_worker.start()
+        self._update_footer()
+
+    def _on_sizes_done(self, _total):
         self._update_footer()
 
     def _on_one_size(self, root, nbytes):
@@ -452,96 +452,110 @@ class SessionsScreen(QWidget):
                                     self._status_key, self._newest_first)
 
     def _rebuild_rows(self):
-        # clear existing row widgets (keep the trailing stretch)
-        while self._rows_layout.count() > 1:
-            item = self._rows_layout.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.setParent(None); w.deleteLater()
+        ui.clear_layout(self._rows_layout, keep_last=1)
         visible = self._visible()
         for info in visible:
             self._rows_layout.insertWidget(self._rows_layout.count() - 1, self._make_row(info))
         has_any = len(self._sessions) > 0
         showing = len(visible)
         self._empty.setVisible(not has_any or showing == 0)
-        self._scroll.setVisible(has_any and showing > 0)
-        self._table_header.setVisible(has_any and showing > 0)
+        self._list_card.setVisible(has_any and showing > 0)
         if not has_any:
-            self._empty_title.setText("No recordings yet")
-            self._empty_sub.setText("Press New recording to make your first one.")
+            if self._folder_state != safe_io.FOLDER_OK:
+                self._empty_title.setText("The recordings folder can't be reached")
+                self._empty_sub.setText("Connect the drive it is on and press Try again above, "
+                                        "or choose a different folder in Settings.")
+                self._empty_btn.setVisible(False)
+            else:
+                self._empty_title.setText("No recordings yet")
+                self._empty_sub.setText("Press New recording to make your first one.")
+                self._empty_btn.setVisible(True)
         elif showing == 0:
             self._empty_title.setText("No sessions match")
             self._empty_sub.setText("Try a different search or filter.")
+            self._empty_btn.setVisible(False)
         self._style_chips()
 
     def _make_row(self, info):
-        row = QFrame(); row.setObjectName("sessionRow")
-        row.setStyleSheet(
-            f"QFrame#sessionRow {{ background: {dt.card_bg()}; "
-            f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_MD}px; }}")
-        h = QHBoxLayout(row); h.setContentsMargins(12, 8, 12, 8); h.setSpacing(12)
-        # Recorded (date bold / time below)
-        rec = QVBoxLayout(); rec.setSpacing(1)
-        d = QLabel(_human_date(info) or "—")
-        d.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
-                        f"font-size: {dt.SIZE_SM}px; font-weight: 600; background: transparent;")
-        t = QLabel(_human_time(info))
-        t.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                        f"font-size: {dt.SIZE_XS}px; background: transparent;")
+        row = _Row()
+        h = QHBoxLayout(row); h.setContentsMargins(20, 12, 16, 12); h.setSpacing(14)
+        # Recorded: date bold / time · length below
+        rec = QVBoxLayout(); rec.setSpacing(2); rec.setContentsMargins(0, 0, 0, 0)
+        d = QLabel(_human_date(info) or info.name)
+        d.setStyleSheet(dt.css_text(dt.SIZE_MD, 600))
+        sub_bits = [x for x in (_human_time(info), length_text(info) if info.readable else "") if x]
+        t = QLabel(" · ".join(sub_bits))
+        t.setStyleSheet(dt.css_text(dt.SIZE_XS, 400, dt.text_tertiary()))
         rec.addWidget(d); rec.addWidget(t)
         recw = QWidget(); recw.setLayout(rec); recw.setFixedWidth(self._COL["recorded"])
         h.addWidget(recw)
-        # Boxers (single "No names" when both are missing, not two dashes)
-        bx = QHBoxLayout(); bx.setSpacing(6)
-        if not info.boxer_a and not info.boxer_b:
-            bx.addWidget(_no_names_badge())
+        # Boxers
+        bx = QHBoxLayout(); bx.setSpacing(6); bx.setContentsMargins(0, 0, 0, 0)
+        if not info.readable:
+            bx.addWidget(ui.muted("This folder's details could not be read.", wrap=False))
+        elif not info.boxer_a and not info.boxer_b and not self._hide_names:
+            none = ui.muted("No names", wrap=False)
+            bx.addWidget(none)
         else:
-            bx.addWidget(_boxer_badge("A", info.boxer_a))
-            bx.addWidget(_boxer_badge("B", info.boxer_b))
+            for which, name in (("A", info.boxer_a), ("B", info.boxer_b)):
+                if name or self._hide_names:
+                    bx.addWidget(ui.boxer_chip(
+                        which, privacy.shown_name(which, name, self._hide_names)
+                        if not self._hide_names else "Boxer " + which))
         if info.demo:
-            bx.addWidget(_demo_badge())
+            bx.addWidget(ui.pill("● Demo", "warning"))
         bx.addStretch()
         bxw = QWidget(); bxw.setLayout(bx); h.addWidget(bxw, 1)
-        # Length
-        ln = QLabel(length_text(info)); ln.setFixedWidth(self._COL["length"])
-        ln.setStyleSheet(f"color: {dt.text_secondary()}; font-family: {dt.FONT_UI}; "
-                         f"font-size: {dt.SIZE_SM}px; background: transparent;")
-        h.addWidget(ln)
-        # Labels count
-        lc = QLabel(str(info.labels_count) if info.readable else "—")
-        lc.setFixedWidth(self._COL["labels"])
-        lc.setStyleSheet(f"color: {dt.text_secondary()}; font-family: {dt.FONT_MONO}; "
-                         f"font-size: {dt.SIZE_SM}px; background: transparent;")
-        h.addWidget(lc)
-        # Status badge (icon + text)
+        # Labels: count / who
+        main, who = labels_text(info)
+        lv = QVBoxLayout(); lv.setSpacing(2); lv.setContentsMargins(0, 0, 0, 0)
+        lm = QLabel(main)
+        lm.setStyleSheet(dt.css_text(dt.SIZE_SM, 500, dt.text_secondary()
+                                     if info.labels_count else dt.text_tertiary()))
+        lv.addWidget(lm)
+        if who:
+            lw_ = QLabel(who); lw_.setStyleSheet(dt.css_text(dt.SIZE_XS, 400, dt.text_tertiary()))
+            lw_.setToolTip("Labelled by " + ", ".join(
+                f"{n} ({c})" for n, c in info.labellers.items() if c))
+            lv.addWidget(lw_)
+        lvw = QWidget(); lvw.setLayout(lv); lvw.setFixedWidth(self._COL["labels"])
+        h.addWidget(lvw)
+        # Status (glyph + text, never colour alone)
         label, kind = STATUS_META.get(info.status, ("—", "idle"))
-        badge = _badge(label, kind); badge.setFixedWidth(self._COL["status"])
-        h.addWidget(badge)
-        # Actions
-        act = QHBoxLayout(); act.setSpacing(6)
-        finder = QPushButton()
-        finder.setIcon(QIcon(dt.icon_pixmap("folder", color=dt.text_secondary(), size=18)))
-        finder.setFixedSize(32, 32)
-        finder.setToolTip("Show in Finder")
-        finder.setAccessibleName("Show in Finder")
-        finder.setCursor(Qt.CursorShape.PointingHandCursor)
-        finder.setStyleSheet(_small_secondary() + " QPushButton { padding: 0; }")
-        finder.clicked.connect(lambda _c=False, r=info.root: reveal_in_finder(r))
-        act.addWidget(finder)
+        sw = QHBoxLayout(); sw.setContentsMargins(0, 0, 0, 0)
+        sw.addWidget(ui.pill(label, kind)); sw.addStretch()
+        sww = QWidget(); sww.setLayout(sw); sww.setFixedWidth(self._COL["status"])
+        h.addWidget(sww)
+        # Actions: Label / Open + the ⋯ menu
+        act = QHBoxLayout(); act.setSpacing(6); act.setContentsMargins(0, 0, 0, 0)
+        act.addStretch()
         if info.readable:
-            is_needs = info.status == ss.STATUS_NEEDS_LABELLING
-            btn = QPushButton("Label" if is_needs else "Open")
-            btn.setMinimumHeight(32); btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(_small_primary())
+            mine = info.labels_by(self._labeller) if self._labeller else info.labels_count
+            needs_me = mine == 0
+            btn = (ui.primary_button if needs_me else ui.secondary_button)(
+                "Label" if needs_me else "Open", compact=True)
+            btn.setMinimumWidth(68)
+            btn.setToolTip("You have not labelled this recording yet." if needs_me
+                           else f"You have placed {mine} label{'s' if mine != 1 else ''} here.")
             btn.clicked.connect(lambda _c=False, r=info.root: self.open_session.emit(r))
             act.addWidget(btn)
+            row.clicked.connect(lambda r=info.root: self.open_session.emit(r))
+        more = ui.icon_button("more", "More actions", size=34, bordered=False)
+        more.clicked.connect(lambda _c=False, i=info, b=more: self._row_menu(i, b))
+        act.addWidget(more)
         actw = QWidget(); actw.setLayout(act); actw.setFixedWidth(self._COL["actions"])
         h.addWidget(actw)
+        return row
 
-        wrap = QFrame()
-        wl = QVBoxLayout(wrap); wl.setContentsMargins(0, 0, 0, 6); wl.setSpacing(0)
-        wl.addWidget(row)
-        return wrap
+    def _row_menu(self, info, anchor):
+        menu = QMenu(self)
+        if info.readable:
+            menu.addAction("Open and label", lambda: self.open_session.emit(info.root))
+            menu.addAction("Export for analysis…", lambda: self.export_session.emit(info.root))
+            menu.addSeparator()
+        menu.addAction(platform_utils.show_in_file_manager_label(),
+                       lambda: reveal_in_finder(info.root))
+        menu.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
 
     def _update_footer(self):
         visible = self._visible()
@@ -564,10 +578,10 @@ class SessionsScreen(QWidget):
         self._banner_root = s.root
         when = _human_date(s)
         tm = _human_time(s)
-        vs = (f"{s.boxer_a} vs {s.boxer_b}" if s.boxer_a and s.boxer_b
-              else (s.boxer_a or s.boxer_b or "no names"))
+        vs = (privacy.versus(s.boxer_a, s.boxer_b, self._hide_names)
+              if (s.boxer_a or s.boxer_b or self._hide_names) else "no names")
         where = _fmt_mmss(s.stopped_sec) if s.stopped_sec is not None else "an early point"
-        self._banner_text.setText(
+        self._banner.set_text(
             f"A recording was interrupted — the recording from {when} {tm} "
             f"({vs}) stopped unexpectedly at {where}. Everything recorded up to "
             f"that point has been kept.")
@@ -610,22 +624,8 @@ class SessionsScreen(QWidget):
             b.setText(f"{label}  {n}")
             active = (key == self._status_key)
             b.setChecked(active)
-            b.setStyleSheet(dt.qss_chip(active))
-
-
-def _small_primary():
-    return (f"QPushButton {{ background: {dt.accent()}; color: #FFFFFF; border: none; "
-            f"border-radius: {dt.RADIUS_SM}px; padding: 5px 14px; font-weight: 600; "
-            f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; }}"
-            f"QPushButton:hover {{ background: {dt.accent_hover()}; }}")
-
-
-def _small_secondary():
-    return (f"QPushButton {{ background: {dt.surface()}; color: {dt.text_secondary()}; "
-            f"border: 1px solid {dt.border_strong()}; border-radius: {dt.RADIUS_SM}px; "
-            f"padding: 5px 10px; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; }}"
-            f"QPushButton:hover {{ border-color: {dt.accent()}; color: {dt.accent()}; }}")
+            b.setStyleSheet(dt.qss_chip(active) + " QPushButton { font-size: 13px; padding: 6px 12px; }")
 
 
 __all__ = ["SessionsScreen", "filter_sort_sessions", "status_counts",
-           "length_text", "reveal_in_finder"]
+           "length_text", "labels_text", "reveal_in_finder"]

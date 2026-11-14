@@ -378,7 +378,8 @@ def _nav_qss() -> str:
 class DocsScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(f"DocsScreen {{ background: {dt.canvas_bg()}; }}")
+        self.setObjectName("docsScreen")
+        self.setStyleSheet(f"#docsScreen {{ background: {dt.canvas_bg()}; }}")
         self._nav = docs_nav.load_nav()
         self._search_index = docs_nav.build_search_index(self._nav)
         self._history: list[tuple[str, str | None]] = []
@@ -392,12 +393,12 @@ class DocsScreen(QWidget):
 
     # ── construction ──
     def _build(self):
-        root = QVBoxLayout(self); root.setContentsMargins(24, 20, 24, 20); root.setSpacing(12)
+        root = QVBoxLayout(self); root.setContentsMargins(24, 24, 16, 20); root.setSpacing(12)
 
         header = QHBoxLayout(); header.setSpacing(12)
         title = QLabel("Documentation")
         title.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
-                            f"font-size: 22px; font-weight: 700;")
+                            f"font-size: {dt.SIZE_DISPLAY}px; font-weight: 700;")
         header.addWidget(title)
         header.addStretch()
         self._search_box = QLineEdit()
@@ -424,7 +425,7 @@ class DocsScreen(QWidget):
         left_col.addWidget(self._result_count)
 
         self._left_stack = QStackedWidget()
-        self._left_stack.setFixedWidth(240)
+        self._left_stack.setFixedWidth(208)
         self._nav_tree = QTreeWidget()
         self._nav_tree.setHeaderHidden(True)
         self._nav_tree.setStyleSheet(_nav_qss())

@@ -7,18 +7,23 @@ autosaves immediately (no Save button) and shows a brief, plain "Saved"
 confirmation; changes apply to the NEXT recording (the guided flow reloads
 `app_settings.load()` each time it starts).
 
-Sections, top to bottom: recordings folder (name/path/free space, change/
-show-in-Finder, BRAIN_BATTLE_CAPTURE_DIR override note), headbands (known-
-device dropdowns + BLE search, same-headband guard), video quality (radio
+A list of the sections on the left jumps to each one; the sections, top to
+bottom: **You** (your name — whose labels these are), recordings folder
+(name/path/free space, change / show in Finder or Explorer, whether it is a
+shared drive, the BRAIN_BATTLE_CAPTURE_DIR override note), headbands (known-
+device dropdowns + Bluetooth search, same-headband guard), video quality (radio
 rows with a GB/hour figure computed from the bitrate, never hard-coded),
-session defaults (steppers + round bell + Test sound), the shared label list
-(add/rename/remove/reorder/recolour — DESIGN §7's "Label list"), and the
-footer.
+session defaults (steppers + round bell + Test sound), extra signals and
+sharing, **boxer names and privacy** (hide names in exports / on screen), the
+shared label list (add/rename/remove/reorder/recolour), and the footer.
 
 Public surface used by the app shell:
   • SettingsScreen(parent)
   • .capture_dir_changed (signal, str) — [Change folder…] picked a new
     recordings folder; the shell re-points SidebarShell + SessionsScreen at it.
+  • .labeller_changed (signal, str) — "Your name" was edited.
+  • .names_hidden_changed (signal, bool) — "Hide boxer names on screen".
+  • .focus_labeller_name() — scroll to and focus the "Your name" field.
 """
 from __future__ import annotations
 
@@ -34,7 +39,10 @@ from PyQt6.QtWidgets import (
 )
 
 import brain_battle.ui.design_tokens as dt
+import brain_battle.ui.widgets as ui
 import brain_battle.data.app_settings as app_settings
+import brain_battle.data.safe_io as safe_io
+from brain_battle.support import platform_utils
 import brain_battle.data.label_vocab as label_vocab
 from brain_battle.ui.record_flow import Stepper, _mmss
 from brain_battle.version import __version__
@@ -44,32 +52,36 @@ VIDEO_QUALITY_ORDER = ["standard", "high", "light"]
 
 # ── small style helpers (mirrors record_flow.py's) ─────────────────────────
 
-def _title(text, size=24):
+def _title(text, size=dt.SIZE_DISPLAY):
     l = QLabel(text)
-    l.setStyleSheet(f"color: {dt.text_primary()}; font-family: {dt.FONT_UI}; "
-                    f"font-size: {size}px; font-weight: 700;")
+    l.setStyleSheet(dt.css_text(size, 700))
     return l
 
 
 def _sub(text):
     l = QLabel(text); l.setWordWrap(True)
-    l.setStyleSheet(f"color: {dt.text_tertiary()}; font-family: {dt.FONT_UI}; "
-                    f"font-size: {dt.SIZE_MD}px;")
+    l.setStyleSheet(dt.css_text(dt.SIZE_MD, 400, dt.text_tertiary()))
     return l
 
 
 def _body(text="", color=None, size=None, bold=False):
+    """Body text; ``bold`` at the default heading size is a card heading."""
     l = QLabel(text); l.setWordWrap(True)
-    l.setStyleSheet(f"color: {color or dt.text_secondary()}; font-family: {dt.FONT_UI}; "
-                    f"font-size: {size or dt.SIZE_SM}px; "
-                    f"font-weight: {'700' if bold else '400'};")
+    heading = bold and size == dt.SIZE_MD and color is None
+    l.setStyleSheet(dt.css_text(
+        dt.SIZE_LG if heading else (size or dt.SIZE_SM), 700 if bold else 400,
+        color or (dt.text_primary() if bold else dt.text_secondary())))
     return l
 
 
+_card_n = 0
+
+
 def _card() -> QFrame:
-    c = QFrame(); c.setObjectName("card")
-    c.setStyleSheet(f"QFrame#card {{ background: {dt.card_bg()}; "
-                    f"border: 1px solid {dt.border()}; border-radius: {dt.RADIUS_LG}px; }}")
+    global _card_n
+    _card_n += 1
+    c = QFrame(); c.setObjectName(f"settingsCard{_card_n}")
+    c.setStyleSheet(dt.qss_card(c.objectName()))
     return c
 
 
@@ -96,9 +108,9 @@ class _LabelRow(QFrame):
         self._key.setFixedSize(26, 26)
         self._key.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._key.setStyleSheet(
-            f"background: {dt.canvas_bg()}; color: {dt.text_tertiary()}; "
+            f"background: {dt.canvas_bg()}; color: {dt.text_secondary()}; "
             f"border: 1px solid {dt.border_strong()}; border-radius: 13px; "
-            f"font-family: {dt.FONT_MONO}; font-size: {dt.SIZE_SM}px;")
+            f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; font-weight: 600;")
         h.addWidget(self._key)
 
         self._swatch = QPushButton()
@@ -115,7 +127,7 @@ class _LabelRow(QFrame):
         h.addWidget(self._name, 1)
 
         self._kind = QComboBox()
-        self._kind.setStyleSheet(dt.qss_input())
+        self._kind.setStyleSheet(dt.qss_combo())
         self._kind.addItem(label_vocab.KIND_LABEL[label_vocab.POINT], label_vocab.POINT)
         self._kind.addItem(label_vocab.KIND_LABEL[label_vocab.DURATION], label_vocab.DURATION)
         self._kind.setCurrentIndex(1 if entry.get("kind") == label_vocab.DURATION else 0)
@@ -123,17 +135,21 @@ class _LabelRow(QFrame):
         h.addWidget(self._kind)
 
         up = QPushButton("↑"); up.setFixedSize(30, 30)
+        up.setToolTip("Move up"); up.setAccessibleName("Move this label up")
         up.setCursor(Qt.CursorShape.PointingHandCursor)
         up.setStyleSheet(dt.qss_secondary_button() + " QPushButton { padding: 0; }")
         up.clicked.connect(self.move_up.emit)
         h.addWidget(up)
         down = QPushButton("↓"); down.setFixedSize(30, 30)
+        down.setToolTip("Move down"); down.setAccessibleName("Move this label down")
         down.setCursor(Qt.CursorShape.PointingHandCursor)
         down.setStyleSheet(dt.qss_secondary_button() + " QPushButton { padding: 0; }")
         down.clicked.connect(self.move_down.emit)
         h.addWidget(down)
 
         rm = QPushButton("✕"); rm.setFixedSize(30, 30)
+        rm.setToolTip("Remove from the list (labels already placed are kept)")
+        rm.setAccessibleName("Remove this label")
         rm.setCursor(Qt.CursorShape.PointingHandCursor)
         rm.setStyleSheet(dt.qss_secondary_button() + " QPushButton { padding: 0; }")
         rm.clicked.connect(self.removed.emit)
@@ -175,15 +191,18 @@ class _LabelRow(QFrame):
 # ── the screen ──────────────────────────────────────────────────────────────
 
 class SettingsScreen(QWidget):
-    capture_dir_changed = pyqtSignal(str)   # [Change folder…] picked a new folder
-    help_requested      = pyqtSignal()
+    capture_dir_changed  = pyqtSignal(str)   # [Change folder…] picked a new folder
+    labeller_changed     = pyqtSignal(str)   # "Your name" was edited
+    names_hidden_changed = pyqtSignal(bool)  # "Hide boxer names on screen"
+    help_requested       = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._settings = app_settings.load()
         self._labels: list[dict] = []
         self._scan_thread = None
-        self.setStyleSheet(f"SettingsScreen {{ background: {dt.canvas_bg()}; }}")
+        self.setObjectName("settingsScreen")
+        self.setStyleSheet(f"#settingsScreen {{ background: {dt.canvas_bg()}; }}")
         self._build()
         self._refresh_all()
 
@@ -191,40 +210,55 @@ class SettingsScreen(QWidget):
     def _build(self):
         root = QVBoxLayout(self); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
 
-        header = QHBoxLayout(); header.setContentsMargins(40, 32, 40, 8)
-        htext = QVBoxLayout(); htext.setSpacing(4)
+        header = QHBoxLayout(); header.setContentsMargins(36, 28, 36, 12); header.setSpacing(10)
+        htext = QVBoxLayout(); htext.setSpacing(2)
         htext.addWidget(_title("Settings"))
         htext.addWidget(_sub("These settings apply to your next recording. "
                              "Changes save automatically."))
         header.addLayout(htext); header.addStretch()
-        self._saved = _body("", color=dt.success_color(), bold=True)
-        header.addWidget(self._saved, 0, Qt.AlignmentFlag.AlignTop)
-        help_btn = QPushButton()
-        help_btn.setIcon(QIcon(dt.icon_pixmap("help-circle", color=dt.text_tertiary(), size=18)))
-        help_btn.setFixedSize(36, 36)
-        help_btn.setToolTip("Help")
-        help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        help_btn.setStyleSheet(dt.qss_secondary_button() + " QPushButton { padding: 0; }")
+        self._saved = _body("", color=dt.success_color(), size=dt.SIZE_MD, bold=True)
+        header.addWidget(self._saved, 0, Qt.AlignmentFlag.AlignVCenter)
+        help_btn = ui.help_button()
         help_btn.clicked.connect(self.help_requested.emit)
         header.addWidget(help_btn, 0, Qt.AlignmentFlag.AlignTop)
         root.addLayout(header)
 
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        body = QHBoxLayout(); body.setContentsMargins(36, 0, 0, 0); body.setSpacing(20)
+        # Left: the sections, one click away (the page is long)
+        nav = QVBoxLayout(); nav.setContentsMargins(0, 4, 0, 0); nav.setSpacing(2)
+        self._nav_buttons = []
+        self._sections = []
+        navw = QWidget(); navw.setLayout(nav); navw.setFixedWidth(190)
+        body.addWidget(navw)
+
+        self._scroll = scroll = QScrollArea(); scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         host = QWidget(); host.setObjectName("settingsHost")
         host.setStyleSheet(f"#settingsHost {{ background: {dt.canvas_bg()}; }}")
-        v = QVBoxLayout(host); v.setContentsMargins(40, 8, 40, 28); v.setSpacing(16)
-        v.addWidget(self._build_folder_card())
-        v.addWidget(self._build_headbands_card())
-        v.addWidget(self._build_quality_card())
-        v.addWidget(self._build_defaults_card())
-        v.addWidget(self._build_signals_card())
-        v.addWidget(self._build_labels_card())
+        v = QVBoxLayout(host); v.setContentsMargins(0, 4, 36, 28); v.setSpacing(14)
+        for name, build in (("You", self._build_you_card),
+                            ("Recordings folder", self._build_folder_card),
+                            ("Headbands", self._build_headbands_card),
+                            ("Video quality", self._build_quality_card),
+                            ("Session defaults", self._build_defaults_card),
+                            ("Extra signals", self._build_signals_card),
+                            ("Names and privacy", self._build_privacy_card),
+                            ("Label list", self._build_labels_card)):
+            card = build()
+            v.addWidget(card)
+            self._sections.append((name, card))
+            b = ui.ghost_button(name, compact=True)
+            b.setMinimumHeight(36)
+            b.setStyleSheet(dt.qss_ghost_button(True) + " QPushButton { text-align: left; }")
+            b.clicked.connect(lambda _c=False, c=card: self._scroll.ensureWidgetVisible(c, 0, 12))
+            nav.addWidget(b); self._nav_buttons.append(b)
+        nav.addStretch()
         v.addWidget(_body(f"Brain Battle v{__version__} · Constructor University",
                           color=dt.text_tertiary(), size=dt.SIZE_XS))
         scroll.setWidget(host)
-        root.addWidget(scroll, 1)
+        body.addWidget(scroll, 1)
+        root.addLayout(body, 1)
 
     # ── "Saved" toast ──
     def _flash_saved(self):
@@ -239,22 +273,111 @@ class SettingsScreen(QWidget):
         self._refresh_all()
 
     def _refresh_all(self):
+        self._refresh_you()
         self._refresh_folder_card()
         self._refresh_headband_combos()
         self._refresh_quality()
         self._refresh_defaults()
         self._refresh_signals()
+        self._refresh_privacy()
         self._load_labels()
+
+    # ── 0. You ──
+    def _build_you_card(self) -> QFrame:
+        card = _card()
+        v = QVBoxLayout(card); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(8)
+        v.addWidget(_body("You", bold=True, size=dt.SIZE_MD))
+        v.addWidget(_body("Your name is saved with every label you place, and your labels are "
+                          "kept in your own file inside each recording — so two people can "
+                          "label the same recording without overwriting each other. Use the "
+                          "same name on every computer you label on.",
+                          color=dt.text_tertiary(), size=dt.SIZE_SM))
+        row = QHBoxLayout(); row.setSpacing(10)
+        lab = _body("Your name", size=dt.SIZE_MD); lab.setWordWrap(False)
+        row.addWidget(lab)
+        self._labeller_edit = QLineEdit(); self._labeller_edit.setMinimumHeight(40)
+        self._labeller_edit.setMaximumWidth(320)
+        self._labeller_edit.setPlaceholderText("for example: Maya K")
+        self._labeller_edit.setStyleSheet(dt.qss_input())
+        self._labeller_edit.editingFinished.connect(self._on_labeller_edited)
+        row.addWidget(self._labeller_edit, 1); row.addStretch(1)
+        v.addLayout(row)
+        return card
+
+    def _refresh_you(self):
+        if not self._labeller_edit.hasFocus():
+            self._labeller_edit.setText(self._settings.labeller_name)
+
+    def _on_labeller_edited(self):
+        name = " ".join(self._labeller_edit.text().split())[:60]
+        if name == self._settings.labeller_name:
+            return
+        if not name:                       # a name is never cleared back to "nobody"
+            self._labeller_edit.setText(self._settings.labeller_name); return
+        self._settings.labeller_name = name
+        self._settings.save()
+        self._labeller_edit.setText(name)
+        self._flash_saved()
+        self.labeller_changed.emit(name)
+
+    def focus_labeller_name(self):
+        self._scroll.ensureWidgetVisible(self._labeller_edit)
+        self._labeller_edit.setFocus(); self._labeller_edit.selectAll()
+
+    # ── names and privacy ──
+    def _build_privacy_card(self) -> QFrame:
+        card = _card()
+        v = QVBoxLayout(card); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(8)
+        v.addWidget(_body("Boxer names and privacy", bold=True, size=dt.SIZE_MD))
+        v.addWidget(_body("Boxer names are kept with each recording, in its analysis file "
+                          "(recording.xdf) and in exports, so the team can keep track of who is "
+                          "who. These switches hide them where you don't want them.",
+                          color=dt.text_tertiary(), size=dt.SIZE_SM))
+        self._hide_export_cb = QCheckBox("Replace boxer names with Boxer A / Boxer B in exports")
+        self._hide_export_cb.setStyleSheet(dt.qss_checkbox())
+        self._hide_export_cb.toggled.connect(lambda on: self._on_privacy_toggled(
+            "hide_names_in_exports", on))
+        v.addWidget(self._hide_export_cb)
+        n1 = _body("Sets what the export window starts with — you can still choose for each "
+                   "export. A name-free export has no names in its files or its file name; the "
+                   "videos still show the boxers.", color=dt.text_tertiary(), size=dt.SIZE_XS)
+        n1.setContentsMargins(28, 0, 0, 4); v.addWidget(n1)
+        self._hide_screen_cb = QCheckBox("Hide boxer names on screen")
+        self._hide_screen_cb.setStyleSheet(dt.qss_checkbox())
+        self._hide_screen_cb.toggled.connect(lambda on: self._on_privacy_toggled(
+            "hide_names_on_screen", on))
+        v.addWidget(self._hide_screen_cb)
+        n2 = _body("Shows Boxer A / Boxer B instead of names in Sessions and Review & Label — "
+                   "for presenting or sharing your screen. The same switch is in the sidebar "
+                   f"(Hide names), or press {platform_utils.shortcut('H', shift=True)}.",
+                   color=dt.text_tertiary(), size=dt.SIZE_XS)
+        n2.setContentsMargins(28, 0, 0, 0); v.addWidget(n2)
+        return card
+
+    def _refresh_privacy(self):
+        for cb, key in ((self._hide_export_cb, "hide_names_in_exports"),
+                        (self._hide_screen_cb, "hide_names_on_screen")):
+            cb.blockSignals(True)
+            cb.setChecked(bool(getattr(self._settings, key)))
+            cb.blockSignals(False)
+
+    def _on_privacy_toggled(self, key, on):
+        setattr(self._settings, key, bool(on))
+        self._settings.save()
+        self._flash_saved()
+        if key == "hide_names_on_screen":
+            self.names_hidden_changed.emit(bool(on))
 
     # ── 1. Recordings folder ──
     def _build_folder_card(self) -> QFrame:
         card = _card()
-        v = QVBoxLayout(card); v.setContentsMargins(18, 16, 18, 16); v.setSpacing(10)
+        v = QVBoxLayout(card); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(10)
         v.addWidget(_body("Recordings folder", bold=True, size=dt.SIZE_MD))
-        v.addWidget(_body("Recordings are named by their date and time. If this "
-                         "folder is shared (for example on a shared drive), "
-                         "everyone using it sees the same sessions and labels.",
-                         color=dt.text_tertiary(), size=dt.SIZE_XS))
+        v.addWidget(_body("Recordings are named by their date and time. The folder can be on "
+                         "a shared drive: everyone who uses it then sees the same recordings, "
+                         "the same label list and each other's labels, and nobody overwrites "
+                         "anybody's work.",
+                         color=dt.text_tertiary(), size=dt.SIZE_SM))
         self._folder_name = _body("", bold=True, size=dt.SIZE_MD)
         self._folder_path = _body("", color=dt.text_tertiary(), size=dt.SIZE_XS)
         self._folder_free = _body("", color=dt.text_tertiary(), size=dt.SIZE_XS)
@@ -263,6 +386,9 @@ class SettingsScreen(QWidget):
         self._folder_env_note = _body("", color=dt.warning_color(), size=dt.SIZE_XS)
         self._folder_env_note.setVisible(False)
         v.addWidget(self._folder_env_note)
+        self._folder_problem = ui.StatusLine("", "bad", size=dt.SIZE_SM)
+        self._folder_problem.setVisible(False)
+        v.addWidget(self._folder_problem)
         row = QHBoxLayout(); row.setSpacing(10)
         self._change_folder_btn = QPushButton("Change folder…")
         self._change_folder_btn.setMinimumHeight(40)
@@ -270,7 +396,7 @@ class SettingsScreen(QWidget):
         self._change_folder_btn.setStyleSheet(dt.qss_secondary_button())
         self._change_folder_btn.clicked.connect(self._on_change_folder)
         row.addWidget(self._change_folder_btn)
-        finder_btn = QPushButton("Show in Finder")
+        finder_btn = QPushButton(platform_utils.show_in_file_manager_label())
         finder_btn.setMinimumHeight(40)
         finder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         finder_btn.setStyleSheet(dt.qss_secondary_button())
@@ -285,12 +411,16 @@ class SettingsScreen(QWidget):
         d = self._settings.capture_dir_resolved()
         self._folder_name.setText(os.path.basename(os.path.abspath(d)) or d)
         self._folder_path.setText(d)
+        state = safe_io.folder_status(d, create=True)
         try:
-            os.makedirs(d, exist_ok=True)
             free = shutil.disk_usage(d).free
-            self._folder_free.setText(f"{_human_gb(free)} free")
+            shared = " · on a shared (network) drive" if safe_io.is_network_path(d) else ""
+            self._folder_free.setText(f"{_human_gb(free)} free{shared}")
         except OSError:
             self._folder_free.setText("free space unknown")
+        problem = safe_io.folder_problem_text(d, state)
+        self._folder_problem.set(problem, "bad")
+        self._folder_problem.setVisible(bool(problem))
         if env:
             self._folder_env_note.setText(
                 "The recordings folder is set outside the app (BRAIN_BATTLE_"
@@ -325,13 +455,12 @@ class SettingsScreen(QWidget):
         self.capture_dir_changed.emit(path)
 
     def _on_show_in_finder(self):
-        from brain_battle.ui.sessions_screen import reveal_in_finder
-        reveal_in_finder(self._settings.capture_dir_resolved())
+        platform_utils.open_folder(self._settings.capture_dir_resolved())
 
     # ── 2. Headbands ──
     def _build_headbands_card(self) -> QFrame:
         card = _card()
-        v = QVBoxLayout(card); v.setContentsMargins(18, 16, 18, 16); v.setSpacing(10)
+        v = QVBoxLayout(card); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(10)
         v.addWidget(_body("Headbands", bold=True, size=dt.SIZE_MD))
         grid = QGridLayout(); grid.setHorizontalSpacing(10); grid.setVerticalSpacing(8)
         self._hb_combo = {}
@@ -424,7 +553,7 @@ class SettingsScreen(QWidget):
     # ── 3. Video quality ──
     def _build_quality_card(self) -> QFrame:
         card = _card()
-        v = QVBoxLayout(card); v.setContentsMargins(18, 16, 18, 16); v.setSpacing(10)
+        v = QVBoxLayout(card); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(10)
         v.addWidget(_body("Video quality", bold=True, size=dt.SIZE_MD))
         self._quality_group = QButtonGroup(self)
         self._quality_group.setExclusive(True)
@@ -463,7 +592,7 @@ class SettingsScreen(QWidget):
     # ── 4. Session defaults ──
     def _build_defaults_card(self) -> QFrame:
         card = _card()
-        v = QVBoxLayout(card); v.setContentsMargins(18, 16, 18, 16); v.setSpacing(10)
+        v = QVBoxLayout(card); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(10)
         v.addWidget(_body("Session defaults", bold=True, size=dt.SIZE_MD))
         grid = QGridLayout(); grid.setHorizontalSpacing(18); grid.setVerticalSpacing(12)
         self._st_rounds = Stepper("Rounds", 3, 1, 20, 1, lambda n: str(n))
@@ -561,7 +690,7 @@ class SettingsScreen(QWidget):
     # ── 6. Label list ──
     def _build_labels_card(self) -> QFrame:
         card = _card()
-        v = QVBoxLayout(card); v.setContentsMargins(18, 16, 18, 16); v.setSpacing(10)
+        v = QVBoxLayout(card); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(10)
         v.addWidget(_body("Label list", bold=True, size=dt.SIZE_MD))
         v.addWidget(_body("Shared by everyone using this recordings folder. Order "
                          "sets the number key (1-9) used to place a label.",
