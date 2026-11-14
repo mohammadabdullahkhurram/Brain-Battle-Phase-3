@@ -377,7 +377,7 @@ class BrainActivityCard(QFrame):
         """Share the space above the timeline with the videos: on a small
         window the normal height gives way (down to HEIGHT_MIN) so the videos —
         what a labeller watches — keep the larger part."""
-        h = max(self.HEIGHT_MIN, min(self.HEIGHT_NORMAL, int(available * 0.46)))
+        h = max(self.HEIGHT_MIN, min(self.HEIGHT_NORMAL, int(available * 0.40)))
         if h != self._normal_height:
             self._normal_height = h
             if not self._fold.isChecked() and not self._tall.isChecked():

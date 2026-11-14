@@ -355,7 +355,7 @@ class HeadbandView(QFrame):
         # (the scale bar always says what it currently is).
         self._trace = EEGViewer(channels=EEG_CHANNELS[:4] if compact else EEG_CHANNELS,
                                 live=True, color=dt.boxer_colors(slot.which)[2],
-                                min_row_px=11 if compact else 12)
+                                min_row_px=11 if compact else 8)
         self._trace.set_timebase(5 if compact else 10)
         self._trace.set_scale(None)
         v.addWidget(self._trace, 1)
@@ -584,17 +584,14 @@ class ConnectStep(QWidget):
         self.flow = flow
         root = QVBoxLayout(self); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(10)
 
-        top = QHBoxLayout(); top.setSpacing(12)
-        tv = QVBoxLayout(); tv.setSpacing(2)
-        tv.addWidget(ui.title("Get ready"))
-        # (two labels kept for clarity: the count, then what it means)
-        line = QHBoxLayout(); line.setSpacing(8)
+        # one row: the title, then the count and what it means, then Search again
+        top = QHBoxLayout(); top.setSpacing(14)
+        top.addWidget(ui.title("Get ready"))
         self._summary = QLabel("")
         self._explain = ui.muted("", size=dt.SIZE_MD, wrap=False)
         self._explain.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        line.addWidget(self._summary); line.addWidget(self._explain, 1)
-        tv.addLayout(line)
-        top.addLayout(tv, 1)
+        top.addWidget(self._summary, 0, Qt.AlignmentFlag.AlignBottom)
+        top.addWidget(self._explain, 1, Qt.AlignmentFlag.AlignBottom)
         again = ui.secondary_button("Search again", icon="search",
                                     tip="Look for the cameras and headbands again")
         again.clicked.connect(flow.search_again)
@@ -659,9 +656,9 @@ class SetupStep(ui.Card):
         super().__init__(parent=parent)
         self.flow = flow
         self._net_cache = {}
-        root = QVBoxLayout(self); root.setContentsMargins(18, 14, 18, 14); root.setSpacing(12)
+        root = QVBoxLayout(self); root.setContentsMargins(18, 12, 18, 12); root.setSpacing(10)
 
-        # Row 1: who is boxing, the bell, where it will be saved
+        # Row 1: who is boxing, the bell
         r1 = QHBoxLayout(); r1.setSpacing(10)
         self._name_a = self._name_field("A"); self._name_b = self._name_field("B")
         r1.addWidget(ui.boxer_badge("A", 26)); r1.addWidget(self._name_a, 2)
@@ -673,9 +670,7 @@ class SetupStep(ui.Card):
         r1.addWidget(self._bell)
         r1.addStretch(1)
         root.addLayout(r1)
-        self._hb_note = ui.muted("", size=dt.SIZE_XS, wrap=False)
-        self._hb_note.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        root.addWidget(self._hb_note)
+        self._hb_note = QLabel("")        # which headband each boxer wears (a tooltip)
 
         # Row 2: the plan (four steppers) · what will happen · Start
         r2 = QHBoxLayout(); r2.setSpacing(16)
@@ -690,24 +685,29 @@ class SetupStep(ui.Card):
         self._bar = PhaseBar(labelled=True, height=24)
         plan.addWidget(self._bar)
         self._autostop = ui.body("", size=dt.SIZE_XS, color=dt.text_secondary())
+        self._autostop.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         plan.addWidget(self._autostop)
-        self._disk = ui.StatusLine("", "idle", size=dt.SIZE_XS)
-        plan.addWidget(self._disk)
-        self._saves_to = ui.muted("", size=dt.SIZE_CAPTION)
-        plan.addWidget(self._saves_to)
-        for lab in (self._autostop, self._saves_to):
-            lab.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self._disk.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         pw = QWidget(); pw.setLayout(plan); pw.setMinimumWidth(200)
-        r2.addWidget(pw, 1)
+        r2.addWidget(pw, 1, Qt.AlignmentFlag.AlignBottom)
         self._start = ui.danger_button("Start recording", icon="circle")
         self._start.setMinimumHeight(56); self._start.setMinimumWidth(190)
         self._start.setStyleSheet(dt.qss_danger_button() +
                                   f" QPushButton {{ font-size: {dt.SIZE_LG}px; font-weight: 700; }}")
         self._start.setToolTip("Recording starts with the rest period.")
         self._start.clicked.connect(flow.begin_recording)
-        r2.addWidget(self._start, 0, Qt.AlignmentFlag.AlignVCenter)
+        r2.addWidget(self._start, 0, Qt.AlignmentFlag.AlignBottom)
         root.addLayout(r2)
+
+        # Row 3: is there room for it, and where it will be saved
+        r3 = QHBoxLayout(); r3.setSpacing(16)
+        self._disk = ui.StatusLine("", "idle", size=dt.SIZE_XS)
+        self._disk.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        r3.addWidget(self._disk, 3)
+        self._saves_to = ui.muted("", size=dt.SIZE_CAPTION)
+        self._saves_to.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._saves_to.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        r3.addWidget(self._saves_to, 2)
+        root.addLayout(r3)
         self._name_a.textChanged.connect(self._on_names_changed)
         self._name_b.textChanged.connect(self._on_names_changed)
 
@@ -737,8 +737,11 @@ class SetupStep(ui.Card):
             edit.blockSignals(False)
         hb_a = s.headband_for("A") or "a headband"
         hb_b = s.headband_for("B") or "a headband"
-        self._hb_note.setText(f"Boxer A wears headband {hb_a} · Boxer B wears {hb_b}. "
-                              f"Names are optional and can be hidden later.")
+        self._hb_note.setText(f"Boxer A wears headband {hb_a} · Boxer B wears {hb_b}.")
+        self._name_a.setToolTip(f"Boxer A wears headband {hb_a}. The name is optional and "
+                                f"can be hidden later.")
+        self._name_b.setToolTip(f"Boxer B wears headband {hb_b}. The name is optional and "
+                                f"can be hidden later.")
         self._recompute()
 
     def config(self) -> SessionConfig:
