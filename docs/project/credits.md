@@ -44,3 +44,17 @@ Bundled as `assets/fonts/Inter-{Regular,Medium,SemiBold,Bold}.ttf`, with the
 full licence text at `assets/fonts/Inter-OFL.txt`, and registered at startup
 by `fonts.py` so the UI looks the same regardless of what's installed on the
 machine.
+
+## JetBrains Mono (code typeface)
+
+| | |
+|---|---|
+| Font | JetBrains Mono 2.304 |
+| Author | The JetBrains Mono Project Authors |
+| Source | [github.com/JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono) |
+| Licence | SIL Open Font License 1.1 (SIL OFL) |
+
+Bundled as `assets/fonts/JetBrainsMono-{Regular,Bold}.ttf`, with the full
+licence text at `assets/fonts/JetBrainsMono-OFL.txt`, and registered at startup
+by `fonts.py`. It is used for code and file names in the Documentation screen,
+so they look the same on macOS and Windows.

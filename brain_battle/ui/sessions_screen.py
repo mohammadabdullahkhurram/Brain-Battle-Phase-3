@@ -40,6 +40,7 @@ import brain_battle.data.privacy as privacy
 import brain_battle.data.safe_io as safe_io
 import brain_battle.data.session_storage as ss
 from brain_battle.support import platform_utils
+from brain_battle.ui.fonts import register_fonts
 
 STATUS_META = {
     ss.STATUS_INTERRUPTED:     ("! Interrupted",     "warning"),
@@ -221,6 +222,7 @@ class SessionsScreen(QWidget):
 
     def __init__(self, capture_dir, parent=None):
         super().__init__(parent)
+        register_fonts()        # the bundled fonts, however this screen is made
         self._capture_dir = capture_dir
         self._sessions = []          # all SessionInfo
         self._sizes = {}             # root -> bytes

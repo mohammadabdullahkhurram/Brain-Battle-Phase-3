@@ -62,6 +62,7 @@ import brain_battle.data.session_storage as session_storage
 from brain_battle.data.session_storage import read_phase_markers, friendly_phase, short_phase
 from brain_battle.playback.pyav_player import open_session_cameras, PlayerController
 from brain_battle.support import platform_utils
+from brain_battle.ui.fonts import register_fonts
 
 
 # ── small helpers ──────────────────────────────────────────────────────────────
@@ -662,6 +663,7 @@ class ReviewLabelScreen(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        register_fonts()        # the bundled fonts, however this screen is made
         self._root = None
         self._labeller = app_settings.labeller_name()
         self._hide_names = app_settings.hide_names_on_screen()

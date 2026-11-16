@@ -1,8 +1,10 @@
 """
 fonts.py
 ────────
-Registers the bundled Inter font (SIL OFL 1.1 — see assets/fonts/Inter-OFL.txt)
-with Qt so the UI uses it regardless of what's installed on the machine. If the
+Registers the bundled fonts with Qt so the UI uses them regardless of what's
+installed on the machine: Inter for the interface (SIL OFL 1.1 — see
+assets/fonts/Inter-OFL.txt) and JetBrains Mono for code in the Documentation
+screen (SIL OFL 1.1 — assets/fonts/JetBrainsMono-OFL.txt). If the
 bundled files can't be loaded for any reason, the app simply falls back to the
 system UI font — font loading must never block startup.
 
@@ -23,6 +25,8 @@ _INTER_FILES = (
     "Inter-Medium.ttf",
     "Inter-SemiBold.ttf",
     "Inter-Bold.ttf",
+    "JetBrainsMono-Regular.ttf",
+    "JetBrainsMono-Bold.ttf",
 )
 
 _registered = False
@@ -49,14 +53,14 @@ def register_fonts() -> bool:
             if fid != -1:
                 loaded += 1
             else:
-                log.warning("Inter font %s failed to register", name)
+                log.warning("font %s failed to register", name)
         except Exception as e:
-            log.warning("could not register Inter font %s: %s", name, e)
+            log.warning("could not register font %s: %s", name, e)
     if loaded:
         _registered = True
-        log.info("registered %d Inter weight(s) from %s", loaded, _FONT_DIR)
+        log.info("registered %d bundled font file(s) from %s", loaded, _FONT_DIR)
     else:
-        log.warning("no Inter fonts loaded from %s — falling back to system font",
+        log.warning("no bundled fonts loaded from %s — falling back to system font",
                     _FONT_DIR)
     return _registered
 

@@ -40,6 +40,7 @@ from PyQt6.QtWidgets import (
 
 import brain_battle.ui.design_tokens as dt
 import brain_battle.support.docs_nav as docs_nav
+from brain_battle.ui.fonts import register_fonts
 
 # Images never display wider than this (keeps the reading column legible even
 # on a very wide window), AND never wider than the live content width (so they
@@ -344,7 +345,7 @@ def _style_code_runs(browser: QTextBrowser) -> None:
     if not ranges:
         return
     new_fmt = QTextCharFormat()
-    new_fmt.setFontFamilies([dt.FONT_MONO])
+    new_fmt.setFontFamilies(list(dt.FONT_MONO_FAMILIES))
     new_fmt.setBackground(QColor(dt.canvas_bg()))
     new_fmt.setFontPointSize(max(8, dt.SIZE_SM - 1))
     cursor = QTextCursor(doc)
@@ -352,6 +353,30 @@ def _style_code_runs(browser: QTextBrowser) -> None:
         cursor.setPosition(start)
         cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
         cursor.mergeCharFormat(new_fmt)
+    _wrap_code_blocks(doc)
+
+
+def _wrap_code_blocks(doc) -> None:
+    """Let long lines in fenced code blocks wrap inside the reading column.
+    Qt imports them as "non-breakable" lines, which in a real monospace font
+    are wider than the column and would need sideways scrolling. Same two
+    passes as above: collect first, change afterwards."""
+    from PyQt6.QtGui import QTextBlockFormat, QTextOption
+    opt = doc.defaultTextOption()
+    opt.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+    doc.setDefaultTextOption(opt)
+    positions = []
+    block = doc.begin()
+    while block.isValid():
+        if block.blockFormat().nonBreakableLines():
+            positions.append(block.position())
+        block = block.next()
+    wrap = QTextBlockFormat()
+    wrap.setNonBreakableLines(False)
+    cursor = QTextCursor(doc)
+    for pos in positions:
+        cursor.setPosition(pos)
+        cursor.mergeBlockFormat(wrap)
 
 
 def _nav_qss() -> str:
@@ -378,6 +403,7 @@ def _nav_qss() -> str:
 class DocsScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        register_fonts()        # the bundled fonts, however this screen is made
         self.setObjectName("docsScreen")
         self.setStyleSheet(f"#docsScreen {{ background: {dt.canvas_bg()}; }}")
         self._nav = docs_nav.load_nav()

@@ -144,8 +144,14 @@ def semantic(kind: str):
 
 # ═══════════════════════════════════════════════════════════════ TYPE
 
-FONT_UI   = "'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif"
-FONT_MONO = "'JetBrains Mono', 'SF Mono', 'Menlo', 'Consolas', 'Courier New', monospace"
+# Inter is bundled and registered at start-up. Only names that exist are listed:
+# asking Qt for a family the computer lacks ("-apple-system", "sans-serif") makes it
+# build its whole font-alias table and print a "missing font family" warning.
+FONT_UI   = "'Inter'"
+# JetBrains Mono is bundled (assets/fonts, registered by ui/fonts.py), so the
+# name always exists (Qt falls back to the system font if the file is gone).
+FONT_MONO_FAMILIES = ["JetBrains Mono"]
+FONT_MONO = ", ".join(f"'{f}'" for f in FONT_MONO_FAMILIES)
 FONT_SANS = FONT_UI
 
 SIZE_HERO    = 48

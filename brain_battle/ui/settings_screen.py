@@ -46,6 +46,7 @@ from brain_battle.support import platform_utils
 import brain_battle.data.label_vocab as label_vocab
 from brain_battle.ui.record_flow import Stepper, _mmss
 from brain_battle.version import __version__
+from brain_battle.ui.fonts import register_fonts
 
 VIDEO_QUALITY_ORDER = ["standard", "high", "light"]
 
@@ -198,6 +199,7 @@ class SettingsScreen(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        register_fonts()        # the bundled fonts, however this screen is made
         self._settings = app_settings.load()
         self._labels: list[dict] = []
         self._scan_thread = None
