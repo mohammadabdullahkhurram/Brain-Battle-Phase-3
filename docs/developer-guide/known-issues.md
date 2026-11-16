@@ -35,6 +35,10 @@ there. The list is in
 [Cross-platform & CI](cross-platform-and-ci.md#never-tried-on-a-real-windows-machine).
 These are listed, not fixed, because they need a real machine.
 
+**The automatic test run is not green on Windows.** `test_shared_folder` never
+finishes there and `test_xdf` fails one clock check; both are open. The table is
+in [Cross-platform & CI](cross-platform-and-ci.md#still-failing-on-windows-in-the-automatic-test-run-open).
+
 ## Open files ("Too many open files") — fixed in 3.1.0-dev.3, with a cost
 
 Up to `v3.1.0-dev.2`, every visit to New recording used up 33 more of the 256

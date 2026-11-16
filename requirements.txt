@@ -25,6 +25,10 @@ scipy==1.15.3
 pandas==2.2.3
 numpy==2.2.5
 av==19.0.2
+# Counts the process's threads / child processes / (on Windows) handles for
+# support/resource_limits.py, and lets tools/run_tests.py stop a stuck script
+# together with the programs it started.
+psutil==7.0.0
 # bleak is never imported directly in this repo, but muselsl's direct-BLE
 # backend (backend="bleak", used throughout eeg_module.py) requires it at
 # runtime — without it, EEG connect fails with an import error inside muselsl.

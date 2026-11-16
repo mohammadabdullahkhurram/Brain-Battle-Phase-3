@@ -1829,6 +1829,7 @@ class RecordFlow(QWidget):
                 checklist.append(("✓", f"{slot.title} video saved{lost}", dt.success_color()))
             else:
                 checklist.append(("!", f"{slot.title} video incomplete{lost}", dt.warning_color()))
+                problems.append(f"{slot.title}'s video is missing or incomplete.")
         # brain recordings
         for which in ("A", "B"):
             path = self._band_rec_paths.get(which)
@@ -1860,7 +1861,7 @@ class RecordFlow(QWidget):
         for slot in self._cams:
             if slot.dropped:
                 worth.append(f"{slot.title} lost {slot.dropped} frames — the recording may stutter.")
-            if slot.rec_failed:
+            if slot.rec_failed and os.path.isfile(self._cam_rec_paths.get(slot.index) or ""):
                 worth.append(f"{slot.title} stopped recording partway through.")
         for which, b in self._bands.items():
             if b.lost:

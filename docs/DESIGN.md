@@ -63,7 +63,8 @@ None of them are developers.
 
 ## Design tokens
 
-Font: Inter (bundled; fallback -apple-system, Segoe UI). Timers and counts use
+Font: Inter (bundled; the system font if the file is missing). Code in the
+Documentation screen: JetBrains Mono (bundled). Timers and counts use
 equal-width digits so they do not jiggle.
 
 - **Type:** screen title 30 · large 24 · card/dialog title 20 · heading 16 ·
@@ -237,7 +238,7 @@ Read from across the room; used under pressure.
   "Recording saved, but with problems", the affected checklist line gets "!"
   ("Some round and break times were not saved", "Boxer A brain recording was
   not saved"), and the first line under Worth checking says what could not be
-  saved.
+  saved. A camera whose video is missing or incomplete counts too.
 - "Saved in <folder> › <recording folder> · 1.7 GB".
 - **Label this recording →** (primary) · **Record another** · **Back to
   sessions** · **Show in Finder / Explorer**.

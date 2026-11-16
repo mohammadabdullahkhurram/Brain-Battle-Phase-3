@@ -146,6 +146,10 @@ def main(argv=None) -> int:
         by_name = {os.path.splitext(os.path.basename(s))[0]: s for s in scripts}
         results = [r for r in results if r[1] == 0]
         for r in first_fail:
+            if r[1] == 124:              # stuck, not slow: a second go would stall again
+                print(f"FAIL  {r[0]:<26} (stopped after {TIMEOUT_SEC // 60} minutes; not re-run)")
+                results.append(r)
+                continue
             report(_run(by_name[r[0]], log_dir))
     failed = sorted(r[0] for r in results if r[1] != 0)
     print(f"\n{len(results) - len(failed)} of {len(results)} scripts passed "

@@ -62,6 +62,26 @@ Things to know:
 - Every test script imports `tests/_env.py` first, which points the app at a
   throwaway settings file — a test run never touches a real user's settings.
 
+## Still failing on Windows in the automatic test run (open)
+
+State on 2026-11-16, from the run on commit `be4202f` (cancelled by hand after
+the Windows job stalled). **macOS passes everything except the one item marked
+"both"; Windows has never had a fully green run.** Nothing below has been
+reproduced on a real Windows computer.
+
+| Script | What happens | Status |
+|---|---|---|
+| `test_shared_folder` | Never finishes on Windows. The runner now stops it after 15 minutes and does not try it a second time, so the run ends with a log instead of being cancelled at 45 minutes. Which step waits (the folder lock, the five-process test, or the vanished-folder test) is **not known yet** — read `test-logs/test_shared_folder.log` from the run's artifact | **Open** |
+| `test_xdf` | "our LSL time matches `pylsl.local_clock()`": the fixed offset between the capture clock and the LSL clock measured 3.4 ms on the Windows runner (limit 1 ms). Either the two clocks really differ in resolution on Windows, or the one-off measurement in `capture/clock.py` is too coarse there. It matters for comparing a LabRecorder file with `recording.xdf`, not for `recording.xdf` itself | **Open** |
+| `test_descriptors` (both) | Failed on macOS and Windows because `psutil` was not installed on the runners. Declared as a dependency in the following commit; **not yet confirmed by a run** | Fix pushed, unconfirmed |
+| `test_lsl_streams` | Failed once while other scripts were running and passed alone | Watch |
+
+Fixed by 3.1.0-dev.3 and confirmed passing on Windows in that run:
+`test_layout_fit`, `test_sessions`, `test_docs` (the screens now load the
+bundled fonts themselves; code blocks wrap; diagram sources are LF),
+`test_history_log`, `test_eeg_streaming` (no `SIGKILL` on Windows),
+`test_research_docs` (back-slashed path), `test_record_flow`.
+
 ## Never tried on a real Windows machine
 
 Verified only by reading the code and by the Windows CI run, where there is

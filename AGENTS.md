@@ -393,6 +393,9 @@ the app raises its own open-file limit at start-up
 history write is shown on the Recording screen and the Saved screen says
 "Recording saved, but with problems"; JetBrains Mono is bundled for code in
 the Documentation screen. Measure with `python3 tools/measure_descriptors.py`.
+**Windows CI is still not green** (`test_shared_folder` never finishes,
+`test_xdf` fails one clock check) — the open list is in
+`docs/developer-guide/cross-platform-and-ci.md`.
 
 Hardware is broken, so the whole flow is built + tested against **simulated**
 devices driven through the real capture paths (`capture/simulation.py`,

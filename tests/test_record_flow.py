@@ -424,6 +424,29 @@ def test_every_step_fits():
                 flow._set_step(step); pump(0.2)
                 ov = _overflows(win, flow._stack.currentWidget())
                 check(f"[{W}x{H}] step '{name}' nothing clipped", len(ov) == 0, str(ov[:3]))
+            # the warning states: every kind of failed write at once (the longest text)
+            flow._write_problems = list(flow._WHAT.values())
+            flow._recording_step.show_write_problem(flow.write_problem_text())
+            flow._recording_step._confirm.setVisible(True)      # with the stop question open too
+            flow._set_step(flow.STEP_RECORD); pump(0.2)
+            ov = _overflows(win, flow._recording_step)
+            check(f"[{W}x{H}] Recording with the could-not-save warning: nothing clipped",
+                  len(ov) == 0 and flow._recording_step._write_banner.isVisible(), str(ov[:3]))
+            flow._saved_step.populate({
+                "meta": "demo", "checklist": [("!", "Some round and break times were not saved", None)],
+                "worth_checking": [flow.write_problem_text()], "folder_line": "z",
+                "problems": ["p"]})
+            flow._set_step(flow.STEP_SAVED); pump(0.2)
+            ov = _overflows(win, flow._saved_step)
+            check(f"[{W}x{H}] Saved 'with problems': nothing clipped, heading fully shown",
+                  len(ov) == 0 and flow._saved_step._head.text() == flow._saved_step.HEAD_PROBLEM
+                  and flow._saved_step._head.sizeHint().width() <= flow._saved_step._head.width(),
+                  str(ov[:3]))
+            flow._write_problems = []
+            flow._recording_step.show_write_problem("")
+            flow._recording_step._confirm.setVisible(False)
+            flow._saved_step.populate({"meta": "demo", "checklist": [("✓", "x", None)],
+                                        "worth_checking": ["y"], "folder_line": "z"})
     finally:
         flow.shutdown(); pump(0.3)
 

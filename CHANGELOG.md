@@ -61,7 +61,20 @@ Snapshot before it: `pre-fdfix-2026-11-16`. Decision and measurements:
 **Tests on Windows (CI)**
 - Hard-kill tests use `Popen.kill()` (there is no `SIGKILL` on Windows);
   documentation examples are given a forward-slash path; diagram sources are
-  checked out with LF line endings so their hashes match.
+  checked out with LF line endings so their hashes match. With the fonts change
+  above, `test_layout_fit`, `test_sessions`, `test_docs`, `test_history_log`,
+  `test_eeg_streaming`, `test_research_docs` and `test_record_flow` now pass on
+  Windows.
+- `psutil` is now a declared dependency (thread / child-process counts).
+- A failed camera video also makes the Saved screen read "with problems".
+
+**Still open — Windows CI is not green**
+- `test_shared_folder` never finishes on Windows (cause not yet known; it is
+  now stopped after 15 minutes and not retried).
+- `test_xdf`: the capture clock and the LSL clock differ by 3.4 ms on the
+  Windows runner (limit 1 ms).
+- The `psutil` fix for `test_descriptors` on CI is pushed but not yet confirmed
+  by a run. See `docs/developer-guide/cross-platform-and-ci.md`.
 
 ## 3.1.0-dev · Redesign, several labellers, Mac + Windows, shared folders (tag `v3.1.0-dev.2`)
 

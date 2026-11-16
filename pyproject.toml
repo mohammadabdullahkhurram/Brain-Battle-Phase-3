@@ -31,6 +31,8 @@ dependencies = [
     "pandas>=2.2",
     "numpy>=2.2",
     "av>=19.0",
+    # resource_limits.py: thread / child-process / handle counts.
+    "psutil>=5.9",
     # muselsl's direct-BLE backend (backend="bleak") needs bleak at runtime.
     "bleak>=2.1",
     # docs_nav.py parses docs/nav.yml.
