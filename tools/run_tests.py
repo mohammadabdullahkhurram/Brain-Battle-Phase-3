@@ -18,6 +18,9 @@ printed at the end; failing scripts have their FAIL lines echoed. Because some
 scripts measure real time, a script that fails while others are running is run
 once more on its own, and only counts as failed if it fails again.
 
+A script that has not finished after 15 minutes is stopped and counts as
+failed (its log says so).
+
 Exit code: 0 if every script passed, 1 otherwise.
 """
 from __future__ import annotations
@@ -35,7 +38,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Timing-sensitive or LSL-publishing scripts: never two of these at once.
 SERIAL = {"test_record_flow", "test_settings_screen", "test_lsl_streams", "test_layout_fit",
           "test_player", "test_video_recording", "test_eeg_streaming", "test_crash_recovery",
-          "test_history_log", "test_smoke", "test_round_bell", "test_shared_folder"}
+          "test_history_log", "test_smoke", "test_round_bell", "test_shared_folder",
+          "test_descriptors"}
+
+
+# Longest script is about five minutes; anything past this is stuck.
+TIMEOUT_SEC = 15 * 60
 
 
 def _run(path: str, log_dir: str):
@@ -44,9 +52,36 @@ def _run(path: str, log_dir: str):
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", PYTHONUTF8="1")
     t0 = time.monotonic()
     with open(log, "w", encoding="utf-8") as f:
-        rc = subprocess.call([sys.executable, path], cwd=ROOT, env=env,
-                             stdout=f, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen([sys.executable, path], cwd=ROOT, env=env,
+                                stdout=f, stderr=subprocess.STDOUT)
+        try:
+            rc = proc.wait(timeout=TIMEOUT_SEC)
+        except subprocess.TimeoutExpired:
+            # A script that waits for ever (a dialog nobody can click, a lock
+            # that is never released) must fail with its log, not stall the run.
+            _kill_tree(proc)
+            rc = 124
+            f.write(f"\nFAIL  {name} did not finish within {TIMEOUT_SEC // 60} minutes "
+                    f"and was stopped\n")
     return name, rc, time.monotonic() - t0, log
+
+
+def _kill_tree(proc) -> None:
+    """Stop a test script and anything it started (ffmpeg, kill-runners)."""
+    try:
+        import psutil
+        kids = psutil.Process(proc.pid).children(recursive=True)
+    except Exception:
+        kids = []
+    for p in kids + [proc]:
+        try:
+            p.kill()
+        except Exception:
+            pass
+    try:
+        proc.wait(timeout=10)
+    except Exception:
+        pass
 
 
 def _run_lane(paths, log_dir, report):

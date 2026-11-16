@@ -1,0 +1,4 @@
+# Diagram sources are hashed byte-for-byte (tools/render_diagrams.py), so they
+# must check out with the same line endings on Windows as on macOS.
+*.mmd text eol=lf
+*.hash text eol=lf

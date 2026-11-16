@@ -292,7 +292,7 @@ def _code_blocks(md_path, lang):
 def test_python_examples_run():
     blocks = _code_blocks(LOADING_MD, "python")
     check("loading-the-data.md has Python examples", len(blocks) >= 3, str(len(blocks)))
-    script = "\n".join(blocks).replace("/path/to/your/unzipped/export", EXPORT_DIR)
+    script = "\n".join(blocks).replace("/path/to/your/unzipped/export", EXPORT_DIR.replace("\\", "/"))
     ns = {}
     try:
         exec(compile(script, "<loading-the-data.md python>", "exec"), ns)
@@ -318,7 +318,7 @@ def test_r_examples():
     if probe.returncode != 0:
         print("INFO  R examples: readr/dplyr not installed — not automatically tested")
         return
-    script = "\n".join(blocks).replace("/path/to/your/unzipped/export", EXPORT_DIR)
+    script = "\n".join(blocks).replace("/path/to/your/unzipped/export", EXPORT_DIR.replace("\\", "/"))
     res = subprocess.run([rscript, "-e", script], capture_output=True, text=True)
     check("every R example runs against a demo export", res.returncode == 0,
           res.stderr[-400:])

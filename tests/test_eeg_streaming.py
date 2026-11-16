@@ -85,11 +85,11 @@ def test_sigkill_midrecording_leaves_valid_csv():
             time.sleep(0.1)
             sent_now = _read_sent()
 
-        proc.send_signal(signal.SIGKILL)
+        proc.kill()   # SIGKILL on macOS, TerminateProcess on Windows: no clean-up either way
         proc.wait(timeout=10)
 
         check("subprocess was killed (negative returncode)",
-              proc.returncode is not None and proc.returncode < 0,
+              proc.returncode is not None and proc.returncode != 0,
               f"returncode={proc.returncode}")
         check("EEG CSV exists after kill", os.path.exists(csv_path))
 

@@ -103,10 +103,10 @@ def test_sigkill_midrecording():
         check("recording produced frames before the kill", rows >= 150,
               f"sidecar rows={rows}")
 
-        proc.send_signal(signal.SIGKILL)
+        proc.kill()   # SIGKILL on macOS, TerminateProcess on Windows: no clean-up either way
         proc.wait(timeout=10)
         check("process was hard-killed", proc.returncode is not None
-              and proc.returncode < 0, f"rc={proc.returncode}")
+              and proc.returncode != 0, f"rc={proc.returncode}")
 
         # The ffmpeg child is orphaned; on our death it sees stdin EOF and
         # finalises the fragmented MP4. Give it a moment.

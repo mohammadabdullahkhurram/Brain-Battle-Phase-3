@@ -114,10 +114,10 @@ def test_sigkill_midwrite():
         while n < 50 and time.monotonic() < deadline:
             time.sleep(0.1)
             n = len(sh.read_history(root))
-        proc.send_signal(signal.SIGKILL)
+        proc.kill()   # SIGKILL on macOS, TerminateProcess on Windows: no clean-up either way
         proc.wait(timeout=10)
         check("process was hard-killed", proc.returncode is not None
-              and proc.returncode < 0, f"rc={proc.returncode}")
+              and proc.returncode != 0, f"rc={proc.returncode}")
         evs = sh.read_history(root)
         check("history still reads after SIGKILL", len(evs) >= 50,
               f"{len(evs)} events")
