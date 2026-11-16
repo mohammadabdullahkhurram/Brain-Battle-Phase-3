@@ -71,8 +71,8 @@ every video frame on one clock. It is the standard format EEG researchers
 expect (it opens in EEGLAB and in Python), so it is usually the first file an
 analyst asks for — and it is in every export. You do **not** need LabRecorder:
 Brain Battle makes the file itself. If your lab wants to record with LabRecorder
-anyway, it can — Brain Battle's signals show up there while the New recording
-screens are open (see [Settings](settings.md), "Extra signals and sharing").
+anyway, it can — Brain Battle's signals show up there once you have opened New
+recording (see [Settings](settings.md), "Extra signals and sharing").
 
 **What do TP9, AF7, AF8, TP10 and AUX mean on the brain-activity display?**
 They are the standard names of the headband's sensors: TP9 is behind the left

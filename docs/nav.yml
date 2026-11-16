@@ -169,6 +169,9 @@ sections:
       - id: adr-0021
         title: ADR-0021 Boxer names and hiding them
         file: decisions/adr-0021-boxer-names-and-hiding.md
+      - id: adr-0022
+        title: ADR-0022 LSL streams opened once
+        file: decisions/adr-0022-lsl-outlets-open-once.md
 
   - title: Project
     pages:

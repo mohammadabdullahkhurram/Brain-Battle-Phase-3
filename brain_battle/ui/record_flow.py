@@ -71,9 +71,10 @@ from brain_battle.data.session_storage import (
 )
 from brain_battle.capture.round_bell import RoundBell
 from brain_battle.capture.keep_awake import KeepAwake
-from brain_battle.support.log_setup import attach_session_log
+from brain_battle.support.log_setup import attach_session_log, detach_session_log
 from brain_battle.support import platform_utils
 from brain_battle.capture.usb_camera import list_cameras, preflight_recording, CameraDevice
+from brain_battle.ui.fonts import register_fonts
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +88,14 @@ def _mmss(sec) -> str:
     if m >= 60:
         h, m = divmod(m, 60); return f"{h}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"
+
+
+def _join_words(items) -> str:
+    """["a", "b", "c"] → "a, b and c"."""
+    items = list(items)
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " and " + items[-1]
 
 
 def _plural(n: int, word: str) -> str:
@@ -885,6 +894,11 @@ class RecordingStep(QWidget):
         self._confirm.setVisible(False)
         root.addWidget(self._confirm)
 
+        # shown only when part of the recording's details could not be saved
+        self._write_banner = ui.Banner("bad")
+        self._write_banner.setVisible(False)
+        root.addWidget(self._write_banner)
+
         body = QHBoxLayout(); body.setSpacing(12)
 
         # the hero: phase, countdown, mark-a-moment — tinted by the phase
@@ -972,8 +986,13 @@ class RecordingStep(QWidget):
         self._confirm_text.setText(self.flow.stop_prompt_text())
         self._confirm.setVisible(True)
 
+    def show_write_problem(self, text: str):
+        self._write_banner.set_text(text)
+        self._write_banner.setVisible(bool(text))
+
     def reset_for_recording(self):
         self._confirm.setVisible(False)
+        self.show_write_problem("")
         self._moment_note.setText("No moments marked yet")
         a, b = self.flow._names.get("A"), self.flow._names.get("B")
         self._who.setText(f"{a or 'Boxer A'} vs {b or 'Boxer B'}")
@@ -1044,9 +1063,8 @@ class SavedStep(QWidget):
         outer.addStretch(1)
         col = QVBoxLayout(); col.setSpacing(12)
         head = QHBoxLayout(); head.setSpacing(14)
-        tick = QLabel(); tick.setPixmap(dt.icon_pixmap("check-circle", color=dt.success_color(), size=44))
-        tick.setFixedSize(44, 44)
-        head.addWidget(tick)
+        self._tick = QLabel(); self._tick.setFixedSize(44, 44)
+        head.addWidget(self._tick)
         ht = QVBoxLayout(); ht.setSpacing(0)
         self._head = ui.title("Recording saved")
         ht.addWidget(self._head)
@@ -1134,8 +1152,16 @@ class SavedStep(QWidget):
         h.addWidget(lb, 1)
         return row
 
+    HEAD_OK = "Recording saved"
+    HEAD_PROBLEM = "Recording saved, but with problems"
+
     def populate(self, info: dict):
         ui.clear_layout(self._list)
+        clean = not info.get("problems")
+        self._head.setText(self.HEAD_OK if clean else self.HEAD_PROBLEM)
+        self._tick.setPixmap(dt.icon_pixmap(
+            "check-circle" if clean else "alert",
+            color=dt.success_color() if clean else dt.warning_color(), size=44))
         self._meta.setText(info["meta"])
         for icon, text, color in info["checklist"]:
             self._list.addWidget(self._row(icon, text, color))
@@ -1171,6 +1197,7 @@ class RecordFlow(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        register_fonts()        # the bundled fonts, however this screen is made
         self._settings = app_settings.load()
         self._cams = camera_source.make_slots(self)
         self._bands = {"A": HeadbandSlot("A", self), "B": HeadbandSlot("B", self)}
@@ -1191,6 +1218,7 @@ class RecordFlow(QWidget):
         self._cam_rec_paths = {}
         self._band_rec_paths = {}
         self._saved_root = None
+        self._write_problems = []        # what could not be saved (plain words), in order
         self._scan_thread = None
         self._lsl: Optional[LslPublisher] = None
         self._xdf_thread: Optional[threading.Thread] = None
@@ -1284,6 +1312,7 @@ class RecordFlow(QWidget):
         self._stopping_early = False
         self._cam_rec_paths = {}; self._band_rec_paths = {}
         self._saved_root = None
+        self._write_problems = []
 
     # ── device scanning / assignment ──
     def _scan_and_assign(self):
@@ -1447,6 +1476,44 @@ class RecordFlow(QWidget):
                 return False
         return True
 
+    # ── writes that must not fail quietly ──
+    # What each essential file holds, in the words the operator sees.
+    _WHAT = {"plan": "the recording's details", "times": "the round and break times",
+             "moments": "a moment you marked", "history": "the recording's history",
+             "contact": "the sensor-contact notes"}
+
+    def _essential(self, what, fn, *args, **kwargs):
+        """Run one write of the recording's own bookkeeping (manifest, markers,
+        history). A failure is logged, remembered for the Saved screen and shown
+        on the Recording screen straight away — it never stops the recording."""
+        try:
+            result = fn(*args, **kwargs)
+            if result is False:              # session_history.log_event's "not written"
+                raise OSError("the line was not written")
+            return result
+        except Exception as e:
+            log.error("could not save %s (%s): %r", self._WHAT[what],
+                      getattr(fn, "__name__", "write"), e)
+            self._note_write_problem(what)
+            return None
+
+    def _note_write_problem(self, what):
+        text = self._WHAT[what]
+        if text not in self._write_problems:
+            self._write_problems.append(text)
+        self._recording_step.show_write_problem(self.write_problem_text())
+
+    def write_problems(self) -> list:
+        """What could not be saved during this recording (empty = all saved)."""
+        return list(self._write_problems)
+
+    def write_problem_text(self) -> str:
+        if not self._write_problems:
+            return ""
+        return (f"Could not save {_join_words(self._write_problems)} to the recordings folder. "
+                f"The cameras and headbands keep recording. Check that the drive is still "
+                f"connected and has free space.")
+
     def _on_session_started(self):
         if self._layout is None:
             return
@@ -1455,13 +1522,11 @@ class RecordFlow(QWidget):
         self._session_t0 = origin["t0_monotonic"]
         self._session_t0_unix = origin["t0_unix"]
         cam_clock = (self._session_t0, self._session_t0_unix)
-        try:
-            self._layout.set_capture_origin(**origin)
-        except Exception as e:
-            log.error("capture origin write failed: %s", e)
-        session_history.log_event(self._layout.root, session_history.EVENT_RECORDING_STARTED,
-                                  {"rounds": self._cfg.num_rounds, "round_sec": self._cfg.round_sec,
-                                   "break_sec": self._cfg.break_sec, "baseline_sec": self._cfg.baseline_sec})
+        self._essential("plan", self._layout.set_capture_origin, **origin)
+        self._essential("history", session_history.log_event, self._layout.root,
+                        session_history.EVENT_RECORDING_STARTED,
+                        {"rounds": self._cfg.num_rounds, "round_sec": self._cfg.round_sec,
+                         "break_sec": self._cfg.break_sec, "baseline_sec": self._cfg.baseline_sec})
         cont = self._layout.continuous_dir()
         # cameras
         self._cam_rec_paths = {}
@@ -1472,7 +1537,8 @@ class RecordFlow(QWidget):
                 self._cam_rec_paths[slot.index] = path
         # headbands
         from brain_battle.capture.eeg_module import muse_friendly
-        muse_dir = cont / "Muse data"; muse_dir.mkdir(parents=True, exist_ok=True)
+        muse_dir = cont / "Muse data"
+        self._essential("plan", muse_dir.mkdir, parents=True, exist_ok=True)
         self._band_rec_paths = {}
         for which, band in self._bands.items():
             if band.connected and band.device:
@@ -1482,6 +1548,8 @@ class RecordFlow(QWidget):
                 self._band_rec_paths[which] = path
         # contact-quality log
         self._contact_writer = contact_log.ContactLogWriter(contact_log.path_for(self._layout.root))
+        if not self._contact_writer.is_open:
+            self._note_write_problem("contact")
         self._contact_timer.start()
 
     def _on_phase_changed(self, phase_id, label, duration, round_num):
@@ -1489,26 +1557,22 @@ class RecordFlow(QWidget):
         self._recording_step.set_phase(phase_id, label, round_num, total_rounds, duration)
         self._recording_step.set_time(duration, duration, self._elapsed_session())
         if self._layout is not None and self._session_t0 is not None:
-            try:
-                t = time.monotonic() - self._session_t0
-                norm = label.upper().replace(" ", "_")
-                marker = f"{norm}_START" if phase_id != "done" else norm
-                self._layout.append_marker(t, phase_id, marker, round_num)
-                self._publish_marker(marker, t)
-            except Exception as e:
-                log.warning("marker write failed: %s", e)
+            t = time.monotonic() - self._session_t0
+            norm = label.upper().replace(" ", "_")
+            marker = f"{norm}_START" if phase_id != "done" else norm
+            self._essential("times", self._layout.append_marker, t, phase_id, marker, round_num)
+            self._publish_marker(marker, t)
         if self._layout is None:
             return
         phase = Phase(phase_id)
         if phase in (Phase.BASELINE, Phase.ROUND, Phase.BREAK):
-            self._layout.add_phase(PhaseRecord(
+            self._essential("plan", self._layout.add_phase, PhaseRecord(
                 phase=phase.value, label=label, round_num=round_num, folder="continuous",
                 planned_duration=duration, start_unix=time.time(),
                 start_monotonic=time.monotonic()))
             if self._active_phase is not None:
                 pp, pr = self._active_phase
-                try: self._layout.close_phase(pp, pr)
-                except Exception as e: log.warning("close_phase: %s", e)
+                self._essential("plan", self._layout.close_phase, pp, pr)
             self._active_phase = (phase, round_num)
 
     def _on_phase_tick(self, remaining, elapsed, total):
@@ -1530,18 +1594,14 @@ class RecordFlow(QWidget):
 
     def _finish(self, stopped_early=False, goto_saved=True):
         if self._layout is not None and self._session_t0 is not None:
-            try:
-                t = time.monotonic() - self._session_t0
-                self._layout.append_marker(t, "done", "SESSION_END", 0)
-                self._publish_marker("SESSION_END", t)
-                if stopped_early:
-                    self._layout.mark_stopped_early(t)
-            except Exception as e:
-                log.warning("SESSION_END write failed: %s", e)
+            t = time.monotonic() - self._session_t0
+            self._essential("times", self._layout.append_marker, t, "done", "SESSION_END", 0)
+            self._publish_marker("SESSION_END", t)
+            if stopped_early:
+                self._essential("plan", self._layout.mark_stopped_early, t)
         if self._active_phase is not None and self._layout is not None:
             ph, rn = self._active_phase
-            try: self._layout.close_phase(ph, rn)
-            except Exception as e: log.warning("final close_phase: %s", e)
+            self._essential("plan", self._layout.close_phase, ph, rn)
             self._active_phase = None
         self._contact_timer.stop()
         if self._contact_writer is not None:
@@ -1555,12 +1615,13 @@ class RecordFlow(QWidget):
             if self._layout is not None:
                 first = band.last_recorded_first_unix()
                 if first is not None:
-                    try: self._layout.record_source_start(f"EEG_{idx:02d}", first)
-                    except Exception as e: log.warning("record_source_start: %s", e)
+                    self._essential("plan", self._layout.record_source_start,
+                                    f"EEG_{idx:02d}", first)
         self._keep_awake.stop()
         self._remove_key_filter()
         if self._layout is not None:
-            session_history.log_event(self._layout.root, session_history.EVENT_RECORDING_FINISHED)
+            self._essential("history", session_history.log_event, self._layout.root,
+                            session_history.EVENT_RECORDING_FINISHED)
             self._saved_root = self._xdf_root = str(self._layout.root)
             self._xdf_wait_started = time.monotonic()
             self._xdf_timer.start()
@@ -1612,6 +1673,8 @@ class RecordFlow(QWidget):
 
     def _on_xdf_done(self, root, ok):
         self._xdf_thread = None
+        if not self._controller.is_running:
+            detach_session_log()        # this recording's own log file is complete
         if root == self._saved_root:
             self._saved_step.set_xdf_state(ok)
             for text in self._frame_rate_notes(root):
@@ -1652,14 +1715,14 @@ class RecordFlow(QWidget):
         if not self._controller.is_running or self._layout is None:
             return
         t = time.monotonic() - self._session_t0
-        entry = self._layout.add_moment(t)
-        self._moments.append(entry)
+        entry = self._essential("moments", self._layout.add_moment, t)
         self._publish_marker(session_xdf.MOMENT_MARKER, t)
-        try:
-            session_history.log_event(self._layout.root, session_history.EVENT_MOMENT_MARKED,
-                                      {"t_session_seconds": entry["t_session_seconds"]})
-        except Exception:
-            pass
+        if entry is None:                    # not saved: don't count it as marked
+            return
+        self._moments.append(entry)
+        self._essential("history", session_history.log_event, self._layout.root,
+                        session_history.EVENT_MOMENT_MARKED,
+                        {"t_session_seconds": entry["t_session_seconds"]})
         self._recording_step.show_moment(t, len(self._moments))
 
     # ── recording-screen text helpers ──
@@ -1747,6 +1810,14 @@ class RecordFlow(QWidget):
         meta = f"{when} · {vs} · {mins} min · {rounds} round{'s' if rounds != 1 else ''}"
 
         checklist = []
+        # anything that makes this less than a clean save (shown first under Worth checking)
+        problems = []
+        if self._write_problems:
+            problems.append(
+                f"Could not save {_join_words(self._write_problems)} — the recordings folder "
+                f"could not be written to at the time. The videos and brain recordings that are "
+                f"listed above were saved; keep this recording and tell whoever looks after "
+                f"the app.")
         # cameras
         for slot in self._cams:
             path = self._cam_rec_paths.get(slot.index)
@@ -1761,20 +1832,29 @@ class RecordFlow(QWidget):
         # brain recordings
         for which in ("A", "B"):
             path = self._band_rec_paths.get(which)
-            if path and os.path.isfile(path):
+            if not path:
+                continue
+            if os.path.isfile(path) and os.path.getsize(path) > 0:
                 checklist.append(("✓", f"Boxer {which} brain recording saved", dt.success_color()))
+            else:
+                checklist.append(("!", f"Boxer {which} brain recording was not saved",
+                                  dt.warning_color()))
+                problems.append(f"Boxer {which}'s brain recording was not saved.")
         # phases + moments
         n_rounds = sum(1 for m in markers if m[2].upper().startswith("ROUND"))
         n_breaks = sum(1 for m in markers if m[2].upper().startswith("BREAK"))
         breaks = f" and {_plural(n_breaks, 'break')}" if n_breaks else ""
-        checklist.append(("✓", f"{_plural(n_rounds, 'round')}{breaks} marked automatically",
-                          dt.success_color()))
+        if "the round and break times" in self._write_problems:
+            checklist.append(("!", "Some round and break times were not saved", dt.warning_color()))
+        else:
+            checklist.append(("✓", f"{_plural(n_rounds, 'round')}{breaks} marked automatically",
+                              dt.success_color()))
         if self._moments:
             checklist.append(("✓", f"{_plural(len(self._moments), 'moment')} you marked — name "
                                    f"them when you label", dt.success_color()))
 
         # worth checking
-        worth = []
+        worth = list(problems)
         for p in contact_log.weak_periods(root, markers, min_sec=30):
             worth.append(contact_log.describe_weak(p))
         for slot in self._cams:
@@ -1790,7 +1870,7 @@ class RecordFlow(QWidget):
         folder_line = f"Saved in {os.path.basename(os.path.dirname(root))} › " \
                       f"{os.path.basename(root)} · {size}"
         return {"meta": meta, "checklist": checklist, "worth_checking": worth,
-                "folder_line": folder_line}
+                "folder_line": folder_line, "problems": problems}
 
     def _leave_to_sessions(self):
         self._stop_devices()
@@ -1901,6 +1981,8 @@ class RecordFlow(QWidget):
         self._tick.stop()
         self._stop_devices()          # closes every camera file …
         self.wait_for_xdf()           # … so the pending recording.xdf can finish
+        if not self._controller.is_running:
+            detach_session_log()
 
 
 __all__ = ["RecordFlow"]

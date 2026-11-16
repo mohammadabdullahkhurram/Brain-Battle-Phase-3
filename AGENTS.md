@@ -224,7 +224,8 @@ All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC. Run them all
 with `python3 tools/run_tests.py` (several at a time, one PASS/FAIL line per
 script, ~5½ min; `python3 tools/run_tests.py xdf player` runs only matching
 scripts; a script that fails while others are running is re-run alone before it
-counts as failed).
+counts as failed; a script still running after 15 minutes is stopped and counts
+as failed).
 
 - `test_xdf.py` — the XDF writer and `recording.xdf` read back with **pyxdf**
   (bit-exact EEG, exact frame times, markers, labels-as-events, the
@@ -267,6 +268,12 @@ counts as failed).
   labelling one recording at once, concurrent XDF builds, a folder that
   disappears (Sessions banner, Review keeps unsaved labels and retries, no
   recording into it), the scan cache.
+- `test_descriptors.py` — open files: puts itself under a 256 limit, runs
+  several recordings in a row (simulated devices, LSL on) and checks
+  descriptors / threads / child processes come back to the first visit's
+  numbers, the LSL outlets are opened once, the session log is released, a
+  failed marker / history write shows on Recording and Saved, and the start-up
+  safety net raises a 256 limit.
 - `test_label_vocab.py` — the shared `label_list.json` (seed from DESIGN
   defaults, round-trip, tolerant load).
 - `test_contact_quality.py` — the per-sensor heuristic (flat/clipped/noisy/good)
@@ -333,7 +340,7 @@ counts as failed).
 
 ## Project status
 
-**Current state: `develop` = `3.1.0-dev` (tag `v3.1.0-dev.2`), awaiting the
+**Current state: `develop` = `3.1.0-dev` (tag `v3.1.0-dev.3`), awaiting the
 owner's review; `main` = the reviewed `3.0.0-beta.2`.** The owner will test
 `develop` before deciding on a merge. Phase 3 and the
 documentation were complete at 3.0.0-beta.2: the unified capture-time clock
@@ -377,6 +384,15 @@ bell, extra signals + LSL sharing, and the shared label list — all autosaving.
   per-export and on-screen hiding (`data/privacy.py`).
 - **Mac + Windows** (`support/platform_utils.py`, CI on both) and **a shared
   recordings folder** (ADR-0020, `data/safe_io.py`).
+
+**3.1.0-dev, open-files fix (tag `v3.1.0-dev.3`, snapshot
+`pre-fdfix-2026-11-16`):** recordings in a row no longer run out of open files.
+The LSL outlets are opened once per run and reused, over IPv4 only (ADR-0022);
+the app raises its own open-file limit at start-up
+(`support/resource_limits.py`) as a safety net; a failed manifest / marker /
+history write is shown on the Recording screen and the Saved screen says
+"Recording saved, but with problems"; JetBrains Mono is bundled for code in
+the Documentation screen. Measure with `python3 tools/measure_descriptors.py`.
 
 Hardware is broken, so the whole flow is built + tested against **simulated**
 devices driven through the real capture paths (`capture/simulation.py`,
@@ -436,13 +452,13 @@ shim.
 | `ui/settings_screen.py` | The Settings screen (DESIGN §7): section list; You (your name), recordings folder, headbands, video quality, session defaults + bell, extra signals + LSL sharing, names and privacy, shared label-list editor; autosaves (`SettingsScreen`) |
 | `ui/docs_screen.py` | The in-app Documentation screen: Markdown rendering via `QTextBrowser`/`QTextDocument.setMarkdown` (no QtWebEngine), nav tree, always-visible search with highlighting, back/forward (`DocsScreen`) |
 | `ui/design_tokens.py` | **Light-only** design system (docs/DESIGN.md tokens) + QSS factories |
-| `ui/fonts.py` | Registers the bundled Inter font (from `assets/fonts/` via `paths.ASSETS_DIR`) |
+| `ui/fonts.py` | Registers the bundled fonts — Inter (UI) and JetBrains Mono (code in Documentation) — from `assets/fonts/` via `paths.ASSETS_DIR`; called by every screen |
 | `capture/usb_camera.py` | `USBCameraThread` (cv2, or a simulated capture) + `FrameEncoder` — crash-safe fragmented H.264 per-camera ffmpeg subprocess + row-per-frame sidecar; no audio; preview downscale |
 | `capture/camera_source.py` | `CameraSlot` — one camera for the flow (wraps `USBCameraThread`: preview, fps, recording/dropped/encoder state) |
 | `capture/headband_source.py` | `HeadbandSlot` — one boxer's headband (wraps `_MuseDirectReader`: connection, battery, per-sensor contact, live EEG buffer, reconnect/append, pushes to the LSL publisher) |
 | `capture/clock.py` | The one capture clock: `time.monotonic()` plus fixed offsets to Unix and LSL time; `session_origin()` |
 | `capture/eeg_module.py` | Muse-S Bluetooth scan/connect/stream (`_MuseDirectReader`: EEG, movement + pulse sensors, battery), crash-safe `_CsvStreamWriter`, `_RingBuffer` |
-| `capture/lsl_outlets.py` | `LslPublisher` — live LSL outlets (EEG/sensors per boxer, markers, per-camera frame times); fail-soft |
+| `capture/lsl_outlets.py` | `LslPublisher` — live LSL outlets (EEG/sensors per boxer, markers, per-camera frame times); fail-soft; outlets opened once per run and reused (ADR-0022) |
 | `capture/session_controller.py` | Pure-logic phase state machine (headless-testable), 1 Hz QTimer |
 | `capture/simulation.py` | **Dev-only, not shipped** — `BRAIN_BATTLE_SIMULATE` simulated cameras + headbands (EEG, movement, pulse, battery) through the real capture paths, so the CSVs, LSL streams and XDF all come out of simulation; failure injection (missing camera, headband drop) |
 | `capture/contact_quality.py` | Per-sensor EEG contact-quality heuristic (plain language) |
@@ -462,7 +478,8 @@ shim.
 | `data/label_vocab.py` | Shared team label list (`label_list.json` in the recordings folder) |
 | `data/export_module.py` | `SessionExportWorker` + `ExportOptionsDialog` (analysis zip incl. `recording.xdf` rebuilt with every labeller's labels, `agreement.csv`, optional name-free export), `VideoExportWorker` (optional 2×2 merge), `build_coregistered_eeg` |
 | `data/app_settings.py` | Per-computer settings: headband→Boxer A/B mapping + known-headbands list, session defaults, round bell, video quality, movement/pulse recording + LSL sharing switches, the labeller's name, the name-hiding switches, capture dir (`BRAIN_BATTLE_CAPTURE_DIR` always wins when set) |
-| `support/log_setup.py` | Logging configuration (console + file handlers) |
+| `support/log_setup.py` | Logging configuration (console + a per-recording file handler, released when the recording is done) |
+| `support/resource_limits.py` | The open-file limit: raise it at start-up (macOS/Linux; nothing to do on Windows), and count the process's open descriptors, threads and child processes |
 | `support/platform_utils.py` | Everything that differs between macOS and Windows: date formatting, Finder/Explorer, shortcut wording, computer name, ffmpeg install hint |
 | `support/docs_nav.py` | Qt-free docs logic: `docs/nav.yml` loading, heading slugify, search index, internal link/image/anchor extraction — used by `ui/docs_screen.py` and `tests/test_docs.py` |
 | `../brain_battle_main.py` | Thin launcher shim at the repo root — re-exports from `brain_battle.app`; `python3 brain_battle_main.py` still works |
@@ -553,6 +570,17 @@ remaining seam — the optional combined 2×2 export video — is tracked in
   manifest and `labels.json` are the originals; the XDF is rebuilt from them.
   Don't read it back inside the app, and don't add data that exists only there.
 - **LSL is fail-soft.** Nothing in recording may depend on an outlet opening.
+- **Never destroy an LSL outlet to "clean up".** liblsl keeps 3 descriptors for
+  every outlet destroyed; outlets are opened once per run and reused
+  (`capture/lsl_outlets.py`, ADR-0022). After touching anything that owns a
+  file, socket, pipe, thread or subprocess, run
+  `python3 tools/measure_descriptors.py` — every recording must print the same
+  numbers.
+- **A write of the recording's own bookkeeping goes through
+  `RecordFlow._essential(...)`**, so a failure reaches the operator (banner on
+  Recording, a non-clean Saved screen) instead of only the log.
+- **Name only bundled fonts** (`dt.FONT_UI`, `dt.FONT_MONO`); a family the
+  computer lacks makes Qt print a "missing font family" warning.
 - **One labels file per labeller; never write another labeller's file.** Read
   everyone with `labels_store.read_all`; write only through
   `open_for_labeller(root, <current name>)`.

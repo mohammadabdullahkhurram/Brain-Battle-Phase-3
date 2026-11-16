@@ -114,7 +114,53 @@ def test_publisher_round_trip():
           bool(acc) and acc[0].type() == "ACC" and acc[0].channel_count() == 3
           and acc[0].nominal_srate() == 52)
     pub.close()
-    check("closing the publisher drops every stream", pub.stream_names() == [])
+    check("closing the publisher stops it publishing", pub.stream_names() == [] and not pub.active)
+    pub.push_marker("AFTER_CLOSE", time.monotonic())        # must be a silent no-op
+    check("a closed publisher pushes nothing", _pull_all(mk, wait=0.2)[0] == [])
+
+
+def test_outlets_are_opened_once():
+    """The LSL library keeps 3 descriptors for every outlet it destroys, so the
+    app opens each outlet once per run and reuses it (ADR-0022)."""
+    from brain_battle.capture import lsl_outlets
+    from brain_battle.support import resource_limits as rl
+    n0 = lsl_outlets.open_outlet_count()
+    check("the outlets of a closed publisher stay open for the next one", n0 == 4, str(n0))
+    ts = np.array([clock.unix_now()])
+    before = rl.count_open_descriptors()["fds"]
+    held = None
+    for _ in range(5):
+        pub = LslPublisher()
+        pub.open_markers(); pub.open_video("SIDE_01")
+        pub.push_eeg("A", np.zeros((1, 5), np.float32), ts, device="MuseS-7538")
+        pub.push_sensor("ACC", "A", np.zeros((1, 3), np.float32), ts)
+        same = held is None or held is pub._outlets["BrainBattle_EEG_A"]
+        held = pub._outlets["BrainBattle_EEG_A"]
+        pub.close()
+    after = rl.count_open_descriptors()["fds"]
+    check("five more publishers reuse the same four outlets",
+          lsl_outlets.open_outlet_count() == n0 and same)
+    check("…and use no more open files", after <= before, f"{before} -> {after}")
+    mk = _inlet("BrainBattle_Markers")
+    pub = LslPublisher()
+    t_m = time.monotonic()
+    pub.push_marker("REUSED", t_m)
+    m, m_ts = _pull_all(mk)
+    check("a reused outlet still delivers, at the right time",
+          [r[0] for r in m] == ["REUSED"] and abs(m_ts[0] - clock.mono_to_lsl(t_m)) < 1e-3)
+    # another headband on the same boxer: the stream's description must follow
+    held = None; pub.close()    # nothing may keep the old outlet alive
+    import gc; gc.collect()
+    pub = LslPublisher()
+    pub.push_eeg("A", np.zeros((1, 5), np.float32), ts, device="MuseS-0001")
+    time.sleep(1.0)             # let the replaced stream leave the network listing
+    names = []
+    for found in pylsl.resolve_byprop("name", "BrainBattle_EEG_A", timeout=4.0):
+        inlet = pylsl.StreamInlet(found)
+        names.append(inlet.info(timeout=4.0).desc().child_value("headband"))
+    check("a different headband gets a stream that names it",
+          "MuseS-0001" in names and lsl_outlets.open_outlet_count() == n0, str(names))
+    pub.close()
 
 
 def test_disabled_publisher_is_silent():
@@ -162,6 +208,7 @@ def test_simulated_headband_publishes():
 
 if __name__ == "__main__":
     test_publisher_round_trip()
+    test_outlets_are_opened_once()
     test_disabled_publisher_is_silent()
     test_simulated_headband_publishes()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")

@@ -261,8 +261,9 @@ with "Replace boxer names with Boxer A / Boxer B" contains an XDF without
 those three keys, and with the names taken out of `recording` too — see
 [Personal data note](personal-data.md).
 
-The same stream names are published **live** over LSL while the New recording
-screens are open (`lsl_outlets.LslPublisher`), so a file LabRecorder makes from
+The same stream names are published **live** over LSL from the first time New
+recording is opened until the app is closed (`lsl_outlets.LslPublisher`; they
+carry data only while devices are connected), so a file LabRecorder makes from
 them matches this one; the live set has no label streams (labels are placed
 later).
 

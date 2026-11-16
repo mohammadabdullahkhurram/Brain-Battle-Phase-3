@@ -45,6 +45,7 @@ file is missing from this index or from `nav.yml`.
 | [ADR-0019](adr-0019-one-labels-file-per-labeller.md) | One labels file per labeller | 2026-11-13 | Accepted |
 | [ADR-0020](adr-0020-shared-folder-safety.md) | A recordings folder shared between computers | 2026-11-13 | Accepted |
 | [ADR-0021](adr-0021-boxer-names-and-hiding.md) | Boxer names are kept, and can be hidden | 2026-11-13 | Accepted |
+| [ADR-0022](adr-0022-lsl-outlets-open-once.md) | LSL streams are opened once per run and reused | 2026-11-16 | Accepted |
 
 The sources behind these decisions are the planning documents
 ([DESIGN.md, ROADMAP.md, PLAYBACK_PROPOSAL.md, ARCHITECTURE_AND_EVALUATION.md,

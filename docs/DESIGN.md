@@ -205,6 +205,11 @@ Read from across the room; used under pressure.
 - Stop asks inline: "Stop recording now? Round 2 is still running. Everything
   recorded so far is kept, but the rest of the session will not happen."
   **Keep recording** · **Stop and save**.
+- **If part of the recording's notes cannot be saved** (round and break times,
+  the recording's details or history), a red banner appears under the strip:
+  "Could not save the round and break times to the recordings folder. The
+  cameras and headbands keep recording. Check that the drive is still connected
+  and has free space." It stays until the recording ends. Hidden otherwise.
 - **The hero card**, tinted by the phase (rest grey, round blue, break amber):
   the phase in words ("Round 2 of 3") · the countdown, as large as the card
   allows · "left in this round" · a progress bar · what comes next ("Next:
@@ -227,6 +232,12 @@ Read from across the room; used under pressure.
   "Everything on one timeline for analysis (recording.xdf) saved". Then
   **Worth checking** (weak contact for about 2 minutes in round 2; lost
   frames; a camera at an unexpected speed).
+- **When something essential could not be written** the screen must not look
+  like a clean save: the tick becomes an amber warning sign, the heading reads
+  "Recording saved, but with problems", the affected checklist line gets "!"
+  ("Some round and break times were not saved", "Boxer A brain recording was
+  not saved"), and the first line under Worth checking says what could not be
+  saved.
 - "Saved in <folder> › <recording folder> · 1.7 GB".
 - **Label this recording →** (primary) · **Record another** · **Back to
   sessions** · **Show in Finder / Explorer**.

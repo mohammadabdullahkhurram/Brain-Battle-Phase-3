@@ -88,7 +88,8 @@ Three switches:
   not been tried with real headbands yet; if the headbands stop connecting
   reliably after you switch it on, switch it off again.
 - **Share live signals with other lab software on this network** — on by
-  default. While the New recording screens are open, other programs that speak
+  default. From the first time you open New recording until you close Brain
+  Battle, other programs that speak
   *Lab Streaming Layer* (LabRecorder, EEG viewers) can see the headbands, the
   round markers and the camera timing. Your recordings are saved exactly the
   same whether this is on or off. The first time, your computer may ask whether

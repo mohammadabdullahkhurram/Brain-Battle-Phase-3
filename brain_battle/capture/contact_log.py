@@ -40,6 +40,11 @@ class ContactLogWriter:
         except OSError:
             self._f = None
 
+    @property
+    def is_open(self) -> bool:
+        """False when the file could not be made (nothing will be logged)."""
+        return self._f is not None
+
     def append(self, t_session: float, boxer: str, summary: str, statuses: dict) -> None:
         if self._f is None:
             return

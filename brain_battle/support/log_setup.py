@@ -59,12 +59,7 @@ def attach_session_log(session_root: str | os.PathLike,
         handler.setLevel(logging.DEBUG)
         handler.setFormatter(logging.Formatter(_FORMAT, _DATEFMT))
         root = logging.getLogger()
-        if _session_handler is not None:
-            root.removeHandler(_session_handler)
-            try:
-                _session_handler.close()
-            except OSError:
-                pass
+        detach_session_log()
         root.addHandler(handler)
         _session_handler = handler
         return path
@@ -72,3 +67,20 @@ def attach_session_log(session_root: str | os.PathLike,
         logging.getLogger(__name__).warning(
             "could not attach session log in %s: %s", session_root, e)
         return None
+
+
+def detach_session_log() -> None:
+    """Stop writing into the last recording's log file and close it. Called
+    once a recording is finished and its recording.xdf is built, so the app
+    does not keep a file open in a recording folder it is no longer using
+    (an open file is one descriptor held, and on Windows it also stops the
+    folder being moved or deleted). Safe to call when nothing is attached."""
+    global _session_handler
+    if _session_handler is None:
+        return
+    logging.getLogger().removeHandler(_session_handler)
+    try:
+        _session_handler.close()
+    except OSError:
+        pass
+    _session_handler = None

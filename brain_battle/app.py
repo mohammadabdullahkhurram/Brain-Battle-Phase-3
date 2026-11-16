@@ -29,6 +29,7 @@ from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap, QPainter
 from brain_battle.ui.record_flow import RecordFlow
 from brain_battle.version import __version__
 import brain_battle.data.session_history as session_history
+from brain_battle.ui.fonts import register_fonts
 
 
 def _supplementary_qss():
@@ -55,6 +56,7 @@ MIN_WINDOW = (1180, 720)   # smallest usable window (below the 1280×800 DESIGN
 class BrainBattleApp(QMainWindow):
     def __init__(self):
         super().__init__()
+        register_fonts()        # the bundled fonts, however this screen is made
         self.setWindowTitle(f"Brain Battle  v{__version__}")
         self.setMinimumSize(*MIN_WINDOW)
         self._restore_or_fill_window()
@@ -284,6 +286,11 @@ def main():
     ``python3 -m brain_battle``, the ``brain-battle`` console script, and the
     ``brain_battle_main.py`` launcher shim."""
     import traceback as _tb
+
+    # Safety net: macOS starts programs with room for only 256 open files.
+    # A recording needs far fewer (see ADR-0022), but give it headroom anyway.
+    from brain_battle.support.resource_limits import raise_open_file_limit
+    raise_open_file_limit()
 
     # Light mode only — no theme preference to load (DESIGN.md).
     app = QApplication(sys.argv); app.setApplicationName("Brain Battle")

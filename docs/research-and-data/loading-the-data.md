@@ -196,8 +196,9 @@ the file; assign locations with *Edit → Channel locations* (AUX has none).
 
 You do not need this. The app's own `recording.xdf` is the file to use.
 
-While the New recording screens are open, the app also publishes the same
-streams live on the network (switchable in Settings). If another Lab Streaming
+Once New recording has been opened, the app also publishes the same streams
+live on the network until it is closed (switchable in Settings); they carry
+data while devices are connected. If another Lab Streaming
 Layer device — a different sensor, a stimulus program — has to go into the same
 file, start [LabRecorder](https://github.com/labstreaminglayer/App-LabRecorder),
 tick the `BrainBattle_…` streams and that device's stream, and press Start

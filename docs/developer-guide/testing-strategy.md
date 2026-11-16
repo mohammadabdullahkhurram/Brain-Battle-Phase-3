@@ -50,6 +50,7 @@ demo session, about five minutes on its own; everything else is quick. The
 | `test_privacy.py` | Names in the XDF; a name-free export has no name in any file; hide on screen | moderate |
 | `test_platform.py` | Mac/Windows differences; forbids `%-d` and hard-coded "Finder" (gate) | fast |
 | `test_shared_folder.py` | Atomic writes, the lock, several processes at once, a folder that disappears | moderate |
+| `test_descriptors.py` | Open files: several recordings in a row under a 256 limit return to baseline; failed writes are shown | moderate |
 | `test_label_vocab.py` | Shared `label_list.json` | fast |
 | `test_contact_quality.py` | Per-sensor contact heuristic | fast |
 | `test_export.py` | Analysis-bundle contents + ordering | moderate |

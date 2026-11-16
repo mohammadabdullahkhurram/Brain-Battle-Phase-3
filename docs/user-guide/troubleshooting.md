@@ -36,6 +36,9 @@ do — organized as a symptom → cause → fix table per topic. See the
 |---|---|---|
 | Sessions shows "A recording was interrupted" | The app didn't shut that recording down cleanly last time (crash, power loss, forced quit) | Press **Open it** to review what was captured — everything up to the interruption is kept intact — or **Dismiss** if you've already handled it |
 | A recording's Length shows "Stopped at m:ss of m:ss" but you don't remember stopping it | Likely the interrupted case above, or you pressed **Stop and save** deliberately | Open the recording and check its "Worth checking" notes on the Saved screen, or history, for what happened |
+| A red message on the Recording screen: "Could not save … to the recordings folder" | The app could not write part of the recording's notes (round and break times, the recording's details or history). The usual causes are a drive that was unplugged or is full | The cameras and headbands keep recording. Reconnect the drive or free space. Afterwards the Saved screen reads "Recording saved, but with problems" and lists what is affected |
+| The Saved screen reads "Recording saved, but with problems" | Something essential could not be written during the recording — it is the first line under Worth checking | Keep the recording. Check the recordings folder is reachable and has space, restart Brain Battle, and tell whoever looks after the app |
+| The log mentions "Too many open files" | Versions before 3.1.0-dev.3 ran out of the open files macOS allows a program after a few recordings in a row | Update. If it still appears, restart Brain Battle and report it (developers: `python3 tools/measure_descriptors.py`) |
 
 ## Playback (Review & Label)
 
@@ -50,7 +53,8 @@ do — organized as a symptom → cause → fix table per topic. See the
 | Symptom | Cause | Fix |
 |---|---|---|
 | The computer asks whether to "allow incoming network connections" when you open New recording | Brain Battle is offering its live signals to other lab software on the network (Lab Streaming Layer) | Either answer is fine for recording. Choose Allow if you want LabRecorder or an EEG viewer on *another* computer to see the signals. To stop it asking, switch off **Share live signals with other lab software** in [Settings](settings.md) |
-| LabRecorder doesn't list any `BrainBattle_…` streams | The streams exist only while the New recording screens are open, and only if sharing is switched on | Open **New recording** first, then press LabRecorder's **Update**; check the switch in [Settings](settings.md); on another computer, check both are on the same network and the firewall allowed the connection |
+| LabRecorder doesn't list any `BrainBattle_…` streams | The streams appear the first time New recording is opened after starting Brain Battle, and only if sharing is switched on | Open **New recording** first, then press LabRecorder's **Update**; check the switch in [Settings](settings.md); on another computer, check both are on the same network and the firewall allowed the connection |
+| LabRecorder still lists the `BrainBattle_…` streams after you left New recording | Once opened, the streams stay listed until Brain Battle is closed. They carry nothing while no devices are connected | Nothing to fix. Close Brain Battle if you want them gone |
 | LabRecorder lists the camera streams but they stay empty | Camera streams carry one sample per *recorded* frame, so they only fill while a recording is running | Start the recording |
 
 ## A shared or external recordings folder

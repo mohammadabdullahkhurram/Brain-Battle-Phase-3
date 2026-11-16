@@ -22,8 +22,8 @@ remove, or rename a module, update this page in the same commit (see
 | **`capture/`** | `clock` · `usb_camera` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
 | **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `privacy` · `safe_io` · `export_module` · `app_settings` |
-| **`support/`** | `log_setup` · `docs_nav` · `platform_utils` |
-| **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `render_diagrams` · `render_screens` · `make_round_bell` |
+| **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` |
+| **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `measure_descriptors` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its
 entry says otherwise. The modules that spawn threads or subprocesses are
@@ -260,7 +260,9 @@ offsets to Unix time and to the LSL clock and converts between them
 returns a recording's start on all three scales — exactly what the manifest
 stores as `capture_clock`. Qt-free; pylsl is loaded lazily and its absence
 degrades to "LSL time = monotonic time". It also points liblsl at
-`support/lsl_api.cfg` to silence its start-up logging. **Called by:**
+`support/lsl_api.cfg`, which silences its start-up logging and publishes over
+IPv4 only ([ADR-0022](../decisions/adr-0022-lsl-outlets-open-once.md)); a
+`LSLAPICFG` that is already set is left alone. **Called by:**
 `eeg_module`, `lsl_outlets`, `record_flow`, `simulation`,
 `tools/generate_demo_session.py`.
 
@@ -272,8 +274,13 @@ one outlet per stream (EEG and sensors per boxer, `BrainBattle_Markers`, one
 LSL-clock timestamps converted from the capture clock. **Fail-soft:** if pylsl
 is missing or an outlet cannot open, it logs once and every `push_*` becomes a
 no-op — recording never depends on it. Qt-free and thread-safe (EEG is pushed
-from the UI thread, video frames from each camera's writer thread). **Called
-by:** `record_flow`, `headband_source`, `camera_source`.
+from the UI thread, video frames from each camera's writer thread). **Gotcha:**
+outlets are opened once per run and kept in a module-level store —
+`close()` only stops publishing and hands them back, because the LSL library
+keeps 3 descriptors for every outlet it destroys
+([ADR-0022](../decisions/adr-0022-lsl-outlets-open-once.md)). Never drop an
+outlet to "clean up". **Called by:** `record_flow`, `headband_source`,
+`camera_source`.
 
 ### `session_controller.py`
 A pure-logic phase state machine (`IDLE→BASELINE→ROUND↔BREAK→DONE`), driven by a
@@ -514,14 +521,36 @@ macOS and Windows, in one place: `format_date` / `format_date_time` /
 [Cross-platform & CI](cross-platform-and-ci.md).
 
 ### `fonts.py`
-`register_fonts()` registers the bundled Inter font with Qt so the UI looks the
-same regardless of installed fonts; best-effort (falls back silently). **Called
-by:** `brain_battle_main` at startup.
+`register_fonts()` registers the bundled fonts with Qt — Inter for the
+interface and JetBrains Mono for code in the Documentation screen — so the UI
+looks the same regardless of installed fonts; best-effort (falls back
+silently), loads once. **Called by:** `app.main()` and every screen's
+constructor, so a screen built on its own (a test, a screenshot) measures text
+with the same fonts as the running app. **Gotcha:** `design_tokens.FONT_UI` /
+`FONT_MONO` name only these bundled families; asking Qt for a family the
+computer lacks makes it print a "missing font family" warning.
 
 ### `log_setup.py`
-Central logging: `init_logging()` (console at INFO) and
-`attach_session_log(root)` (a DEBUG file handler inside each session folder).
-**Called by:** `brain_battle_main` (startup), `record_flow` (per session).
+Central logging: `init_logging()` (console at INFO),
+`attach_session_log(root)` (a DEBUG file handler inside each session folder)
+and `detach_session_log()` (closes that file once the recording is finished and
+its `recording.xdf` is built, so the app does not keep a file open in a folder
+it is done with). **Called by:** `brain_battle_main` (startup), `record_flow`
+(per session).
+
+### `resource_limits.py`
+`brain_battle/support/resource_limits.py` — the operating system's open-file
+limit. `raise_open_file_limit()` lifts the soft limit to 4096 (or the hard
+limit, if lower) on macOS / Linux and does nothing on Windows; it is called
+once from `app.main()` and logs what it did. `count_open_descriptors()` /
+`snapshot()` count what the process holds right now — files, sockets, pipes,
+threads, child processes. Qt-free, never raises. **Called by:** `app.main()`,
+`tools/measure_descriptors.py`, `tests/test_descriptors.py`. **Gotcha:** it is
+a safety net; never call it on import or from a screen, or
+`tests/test_descriptors.py` (which runs under 256 on purpose) stops testing
+anything. What a recording needs, measured: about 163 with New recording open,
+183 while recording — 143 of those are the 11 LSL outlets at 13 each
+([ADR-0022](../decisions/adr-0022-lsl-outlets-open-once.md)).
 
 ### `version.py`
 The single authoritative `__version__` (`3.0.0-dev` on `develop`). Surfaced to
@@ -566,6 +595,13 @@ Renders every `docs/diagrams/*.mmd` to `.svg` (GitHub) + `.png` (what Markdown
 references) + `.hash` (freshness), via `npx @mermaid-js/mermaid-cli`. `--check`
 exits nonzero if anything is stale. See [design system](design-system.md#diagrams).
 
+### `tools/measure_descriptors.py`
+Runs several simulated recordings in a row
+through the real app and prints the descriptor / thread / child-process counts
+at each point (app started, flow open, recording, Saved, XDF built, flow left).
+Run it after touching anything that owns a file, socket, pipe, thread or
+subprocess; a healthy run prints the same numbers for every recording.
+
 ### `tools/render_screens.py`
 Drives the app under `BRAIN_BATTLE_SIMULATE=1` to produce screenshots: a review
 dump into `screens/`, and (`--docs`) the curated `docs/images/*.png` pointed at a
@@ -601,6 +637,7 @@ throwaway settings file with a labeller name — neither is a standalone test.
 | `test_privacy.py` | Names kept in `recording.xdf` by default; a name-free export has no name in any file; hide names on screen. |
 | `test_platform.py` | Mac/Windows differences: dates without `%-d`, Finder vs. Explorer, shortcuts, paths, Windows-safe names, encoder fallback, keep-awake. |
 | `test_shared_folder.py` | Atomic writes, the folder lock, several processes labelling at once, a folder that disappears, the scan cache. |
+| `test_descriptors.py` | Puts itself under a 256 open-file limit, runs several recordings in a row, and checks descriptors / threads / child processes return to the first visit's numbers; LSL outlets opened once; the session log released; a failed marker / history write shown on Recording and Saved; the start-up safety net. |
 | `test_label_vocab.py` | Shared `label_list.json`: seed, round-trip, tolerant load. |
 | `test_contact_quality.py` | Per-sensor heuristic + plain-language summary. |
 | `test_export.py` | Analysis bundle contents + events.csv ordering. |

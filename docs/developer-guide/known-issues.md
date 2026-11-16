@@ -35,6 +35,32 @@ there. The list is in
 [Cross-platform & CI](cross-platform-and-ci.md#never-tried-on-a-real-windows-machine).
 These are listed, not fixed, because they need a real machine.
 
+## Open files ("Too many open files") — fixed in 3.1.0-dev.3, with a cost
+
+Up to `v3.1.0-dev.2`, every visit to New recording used up 33 more of the 256
+open files macOS allows a program, so the second or third recording in a row
+failed to write its manifest and markers — and still showed a clean Saved
+screen. The cause, the measurements and the fix are in
+[ADR-0022](../decisions/adr-0022-lsl-outlets-open-once.md). What is left:
+
+- **The LSL library still leaks.** liblsl keeps 3 descriptors for every outlet
+  it destroys. The app works around it by never destroying one; an outlet is
+  replaced only when a *different headband* is put on the same boxer within one
+  run of the app (3 descriptors each time). Not checked against a newer liblsl.
+- **About 143 descriptors stay held** for the rest of the run once New
+  recording has been opened (11 streams × 13), and the streams stay listed on
+  the network, silent, until the app quits.
+- **A recording peaks at about 183 of 256.** The app raises its own limit to
+  4096 at start-up, so this only matters if that is refused. The number of
+  sockets per stream depends on the computer's network interfaces, so another
+  machine may measure a few more or fewer; run
+  `python3 tools/measure_descriptors.py` to see.
+- **Real headbands and cameras were not measured** (hardware is broken). A real
+  Bluetooth connection and a real camera use descriptors the simulated ones do
+  not; expect a handful each, not dozens.
+- `tests/test_descriptors.py` runs four recordings in a row under a 256 limit
+  and fails if the counts do not come back to the first visit's.
+
 ## Code-level tech debt (tracked in ROADMAP Phase 5)
 
 - **Other labellers' labels arrive by polling** (every five seconds while a

@@ -25,6 +25,15 @@ This is a convenience layer and is **fail-soft**: the app's own recording
 never depends on it. If pylsl is missing or an outlet cannot be opened, the
 problem is logged once and every ``push_*`` becomes a no-op. Qt-free. Stream
 names come from ``data/signals.py`` (shared with ``recording.xdf``).
+
+**Outlets are opened once per run of the app and then reused** (ADR-0022).
+One outlet holds 13 open descriptors (sockets and pipes), and the LSL library
+does not give all of them back when an outlet is destroyed — 3 stay open for
+good. Opening a fresh set on every visit to New recording therefore used up the
+operating system's open-file limit ("Too many open files") after a few
+recordings. So the outlets live in a module-level store: ``close()`` only hands
+them back, and the next publisher picks the same ones up. A closed publisher's
+streams stay listed on the network, silent, until the app quits.
 """
 from __future__ import annotations
 
@@ -39,6 +48,17 @@ from brain_battle.data.signals import (
     eeg_stream_name, sensor_stream_name, video_stream_name)
 
 log = logging.getLogger(__name__)
+
+# Every outlet this process has opened: name → (what it was opened with, outlet).
+# Never emptied while the app runs — see the module docstring.
+_OPEN: dict = {}
+_OPEN_LOCK = threading.Lock()
+
+
+def open_outlet_count() -> int:
+    """How many LSL outlets this process holds (they are kept until it exits)."""
+    return len(_OPEN)
+
 
 class LslPublisher:
     """Owns the app's LSL outlets. Thread-safe: EEG is pushed from the UI
@@ -64,14 +84,23 @@ class LslPublisher:
 
     # ── outlet creation ──
     def _outlet(self, name, type_, channels, rate, fmt, units, ch_type, extra=None):
-        """Get or lazily create the outlet called ``name``."""
+        """Get the outlet called ``name``: this publisher's, else the one the
+        process already has open, else a new one."""
         out = self._outlets.get(name)
         if out is not None or self._pylsl is None:
             return out
-        with self._lock:
+        signature = (type_, tuple(channels), rate, fmt, units, ch_type,
+                     tuple(sorted((k, str(v)) for k, v in (extra or {}).items())))
+        with self._lock, _OPEN_LOCK:
             out = self._outlets.get(name)
             if out is not None:
                 return out
+            held = _OPEN.get(name)
+            if held is not None and held[0] == signature:
+                self._outlets[name] = held[1]
+                return held[1]
+            # Not open yet — or open with a different description (another
+            # headband is on this boxer now), which has to be replaced.
             lsl = self._pylsl
             try:
                 info = lsl.StreamInfo(name, type_, len(channels), rate, fmt,
@@ -92,6 +121,7 @@ class LslPublisher:
                 log.warning("could not open LSL stream %s: %s — LSL streams are off", name, e)
                 self._pylsl = None
                 return None
+            _OPEN[name] = (signature, out)
             self._outlets[name] = out
             return out
 
@@ -153,9 +183,12 @@ class LslPublisher:
             log.debug("LSL push failed: %r", e)
 
     def close(self) -> None:
-        """Drop every outlet (the streams disappear from the network)."""
+        """Stop publishing. The outlets themselves stay open for the next
+        publisher (see the module docstring), so the streams stay listed but
+        carry no data."""
         with self._lock:
             self._outlets.clear()
+            self._pylsl = None
 
 
-__all__ = ["LslPublisher"]
+__all__ = ["LslPublisher", "open_outlet_count"]

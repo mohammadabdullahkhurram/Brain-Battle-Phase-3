@@ -88,6 +88,12 @@ If a headband drops out, press **Reconnect** on its card; recording carries on
 and the headband's file continues when it is back. The computer is kept awake
 for the whole recording.
 
+**If a red message appears saying something "could not be saved".** The app
+could not write part of the recording's notes (for example the round and break
+times) to the recordings folder. The cameras and headbands keep recording.
+Check that the drive is still connected and has free space; when the recording
+ends, the Saved screen lists what is affected.
+
 **Stopping early.** The recording stops by itself at the end of the last round.
 To stop sooner press **Stop recording**; the screen asks "Stop recording now?"
 and you choose **Keep recording** or **Stop and save**. Everything recorded so
@@ -104,6 +110,11 @@ single analysis file (`recording.xdf`) that puts everything on one timeline.
 Under **Worth checking** you may see things to look at before the boxers leave,
 for example "Weak contact for about 2 minutes in round 2", lost video frames, or
 a camera that recorded at an unexpected speed.
+
+If the heading reads **"Recording saved, but with problems"** with a warning
+sign instead of a tick, part of the recording could not be written — the first
+line under Worth checking says what. Keep the recording, and tell whoever looks
+after the app before recording again.
 
 Then choose:
 

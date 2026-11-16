@@ -1,9 +1,67 @@
 # Brain Battle — Changelog
 
 **Current version on `develop`: v3.1.0-dev** (authoritative source:
-`brain_battle/version.py` `__version__`; tag `v3.1.0-dev.2`). `main` is the
+`brain_battle/version.py` `__version__`; tag `v3.1.0-dev.3`). `main` is the
 reviewed `3.0.0-beta.2`. The "Phase 2.N" headings further down are historical
 dev-log numbering, kept as history — they do not track the release version.
+
+## 3.1.0-dev · "Too many open files" fixed (tag `v3.1.0-dev.3`)
+
+Snapshot before it: `pre-fdfix-2026-11-16`. Decision and measurements:
+[ADR-0022](docs/decisions/adr-0022-lsl-outlets-open-once.md).
+
+**Fixed**
+- **Recordings in a row no longer run out of open files.** Every visit to New
+  recording used up 33 more of the 256 open files macOS allows a program: the
+  app re-made its 11 live LSL streams each time, and the LSL library keeps 3
+  descriptors for every stream it destroys. The second recording in a row
+  crossed the limit and its manifest / marker writes failed
+  (`OSError: [Errno 24] Too many open files`). The streams are now opened once
+  per run of the app and reused. Measured with 4 cameras, 2 headbands and LSL
+  (simulated), open descriptors while recording, 1st / 2nd / 3rd recording:
+  **227 / 260 / 293 before, 183 / 183 / 183 after.**
+- **A recording needs fewer open files:** the LSL streams are published over
+  IPv4 only (13 descriptors per stream instead of 17).
+- **The recording's own log file is closed** once the recording is finished and
+  `recording.xdf` is built, instead of staying open until the next recording.
+- **A failed write no longer looks like success.** If the round and break
+  times, the recording's details or its history cannot be written, a red
+  message appears on the Recording screen, and the Saved screen reads
+  "Recording saved, but with problems" with a warning sign and says what is
+  affected. A brain recording that was not written is listed as not saved
+  (before, its line was simply missing). A moment that could not be saved is
+  no longer counted as marked.
+- **No more "missing font family" warning at start-up.** JetBrains Mono is now
+  bundled (`assets/fonts/`, SIL OFL) for code in the Documentation screen, and
+  the font lists name only bundled fonts. Code blocks in Documentation now wrap
+  inside the column instead of running off its edge.
+- **Every screen registers the bundled fonts itself**, so a screen built on its
+  own (tests, screenshots) measures text exactly as the running app does, on
+  macOS and Windows alike.
+
+**Added**
+- **Safety net:** at start-up the app raises its open-file limit to 4096 (or
+  the system's hard limit) on macOS / Linux and logs it
+  (`support/resource_limits.py`). Nothing to do on Windows.
+- `tools/measure_descriptors.py` — prints open files / sockets / pipes,
+  threads and child processes at each point of several recordings in a row.
+- `tests/test_descriptors.py` — runs four recordings in a row under a 256
+  limit and fails if the counts do not return to the first visit's.
+- `tools/run_tests.py` stops a script that has not finished after 15 minutes
+  and counts it as failed, instead of waiting for ever.
+
+**Changed (please review)**
+- **The LSL streams stay listed on the network after you leave New recording**,
+  silent, until the app is closed. Before, they disappeared. This is the cost
+  of not leaking.
+- **LSL is IPv4 only** by default. Set your own `LSLAPICFG` to change it.
+- New on-screen wording (in `docs/DESIGN.md` §3 and §4): the "Could not save …"
+  banner and "Recording saved, but with problems".
+
+**Tests on Windows (CI)**
+- Hard-kill tests use `Popen.kill()` (there is no `SIGKILL` on Windows);
+  documentation examples are given a forward-slash path; diagram sources are
+  checked out with LF line endings so their hashes match.
 
 ## 3.1.0-dev · Redesign, several labellers, Mac + Windows, shared folders (tag `v3.1.0-dev.2`)
 
