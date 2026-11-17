@@ -34,10 +34,10 @@ with how far you agree. See
 No accounts and no password. The app asks for your name once and uses it from
 then on; change it in Settings. Use the same name on every computer.
 
-**Can I hide the boxers' names?**
-Yes, in two ways: on screen (the **Hide names** switch in the sidebar) and in
-an export (tick **Replace boxer names with Boxer A / Boxer B**). See the
-[Personal data note](../research-and-data/personal-data.md).
+**Where are the boxers' names?**
+Nowhere — the app never stores them. Each fighter has a 4-character code (like
+K7Q2) and a colour. Keep the list that links codes to people outside the app.
+See the [Personal data note](../research-and-data/personal-data.md).
 
 **Does it work on Windows as well as Mac?**
 Yes; the lab uses both. See [Installation](../getting-started/installation.md).

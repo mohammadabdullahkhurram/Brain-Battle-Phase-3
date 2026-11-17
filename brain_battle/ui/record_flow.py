@@ -720,9 +720,19 @@ class SetupStep(ui.Card):
     def _name_field(self, which):
         e = QLineEdit(); e.setMinimumHeight(40); e.setMinimumWidth(110)
         e.setStyleSheet(dt.qss_input())
-        e.setPlaceholderText(f"Boxer {which}'s name (optional)")
-        e.setAccessibleName(f"Boxer {which} name")
+        e.setPlaceholderText(f"Boxer {which} code")
+        e.setAccessibleName(f"Boxer {which} code")
+        e.setMaxLength(4)
+        e.textEdited.connect(lambda t, e=e: self._normalise_code(e, t))
         return e
+
+    @staticmethod
+    def _normalise_code(edit, text):
+        import brain_battle.data.fighters as fighters
+        clean = fighters.normalise_code(text)
+        if clean != text:
+            pos = edit.cursorPosition()
+            edit.setText(clean); edit.setCursorPosition(min(pos, len(clean)))
 
     def _on_names_changed(self, _text):
         a, b = self.names()
@@ -744,10 +754,8 @@ class SetupStep(ui.Card):
         hb_a = s.headband_for("A") or "a headband"
         hb_b = s.headband_for("B") or "a headband"
         self._hb_note.setText(f"Boxer A wears headband {hb_a} · Boxer B wears {hb_b}.")
-        self._name_a.setToolTip(f"Boxer A wears headband {hb_a}. The name is optional and "
-                                f"can be hidden later.")
-        self._name_b.setToolTip(f"Boxer B wears headband {hb_b}. The name is optional and "
-                                f"can be hidden later.")
+        self._name_a.setToolTip(f"Boxer A wears headband {hb_a}. 4 capital letters or digits.")
+        self._name_b.setToolTip(f"Boxer B wears headband {hb_b}. 4 capital letters or digits.")
         self._recompute()
 
     def config(self) -> SessionConfig:
@@ -757,7 +765,14 @@ class SetupStep(ui.Card):
                              baseline_sec=self._st_rest.value())
 
     def names(self):
-        return self._name_a.text().strip(), self._name_b.text().strip()
+        """The two fighter codes as typed (capitals, A–Z / 0–9)."""
+        import brain_battle.data.fighters as fighters
+        return (fighters.normalise_code(self._name_a.text()),
+                fighters.normalise_code(self._name_b.text()))
+
+    def colours(self):
+        """The colour each fighter wears (names from the shared colour list)."""
+        return getattr(self, "_colours", None) or ("Red", "Blue")
 
     def bell(self):
         return self._bell.isChecked()
@@ -1416,8 +1431,16 @@ class RecordFlow(QWidget):
         if not self._disk_guard(base):
             return
 
-        boxer_a = {"name": a or None, "headband": self._settings.headband_for("A")}
-        boxer_b = {"name": b or None, "headband": self._settings.headband_for("B")}
+        import brain_battle.data.fighters as fighters
+        problem = fighters.codes_problem(a, b) or fighters.colours_problem(*self._setup_step.colours())
+        if problem:
+            QMessageBox.warning(self, "Fighter codes and colours", problem + "."); return
+        colours = fighters.load_colours(base)
+        ca, cb = self._setup_step.colours()
+        boxer_a = fighters.boxer_entry(a, ca, fighters.colour_hex(ca, colours),
+                                       self._settings.headband_for("A"))
+        boxer_b = fighters.boxer_entry(b, cb, fighters.colour_hex(cb, colours),
+                                       self._settings.headband_for("B"))
         try:
             self._layout = create_session(base, self._cfg, boxer_a=boxer_a, boxer_b=boxer_b)
             attach_session_log(self._layout.root)

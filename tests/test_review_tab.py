@@ -182,7 +182,7 @@ if __name__ == "__main__":
     tmp = tempfile.mkdtemp(prefix="bb_reviewtab_")
     DEMO_ROOT = generate_demo_session(out=tmp, rounds=1, round_sec=10,
                                       break_sec=3, baseline_sec=3, seed=5,
-                                      boxer_a="Sam", boxer_b="Alex")["root"]
+                                      boxer_a="K7Q2", boxer_b="M3XA")["root"]
     test_fast_open_labels_first()
     test_vocabulary_seeded()
     test_point_label_autosave_and_history()

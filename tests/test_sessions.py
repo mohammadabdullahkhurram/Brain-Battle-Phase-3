@@ -100,22 +100,25 @@ def test_discovery():
     check("discovery: one interrupted", len(by_status.get(ss.STATUS_INTERRUPTED, [])) == 1)
     check("discovery: one exported", len(by_status.get(ss.STATUS_EXPORTED, [])) == 1)
     check("discovery: one labelled", len(by_status.get(ss.STATUS_LABELLED, [])) == 1)
-    check("discovery: two needs-labelling (incl. the no-name one)",
+    check("discovery: two needs-labelling (incl. the old named one)",
           len(by_status.get(ss.STATUS_NEEDS_LABELLING, [])) == 2)
     check("discovery: damaged manifest surfaces as 'unreadable' (never hidden)",
           len(by_status.get(ss.STATUS_UNREADABLE, [])) == 1)
 
-    sam = next((r for r in rows if r.boxer_a == "Sam"), None)
-    check("discovery: boxer names parsed (Sam vs Alex)",
-          sam is not None and sam.boxer_b == "Alex",
-          f"{sam.boxer_a if sam else None}/{sam.boxer_b if sam else None}")
+    intr = next((r for r in rows if r.boxer_a == "M3XA"), None)
+    check("discovery: fighter codes parsed (M3XA vs Z8PC)",
+          intr is not None and intr.boxer_b == "Z8PC",
+          f"{intr.boxer_a if intr else None}/{intr.boxer_b if intr else None}")
+    check("discovery: fighter colours parsed (blue vs red)",
+          intr is not None and (intr.colour_a, intr.colour_b) == ("#1B45C4", "#D3241B"))
     check("discovery: interrupted session carries a stopped time",
-          sam is not None and sam.stopped_sec is not None, f"{sam.stopped_sec if sam else None}")
+          intr is not None and intr.stopped_sec is not None, f"{intr.stopped_sec if intr else None}")
     exported = by_status.get(ss.STATUS_EXPORTED, [None])[0]
     check("discovery: exported session has >= 1 label", exported and exported.labels_count >= 1,
           f"{exported.labels_count if exported else None}")
-    noname = next((r for r in rows if r.readable and not r.boxer_a and not r.boxer_b), None)
-    check("discovery: a no-name session exists and is readable", noname is not None)
+    old = next((r for r in rows if r.readable and r.boxer_a == "Sam"), None)
+    check("discovery: an old recording with names (before codes) is listed and readable",
+          old is not None and old.boxer_b == "Alex")
     check("discovery: demo sessions carry the demo flag",
           all(r.demo for r in rows if r.readable),
           f"{sum(1 for r in rows if r.readable and r.demo)}/{sum(1 for r in rows if r.readable)}")
@@ -138,20 +141,20 @@ def test_folder_naming():
           repr(ss.sanitize_name("///")))
 
     d = _dt.datetime(2026, 10, 29, 16, 20)
-    check("naming: both names", ss._session_folder_name(d, "Sam", "Alex") == "2026-10-29 16-20 Sam vs Alex")
-    check("naming: one name", ss._session_folder_name(d, "Sam", "") == "2026-10-29 16-20 Sam")
-    check("naming: no names → timestamp only", ss._session_folder_name(d, "", "") == "2026-10-29 16-20")
+    check("naming: both codes", ss._session_folder_name(d, "K7Q2", "M3XA") == "2026-10-29 16-20 K7Q2 vs M3XA")
+    check("naming: one code", ss._session_folder_name(d, "K7Q2", "") == "2026-10-29 16-20 K7Q2")
+    check("naming: no codes → timestamp only", ss._session_folder_name(d, "", "") == "2026-10-29 16-20")
 
     base = tempfile.mkdtemp(prefix="bb_name_")
     cfg = SessionConfig()
-    l1 = ss.create_session(base, cfg, started_at=d, boxer_a="Sam", boxer_b="Alex")
-    l2 = ss.create_session(base, cfg, started_at=d, boxer_a="Sam", boxer_b="Alex")
-    l3 = ss.create_session(base, cfg, started_at=d, boxer_a="Sam", boxer_b="Alex")
+    l1 = ss.create_session(base, cfg, started_at=d, boxer_a="K7Q2", boxer_b="M3XA")
+    l2 = ss.create_session(base, cfg, started_at=d, boxer_a="K7Q2", boxer_b="M3XA")
+    l3 = ss.create_session(base, cfg, started_at=d, boxer_a="K7Q2", boxer_b="M3XA")
     names = sorted(os.path.basename(str(x.root)) for x in (l1, l2, l3))
     check("naming: collisions get (2)/(3), originals not renamed",
-          names == ["2026-10-29 16-20 Sam vs Alex",
-                    "2026-10-29 16-20 Sam vs Alex (2)",
-                    "2026-10-29 16-20 Sam vs Alex (3)"], names)
+          names == ["2026-10-29 16-20 K7Q2 vs M3XA",
+                    "2026-10-29 16-20 K7Q2 vs M3XA (2)",
+                    "2026-10-29 16-20 K7Q2 vs M3XA (3)"], names)
 
 
 # ── 3. search / filter / sort ─────────────────────────────────────────────────
@@ -164,10 +167,12 @@ def test_filter_sort():
           counts == {"all": 5, "needs_labelling": 2, "labelled": 1,
                      "exported": 1, "interrupted": 1}, str(counts))
 
-    check("search: by boxer name 'Sam' → 1",
+    check("search: an old recording's name 'Sam' → 1",
           len(st.filter_sort_sessions(rows, query="sam")) == 1)
-    check("search: by boxer name 'Leo' → 1",
-          len(st.filter_sort_sessions(rows, query="Leo")) == 1)
+    check("search: by fighter code 'j4we' → 1 (case-insensitive)",
+          len(st.filter_sort_sessions(rows, query="j4we")) == 1)
+    check("search: by fighter code 'R2DT' → 2",
+          len(st.filter_sort_sessions(rows, query="R2DT")) == 2)
     # dates are relative to now, so derive a real one from the library
     some_date = next(r.started_at[:10] for r in rows if r.started_at)
     want = sum(1 for r in rows if (r.started_at or "")[:10] == some_date)

@@ -21,7 +21,7 @@ remove, or rename a module, update this page in the same commit (see
 | **`ui/`** | `sidebar_shell` · `sessions_screen` · `record_flow` · `review_label_screen` · `eeg_viewer` · `settings_screen` · `docs_screen` · `design_tokens` · `widgets` · `fonts` |
 | **`capture/`** | `clock` · `usb_camera` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
-| **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `privacy` · `safe_io` · `export_module` · `app_settings` |
+| **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `fighters` · `safe_io` · `export_module` · `app_settings` |
 | **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` |
 | **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `measure_descriptors` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
@@ -91,7 +91,7 @@ row's button says **Label** until the current labeller has labelled it
 in `_ScanWorker`/`_SizeWorker` (QThreads); the scan worker also reports whether
 the folder exists at all. `filter_sort_sessions`, `status_counts`,
 `length_text`, `labels_text` and `reveal_in_finder` are pure helpers. **Calls:**
-`session_storage`, `safe_io`, `privacy`, `platform_utils`, `widgets`.
+`session_storage`, `safe_io`, `fighters`, `platform_utils`, `widgets`.
 **Gotchas:** worker signals are connected to bound methods, never lambdas, so
 Qt drops the connection if the screen is destroyed first; the banner's
 dismissal is persisted via `session_storage.dismiss_interrupted`.
@@ -141,7 +141,7 @@ With no name set the panel asks for one and `_place_from_vocab` places nothing.
 A save that fails (shared drive gone) keeps the labels in memory, says so, and
 retries (`_save_now` / `_retry_save`). Every change autosaves and appends to
 `history.jsonl` with the labeller's name. **Calls:** `pyav_player`,
-`eeg_viewer`, `labels_store`, `label_agreement`, `label_vocab`, `privacy`,
+`eeg_viewer`, `labels_store`, `label_agreement`, `label_vocab`, `fighters`,
 `session_storage`, `session_history`, `contact_quality`, `export_module`,
 `app_settings`, `platform_utils`, `widgets`. **Gotcha:** everything is on one
 `t_session_seconds` playhead — there is no separate alignment step; see
@@ -440,13 +440,16 @@ time, who (`current_user`: the saved "Your name", else the OS login —
 creates the recording folder — an event for a folder that is not there is
 dropped.
 
-### `privacy.py`
-Boxer names and hiding them. `shown_name` / `versus` are what screens call to
-print a name (honouring "Hide names on screen"); `scrub_manifest`, `scrub_text`
-and `neutral_recording_name` make the name-free copies a "Replace boxer names"
-export contains. Pure logic, no Qt. **Called by:** `sessions_screen`,
-`review_label_screen`, `session_xdf`, `export_module`. See
-[Personal data note](../research-and-data/personal-data.md).
+### `fighters.py`
+Fighter codes and colours ([ADR-0023](../decisions/adr-0023-fighter-codes-and-colours.md)).
+`normalise_code` / `code_ok` / `new_code` / `codes_problem` (exactly 4
+characters A–Z / 0–9, the two different); the shared colour list
+`fighter_colours.json` (`load_colours`, `save_colours`, `add_colour`,
+`remove_colour`; Red / Blue / Black always present); `boxer_entry` (what the
+manifest stores per fighter); `info` / `display` / `versus` (what screens
+print — the code, or an old recording's stored name). Pure logic + small file
+I/O, no Qt. **Called by:** `session_storage`, `session_xdf`, `export_module`,
+the screens, `tools/generate_demo_session.py`.
 
 ### `safe_io.py`
 Writing safely in a folder several computers share
@@ -465,13 +468,12 @@ The analysis bundle. `SessionExportWorker(QThread)` builds the export zip
 (`recording.xdf` rebuilt with every labeller's labels, `labels.csv` and
 `events.csv` with a `labeller` column, `agreement.csv` when two or more people
 labelled, `eeg_coregistered.csv`, raw EEG + sensor CSVs + videos with sidecars,
-manifest, history, README) straight from the recording folder. With
-`hide_names=True` the XDF, manifest copy, history copy, README and suggested
-file name carry no boxer names (`privacy`); the recording itself is untouched. `build_coregistered_eeg`
+manifest, history, README) straight from the recording folder;
+`include_videos=False` leaves the MP4s out (their frame-time CSVs stay). `build_coregistered_eeg`
 merges both bands onto one uniform 256 Hz `t_session_seconds` grid (`_01` is
 always Boxer A, `_02` Boxer B); `VideoExportWorker(QThread)` is the optional 2×2 merge
 (hardware-encoder-validated with a libx264 fallback). `ExportOptionsDialog` runs
-it with a progress bar and the two choices (replace names; combined video).
+it with a progress bar and the two video choices (the 4 camera videos; one combined video).
 **Called by:** `review_label_screen`, `app` (Sessions → ⋯ → Export). **Thread:** export
 runs on a worker thread. **Gotcha:** the combined video is **optional and off by
 default** — most analysis wants the data, not a preview.
@@ -636,7 +638,7 @@ throwaway settings file with a labeller name — neither is a standalone test.
 | `test_review_tab.py` | Review & Label label side: fast open, duration flow, undo/redo, autosave. |
 | `test_labels_v2.py` | Label entry schema, v1 migration, undo/redo, timeline. |
 | `test_labellers.py` | One file per labeller, automatic migration + "These are mine", merge-on-save, agreement, Compare in Review & Label, moments for every labeller. |
-| `test_privacy.py` | Names kept in `recording.xdf` by default; a name-free export has no name in any file; hide names on screen. |
+| `test_fighters.py` | Fighter codes (4 × A–Z/0–9, different) and the shared colour list; manifest + folder name carry codes and colours; old recordings with names still open and keep their names in `recording.xdf`. |
 | `test_platform.py` | Mac/Windows differences: dates without `%-d`, Finder vs. Explorer, shortcuts, paths, Windows-safe names, encoder fallback, keep-awake. |
 | `test_shared_folder.py` | Atomic writes, the folder lock, several processes labelling at once, a folder that disappears, the scan cache. |
 | `test_descriptors.py` | Puts itself under a 256 open-file limit, runs several recordings in a row, and checks descriptors / threads / child processes return to the first visit's numbers; LSL outlets opened once; the session log released; a failed marker / history write shown on Recording and Saved; the start-up safety net. |

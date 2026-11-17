@@ -59,7 +59,7 @@ def test_flash_within_one_frame():
     try:
         r = generate_demo_session(out=tmp, rounds=3, round_sec=180, break_sec=60,
                                   baseline_sec=60, seed=42,
-                                  boxer_a="Sam", boxer_b="Alex")
+                                  boxer_a="K7Q2", boxer_b="M3XA")
         root = r["root"]
         check("generated a 12-min recording", abs(r["total_duration_sec"] - 720) < 1,
               f"{r['total_duration_sec']:.0f}s")

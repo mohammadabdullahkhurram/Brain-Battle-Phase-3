@@ -275,8 +275,9 @@ def test_export_entries_documented():
     _assert_all_documented(text, export_module._LABELS_V2_COLUMNS, "labels.csv column")
     _assert_all_documented(text, export_module._EVENTS_COLUMNS, "events.csv column")
     _assert_all_documented(text, export_module._AGREEMENT_COLUMNS, "agreement.csv column")
-    _assert_all_documented(text, ["agreement.csv", "names_hidden", "computer"],
-                           "labeller / privacy field")
+    _assert_all_documented(text, ["agreement.csv", "videos", "computer",
+                                  "fighter_colours.json", "colour_hex"],
+                           "labeller / export / fighter field")
     coreg = _csv_header(os.path.join(EXPORT_DIR, "eeg_coregistered.csv"))
     _assert_all_documented(text, coreg, "eeg_coregistered.csv column")
 

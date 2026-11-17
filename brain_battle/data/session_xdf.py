@@ -29,11 +29,12 @@ repeated in every stream's description as ``session_start``). So
 
 and the first marker, ``BASELINE_START``, follows within a fraction of a second.
 
-Boxer names are written into every stream's description (``boxer_a_name``,
-``boxer_b_name``, and ``boxer_name`` on a boxer's own streams) so the team can
-keep track of who is who. ``build_session_xdf(…, hide_names=True)`` — what an
-export with "Replace boxer names" uses — leaves them out and drops the names
-from the ``recording`` field too. (docs/research-and-data/personal-data.md)
+Fighters appear only as their 4-character codes and colours: every stream's
+description has ``boxer_a_code`` / ``boxer_b_code`` and ``boxer_a_colour`` /
+``boxer_b_colour``, and a fighter's own streams add ``boxer_code`` and
+``boxer_colour``. A recording made before codes existed has names instead;
+those are written as ``boxer_a_name`` / ``boxer_b_name`` / ``boxer_name`` so
+nothing is lost. (docs/decisions/adr-0023-fighter-codes-and-colours.md)
 
 The file is derived from the recording's crash-safe source files (EEG CSVs,
 camera sidecars, phase_markers.csv, the manifest, labels.json), not written
@@ -60,7 +61,7 @@ from brain_battle.data.signals import (
     EEG_CHANNELS, EEG_UNIT, SAMPLE_RATE, SENSORS, MARKER_STREAM,
     XDF_NAME, eeg_stream_name, sensor_stream_name, video_stream_name, label_stream_name)
 import brain_battle.data.labels_store as labels_store
-import brain_battle.data.privacy as privacy
+import brain_battle.data.fighters as fighters
 from brain_battle.data.xdf_writer import XdfWriter, channels_xml, _xml
 
 log = logging.getLogger(__name__)
@@ -143,27 +144,30 @@ def label_events(labels) -> list[tuple]:
     return out
 
 
-def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None,
-                      hide_names: bool = False) -> Optional[str]:
+def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None) -> Optional[str]:
     """Write ``recording.xdf`` for a recording folder and return its path, or
     None if the folder has nothing to put in it.
 
     ``labels`` defaults to every labeller's labels in the folder (a flat list
     whose items carry ``labeller``); each labeller gets their own marker
-    stream. ``hide_names`` leaves the boxer names out. The file is replaced
+    stream. The file is replaced
     atomically, so a reader never sees a half-written one."""
     root = Path(session_root)
     manifest = session_storage._read_manifest(root) or {}
     cc = manifest.get("capture_clock") or {}
     t0 = float(cc.get("t0_lsl") or 0.0)
     t0_unix = cc.get("t0_unix")
-    boxers = manifest.get("boxers") or {}
-    names = privacy.boxer_names(manifest)
-    rec_name = privacy.neutral_recording_name(root.name) if hide_names else root.name
-    common = (_xml("recording", rec_name) + _xml("session_start", repr(t0))
+    side = {w: fighters.info(manifest, w) for w in ("A", "B")}
+    common = (_xml("recording", root.name) + _xml("session_start", repr(t0))
               + _xml("app_version", manifest.get("version", "")))
-    if not hide_names:
-        common += _xml("boxer_a_name", names["A"] or "") + _xml("boxer_b_name", names["B"] or "")
+    legacy = not (side["A"]["code"] or side["B"]["code"]) and \
+        bool(side["A"]["name"] or side["B"]["name"])     # a recording from before codes
+    for w in ("A", "B"):
+        if legacy:
+            common += _xml(f"boxer_{w.lower()}_name", side[w]["name"] or "")
+        else:
+            common += _xml(f"boxer_{w.lower()}_code", side[w]["code"] or "")
+            common += _xml(f"boxer_{w.lower()}_colour", side[w]["colour"] or "")
 
     def desc(extra: str = "", chans: str = "") -> str:
         return chans + "<brain_battle>" + common + extra + "</brain_battle>"
@@ -180,10 +184,12 @@ def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None,
             if got is None or len(got[0]) == 0:
                 return
             t, data = got
-            extra = _xml("boxer", who) + _xml(
-                "headband", (boxers.get(who) or {}).get("headband") or "")
-            if not hide_names:
-                extra += _xml("boxer_name", names.get(who) or "")
+            extra = _xml("boxer", who) + _xml("headband", side[who]["headband"] or "")
+            if legacy:
+                extra += _xml("boxer_name", side[who]["name"] or "")
+            else:
+                extra += (_xml("boxer_code", side[who]["code"] or "")
+                          + _xml("boxer_colour", side[who]["colour"] or ""))
             sid = w.add_stream(name, type_, len(channels), rate, "float32",
                                source_id=f"brainbattle-{name}",
                                desc=desc(extra, channels_xml(channels, unit, ch_type)))

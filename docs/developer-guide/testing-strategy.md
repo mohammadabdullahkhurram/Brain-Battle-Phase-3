@@ -47,7 +47,7 @@ demo session, about five minutes on its own; everything else is quick. The
 | `test_review_tab.py` | Review & Label labels side: fast open, duration, undo/redo | fast |
 | `test_labels_v2.py` | Label entry schema + v1 migration | fast |
 | `test_labellers.py` | One file per labeller, migration + claiming, merge-on-save, agreement, Compare | moderate |
-| `test_privacy.py` | Names in the XDF; a name-free export has no name in any file; hide on screen | moderate |
+| `test_fighters.py` | Codes + colours validated; the shared colour list; manifest / folder / XDF carry codes; old recordings with names still open | moderate |
 | `test_platform.py` | Mac/Windows differences; forbids `%-d` and hard-coded "Finder" (gate) | fast |
 | `test_shared_folder.py` | Atomic writes, the lock, several processes at once, a folder that disappears | moderate |
 | `test_descriptors.py` | Open files: several recordings in a row under a 256 limit return to baseline; failed writes are shown | moderate |

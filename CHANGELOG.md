@@ -7,6 +7,25 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
+**Fighter codes and colours replace names** ([ADR-0023](docs/decisions/adr-0023-fighter-codes-and-colours.md), supersedes ADR-0021)
+- Each fighter is a 4-character code (A–Z, 0–9, the two different; "New code"
+  makes one) and a colour. Red `#D3241B`, Blue `#1B45C4` and Black `#111111`
+  are always there; more can be added for the team in
+  `fighter_colours.json` (recordings folder, written like `label_list.json`).
+  New module `data/fighters.py`.
+- Codes and colours go into the manifest (`boxers.A = {code, colour,
+  colour_hex, headband}`), the folder name (`2026-11-17 14-05 K7Q2 vs M3XA`),
+  `recording.xdf` (`boxer_a_code`, `boxer_a_colour`, `boxer_code`,
+  `boxer_colour`) and the export README.
+- Name hiding is gone: `data/privacy.py`, the export option, both Settings
+  switches and the Hide names switch. `export_created` now records whether the
+  `videos` were included instead of `names_hidden`.
+- Old recordings with names still open, list, export and keep their names in
+  their `recording.xdf`. The demo library includes one such recording.
+- Export dialog redrawn as in the prototype: what is always included, "The 4
+  camera videos" (new: can be left out) and "Also one combined video".
+- New test `test_fighters.py`; `test_privacy.py` removed.
+
 **Cleanup**
 - Removed two unused variables (`actual_w`, `actual_h`) from the camera thread
   and the stale `.brain_battle_prefs.json` line from `.gitignore`.

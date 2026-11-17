@@ -3,7 +3,7 @@
 **What this page covers:** where boxer names are stored, and the two switches
 that hide them. It reverses one choice of the previous pass.
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0023](adr-0023-fighter-codes-and-colours.md) (2026-11-17)
 - **Date:** 2026-11-13
 
 ## Context

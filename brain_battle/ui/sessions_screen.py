@@ -36,7 +36,6 @@ from PyQt6.QtWidgets import (
 import brain_battle.ui.design_tokens as dt
 import brain_battle.ui.widgets as ui
 import brain_battle.data.app_settings as app_settings
-import brain_battle.data.privacy as privacy
 import brain_battle.data.safe_io as safe_io
 import brain_battle.data.session_storage as ss
 from brain_battle.support import platform_utils
@@ -234,7 +233,7 @@ class SessionsScreen(QWidget):
         self._scanned_once = False
         self._folder_state = safe_io.FOLDER_OK
         self._labeller = app_settings.labeller_name()
-        self._hide_names = app_settings.hide_names_on_screen()
+        self._hide_names = False
         self.setObjectName("sessionsScreen")
         self.setStyleSheet(f"#sessionsScreen {{ background: {dt.canvas_bg()}; }}")
         self._build()
@@ -502,8 +501,7 @@ class SessionsScreen(QWidget):
             for which, name in (("A", info.boxer_a), ("B", info.boxer_b)):
                 if name or self._hide_names:
                     bx.addWidget(ui.boxer_chip(
-                        which, privacy.shown_name(which, name, self._hide_names)
-                        if not self._hide_names else "Boxer " + which))
+                        which, name or "Boxer " + which))
         if info.demo:
             bx.addWidget(ui.pill("● Demo", "warning"))
         bx.addStretch()
@@ -580,7 +578,7 @@ class SessionsScreen(QWidget):
         self._banner_root = s.root
         when = _human_date(s)
         tm = _human_time(s)
-        vs = (privacy.versus(s.boxer_a, s.boxer_b, self._hide_names)
+        vs = (f"{s.boxer_a or 'Boxer A'} vs {s.boxer_b or 'Boxer B'}"
               if (s.boxer_a or s.boxer_b or self._hide_names) else "no names")
         where = _fmt_mmss(s.stopped_sec) if s.stopped_sec is not None else "an early point"
         self._banner.set_text(

@@ -244,7 +244,6 @@ class SettingsScreen(QWidget):
                             ("Video quality", self._build_quality_card),
                             ("Session defaults", self._build_defaults_card),
                             ("Extra signals", self._build_signals_card),
-                            ("Names and privacy", self._build_privacy_card),
                             ("Label list", self._build_labels_card)):
             card = build()
             v.addWidget(card)
@@ -280,7 +279,6 @@ class SettingsScreen(QWidget):
         self._refresh_quality()
         self._refresh_defaults()
         self._refresh_signals()
-        self._refresh_privacy()
         self._load_labels()
 
     # ── 0. You ──
@@ -324,50 +322,6 @@ class SettingsScreen(QWidget):
     def focus_labeller_name(self):
         self._scroll.ensureWidgetVisible(self._labeller_edit)
         self._labeller_edit.setFocus(); self._labeller_edit.selectAll()
-
-    # ── names and privacy ──
-    def _build_privacy_card(self) -> QFrame:
-        card = _card()
-        v = QVBoxLayout(card); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(8)
-        v.addWidget(_body("Boxer names and privacy", bold=True, size=dt.SIZE_MD))
-        v.addWidget(_body("Boxer names are kept with each recording, in its analysis file "
-                          "(recording.xdf) and in exports, so the team can keep track of who is "
-                          "who. These switches hide them where you don't want them.",
-                          color=dt.text_tertiary(), size=dt.SIZE_SM))
-        self._hide_export_cb = QCheckBox("Replace boxer names with Boxer A / Boxer B in exports")
-        self._hide_export_cb.setStyleSheet(dt.qss_checkbox())
-        self._hide_export_cb.toggled.connect(lambda on: self._on_privacy_toggled(
-            "hide_names_in_exports", on))
-        v.addWidget(self._hide_export_cb)
-        n1 = _body("Sets what the export window starts with — you can still choose for each "
-                   "export. A name-free export has no names in its files or its file name; the "
-                   "videos still show the boxers.", color=dt.text_tertiary(), size=dt.SIZE_XS)
-        n1.setContentsMargins(28, 0, 0, 4); v.addWidget(n1)
-        self._hide_screen_cb = QCheckBox("Hide boxer names on screen")
-        self._hide_screen_cb.setStyleSheet(dt.qss_checkbox())
-        self._hide_screen_cb.toggled.connect(lambda on: self._on_privacy_toggled(
-            "hide_names_on_screen", on))
-        v.addWidget(self._hide_screen_cb)
-        n2 = _body("Shows Boxer A / Boxer B instead of names in Sessions and Review & Label — "
-                   "for presenting or sharing your screen. The same switch is in the sidebar "
-                   f"(Hide names), or press {platform_utils.shortcut('H', shift=True)}.",
-                   color=dt.text_tertiary(), size=dt.SIZE_XS)
-        n2.setContentsMargins(28, 0, 0, 0); v.addWidget(n2)
-        return card
-
-    def _refresh_privacy(self):
-        for cb, key in ((self._hide_export_cb, "hide_names_in_exports"),
-                        (self._hide_screen_cb, "hide_names_on_screen")):
-            cb.blockSignals(True)
-            cb.setChecked(bool(getattr(self._settings, key)))
-            cb.blockSignals(False)
-
-    def _on_privacy_toggled(self, key, on):
-        setattr(self._settings, key, bool(on))
-        self._settings.save()
-        self._flash_saved()
-        if key == "hide_names_on_screen":
-            self.names_hidden_changed.emit(bool(on))
 
     # ── 1. Recordings folder ──
     def _build_folder_card(self) -> QFrame:

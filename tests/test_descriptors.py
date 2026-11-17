@@ -84,7 +84,7 @@ def _short_plan(flow):
     su = flow._setup_step
     su._st_rest.set_value(2); su._st_round.set_value(10)
     su._st_break.set_value(2); su._st_rounds.set_value(1)
-    su._name_a.setText("Sam"); su._name_b.setText("Alex"); su._recompute()
+    su._name_a.setText("K7Q2"); su._name_b.setText("M3XA"); su._recompute()
 
 
 def _record_once(flow, during=None):

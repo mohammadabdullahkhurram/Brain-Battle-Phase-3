@@ -22,11 +22,11 @@ one session.
 
 ## The folder tree
 
-A recording folder is named for when it started and who was in it, e.g.
-`2026-11-09 17-26 Sam vs Alex/`. Inside:
+A recording folder is named for when it started and the two fighters' codes,
+e.g. `2026-11-17 14-05 K7Q2 vs M3XA/`. Inside:
 
 ```
-2026-11-09 17-26 Sam vs Alex/
+2026-11-17 14-05 K7Q2 vs M3XA/
 ├── session_manifest.json       the session's "what / when / who"
 ├── phase_markers.csv           where each baseline/round/break begins
 ├── contact_quality.csv         per-sensor contact quality, ~1×/second

@@ -59,8 +59,8 @@ Open **Settings** from the bottom of the sidebar and look at, in order:
    before round 1. These pre-fill the plan on the **Get ready** screen of
    every new recording, so set them once here instead of re-typing them
    every time.
-5. **Boxer names and privacy** — whether exports replace the boxers' names
-   with "Boxer A" and "Boxer B" by default.
+5. **Fighter colours** — the colours fighters can wear (Red, Blue and Black
+   are always there), shared with the team.
 
 Everything in Settings saves automatically as you change it — there's no
 Save button, just a brief "✓ Saved" confirmation.

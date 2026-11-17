@@ -26,7 +26,7 @@ by `session_storage.SessionLayout._write_manifest`. One JSON object:
 | `version` | string | App version that recorded it, e.g. `"3.0.0-dev"` |
 | `started_at` | string | Local start time, ISO 8601 (seconds precision) |
 | `started_unix` | number | Same instant as a Unix timestamp (seconds) |
-| `boxers` | object | `A` and `B`, each `{name, headband}` (either may be `null`) |
+| `boxers` | object | `A` and `B`, each `{code, colour, colour_hex, headband}` — the fighter's 4-character code and the colour they wear (never a name) |
 | `demo` | bool | `true` only for generated demo data (shows the Demo badge) |
 | `moments` | array | "Mark this moment" presses — each `{t_session_seconds, unix_time}` |
 | `stopped_early` | bool | `true` if the operator pressed Stop and save before the plan finished |
@@ -36,8 +36,14 @@ by `session_storage.SessionLayout._write_manifest`. One JSON object:
 | `config` | object | The round plan: `{num_rounds, round_sec, break_sec, baseline_sec}` (seconds) |
 | `phases` | array | One entry per baseline / round / break (see below) |
 
-Inside `boxers.A` / `boxers.B`: `name` (string or `null`) and `headband`
-(string or `null`). Each `phases` entry (a `session_storage.PhaseRecord`):
+Inside `boxers.A` / `boxers.B`: `code` (exactly 4 characters, `A`–`Z` and
+`0`–`9`, the two different), `colour` (its name from the shared
+[`fighter_colours.json`](#fighter_coloursjson), e.g. `"Red"`), `colour_hex`
+(`#RRGGBB`) and `headband` (string or `null`). **Recordings made before
+fighter codes** have `{name, headband}` instead; the app still opens, lists and
+exports them, showing the stored `name`
+([ADR-0023](../decisions/adr-0023-fighter-codes-and-colours.md)).
+Each `phases` entry (a `session_storage.PhaseRecord`):
 
 | Key | Type | Meaning |
 |---|---|---|
@@ -60,8 +66,10 @@ Example (trimmed):
   "started_at": "2026-11-09T17:26:10",
   "started_unix": 1794241570.96,
   "boxers": {
-    "A": {"name": "Sam", "headband": "MuseS-7538"},
-    "B": {"name": "Alex", "headband": "MuseS-7564"}
+    "A": {"code": "K7Q2", "colour": "Red", "colour_hex": "#D3241B",
+          "headband": "MuseS-7538"},
+    "B": {"code": "M3XA", "colour": "Blue", "colour_hex": "#1B45C4",
+          "headband": "MuseS-7564"}
   },
   "demo": false,
   "moments": [{"t_session_seconds": 95.1, "unix_time": 1794241666.1}],
@@ -238,9 +246,10 @@ above (it is a derived copy; see
 **Timestamps** are seconds on the LSL clock: `capture_clock.t0_lsl +
 t_session_seconds`. Every stream's description carries the session start as
 `session_start` (inside a `brain_battle` element, next to `recording`,
-`app_version`, `boxer_a_name`, `boxer_b_name`, and — per stream — `boxer`,
-`boxer_name` and `headband`; or `video_file` and `measured_fps`; or `labeller`
-on a label stream), so
+`app_version`, `boxer_a_code`, `boxer_b_code`, `boxer_a_colour`,
+`boxer_b_colour`, and — per stream — `boxer`, `boxer_code`, `boxer_colour` and
+`headband`; or `video_file` and `measured_fps`; or `labeller` on a label
+stream), so
 
     t_session_seconds = timestamp − session_start
 
@@ -255,10 +264,10 @@ example `Jab/A`), and two events — `<label>/<who>/start` and
 Each labeller has their own stream, and the stream's description gives their
 name as typed (`labeller`), so two people's labels are never mixed.
 
-**Boxer names** are in every stream's description (`boxer_a_name`,
-`boxer_b_name`, and `boxer_name` on a boxer's own streams). An export made
-with "Replace boxer names with Boxer A / Boxer B" contains an XDF without
-those three keys, and with the names taken out of `recording` too — see
+**Fighters** appear only as their codes and colours (`boxer_a_code`,
+`boxer_a_colour`, … and `boxer_code` / `boxer_colour` on a fighter's own
+streams). A recording made before fighter codes has its names instead
+(`boxer_a_name`, `boxer_b_name`, `boxer_name`) — see
 [Personal data note](personal-data.md).
 
 The same stream names are published **live** over LSL from the first time New
@@ -358,6 +367,24 @@ per session), written by `label_vocab`. An array of entries; each:
  {"key": 6, "name": "Clinch", "color": "#BE185D", "kind": "duration"}]
 ```
 
+## `fighter_colours.json`
+
+The **shared** list of fighter colours — one file in the recordings folder
+(next to `label_list.json`), written by `fighters.save_colours` atomically under
+the folder lock. Red, Blue and Black are always present (even if the file is
+missing or leaves them out); colours added in Settings follow.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema_version` | int | `1` |
+| `colours` | array | Each `{name, color}`: the colour's name (`"Green"`) and `#RRGGBB` |
+
+```json
+{"schema_version": 1,
+ "colours": [{"name": "Red", "color": "#D3241B"}, {"name": "Blue", "color": "#1B45C4"},
+             {"name": "Black", "color": "#111111"}, {"name": "Green", "color": "#0F7A62"}]}
+```
+
 ## `history.jsonl`
 
 An append-only audit log — one JSON object **per line** (JSON Lines), written
@@ -388,7 +415,7 @@ The `event` values (from `session_history`):
 | `labels_migrated` | An old single `labels.json` was moved into a per-labeller file | `to_labeller` |
 | `labels_claimed` | A labeller took over labels from before labeller names ("These are mine") | `from`, how many, the `labeller` |
 | `labels_exported` | Labels were written out | — |
-| `export_created` | An analysis bundle was built | the zip name, `names_hidden`, and the `labellers` whose labels it contains |
+| `export_created` | An analysis bundle was built | the zip `name`, whether the camera `videos` were included, and the `labellers` whose labels it contains |
 
 One more event, `interrupted_dismissed`, is logged when you dismiss the
 interrupted-recording banner in Sessions.
@@ -419,10 +446,10 @@ plus the derived CSVs and the XDF. Contents:
 | `eeg_coregistered.csv` | Both boxers' EEG resampled onto one shared clock |
 | `eeg/` | The raw per-boxer EEG CSVs, unchanged |
 | `sensors/` | The movement / pulse CSVs, unchanged (only if they were recorded) |
-| `videos/` | The camera `.mp4` files and their `.timestamps.csv` sidecars |
-| `session_manifest.json` | A copy of the manifest (in a name-free export: with the boxer names replaced and `names_hidden` set to `true`) |
+| `videos/` | The camera `.mp4` files (unless "The 4 camera videos" was unticked) and their `.timestamps.csv` sidecars (always) |
+| `session_manifest.json` | A copy of the manifest |
 | `phase_markers.csv` | A copy of the markers |
-| `history.jsonl` | A copy of the history log (in a name-free export: with the boxer names replaced) |
+| `history.jsonl` | A copy of the history log |
 | `README.txt` | A plain-text description of the bundle |
 | `combined_2x2.mp4` | *Optional* — a 2×2 montage of the four cameras (off by default) |
 

@@ -55,7 +55,7 @@ import brain_battle.data.app_settings as app_settings
 import brain_battle.data.label_agreement as label_agreement
 import brain_battle.data.label_vocab as label_vocab
 import brain_battle.data.labels_store as labels_store
-import brain_battle.data.privacy as privacy
+import brain_battle.data.fighters as fighters
 import brain_battle.capture.contact_quality as cq
 import brain_battle.data.session_history as session_history
 import brain_battle.data.session_storage as session_storage
@@ -666,7 +666,7 @@ class ReviewLabelScreen(QWidget):
         register_fonts()        # the bundled fonts, however this screen is made
         self._root = None
         self._labeller = app_settings.labeller_name()
-        self._hide_names = app_settings.hide_names_on_screen()
+        self._hide_names = False
         self._store = labels_store.LabelsStore(labeller=self._labeller)
         self._others = {}            # {labeller name: [labels]} — everyone but me
         self._compare_with = None
@@ -1005,7 +1005,7 @@ class ReviewLabelScreen(QWidget):
             self._brain.set_names(self._brain_names())
 
     def _shown(self, which):
-        return privacy.shown_name(which, self._names.get(which), self._hide_names)
+        return self._names.get(which) or f"Boxer {which}"
 
     def _has_name(self, which):
         return bool(self._names.get(which)) and not self._hide_names
@@ -1020,14 +1020,14 @@ class ReviewLabelScreen(QWidget):
         self._root = root
         self._loaded = False
         self._labeller = app_settings.labeller_name() or self._labeller
-        self._hide_names = app_settings.hide_names_on_screen() if self._root else self._hide_names
+        self._hide_names = False
         self._refresh_identity()
         recordings_dir = os.path.dirname(os.path.abspath(root))
         self._vocab = label_vocab.load(recordings_dir)
         self._rebuild_label_buttons()
 
         man = session_storage._read_manifest(root) or {}
-        self._names = privacy.boxer_names(man)
+        self._names = {w: fighters.display(man, w) for w in ("A", "B")}
         self._started_at = man.get("started_at", "") or ""
         cfg = man.get("config") or {}
         self._rounds = int(cfg.get("num_rounds") or 0)
@@ -1101,7 +1101,7 @@ class ReviewLabelScreen(QWidget):
         when = platform_utils.format_iso(self._started_at,
                                          fallback=os.path.basename(self._root or ""))
         if self._hide_names:
-            vs = privacy.versus(a, b, True)
+            vs = "Boxer A vs Boxer B"
         else:
             vs = f"{a} vs {b}" if a and b else (a or b or "No names")
         self._title.setText(f"{when} · {vs}")

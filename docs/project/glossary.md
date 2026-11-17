@@ -25,8 +25,8 @@ out of the UI (see [design system](../developer-guide/design-system.md#vocabular
 | Worth checking | a contact-log weak period over 30 s |
 | Your name / labeller | the typed name labels are saved under (`app_settings.labeller_name`); one labels file per labeller |
 | Compare · "the same event" | another labeller's labels beside yours; two labels matched by `label_agreement` (same label, same boxer, start within the tolerance) |
-| Hide names | `hide_names_on_screen` — show "Boxer A / Boxer B" instead of names |
-| Replace boxer names with Boxer A / Boxer B | a name-free export (`hide_names`) |
+| Fighter code | 4 characters A–Z / 0–9 identifying a fighter (`fighters.code_ok`); never a name |
+| Fighter colour | what a fighter wears; shared list `fighter_colours.json` (`fighters.load_colours`) |
 | Get ready | the first New-recording screen (devices + plan); formerly the Connect devices and Set up session steps |
 | Show in Finder / Show in Explorer | reveal in the file manager (`platform_utils`) |
 

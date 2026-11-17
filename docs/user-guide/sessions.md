@@ -41,9 +41,6 @@ your recordings folder, and the place the app opens on.
 
 - **Your name** (the person icon) — who is labelling on this computer. Click it
   to change it. See [Review & Label](review-and-label.md#who-is-labelling).
-- **Hide names** — shows "Boxer A" and "Boxer B" instead of the boxers' names
-  on screen, for when you are presenting or sharing your screen. Click again to
-  show them.
 - **Recordings folder** — its name, how much space is free, and a red warning
   if the folder cannot be reached.
 

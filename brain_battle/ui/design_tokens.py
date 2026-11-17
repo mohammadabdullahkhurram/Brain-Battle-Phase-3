@@ -103,6 +103,7 @@ def accent_hover():   return _p().accent_hover
 def accent_pressed(): return _p().accent_pressed
 def accent_ghost():   return _p().accent_ghost
 def success_color():  return _p().success
+def success_bg():     return _p().success_bg
 def warning_color():  return _p().warning
 def error_color():    return _p().error
 def record_red():     return _p().record_red

@@ -4,14 +4,14 @@ session_storage.py
 Owns the on-disk layout of a recording (one continuous take per source for the
 whole session; rounds and breaks are timestamps, not folders):
 
-    2026-10-27 14-05 Sam vs Alex/
+    2026-11-17 14-05 K7Q2 vs M3XA/
         continuous/
             Side Cams/*.mp4 + *.timestamps.csv   one video per camera
             POV Cams/*.mp4  + *.timestamps.csv
             Muse data/*.csv                      one EEG file per headband
             Muse sensors/*.csv                   movement / pulse (optional)
         phase_markers.csv        one row per phase transition (appended live)
-        session_manifest.json    names, plan, clock origin, moments
+        session_manifest.json    fighter codes + colours, plan, clock origin, moments
         recording.xdf            everything above on one clock (session_xdf.py)
 
 This module also finds the files of an existing recording (``eeg_files``,
@@ -45,11 +45,12 @@ _ILLEGAL_FS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _WIN_RESERVED = {"CON", "PRN", "AUX", "NUL",
                  *(f"COM{i}" for i in range(1, 10)),
                  *(f"LPT{i}" for i in range(1, 10))}
-_NAME_MAXLEN = 40   # per boxer name, to keep folder names sane
+_NAME_MAXLEN = 40   # per fighter label, to keep folder names sane
 
 
 def sanitize_name(name: str, maxlen: int = _NAME_MAXLEN) -> str:
-    """Make a boxer name safe to put in a folder name on macOS AND Windows:
+    """Make a fighter code (or an old recording's name) safe to put in a
+    folder name on macOS AND Windows:
     drop filesystem-illegal chars and control chars, collapse whitespace, trim
     trailing dots/spaces (Windows), avoid reserved device names, cap length.
     Emoji and ordinary Unicode are kept (valid on both filesystems)."""
@@ -66,9 +67,8 @@ def sanitize_name(name: str, maxlen: int = _NAME_MAXLEN) -> str:
 def _session_folder_name(started_at: _dt.datetime,
                          boxer_a_name: Optional[str] = None,
                          boxer_b_name: Optional[str] = None) -> str:
-    """'2026-04-17 14-32 Sam vs Alex' (colon-free so it works on Windows), or
-    just '2026-04-17 14-32' when no names are given. One or both names
-    sanitized."""
+    """'2026-11-17 14-05 K7Q2 vs M3XA' (colon-free so it works on Windows), or
+    just '2026-11-17 14-05' when no codes are given. Sanitized."""
     ts = started_at.strftime("%Y-%m-%d %H-%M")
     a = sanitize_name(boxer_a_name or "")
     b = sanitize_name(boxer_b_name or "")
@@ -94,13 +94,23 @@ def _unique_dir(base_dir: Path, name: str) -> Path:
 
 
 def _norm_boxer(b) -> dict:
-    """Normalise a boxer arg (name str, or {name, headband} dict, or None) to
-    {'name': str|None, 'headband': str|None}."""
+    """Normalise a boxer arg to the manifest entry. New recordings pass a
+    ``fighters.boxer_entry`` dict ({code, colour, colour_hex, headband}); a
+    plain string is taken as a code. Older callers' ``{"name", "headband"}``
+    dicts are still accepted (that is what pre-code recordings stored)."""
     if b is None:
-        return {"name": None, "headband": None}
+        return {"code": None, "colour": None, "colour_hex": None, "headband": None}
     if isinstance(b, dict):
-        return {"name": (b.get("name") or None), "headband": (b.get("headband") or None)}
-    return {"name": (str(b) or None), "headband": None}
+        if "name" in b and "code" not in b:
+            return {"name": (b.get("name") or None), "headband": (b.get("headband") or None)}
+        return {"code": (b.get("code") or None), "colour": (b.get("colour") or None),
+                "colour_hex": (b.get("colour_hex") or None),
+                "headband": (b.get("headband") or None)}
+    return {"code": (str(b) or None), "colour": None, "colour_hex": None, "headband": None}
+
+
+def _folder_label(boxer: dict) -> Optional[str]:
+    return boxer.get("code") or boxer.get("name")
 
 
 # ─── Data ─────────────────────────────────────────────────────────────────────
@@ -137,11 +147,11 @@ class SessionLayout:
     # Measured per-source first-sample time (Unix), so each source's startup
     # latency is recorded, not assumed. Keyed by source id (e.g. "EEG_01").
     source_starts:        dict = field(default_factory=dict)
-    # Boxers: {"A": {"name", "headband"}, "B": {...}} — names shown everywhere
-    # in the UI, headband = the Muse-S device each boxer wears.
+    # Fighters: {"A": {"code", "colour", "colour_hex", "headband"}, "B": …} —
+    # a 4-character code and the colour they wear (data/fighters.py); never a
+    # name. headband = the Muse-S device each fighter wears.
     boxers:               dict = field(default_factory=lambda: {
-                              "A": {"name": None, "headband": None},
-                              "B": {"name": None, "headband": None}})
+                              "A": _norm_boxer(None), "B": _norm_boxer(None)})
     # True only for sessions written by tools/generate_demo_session.py, so the
     # Sessions screen can badge demo data and nobody mistakes it for a real
     # recording.
@@ -276,19 +286,19 @@ def create_session(base_dir: str | os.PathLike,
                    started_at: Optional[_dt.datetime] = None,
                    boxer_a=None, boxer_b=None, demo: bool = False) -> SessionLayout:
     """
-    Build the '<date time> <A> vs <B>/' tree for a v2.x continuous session:
+    Build the '<date time> <code A> vs <code B>/' tree for a session:
     the root, continuous/ (+ Muse data/), and an initial manifest — created
     eagerly so disk-full / permission failures surface immediately. Camera
     subfolders are created lazily by the recording code (see NOTE below).
 
-    `boxer_a`/`boxer_b` are each a name string or a {"name", "headband"} dict;
-    names drive the folder name and are stored in the manifest. On a folder-name
-    collision (same minute + names) a " (2)", " (3)"… suffix is appended; an
-    existing folder is never renamed or reused.
+    `boxer_a`/`boxer_b` are each a ``fighters.boxer_entry`` dict (or a bare
+    code string); the codes drive the folder name and everything is stored in
+    the manifest. On a folder-name collision (same minute + codes) a " (2)",
+    " (3)"… suffix is appended; an existing folder is never renamed or reused.
     """
     started_at = started_at or _dt.datetime.now()
     a, b = _norm_boxer(boxer_a), _norm_boxer(boxer_b)
-    base_name = _session_folder_name(started_at, a["name"], b["name"])
+    base_name = _session_folder_name(started_at, _folder_label(a), _folder_label(b))
     root = _unique_dir(Path(base_dir), base_name)
     root.mkdir(parents=True, exist_ok=False)  # fail loud on a genuine race
 
@@ -355,7 +365,7 @@ def is_interrupted_session(session_root: str | os.PathLike) -> bool:
 def _session_dirs(base: Path):
     """Yield immediate subfolders that ARE sessions — identified by the
     presence of session_manifest.json, NOT by any folder-name prefix (folder
-    names now carry boxer names). A folder with a present-but-unreadable
+    names carry fighter codes). A folder with a present-but-unreadable
     manifest still counts (so the UI can surface it)."""
     if not base.is_dir():
         return
@@ -633,7 +643,7 @@ class SessionInfo:
     name:          str              # folder basename
     started_at:    str              # ISO from manifest ("" if unreadable)
     started_unix:  float
-    boxer_a:       Optional[str]
+    boxer_a:       Optional[str]    # what to show: the code (an old recording's name)
     boxer_b:       Optional[str]
     rounds:        int
     planned_sec:   int
@@ -646,6 +656,8 @@ class SessionInfo:
     demo:          bool = False
     # {labeller name: label count} — who has labelled this recording.
     labellers:     dict = field(default_factory=dict)
+    colour_a:      Optional[str] = None     # "#RRGGBB" each fighter wears
+    colour_b:      Optional[str] = None
 
     def labels_by(self, name: str) -> int:
         """How many labels this labeller has placed here (names compared the
@@ -664,9 +676,9 @@ def session_info(root) -> SessionInfo:
     if m is None:
         return SessionInfo(str(root), name, "", 0.0, None, None, 0, 0, None,
                            STATUS_UNREADABLE, 0, False, False, False)
-    boxers = m.get("boxers") or {}
-    a = (boxers.get("A") or {}).get("name")
-    b = (boxers.get("B") or {}).get("name")
+    import brain_battle.data.fighters as fighters
+    fa, fb = fighters.info(m, "A"), fighters.info(m, "B")
+    a, b = (fa["code"] or fa["name"]), (fb["code"] or fb["name"])
     cfg = m.get("config") or {}
     rounds = int(cfg.get("num_rounds") or 0)
     planned = int((cfg.get("baseline_sec", 0) or 0)
@@ -696,7 +708,8 @@ def session_info(root) -> SessionInfo:
     return SessionInfo(str(root), name, m.get("started_at", "") or "",
                        float(m.get("started_unix") or 0.0), a, b, rounds,
                        planned, stopped, status, labels, interrupted, dismissed, True,
-                       demo=m.get("demo") is True, labellers=labellers)
+                       demo=m.get("demo") is True, labellers=labellers,
+                       colour_a=fa["colour_hex"], colour_b=fb["colour_hex"])
 
 
 # Scan cache: reading four small files per recording is quick on a local disk

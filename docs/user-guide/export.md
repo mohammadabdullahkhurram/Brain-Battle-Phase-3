@@ -29,15 +29,11 @@ One `.zip` file containing:
 The exact contents are listed in the
 [File format reference](../research-and-data/file-formats.md).
 
-## The two choices
+## The two video choices
 
-- **Replace boxer names with Boxer A / Boxer B.** Tick this to make an export
-  with no boxer names in it — not in its files and not in its file name. The
-  videos still show the boxers themselves, and the recording on your disk is
-  not changed. Whether the box starts ticked is set in
-  [Settings](settings.md); details are in the
-  [Personal data note](../research-and-data/personal-data.md).
-- **Also make one combined video of all four cameras.** Off by default because
+- **The 4 camera videos.** On by default. Untick it for a small export without
+  the videos; every camera's frame times are still included.
+- **Also one combined video with all 4 cameras.** Off by default because
   it is slow. The combined video is for showing people; for analysis use the
   four separate videos, which keep every frame's exact time.
 

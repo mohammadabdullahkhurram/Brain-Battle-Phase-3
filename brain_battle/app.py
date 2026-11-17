@@ -157,7 +157,6 @@ class BrainBattleApp(QMainWindow):
         self._shell.identity_clicked.connect(self._edit_identity)
         self._shell.names_hidden_changed.connect(self._on_hide_names_toggled)
         self._review_page.labeller_changed.connect(self._on_labeller_changed)
-        self._apply_names_hidden(settings.hide_names_on_screen)
 
         root.addWidget(self._shell, 1)
         self._shell.set_current_index(self.IDX_SESSIONS)   # app opens on Sessions
@@ -193,10 +192,7 @@ class BrainBattleApp(QMainWindow):
         self._settings_page.refresh()
 
     def _on_hide_names_toggled(self, hidden):
-        import brain_battle.data.app_settings as app_settings
-        s = app_settings.load(); s.hide_names_on_screen = bool(hidden); s.save()
         self._apply_names_hidden(hidden)
-        self._settings_page.refresh()
 
     def _apply_names_hidden(self, hidden):
         self._shell.set_names_hidden(hidden)

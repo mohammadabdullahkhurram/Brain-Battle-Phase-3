@@ -167,11 +167,14 @@ sections:
         title: ADR-0020 Shared recordings folder
         file: decisions/adr-0020-shared-folder-safety.md
       - id: adr-0021
-        title: ADR-0021 Boxer names and hiding them
+        title: ADR-0021 Boxer names and hiding them (superseded)
         file: decisions/adr-0021-boxer-names-and-hiding.md
       - id: adr-0022
         title: ADR-0022 LSL streams opened once
         file: decisions/adr-0022-lsl-outlets-open-once.md
+      - id: adr-0023
+        title: ADR-0023 Fighter codes and colours
+        file: decisions/adr-0023-fighter-codes-and-colours.md
 
   - title: Project
     pages:

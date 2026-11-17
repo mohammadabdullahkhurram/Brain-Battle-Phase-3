@@ -88,7 +88,7 @@ def _new_flow():
     return RecordFlow()
 
 
-def _setup_short(flow, rest=2, rnd=10, brk=2, rounds=2, a="Sam", b="Alex"):
+def _setup_short(flow, rest=2, rnd=10, brk=2, rounds=2, a="K7Q2", b="M3XA"):
     """Enter Set up, then force a short session (steppers clamp round ≥ 10s)."""
     flow.goto_setup()
     su = flow._setup_step
@@ -143,7 +143,7 @@ def test_end_to_end():
         root = flow._saved_root
         man = json.load(open(os.path.join(root, "session_manifest.json")))
         check("manifest has both boxer names",
-              man["boxers"]["A"]["name"] == "Sam" and man["boxers"]["B"]["name"] == "Alex")
+              man["boxers"]["A"]["code"] == "K7Q2" and man["boxers"]["B"]["code"] == "M3XA")
         check("manifest records the marked moment", len(man.get("moments", [])) == 1)
         check("manifest has the capture clock", man["capture_clock"]["t0_unix"] is not None)
         check("manifest records EEG source starts",

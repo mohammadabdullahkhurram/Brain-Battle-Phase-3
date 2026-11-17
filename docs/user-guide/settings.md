@@ -95,23 +95,13 @@ Three switches:
   same whether this is on or off. The first time, your computer may ask whether
   to allow incoming network connections — either answer is fine for recording.
 
-## Boxer names and privacy
+## Fighter colours
 
-Boxer names are kept with each recording, in its analysis file
-(`recording.xdf`) and in exports, so the team can keep track of who is who.
-Two switches hide them where you don't want them:
-
-- **Replace boxer names with Boxer A / Boxer B in exports** — sets what the
-  export window starts with; you can still choose for each export. A name-free
-  export has no names in its files or its file name.
-- **Hide boxer names on screen** — shows "Boxer A" and "Boxer B" instead of
-  names in Sessions and Review & Label, for presenting or sharing your screen.
-  The same switch is in the sidebar (**Hide names**), and on the keyboard:
-  ⇧⌘H on a Mac, Ctrl+Shift+H on Windows.
-
-Neither switch changes a recording on disk, and neither hides the boxers'
-faces in the videos. See the
-[Personal data note](../research-and-data/personal-data.md).
+Each fighter wears a colour, picked on **Get ready** next to their code. Red,
+Blue and Black are always there. **+ Add colour** adds another (a name and a
+colour) for the whole team: the list is kept in the recordings folder
+(`fighter_colours.json`), like the label list. Fighters are never stored by
+name — see the [Personal data note](../research-and-data/personal-data.md).
 
 ## Label list
 

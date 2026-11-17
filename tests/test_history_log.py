@@ -194,7 +194,7 @@ if __name__ == "__main__":
     DEMO_ROOT = generate_demo_session(out=tempfile.mkdtemp(prefix="bb_hist_"),
                                       rounds=1, round_sec=8, break_sec=0,
                                       baseline_sec=3, seed=11,
-                                      boxer_a="Sam", boxer_b="Alex")["root"]
+                                      boxer_a="K7Q2", boxer_b="M3XA")["root"]
     test_log_and_read()
     test_tolerant_reader()
     test_sigkill_midwrite()

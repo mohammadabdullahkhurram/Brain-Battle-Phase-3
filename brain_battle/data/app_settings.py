@@ -6,9 +6,9 @@ directory) for everything that used to be hard-coded in source: the
 headband → Boxer A/B mapping (replacing `eeg_module.BOXER_LABELS`), the
 default session plan, the round bell on/off, the record video quality, which
 extra headband sensors to record, whether to publish live LSL streams, who is
-labelling on this computer ("Your name"), and whether boxer names are hidden
-in exports / on screen. These are per-computer settings; what the team shares
-(the label list) lives in the recordings folder instead.
+labelling on this computer ("Your name"). These are per-computer settings;
+what the team shares (the label list, the fighter colours) lives in the
+recordings folder instead.
 
 Pure stdlib + filesystem (no Qt), so it is trivially testable and usable from
 any thread. The Settings screen edits this store; the guided recording flow
@@ -117,10 +117,6 @@ class AppSettings:
     # Who is labelling on this computer ("Your name", asked once). Each
     # labeller's labels are stored in their own file in the recording folder.
     labeller_name:    str = ""
-    # Boxer names: replace them with "Boxer A / Boxer B" in exports by default
-    # (each export can still choose), and hide them on screen (for presenting).
-    hide_names_in_exports: bool = False
-    hide_names_on_screen:  bool = False
 
     # ---- derived accessors ----
     def capture_dir_resolved(self) -> str:
@@ -218,8 +214,7 @@ def load(path: Optional[str] = None) -> AppSettings:
         s.round_bell = data["round_bell"]
     if data.get("video_quality") in VIDEO_QUALITY:
         s.video_quality = data["video_quality"]
-    for key in ("record_motion", "record_ppg", "lsl_streams",
-                "hide_names_in_exports", "hide_names_on_screen"):
+    for key in ("record_motion", "record_ppg", "lsl_streams"):
         if isinstance(data.get(key), bool):
             setattr(s, key, data[key])
     if isinstance(data.get("labeller_name"), str):
@@ -248,10 +243,6 @@ def set_labeller_name(name: str) -> str:
     return s.labeller_name
 
 
-def hide_names_on_screen() -> bool:
-    return load().hide_names_on_screen
-
-
 def remember_headband(name: str) -> None:
     """Record a device name seen on a BLE scan/connection into the saved
     settings' "known headbands" list (Settings dropdowns remember devices
@@ -268,6 +259,6 @@ def remember_headband(name: str) -> None:
 __all__ = [
     "AppSettings", "load", "config_path", "default_capture_root",
     "boxer_labels", "remember_headband", "VIDEO_QUALITY", "gb_per_hour",
-    "labeller_name", "set_labeller_name", "hide_names_on_screen",
+    "labeller_name", "set_labeller_name",
     "SCHEMA_VERSION",
 ]

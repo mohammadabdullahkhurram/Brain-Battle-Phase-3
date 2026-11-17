@@ -329,12 +329,19 @@ def _generate_eeg_band(muse_dir, device_name, boxer_letter, rng, t0_unix,
 def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: int = 60,
                           break_sec: int = 20, baseline_sec: int = 20, seed: int = 0,
                           interrupted: bool = False,
-                          boxer_a: str | None = None, boxer_b: str | None = None,
+                          boxer_a: str | None = "K7Q2", boxer_b: str | None = "M3XA",
+                          colour_a: str = "Red", colour_b: str = "Blue",
+                          legacy_names: tuple | None = None,
                           started_at=None) -> dict:
     """Build one complete demo session folder. Returns a summary dict
     (session root, per-camera + per-band generation parameters, markers,
     total duration, interrupted flag) — used both by main()'s printed
-    summary and by tests/test_demo_session.py's assertions."""
+    summary and by tests/test_demo_session.py's assertions.
+
+    ``boxer_a`` / ``boxer_b`` are fighter codes (``None`` leaves them out);
+    ``legacy_names=("Sam", "Alex")`` instead writes the manifest the way
+    recordings made before fighter codes did (``{"name", "headband"}``), so
+    the app's handling of old recordings can be checked."""
     global _qapp_ref
     _qapp_ref = QApplication.instance() or QApplication(sys.argv)
 
@@ -349,10 +356,19 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     # REAL writer: folder (named by boxers) + continuous/ + initial manifest
     settings = app_settings.load()
     headbands = {who: settings.headband_for(who) for who in ("A", "B")}
-    layout = create_session(
-        base_dir, cfg, started_at=started_at, demo=True,
-        boxer_a={"name": boxer_a, "headband": headbands["A"]},
-        boxer_b={"name": boxer_b, "headband": headbands["B"]})
+    import brain_battle.data.fighters as fighters
+    if legacy_names:
+        boxer_a, boxer_b = legacy_names
+        entries = ({"name": legacy_names[0], "headband": headbands["A"]},
+                   {"name": legacy_names[1], "headband": headbands["B"]})
+    else:
+        entries = tuple(
+            fighters.boxer_entry(code, colour, fighters.colour_hex(colour), headbands[w])
+            if code else {"code": None, "colour": None, "colour_hex": None,
+                          "headband": headbands[w]}
+            for w, code, colour in (("A", boxer_a, colour_a), ("B", boxer_b, colour_b)))
+    layout = create_session(base_dir, cfg, started_at=started_at, demo=True,
+                            boxer_a=entries[0], boxer_b=entries[1])
 
     origin = capture_clock.session_origin()            # the REAL clock origin
     t0_monotonic, t0_unix = origin["t0_monotonic"], origin["t0_unix"]
@@ -445,8 +461,9 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
 
 def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
     """Fill `out` with ~5 short (~20 s) sessions covering every Sessions-screen
-    status: interrupted, needs-labelling, labelled, exported, plus one with no
-    boxer names. Deterministic for a given seed. Dated across recent days so
+    status: interrupted, needs-labelling, labelled, exported, plus one made
+    the old way, with boxer names instead of codes. Deterministic for a given
+    seed. Dated across recent days so
     the list has variety."""
     import datetime as _dt
     import brain_battle.data.session_storage as _ss
@@ -465,37 +482,38 @@ def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
 
     # 1) interrupted
     r = generate_demo_session(out=base, seed=seed, interrupted=True,
-                              boxer_a="Sam", boxer_b="Alex",
+                              boxer_a="M3XA", boxer_b="Z8PC", colour_a="Blue", colour_b="Red",
                               started_at=when(4, 14, 5), **short)
     _ss.mark_session_interrupted(r["root"])
     _sh.log_event(r["root"], _sh.EVENT_RECORDING_INTERRUPTED)
     r["status"] = "interrupted"; results.append(r)
 
     # 2) needs labelling (clean, no labels)
-    r = generate_demo_session(out=base, seed=seed + 1, boxer_a="Mia", boxer_b="Noor",
+    r = generate_demo_session(out=base, seed=seed + 1, boxer_a="B9LN", boxer_b="R2DT",
                               started_at=when(3, 9, 30), **short)
     _sh.log_event(r["root"], _sh.EVENT_RECORDING_FINISHED)
     r["status"] = "needs labelling"; results.append(r)
 
     # 3) labelled (labels.json with a few labels)
-    r = generate_demo_session(out=base, seed=seed + 2, boxer_a="Leo", boxer_b="Kai",
+    r = generate_demo_session(out=base, seed=seed + 2, boxer_a="R2DT", boxer_b="B9LN",
                               started_at=when(2, 18, 15), **short)
     _write_demo_labels(r["root"], [("JAB", 3.0), ("CROSS", 6.5), ("BLOCK", 9.0)])
     _sh.log_event(r["root"], _sh.EVENT_LABELS_ADDED, {"label": "JAB"})
     r["status"] = "labelled"; results.append(r)
 
     # 4) exported (labelled + export_created in history)
-    r = generate_demo_session(out=base, seed=seed + 3, boxer_a="Ivy", boxer_b="Zoe",
+    r = generate_demo_session(out=base, seed=seed + 3, boxer_a="K7Q2", boxer_b="J4WE",
+                              colour_a="Black", colour_b="Red",
                               started_at=when(1, 11, 45), **short)
     _write_demo_labels(r["root"], [("HOOK", 4.0), ("CLINCH", 7.0)])
-    _sh.log_event(r["root"], _sh.EVENT_EXPORT_CREATED, {"name": "Ivy_vs_Zoe.zip"})
+    _sh.log_event(r["root"], _sh.EVENT_EXPORT_CREATED, {"name": "K7Q2_vs_J4WE.zip"})
     r["status"] = "exported"; results.append(r)
 
-    # 5) no names (needs labelling, nameless row)
-    r = generate_demo_session(out=base, seed=seed + 4,
+    # 5) an old recording, made before fighter codes (names in the manifest)
+    r = generate_demo_session(out=base, seed=seed + 4, legacy_names=("Sam", "Alex"),
                               started_at=when(0, 16, 20), **short)
     _sh.log_event(r["root"], _sh.EVENT_RECORDING_FINISHED)
-    r["status"] = "needs labelling (no names)"; results.append(r)
+    r["status"] = "needs labelling (old, names)"; results.append(r)
 
     return results
 
@@ -533,11 +551,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="generate a session that looks like the app crashed mid-round: "
                         "no SESSION_END marker, last phase has no end time, "
                         "EEG and video cut off early")
-    p.add_argument("--boxer-a", default=None, help="Boxer A name (folder + manifest)")
-    p.add_argument("--boxer-b", default=None, help="Boxer B name (folder + manifest)")
+    p.add_argument("--boxer-a", default="K7Q2", help="Boxer A's 4-character code")
+    p.add_argument("--boxer-b", default="M3XA", help="Boxer B's 4-character code")
     p.add_argument("--library", action="store_true",
                    help="fill --out with ~5 short sessions covering every status "
-                        "(interrupted, needs labelling, labelled, exported, no-name)")
+                        "(interrupted, needs labelling, labelled, exported, an old named one)")
     return p
 
 

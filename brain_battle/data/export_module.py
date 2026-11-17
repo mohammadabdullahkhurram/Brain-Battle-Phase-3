@@ -16,9 +16,9 @@ analyst needs:
     session_manifest.json, phase_markers.csv, history.jsonl, README.txt
     combined_2x2.mp4      optional (off by default; slow to make)
 
-"Replace boxer names with Boxer A / Boxer B" (``hide_names``) makes a name-free
-export: the XDF, the manifest copy, the history copy, the README and the zip's
-own name carry no boxer names. The recording on disk is not changed.
+Fighters appear only as their codes and colours (ADR-0023), so there are no
+names to hide. The 4 camera videos can be left out (``include_videos``) for a
+small export.
 
 Also here: the H.264 encoder probe shared with the camera recorder
 (``_HW_ENCODER`` — a hardware encoder is only used if a test encode actually
@@ -459,12 +459,10 @@ def _write_agreement_csv(agreements, path):
                         len(ag.only_b), ag.percent, f"{ag.mean_time_difference:.3f}"])
 
 
-def default_export_name(session_root, hide_names: bool = False) -> str:
-    """The zip's file name: the recording folder's name, or just its date and
-    time when boxer names are being left out."""
-    import brain_battle.data.privacy as privacy
-    name = os.path.basename(os.path.abspath(session_root))
-    return (privacy.neutral_recording_name(name) if hide_names else name) + ".zip"
+def default_export_name(session_root) -> str:
+    """The zip's file name: the recording folder's name
+    ('2026-11-17 14-05 K7Q2 vs M3XA.zip')."""
+    return os.path.basename(os.path.abspath(session_root)) + ".zip"
 
 
 class SessionExportWorker(QThread):
@@ -473,21 +471,21 @@ class SessionExportWorker(QThread):
     (manifest + history + sidecars included).
 
     ``labels`` is a flat list of labels, each carrying ``labeller``; ``None``
-    means "every labeller's labels in the folder". ``hide_names`` replaces the
-    boxer names with Boxer A / Boxer B throughout the export."""
+    means "every labeller's labels in the folder". ``include_videos=False``
+    leaves the camera MP4s out (their frame-time CSVs are always included)."""
     progress = pyqtSignal(int, str)
     finished = pyqtSignal(str)
     error    = pyqtSignal(str)
 
     def __init__(self, session_root, labels, phase_markers, zip_path,
-                 merge_video=False, hide_names=False, parent=None):
+                 merge_video=False, include_videos=True, parent=None):
         super().__init__(parent)
         self.root = session_root
         self.labels = labels
         self.phase_markers = phase_markers
         self.zip_path = zip_path
         self.merge_video = merge_video
-        self.hide_names = bool(hide_names)
+        self.include_videos = bool(include_videos)
 
     def run(self):
         try:
@@ -501,7 +499,6 @@ class SessionExportWorker(QThread):
     def _run(self):
         import json
         import brain_battle.data.labels_store as labels_store
-        import brain_battle.data.privacy as privacy
         import brain_battle.data.session_storage as session_storage
         root = self.root
         self.progress.emit(3, "Preparing export…")
@@ -510,7 +507,6 @@ class SessionExportWorker(QThread):
         if self.phase_markers is None:
             self.phase_markers = session_storage.read_phase_markers(root)
         manifest = session_storage._read_manifest(root) or {}
-        names = privacy.boxer_names(manifest)
         with tempfile.TemporaryDirectory() as tmp:
             files: list[tuple[str, str]] = []
 
@@ -524,21 +520,16 @@ class SessionExportWorker(QThread):
                 _write_agreement_csv(agreements, ap); files.append((ap, "agreement.csv"))
 
             # everything on one clock, in the standard LSL file format —
-            # rebuilt now so it carries the labels placed so far. A name-free
-            # export gets its own copy; the recording's own file keeps names.
+            # rebuilt now so it carries the labels placed so far.
             self.progress.emit(8, "Building recording.xdf…")
             try:
                 import brain_battle.data.session_xdf as session_xdf
                 tmp_xdf = os.path.join(tmp, "recording.xdf")
-                if self.hide_names:
+                try:
+                    xp = session_xdf.build_session_xdf(root, labels=self.labels)
+                except OSError:     # recording folder not writable: build in temp
                     xp = session_xdf.build_session_xdf(root, labels=self.labels,
-                                                       out_path=tmp_xdf, hide_names=True)
-                else:
-                    try:
-                        xp = session_xdf.build_session_xdf(root, labels=self.labels)
-                    except OSError:     # recording folder not writable: build in temp
-                        xp = session_xdf.build_session_xdf(root, labels=self.labels,
-                                                           out_path=tmp_xdf)
+                                                       out_path=tmp_xdf)
                 if xp:
                     files.append((xp, "recording.xdf"))
             except Exception as e:
@@ -577,7 +568,9 @@ class SessionExportWorker(QThread):
                 for fn in sorted(os.listdir(d)):
                     p = os.path.join(d, fn)
                     if fn.endswith(".mp4"):
-                        video_paths.append(p); files.append((p, f"videos/{fn}"))
+                        video_paths.append(p)
+                        if self.include_videos:
+                            files.append((p, f"videos/{fn}"))
                     elif fn.endswith(".timestamps.csv"):
                         files.append((p, f"videos/{fn}"))
 
@@ -610,37 +603,23 @@ class SessionExportWorker(QThread):
                 if done["ok"] and os.path.exists(merged):
                     files.append((merged, "combined_2x2.mp4"))
 
-            # manifest, markers, history (name-free copies when asked)
+            # manifest, markers, history
             self.progress.emit(85, "Adding the recording details and history…")
             mp = os.path.join(root, "session_manifest.json")
             if os.path.isfile(mp):
-                if self.hide_names:
-                    mcopy = os.path.join(tmp, "session_manifest.json")
-                    with open(mcopy, "w", encoding="utf-8") as f:
-                        json.dump(privacy.scrub_manifest(manifest), f, indent=2, ensure_ascii=False)
-                    files.append((mcopy, "session_manifest.json"))
-                else:
-                    files.append((mp, "session_manifest.json"))
+                files.append((mp, "session_manifest.json"))
             pm = os.path.join(root, "phase_markers.csv")
             if os.path.isfile(pm):
                 files.append((pm, "phase_markers.csv"))
             hp = os.path.join(root, "history.jsonl")
             if os.path.isfile(hp):
-                if self.hide_names:
-                    hcopy = os.path.join(tmp, "history.jsonl")
-                    with open(hp, encoding="utf-8", errors="replace") as f:
-                        text = f.read()
-                    with open(hcopy, "w", encoding="utf-8") as f:
-                        f.write(privacy.scrub_text(text, names))
-                    files.append((hcopy, "history.jsonl"))
-                else:
-                    files.append((hp, "history.jsonl"))
+                files.append((hp, "history.jsonl"))
 
             # README
             self.progress.emit(90, "Writing the README…")
             rp = os.path.join(tmp, "README.txt")
             with open(rp, "w", encoding="utf-8") as f:
-                f.write(_export_readme(root, self.labels, manifest, self.hide_names, agreements))
+                f.write(_export_readme(root, self.labels, manifest, agreements))
             files.append((rp, "README.txt"))
 
             # zip — written beside its final name, then swapped in, so a
@@ -664,7 +643,7 @@ class SessionExportWorker(QThread):
             import brain_battle.data.session_history as session_history
             session_history.log_event(root, session_history.EVENT_EXPORT_CREATED,
                                       {"name": os.path.basename(self.zip_path),
-                                       "names_hidden": self.hide_names,
+                                       "videos": self.include_videos,
                                        "labellers": sorted(_by_labeller(self.labels))})
         except Exception as e:
             log.warning("could not log export_created: %r", e)
@@ -673,30 +652,31 @@ class SessionExportWorker(QThread):
         self.finished.emit(self.zip_path)
 
 
-def _export_readme(root, labels, manifest=None, hide_names=False, agreements=None):
-    import brain_battle.data.privacy as privacy
+def _export_readme(root, labels, manifest=None, agreements=None):
+    import brain_battle.data.fighters as fighters
     created = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if isinstance(labels, int):              # older callers passed a count
         n_labels, per = labels, {}
     else:
         n_labels, per = len(labels or []), _by_labeller(labels)
-    names = privacy.boxer_names(manifest or {})
     folder = os.path.basename(os.path.abspath(root))
+
+    def fighter(w):
+        i = fighters.info(manifest or {}, w)
+        shown = fighters.display(manifest or {}, w)
+        return f"{shown} ({i['colour'].lower()})" if i["colour"] else shown
+
     lines = [
         "Brain Battle — analysis export",
-        f"Recording:  {privacy.neutral_recording_name(folder) if hide_names else folder}",
+        f"Recording:  {folder}",
         f"Created:    {created}",
-        f"Boxer A:    {privacy.shown_name('A', names['A'], hide_names)}",
-        f"Boxer B:    {privacy.shown_name('B', names['B'], hide_names)}",
+        f"Boxer A:    {fighter('A')}",
+        f"Boxer B:    {fighter('B')}",
         f"Labels:     {n_labels}",
     ]
     for who, labs in per.items():
         lines.append(f"  {who}: {len(labs)}")
-    if hide_names:
-        lines += ["",
-                  "Boxer names were replaced with Boxer A / Boxer B in this export",
-                  "(recording.xdf, session_manifest.json, history.jsonl and this file).",
-                  "The videos still show the boxers themselves."]
+    lines += ["", "Fighters are stored only as their 4-character codes and colours."]
     if agreements:
         lines += ["", "Agreement between labellers (same label, same boxer, start times",
                   f"within {agreements[0].tolerance:g} s; details in agreement.csv):"]
@@ -735,16 +715,25 @@ def _export_readme(root, labels, manifest=None, hide_names=False, agreements=Non
 
 
 class ExportOptionsDialog(QDialog):
-    """Export for analysis: what goes in, two choices (hide boxer names; also
-    make a combined video), where to save. Runs the export with a progress bar
-    and ends with "Show in Finder / Explorer"."""
+    """Export for analysis (DESIGN "Export"): what is always included, two
+    video choices (the 4 camera videos; also one combined video), where to
+    save. Runs the export with a progress bar and ends with "Show in Finder /
+    Explorer"."""
+
+    ALWAYS = (
+        "recording.xdf: everything on one clock, for EEGLAB, MNE or Python",
+        "The same data as separate CSV files: both brain recordings, head movement, "
+        "automatic markers, moments and notes, everyone\u2019s labels, and every "
+        "camera\u2019s frame times",
+        "A timing report (timing_quality.csv): frame rates, delays, jitter, dropped "
+        "frames and packets, and the buzzer-test corrections for every device",
+        "How much the labellers agree, the session details and the history",
+    )
 
     def __init__(self, session_root, labels=None, phase_markers=None, parent=None):
         super().__init__(parent)
         import brain_battle.ui.design_tokens as dt
-        import brain_battle.data.app_settings as app_settings
-        import brain_battle.data.labels_store as labels_store
-        import brain_battle.data.privacy as privacy
+        import brain_battle.data.fighters as fighters
         import brain_battle.data.session_storage as session_storage
         from brain_battle.support.platform_utils import show_in_file_manager_label
         from PyQt6.QtWidgets import QCheckBox
@@ -752,61 +741,65 @@ class ExportOptionsDialog(QDialog):
         self._labels = labels
         self._phases = phase_markers
         self._worker = None
-        self._dest_edited = False
         self.setWindowTitle("Export for analysis")
         self.setModal(True)
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(560)
         self.setStyleSheet(f"QDialog {{ background: {dt.surface()}; }}")
 
         manifest = session_storage._read_manifest(session_root) or {}
-        names = privacy.boxer_names(manifest)
-        counts = labels_store.labeller_counts(session_root) if labels is None else \
-            {k: len(v) for k, v in _by_labeller(labels).items()}
         self._dir = os.path.dirname(os.path.abspath(session_root))
+        self._dest = os.path.join(self._dir, default_export_name(session_root))
 
         v = QVBoxLayout(self); v.setContentsMargins(28, 24, 28, 22); v.setSpacing(14)
         title = QLabel("Export for analysis")
         title.setStyleSheet(dt.css_text(dt.SIZE_XL, 700))
         v.addWidget(title)
-        n = sum(counts.values())
-        who = (f"{n} label{'s' if n != 1 else ''} from "
-               + (", ".join(f"{k} ({c})" for k, c in counts.items()) if counts else "no one yet"))
-        intro = QLabel("One .zip file with everything needed to analyse this recording: the "
-                       "single analysis file (recording.xdf) for EEGLAB or Python, the labels as "
-                       "spreadsheets, both boxers' brain recordings, and the four videos with "
-                       f"their timing.\n\nIncludes {who}.")
-        intro.setWordWrap(True)
-        intro.setStyleSheet(dt.css_text(dt.SIZE_MD, 400, dt.text_secondary()))
-        v.addWidget(intro)
+        self._name_lbl = QLabel(os.path.basename(self._dest))
+        self._name_lbl.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary(), mono=True))
+        v.addWidget(self._name_lbl)
 
-        self._hide_cb = QCheckBox("Replace boxer names with Boxer A / Boxer B")
-        self._hide_cb.setChecked(app_settings.load().hide_names_in_exports)
-        self._hide_cb.setStyleSheet(dt.qss_checkbox())
-        self._hide_cb.toggled.connect(self._on_hide_toggled)
-        v.addWidget(self._hide_cb)
-        shown = privacy.versus(names["A"], names["B"])
-        hide_note = QLabel(f"Takes the names ({shown}) out of this export's files and its file "
-                           "name. The videos still show the boxers. The recording itself is not "
-                           "changed.")
-        hide_note.setWordWrap(True)
-        hide_note.setContentsMargins(26, 0, 0, 0)
-        hide_note.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary()))
-        v.addWidget(hide_note)
+        head = QLabel("Always included")
+        head.setStyleSheet(dt.css_text(dt.SIZE_SM, 700))
+        v.addWidget(head)
+        for text in self.ALWAYS:
+            row = QLabel(f"<span style='color:{dt.success_color()};font-weight:700'>\u2713</span> "
+                         f"{text}")
+            row.setWordWrap(True)
+            row.setStyleSheet(dt.css_text(dt.SIZE_SM, 400))
+            v.addWidget(row)
 
-        self._merge_cb = QCheckBox("Also make one combined video of all four cameras (slow)")
+        vh = QLabel("Videos")
+        vh.setStyleSheet(dt.css_text(dt.SIZE_SM, 700))
+        v.addWidget(vh)
+        self._videos_cb = QCheckBox("The 4 camera videos")
+        self._videos_cb.setChecked(True)
+        self._videos_cb.setStyleSheet(dt.qss_checkbox())
+        v.addWidget(self._videos_cb)
+        self._merge_cb = QCheckBox("Also one combined video with all 4 cameras")
         self._merge_cb.setChecked(False)
         self._merge_cb.setStyleSheet(dt.qss_checkbox())
         v.addWidget(self._merge_cb)
 
-        self._dest = os.path.join(self._dir, default_export_name(session_root,
-                                                                 self._hide_cb.isChecked()))
+        a, b = fighters.display(manifest, "A"), fighters.display(manifest, "B")
+        legacy = fighters.info(manifest, "A")["name"] or fighters.info(manifest, "B")["name"]
+        note = QLabel(f"Fighters appear only as their codes ({a}, {b}) and colours. No names are "
+                      f"stored, so there is nothing to hide." if not legacy else
+                      "This recording was made before fighter codes; it keeps the names it "
+                      "was recorded with.")
+        note.setWordWrap(True)
+        note.setObjectName("exportCodesNote")
+        note.setStyleSheet(f"#exportCodesNote {{ background: {dt.success_bg()}; "
+                           f"color: {dt.success_color()}; border-radius: 12px; "
+                           f"padding: 10px 12px; }}" + "")
+        v.addWidget(note)
+
         dest_row = QHBoxLayout(); dest_row.setSpacing(10)
-        save_lbl = QLabel("Save as")
+        save_lbl = QLabel("Save to")
         save_lbl.setStyleSheet(dt.css_text(dt.SIZE_SM, 600, dt.text_secondary()))
         self._dest_lbl = QLabel(self._dest)
         self._dest_lbl.setWordWrap(True)
         self._dest_lbl.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary()))
-        change = QPushButton("Change…"); change.setMinimumHeight(36)
+        change = QPushButton("Change\u2026"); change.setMinimumHeight(36)
         change.setStyleSheet(dt.qss_secondary_button(compact=True)); change.clicked.connect(self._pick_dest)
         dest_row.addWidget(save_lbl); dest_row.addWidget(self._dest_lbl, 1); dest_row.addWidget(change)
         v.addLayout(dest_row)
@@ -831,25 +824,20 @@ class ExportOptionsDialog(QDialog):
         btns.addWidget(self._cancel); btns.addWidget(self._go)
         v.addLayout(btns)
 
-    def _on_hide_toggled(self, hide):
-        if not self._dest_edited:        # keep the suggested name in step with the choice
-            self._dest = os.path.join(self._dir, default_export_name(self._root, hide))
-            self._dest_lbl.setText(self._dest)
-
     def _pick_dest(self):
         path, _ = QFileDialog.getSaveFileName(self, "Save export", self._dest, "Zip (*.zip)")
         if path:
             self._dest = path if path.endswith(".zip") else path + ".zip"
-            self._dest_edited = True
             self._dest_lbl.setText(self._dest)
+            self._name_lbl.setText(os.path.basename(self._dest))
 
     def _start(self):
         self._go.setEnabled(False)
-        self._merge_cb.setEnabled(False); self._hide_cb.setEnabled(False)
+        self._merge_cb.setEnabled(False); self._videos_cb.setEnabled(False)
         self._bar.setVisible(True)
         self._worker = SessionExportWorker(self._root, self._labels, self._phases,
                                            self._dest, merge_video=self._merge_cb.isChecked(),
-                                           hide_names=self._hide_cb.isChecked())
+                                           include_videos=self._videos_cb.isChecked())
         self._worker.progress.connect(lambda pct, msg: (self._bar.setValue(pct), self._status.setText(msg)))
         self._worker.finished.connect(self._on_done)
         self._worker.error.connect(self._on_error)
@@ -869,7 +857,7 @@ class ExportOptionsDialog(QDialog):
         self._status.setStyleSheet(dt.css_text(dt.SIZE_SM, 600, dt.error_color()))
         self._bar.setVisible(False)
         self._go.setEnabled(True)
-        self._merge_cb.setEnabled(True); self._hide_cb.setEnabled(True)
+        self._merge_cb.setEnabled(True); self._videos_cb.setEnabled(True)
 
     def _reveal_export(self):
         from brain_battle.support.platform_utils import reveal_in_file_manager
