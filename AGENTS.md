@@ -8,15 +8,16 @@
 > long-form narrative.
 
 PyQt6 desktop app for neuroscience boxing capture: 4 USB cameras + 2 Muse-S EEG
-headbands (Bluetooth). Four screens behind a light sidebar shell — **Sessions**
+headbands (Bluetooth). Four screens behind a light top header (design F) — **Sessions**
 (home library), **New recording** (a guided capture flow), **Review & Label**
 (one merged playback + labelling screen), and **Settings** — plus an in-app
 **Documentation** screen and an export pipeline. It follows the standard Muse
-research workflow: live **LSL** streams while recording and one
+research workflow: optional live **LSL** streams (off by default) and one
 **`recording.xdf`** per recording (EEG + markers + labels + per-frame video
 times on one clock) for EEGLAB / MNE / pyxdf. More than one person can label
 the same recording (one labels file per labeller); the lab runs it on **Mac and
-Windows**; the recordings folder may be shared between computers. ~14k lines in
+Windows**; the recordings folder may be shared between computers. Fighters are
+**4-character codes and colours**, never names. ~18k lines in
 the `brain_battle` package (`ui/` · `capture/` · `playback/` · `data/` ·
 `support/`).
 
@@ -152,8 +153,9 @@ and read like. Summary of where the product is headed:
 - **Three screens plus Settings:** Sessions (home library of past/current
   sessions) → New recording (Get ready → Recording → Saved) → Review & Label
   (one merged screen — recording and labelling are not separate tabs), plus a
-  Settings screen for everything that used to be hardcoded in source
-  (boxer↔headband mapping, resolution/fps, label vocabulary, round bell).
+  Settings screen (your name, folder, the shared label list and fighter
+  colours, Advanced). A top header, no sidebar; a first-run screen asks once
+  where the team's recordings are.
 - **Alignment is fully automatic and invisible to the user** — there is
   nothing to click to "sync."
 - **Several labellers, no accounts.** A labeller is a typed name ("Your name",
@@ -162,9 +164,15 @@ and read like. Summary of where the product is headed:
 - **Mac and Windows.** Anything platform-specific goes through
   `support/platform_utils.py`; never write "Finder" or a `%-d` date code in a
   screen (`tests/test_platform.py` fails if you do).
-- **Boxer names are kept by default** (manifest, `recording.xdf`, exports) and
-  can be hidden per export or on screen
-  ([ADR-0021](docs/decisions/adr-0021-boxer-names-and-hiding.md)).
+- **Fighters are codes and colours, never names** — `K7Q2`, 4 × A–Z/0–9, in
+  the manifest, folder name, `recording.xdf` and exports; nothing to hide, so
+  name hiding is gone. Old recordings with names still open
+  ([ADR-0023](docs/decisions/adr-0023-fighter-codes-and-colours.md), superseding
+  ADR-0021).
+- **Recording starts 15 s before the baseline** (`LEAD_IN_SEC`; tests use 2 s
+  via `tests/_env.py`); system markers `RECORDING_START` … `RECORDING_END` are
+  written automatically; moments carry an optional note; custom notes are
+  labels with `type: "note"`.
 - **The built-in `recording.xdf` is the primary analysis route** (owner
   decision); LabRecorder is an optional, advanced extra and the docs say so.
 
@@ -203,7 +211,7 @@ folder by accident. The generator also **refuses** an `--out` that equals the
 configured recordings folder unless you pass `--force` (the
 `_refuse_real_folder` guard), so demo data can't be mistaken for real captures.
 `--library` fills `--out` with ~5 short sessions covering every status
-(interrupted, needs labelling, labelled, exported, no-name) — handy for the
+(interrupted, needs labelling, labelled, exported, an old recording with names) — handy for the
 Sessions screen.
 
 Each run writes a real v3 session folder — 4 camera MP4s + sidecars (one camera
@@ -253,9 +261,12 @@ gate for deletions/refactors; `test_no_placeholders.py`, `test_light_theme.py`,
 `3.0.0-beta.2`.** `develop` has the four DESIGN screens (Sessions, New
 recording, Review & Label, Settings) plus the 3.1 work: live LSL streams and
 one `recording.xdf` per recording, a standard EEG viewer, one capture clock
-(`clock.monotonic()` = `time.perf_counter()`), a redesign of every screen,
-several labellers per recording, hideable boxer names, Mac + Windows, a shared
-recordings folder, and the open-files fix (pylsl 1.18.7). GitHub Actions is
+(`clock.monotonic()` = `time.perf_counter()`), several labellers per recording,
+Mac + Windows, a shared recordings folder, the open-files fix (pylsl 1.18.7),
+and — since the last tag — design F (top header, new screens), fighter codes
+and colours (ADR-0023), the 15 s lead-in and system markers, moment notes and
+custom notes, the bell at both ends of a round, the timing check and buzzer
+calibration (ADR-0024), a camera watchdog and a soak test (`tools/soak_test.py`). GitHub Actions is
 green on macOS and Windows (two Windows first-attempt flakes are listed in
 `docs/developer-guide/cross-platform-and-ci.md`). Hardware is broken, so
 everything runs against **simulated** devices (`capture/simulation.py`,

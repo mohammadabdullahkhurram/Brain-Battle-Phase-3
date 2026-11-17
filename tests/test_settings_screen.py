@@ -7,15 +7,17 @@ Covers:
      video_bytes_per_sec_for_mbps are COMPUTED from the chosen bitrate (not a
      hard-coded number), and usb_camera actually requests that bitrate.
   2. Known-headband bookkeeping (app_settings.remember_headband / known_headband_names).
-  3. SettingsScreen sections: recordings folder (name/path/free space, Change
-     folder.../env-override note, Show in Finder), headbands (dropdowns +
-     same-headband guard), video quality (radio rows persist), session
-     defaults (steppers + bell + Test sound), label list (add/rename/remove/
-     reorder/recolour persists to label_list.json with 1..n keys), footer.
-  4. Headless end-to-end: change defaults/quality/label list in Settings ->
-     start a new (simulated) recording -> the Set up step shows the new
-     defaults, the recorder uses the chosen resolution, the disk estimate
-     reflects it, and Review & Label shows the new label list.
+  3. SettingsScreen (design F): This computer (Your name, the recordings
+     folder + Change, the env-override note), the shared Label list (add with
+     Enter, remove, persists to label_list.json with 1..n keys), the shared
+     Fighter colours (presets always there, add/remove, saved to
+     fighter_colours.json, duplicates refused), Advanced (the four switches
+     with their defaults; headbands with the same-headband guard; video
+     quality persists).
+  4. Headless end-to-end: change quality / the label list / a colour in
+     Settings -> a new (simulated) recording uses the chosen resolution, Get
+     ready offers the new colour, the plan set on Get ready is remembered for
+     the next recording, and Review & Label shows the new label list.
 
 Run:  python3 tests/test_settings_screen.py
 """
@@ -135,167 +137,100 @@ def test_known_headbands():
     check("remember_headband('') is a no-op", "" not in aps.load().known_headband_names())
 
 
-# ─── 3. the Settings screen's sections ──────────────────────────────────────────
+# ─── 3. the Settings screen ──────────────────────────────────────────────────────
 
-def test_folder_section():
+def test_this_computer_card():
     cap = _fresh_env()
     from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.app_settings as aps
-    import brain_battle.data.label_vocab as lv
-
-    st = SettingsScreen()
-    st.show(); pump()
-    check("folder name shows the default recordings-folder basename",
-          st._folder_name.text() == os.path.basename(aps.load().capture_dir_resolved()))
-    check("env-override note hidden + Change enabled with no env var set",
-          not st._folder_env_note.isVisible() and st._change_folder_btn.isEnabled())
-
+    st = SettingsScreen(); st.show(); pump()
+    st._labeller_edit.setText("  Maya   K "); st._on_labeller_edited()
+    check("Your name is saved tidied up", aps.load().labeller_name == "Maya K")
+    st._labeller_edit.setText(""); st._on_labeller_edited()
+    check("Your name is never cleared back to nobody", aps.load().labeller_name == "Maya K")
+    check("the folder line names the folder and its free space",
+          os.path.basename(cap) in st._folder_line.text() and "free" in st._folder_line.text(),
+          st._folder_line.text())
+    new = tempfile.mkdtemp(prefix="bb_settings_new_")
     got = []
-    st.capture_dir_changed.connect(lambda p: got.append(p))
-    new_dir = tempfile.mkdtemp(prefix="bb_settings_newcap_")
-    st.apply_new_folder(new_dir)
-    check("apply_new_folder updates the settings store",
-          aps.load().capture_dir == new_dir)
-    check("apply_new_folder emits capture_dir_changed", got == [new_dir])
-    check("apply_new_folder seeds label_list.json in the new folder",
-          os.path.isfile(lv.path(new_dir)))
-    check("folder card reflects the new folder",
-          st._folder_path.text() == new_dir)
-
-
-def test_folder_env_override_disables_change():
-    cap = _fresh_env()
-    fixed = tempfile.mkdtemp(prefix="bb_settings_fixedcap_")
-    os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = fixed
-    try:
-        from brain_battle.ui.settings_screen import SettingsScreen
-        st = SettingsScreen(); st.show(); pump()
-        check("Change folder disabled when BRAIN_BATTLE_CAPTURE_DIR is set",
-              not st._change_folder_btn.isEnabled())
-        check("env-override note visible and plain-language",
-              st._folder_env_note.isVisible()
-              and "outside the app" in st._folder_env_note.text())
-    finally:
-        os.environ.pop("BRAIN_BATTLE_CAPTURE_DIR", None)
-
-
-def test_headbands_section():
-    cap = _fresh_env()
-    from brain_battle.ui.settings_screen import SettingsScreen
-    import brain_battle.data.app_settings as aps
-
-    st = SettingsScreen(); st.show(); pump()
-    check("Boxer A/B combos start on the saved mapping",
-          st._hb_combo["A"].currentText() == "MuseS-7538"
-          and st._hb_combo["B"].currentText() == "MuseS-7564")
-
-    aps.remember_headband("MuseS-NEW")
+    st.capture_dir_changed.connect(got.append)
+    st.apply_new_folder(new)
+    check("Change: the new folder is saved and announced",
+          aps.load().capture_dir == new and got == [new])
+    check("Change: the shared label list is seeded in the new folder",
+          os.path.isfile(os.path.join(new, "label_list.json")))
+    os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = new
     st.refresh(); pump()
-    idx = st._hb_combo["B"].findText("MuseS-NEW")
-    check("newly-known headband appears in the dropdown", idx >= 0)
-
-    # same-headband guard: assigning B to A's current device is rejected
-    before = dict(aps.load().headbands)
-    a_name = st._hb_combo["A"].currentText()
-    st._hb_combo["B"].setCurrentText(a_name)
-    pump()
-    check("conflict warning shown for a duplicate headband assignment",
-          st._hb_warning.isVisible())
-    check("conflicting assignment is NOT saved", aps.load().headbands == before)
+    check("a folder set outside the app turns Change off and says why",
+          not st._change_folder_btn.isEnabled() and "BRAIN_BATTLE_CAPTURE_DIR" in st._folder_env_note.text())
+    os.environ.pop("BRAIN_BATTLE_CAPTURE_DIR", None)
+    st.close()
 
 
-def test_video_quality_section():
-    cap = _fresh_env()
-    from brain_battle.ui.settings_screen import SettingsScreen
-    import brain_battle.data.app_settings as aps
-
-    st = SettingsScreen(); st.show(); pump()
-    check("Standard selected by default", st._quality_rows["standard"].isChecked())
-    st._quality_rows["high"].setChecked(True); pump()
-    check("choosing High persists to settings", aps.load().video_quality == "high")
-    st._quality_rows["light"].setChecked(True); pump()
-    check("choosing Light persists to settings", aps.load().video_quality == "light")
-
-
-def test_session_defaults_section():
-    cap = _fresh_env()
-    from brain_battle.ui.settings_screen import SettingsScreen
-    import brain_battle.data.app_settings as aps
-
-    st = SettingsScreen(); st.show(); pump()
-    st._st_rounds.set_value(7)
-    st._st_round.set_value(90)
-    st._on_defaults_changed()
-    pump()
-    d = aps.load().session_defaults
-    check("stepper edits persist", (d["num_rounds"], d["round_sec"]) == (7, 90), str(d))
-
-    st._bell.setChecked(False); pump()
-    check("bell off persists", aps.load().round_bell is False)
-    st._bell.setChecked(True); pump()
-    check("bell on persists", aps.load().round_bell is True)
-
-    # Test sound must not crash even headless/offscreen.
-    try:
-        st._on_test_sound()
-        ok = True
-    except Exception as e:
-        ok = False
-        print("    test-sound raised:", e)
-    check("Test sound button doesn't crash headless", ok)
-
-
-def test_label_list_section():
+def test_label_list_card():
     cap = _fresh_env()
     from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.label_vocab as lv
-
     st = SettingsScreen(); st.show(); pump()
-    check("label list starts from the 8 DESIGN defaults",
-          [e["name"] for e in st._labels] == [d["name"] for d in lv.DEFAULT_LABELS])
-
-    st._on_add_label()
-    pump()
-    check("add label appends with the next free key (9)",
-          st._labels[-1]["key"] == 9 and st._labels[-1]["name"] == "New label")
-    check("added label's colour is not already in use",
-          st._labels[-1]["color"] not in [e["color"] for e in st._labels[:-1]])
-
-    rows = st._current_rows()
-    rows[-1]._name.setText("Slip"); rows[-1]._on_name_changed()
-    check("rename persists in memory", st._labels[-1]["name"] == "Slip")
-
-    st._move_label(rows[-1], -1)
-    pump()
-    check("reorder moves the entry and renumbers keys 1..n",
-          [e["key"] for e in st._labels] == list(range(1, len(st._labels) + 1))
-          and st._labels[-2]["name"] == "Slip")
-
-    on_disk = lv.load(cap)
-    check("label list round-trips through label_list.json",
-          [e["name"] for e in on_disk] == [e["name"] for e in st._labels])
-
-    rows = st._current_rows()
-    before_n = len(st._labels)
-    st._remove_label(rows[0])
-    pump()
-    check("remove shrinks the list by one", len(st._labels) == before_n - 1)
-    check("keys stay contiguous 1..n after removal",
-          [e["key"] for e in st._labels] == list(range(1, len(st._labels) + 1)))
+    check("the shared list starts with the 8 defaults", st.label_names()[:2] == ["Punch thrown", "Punch landed"]
+          and len(st.label_names()) == 8, str(st.label_names()))
+    st._on_add_label(); pump()
+    check("+ Add opens the inline box", st._new_label.isVisible() and not st._add_label_btn.isVisible())
+    st._new_label.setText("Slip"); st._commit_new_label(); pump()
+    saved = lv.load(cap)
+    check("Enter adds it to label_list.json as key 9",
+          saved[-1]["name"] == "Slip" and saved[-1]["key"] == 9)
+    check("a duplicate name is refused", st.add_label("slip") is False)
+    st._remove_label(0); pump()
+    saved = lv.load(cap)
+    check("× removes it and the keys are renumbered 1..n",
+          saved[0]["name"] == "Punch landed" and [x["key"] for x in saved] == list(range(1, 9)))
+    st.close()
 
 
-def test_footer():
+def test_colours_card():
     cap = _fresh_env()
     from brain_battle.ui.settings_screen import SettingsScreen
-    from brain_battle.version import __version__
+    import brain_battle.data.fighters as fighters
     st = SettingsScreen(); st.show(); pump()
-    texts = [c.text() for c in st.findChildren(type(st._folder_name))]
-    joined = "\n".join(texts)
-    check("footer shows version + Constructor University",
-          f"Brain Battle v{__version__}" in joined and "Constructor University" in joined)
+    check("Red, Blue and Black are there", st.colour_names() == ["Red", "Blue", "Black"])
+    check("adding a colour saves it to fighter_colours.json",
+          st.add_colour("green", "#0F7A62") is None
+          and [c["name"] for c in fighters.load_colours(cap)][-1] == "Green")
+    check("a duplicate colour name is refused",
+          st.add_colour("Green", "#000000") == "That colour name already exists")
+    st.remove_colour("Red")
+    check("a preset cannot be removed", "Red" in st.colour_names())
+    st.remove_colour("Green")
+    check("an added colour can be removed", "Green" not in [c["name"] for c in fighters.load_colours(cap)])
+    st.close()
 
 
-# ─── 4. headless end-to-end: Settings -> new recording -> Review & Label ──────
+def test_advanced_card():
+    _fresh_env()
+    from brain_battle.ui.settings_screen import SettingsScreen
+    import brain_battle.data.app_settings as aps
+    st = SettingsScreen(); st.show(); pump()
+    check("Advanced is folded until opened", not st._adv_body.isVisible())
+    st.open_advanced(); pump()
+    check("Advanced opens", st._adv_body.isVisible())
+    b = st._signal_boxes
+    check("defaults: head movement on, pulse off, 60 fps on, LSL off",
+          b["record_motion"].isChecked() and not b["record_ppg"].isChecked()
+          and b["record_60fps"].isChecked() and not b["lsl_streams"].isChecked())
+    b["lsl_streams"].setChecked(True); b["record_60fps"].setChecked(False)
+    s = aps.load()
+    check("switches save straight away", s.lsl_streams is True and s.record_60fps is False)
+    st._quality_rows["high"].setChecked(True)
+    check("video quality persists", aps.load().video_quality == "high")
+    st._hb_combo["B"].setCurrentText(st._hb_combo["A"].currentText())
+    check("the same headband for both boxers is refused, with a reason",
+          aps.load().headbands["A"] != aps.load().headbands["B"]
+          and "different headbands" in st._hb_warning.text())
+    st.close()
+
+
+# ─── 4. Settings drive a real recording ──────────────────────────────────────
 
 def test_settings_drive_a_real_recording():
     cap = _fresh_env()
@@ -303,93 +238,65 @@ def test_settings_drive_a_real_recording():
     for k in ("BRAIN_BATTLE_SIMULATE_MISSING_CAMERA", "BRAIN_BATTLE_SIMULATE_DROP_HEADBAND"):
         os.environ.pop(k, None)
     os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = cap
-
     from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.app_settings as aps
-    import brain_battle.data.label_vocab as lv
-    import brain_battle.data.session_storage as ss
+    from brain_battle.capture.session_controller import SessionConfig
 
-    # 1. Change defaults, video quality, and the label list in Settings.
     st = SettingsScreen(); st.show(); pump()
-    st._st_rounds.set_value(2); st._st_round.set_value(10)
-    st._st_break.set_value(2); st._st_rest.set_value(2)
-    st._on_defaults_changed()
     st._quality_rows["high"].setChecked(True)
-    pump()
-    st._on_add_label(); pump()
-    rows = st._current_rows()
-    rows[-1]._name.setText("Settings Special"); rows[-1]._on_name_changed()
+    st.add_label("Settings Special")
+    st.add_colour("Gold", "#C9A227")
     pump()
 
-    settings = aps.load()
-    check("settings landed: 2 rounds / 10s / high quality",
-          (settings.session_defaults["num_rounds"], settings.session_defaults["round_sec"],
-           settings.video_quality) == (2, 10, "high"))
-
-    # 2. Start a new (simulated) recording — it must reload these settings.
     from brain_battle.ui.record_flow import RecordFlow
     flow = RecordFlow()
     try:
         flow.start(); pump(1.8)
-        flow.goto_setup()   # populates the Set up step from app_settings.load()
-        su = flow._setup_step
-        check("Set up step shows the new defaults from Settings",
-              (su._st_rounds.value(), su._st_round.value()) == (2, 10))
-
-        w, h, _fps = aps.VIDEO_QUALITY["high"]["w"], aps.VIDEO_QUALITY["high"]["h"], 30
+        gr = flow._get_ready
+        check("Get ready offers the new shared colour",
+              "Gold" in [c["name"] for c in gr.card("A")._colours])
         live_cam = next((s for s in flow._cams if s.is_live), None)
-        check("a live camera slot exists before recording", live_cam is not None)
-        if live_cam is not None and live_cam._thread is not None:
-            check("the recorder's camera thread requests the chosen resolution",
-                  (live_cam._thread._want_w, live_cam._thread._want_h) == (w, h),
-                  f"{live_cam._thread._want_w}x{live_cam._thread._want_h}")
-
-        # disk estimate on the Set up screen reflects the High-quality rate
-        su._recompute(); pump()
-        vbps = ss.video_bytes_per_sec_for_mbps(aps.VIDEO_QUALITY["high"]["mbps"])
-        est_high = ss.estimate_session_bytes(su.config(), 4, 2, vbps)
-        est_std = ss.estimate_session_bytes(
-            su.config(), 4, 2, ss.video_bytes_per_sec_for_mbps(aps.VIDEO_QUALITY["standard"]["mbps"]))
-        check("High-quality estimate is bigger than Standard's would be",
-              est_high > est_std)
-
-        su._name_a.setText("K7Q2"); su._name_b.setText("M3XA")
+        w, h = aps.VIDEO_QUALITY["high"]["w"], aps.VIDEO_QUALITY["high"]["h"]
+        check("the recorder's camera thread requests the chosen resolution",
+              live_cam is not None and (live_cam._thread._want_w, live_cam._thread._want_h) == (w, h))
+        flow.set_plan(SessionConfig(num_rounds=1, round_sec=8, break_sec=0, baseline_sec=2))
+        flow.set_fighters("K7Q2", "M3XA", "Gold", "Blue")
         flow.begin_recording()
         t0 = time.time()
         while flow.is_recording() and time.time() - t0 < 40:
             pump(0.1)
         pump(0.6)
-        check("flow landed on the Saved step", flow._stack.currentIndex() == flow.STEP_SAVED)
-
         root = flow._saved_root
-        check("a recording root was saved", bool(root) and os.path.isdir(root))
+        check("a recording was saved", bool(root) and os.path.isdir(root))
+        man = json.load(open(os.path.join(root, "session_manifest.json")))
+        check("the chosen colour is in the manifest",
+              man["boxers"]["A"]["colour"] == "Gold" and man["boxers"]["A"]["colour_hex"] == "#C9A227")
+        check("the plan from Get ready is remembered for next time",
+              aps.load().session_defaults["round_sec"] == 8)
 
-        # 3. Review & Label shows the new label list (shared label_list.json).
         from brain_battle.ui.review_label_screen import ReviewLabelScreen
         rt = ReviewLabelScreen()
         try:
             rt.load_session_folder(root); rt.wait_loaded()
-            names = [e["name"] for e in rt._vocab]
             check("Review & Label shows the Settings-edited label list",
-                  "Settings Special" in names, str(names))
+                  "Settings Special" in [e["name"] for e in rt._vocab])
         finally:
             rt.shutdown()
     finally:
         flow.shutdown(); pump(0.3)
+        st.close()
 
 
 if __name__ == "__main__":
     test_bitrate_computed()
     test_recorder_requests_chosen_bitrate()
     test_known_headbands()
-    test_folder_section()
-    test_folder_env_override_disables_change()
-    test_headbands_section()
-    test_video_quality_section()
-    test_session_defaults_section()
-    test_label_list_section()
-    test_footer()
+    test_this_computer_card()
+    test_label_list_card()
+    test_colours_card()
+    test_advanced_card()
     test_settings_drive_a_real_recording()
+
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

@@ -18,12 +18,12 @@ remove, or rename a module, update this page in the same commit (see
 | Group (subpackage) | Modules |
 |---|---|
 | **Package top** | `app` · `version` · `paths` · (root shim `brain_battle_main`) |
-| **`ui/`** | `sidebar_shell` · `sessions_screen` · `record_flow` · `review_label_screen` · `eeg_viewer` · `settings_screen` · `docs_screen` · `design_tokens` · `widgets` · `fonts` |
+| **`ui/`** | `header_shell` · `welcome_screen` · `sessions_screen` · `record_flow` · `record_screens` · `review_label_screen` · `eeg_viewer` · `settings_screen` · `docs_screen` · `design_tokens` · `widgets` · `fonts` |
 | **`capture/`** | `clock` · `usb_camera` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `timing` · `timing_log` · `buzzer_test` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
 | **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `fighters` · `safe_io` · `export_module` · `app_settings` |
 | **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` |
-| **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `measure_descriptors` · `render_diagrams` · `render_screens` · `make_round_bell` |
+| **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `measure_descriptors` · `soak_test` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its
 entry says otherwise. The modules that spawn threads or subprocesses are
@@ -37,14 +37,15 @@ entry says otherwise. The modules that spawn threads or subprocesses are
 
 ### `app.py`
 `brain_battle/app.py` — the application shell and `main()` entry point.
-`BrainBattleApp(QMainWindow)` builds the sidebar shell, constructs each screen
+`BrainBattleApp(QMainWindow)` builds the header shell, shows the first-run
+screen once per computer, constructs each screen
 once, wires their signals together (`session_saved`, `help_requested`,
 `exit_flow`, `capture_dir_changed`), and owns window sizing/`QSettings` restore.
 `open_help(key)` routes every screen's `?` button to the Documentation screen.
 `main()` creates the `QApplication`, registers fonts, and runs the event loop —
 it is the target of `python3 -m brain_battle`, the `brain-battle` console
 script, and the `brain_battle_main.py` shim. Runs on the UI thread. **Calls:**
-`sidebar_shell`, every screen module, `app_settings`, `log_setup`, `fonts`.
+`header_shell`, every screen module, `app_settings`, `log_setup`, `fonts`.
 **Gotcha:** it holds the single instance of each screen — navigation swaps the
 visible page, it does not reconstruct screens, so screens must tolerate being
 shown/hidden repeatedly (see each `showEvent`/`hideEvent`).
@@ -68,84 +69,93 @@ folder resolves it here rather than deriving it from its own `__file__` — so
 modules can move between subpackages without breaking asset lookup. **Called
 by:** `fonts`, `round_bell`, `docs_nav`, `app_settings`.
 
-### `sidebar_shell.py`
-The app's frame (DESIGN "App structure"): a 244 px sidebar — the brand, **New
-recording** as the one primary button, Sessions and Review & Label, then who is
-labelling ("Your name"), the quick **Hide names** switch, the recordings-folder
-card (name, free space, a red state when the folder cannot be reached), and
-Documentation and Settings. It collapses to a 72 px icon rail on Review & Label
-and is hidden for the record flow. `SidebarShell.add_page(..., primary=True)`
-makes an entry the primary button; `set_labeller`, `set_names_hidden` and the
-`identity_clicked` / `names_hidden_changed` signals connect it to the app.
-**Called by:** `app`. **Gotcha:** `refresh_folder_card` must be called whenever
-the recordings folder or its free space may have changed (the app calls it on
-every page change).
+### `header_shell.py`
+The app's frame (DESIGN "App structure", design F): a white **top header** —
+logo, **Sessions**, then **Documentation** and the **Settings** gear on the
+right — over a stack of screens. `HeaderShell.add_page(key, label, widget,
+nav="left"|"right"|"gear"|"", own_header=False)`; a page with
+`own_header=True` (New recording, Review & Label, the first-run screen) hides
+the app header. `set_extra(idx, widget)` puts a page's own widget in the header
+("Changes save automatically" on Settings). There is no sidebar, no name row
+and no folder card any more. **Called by:** `app`.
+
+### `welcome_screen.py`
+The first screen on a new computer: "Where are your team's recordings?" — a
+shared team folder (Choose folder…, "Found N recordings and your team's
+settings") or just this computer. Shown once (when the settings file does not
+exist yet); emits `done(path)` after saving the choice. **Called by:** `app`.
 
 ### `sessions_screen.py`
-The Sessions home library (DESIGN §1). `SessionsScreen` renders one row per
-recording (click anywhere to open), the status tabs with counts, search, sort,
-the interrupted-recording banner, the "folder can't be reached" banner, and a
-per-row **⋯** menu (export without opening; show in Finder / Explorer). The
-row's button says **Label** until the current labeller has labelled it
-(`SessionInfo.labels_by`). Folder discovery and sizing run **off the UI thread**
-in `_ScanWorker`/`_SizeWorker` (QThreads); the scan worker also reports whether
-the folder exists at all. `filter_sort_sessions`, `status_counts`,
-`length_text`, `labels_text` and `reveal_in_finder` are pure helpers. **Calls:**
-`session_storage`, `safe_io`, `fighters`, `platform_utils`, `widgets`.
-**Gotchas:** worker signals are connected to bound methods, never lambdas, so
-Qt drops the connection if the screen is destroyed first; the banner's
-dismissal is persisted via `session_storage.dismiss_interrupted`.
+The Sessions home (DESIGN "Sessions", design F). `SessionsScreen`: the big blue
+**New recording** button, the Recordings and Labelled counts, status pills with
+counts (All · Needs labels · Labelled · Exported · Interrupted), the search box
+("Search a fighter code or date"), and one card per recording: both fighters'
+codes in their colours, date · rounds · length, the next-step progress line,
+the status chip, ⟲ (the `HistoryDrawer`, from `history.jsonl` via
+`session_history.describe`) and the right action button (`row_action`: Start
+labelling / Continue labelling / Add my labels / Open). Right-click a row for
+Export for analysis… and Show in Finder / Explorer. The footer names the folder,
+its free space and "fighters are stored only as codes". Folder discovery runs
+**off the UI thread** in `_ScanWorker` (it also reports free space and whether
+the folder exists). `filter_sort_sessions`, `status_counts`, `length_text`,
+`labels_text`, `row_action`, `folder_display` are pure helpers. **Gotchas:**
+worker signals are connected to bound methods, never lambdas; the interrupted
+banner's dismissal is persisted via `session_storage.dismiss_interrupted`.
 
 ### `record_flow.py`
-The full-screen New-recording flow (DESIGN §2–§4): **Get ready → Recording →
-Saved**. `RecordFlow` owns the device slots (`camera_source.CameraSlot`,
-`headband_source.HeadbandSlot`) and the `session_controller.SessionController`,
-and emits `session_saved`/`exit_flow`. "Get ready" is one page (`_ReadyPage`)
-holding the devices (`ConnectStep`) above the plan and Start button
-(`SetupStep`) — they used to be two steps
-([ADR-0018](../decisions/adr-0018-november-2026-redesign.md)), which is why
-`STEP_CONNECT` and `STEP_SETUP` are both `STEP_READY`. `RecordingStep` is the
-phase-tinted countdown screen; `SavedStep` the summary. Supporting widgets:
-`CameraTile`, `HeadbandView` (status, `ContactStrip` for the four sensors, and
-the live EEG via `eeg_viewer.EEGViewer`), `PhaseBar`, `Stepper`. It records
-moments (`mark_moment`), prevents sleep (`keep_awake`), logs contact quality
-(`contact_log`), stops cleanly early, refuses to start into a folder that is
-missing or read-only (`safe_io.folder_status`), owns the
-`lsl_outlets.LslPublisher`, and — once a recording has stopped and every camera
-file is closed — builds `recording.xdf` on a background thread
-(`_maybe_build_xdf`; `wait_for_xdf` blocks until it is done). Runs on the UI
-thread (devices run on their own threads). **Calls:** `camera_source`,
-`headband_source`, `session_controller`, `session_storage`, `session_history`,
-`session_xdf`, `lsl_outlets`, `clock`, `contact_log`, `keep_awake`,
-`app_settings`, `safe_io`, `platform_utils`, `round_bell`, `widgets`.
-**Gotcha:** `_on_session_started` takes one origin from
-`clock.session_origin()` and threads it into every camera and headband — this
-is the capture clock ([ADR-0001](../decisions/adr-0001-capture-time-clock.md),
-[ADR-0017](../decisions/adr-0017-one-capture-clock.md)); do not stamp sources
-from separate clocks.
+The New-recording flow's logic (DESIGN "New recording"): **Get ready →
+Recording → Saved**; the views are in `record_screens`. `RecordFlow` owns the
+device slots (`camera_source.CameraSlot`, `headband_source.HeadbandSlot`) and the
+`session_controller.SessionController` (lead-in, system markers, the bell at both
+ends of every round), and emits `session_saved` / `exit_flow`. It creates the
+recording (codes + colours in the manifest, the plan and bell remembered in
+`app_settings`), records moments and their notes (`mark_moment` opens the
+Moment popup; `set_moment_note`), runs the buzzer test (`run_buzzer_test`) and
+the Test timing dialog (`open_timing_dialog`), writes `contact_quality.csv` and
+`timing_quality.csv` once a second (`_log_contact` / `_log_timing`, stalls and
+reconnections into the history), swaps the headbands, prevents sleep, stops
+cleanly early, refuses a missing or read-only folder, owns the
+`lsl_outlets.LslPublisher` (off by default), and builds `recording.xdf` on a
+background thread once every camera file is closed (`wait_for_xdf`). Every
+bookkeeping write goes through `_essential` — a failure shows on Recording and
+makes the Saved headline "Recording saved, but with problems"
+(`saved_headline`). Public helpers for tools/tests: `set_plan`, `set_fighters`,
+`timing_rows`, `timing_line`, `calibration`, `disk_check`. **Gotcha:**
+`_on_session_started` takes one origin from `clock.session_origin()` and
+threads it into every camera and headband
+([ADR-0017](../decisions/adr-0017-one-capture-clock.md)).
+
+### `record_screens.py`
+The views of the New-recording flow (design F): `FlowHeader` (Cancel, REC timer,
+who is boxing, the three steps, Stop recording), `GetReadyScreen` (the checklist
+with Test timing and Start — hard items block Start, the signal and timing items
+only advise — the four `CameraTile`s, a `BoxerCard` per fighter: code + New
+code, colour swatches, `HeadIcon` sensors, battery, "signal looks poor" and the
+live EEG; the plan with `Stepper`s and the bell), `RecordingScreen` (cameras
+with timecodes, the small countdown and `PhaseBar`, Mark this moment, a
+`LiveBoxerCard` per fighter with grey automatic markers, the timing line),
+`SavedScreen`, `MomentDialog` (Save note / Add note later, Enter / Esc, never
+pauses recording) and `TimingDialog` (live rate / delay / jitter / dropped,
+Run buzzer test). "Signal looks poor" is our heuristic (`contact_quality`); the
+band does not report how well it fits. **Called by:** `record_flow`.
 
 ### `review_label_screen.py`
-The merged Review & Label screen (DESIGN §5). `ReviewLabelScreen` opens a
-recording, shows the current labeller's labels and the timeline
-**immediately**, then loads media in the background (`_MediaLoadWorker`, a
-QThread) and attaches a `pyav_player.PlayerController`. Sub-widgets:
-`VideoGrid`/`VideoTile` (the 2×2 grid), `BrainActivityCard` (one
-`eeg_viewer.EEGViewer` per boxer plus timebase / scale / filter controls; it
-can be folded away and shrinks on a small window so the videos keep the room),
-`TimelineStrip` (phases, the labeller's three lanes, and a grey lane per
-compared labeller). You label **as yourself**: `_open_labels` migrates an old
-`labels.json` and opens `labels_store.open_for_labeller(root, name)`; other
-labellers' files are read-only here, re-read every few seconds
-(`_reload_others`), and compared through `label_agreement` on the Compare tab.
-With no name set the panel asks for one and `_place_from_vocab` places nothing.
-A save that fails (shared drive gone) keeps the labels in memory, says so, and
-retries (`_save_now` / `_retry_save`). Every change autosaves and appends to
-`history.jsonl` with the labeller's name. **Calls:** `pyav_player`,
-`eeg_viewer`, `labels_store`, `label_agreement`, `label_vocab`, `fighters`,
-`session_storage`, `session_history`, `contact_quality`, `export_module`,
-`app_settings`, `platform_utils`, `widgets`. **Gotcha:** everything is on one
-`t_session_seconds` playhead — there is no separate alignment step; see
-[the playback-clock flow](key-flows.md#the-playback-clock).
+Review & Label (DESIGN "Review & Label", design F). `ReviewLabelScreen` opens a
+recording and shows its timeline **immediately**, then loads media in the
+background (`_MediaLoadWorker`, applying the buzzer-test corrections) and
+attaches a `pyav_player.PlayerController`. Layout: a header (‹ Sessions, both
+codes in their colours, My labels / Compare when someone else has labelled,
+"All labels saved", Export for analysis); the 2×2 `VideoGrid` beside a panel
+with **Label** (Who? A · code / B · code / Both; What happened? keys 1–8;
+Custom note… (N); the selected label with Delete; the moment editor — the
+observer's note, autosaved into the recording, and labels at the moment's
+time) and **Activity** (the history); the `BrainActivityCard` (grey system
+markers, red moments, labels in their colours); and the transport over a
+`LaneTimeline` (Rounds · System · A · B · Both · Notes · Moments). You label
+**as yourself** (`labels_store.open_for_labeller`); other labellers' files are
+read-only, re-read every few seconds and compared through `label_agreement`
+(notes left out) in the compare banner. A failed save keeps labels in memory
+and retries. **Gotcha:** everything is on one `t_session_seconds` playhead.
 
 ### `eeg_viewer.py`
 `brain_battle/ui/eeg_viewer.py` — the EEG display, a conventional EEG viewer
@@ -164,17 +174,15 @@ show channel codes; `tests/test_no_placeholders.py` still forbids them
 elsewhere.
 
 ### `settings_screen.py`
-The real Settings screen (DESIGN §7). `SettingsScreen` is five cards: recordings
-folder, headbands (known-device dropdowns + BLE search with a same-headband
-guard), video quality (resolution **and** bitrate, with the GB/hour copy and the
-disk estimate both computed from the bitrate), session defaults + round bell +
-Test sound, and the shared label list (`_LabelRow`: add/rename/remove/reorder/
-recolour, keys renumbered 1..n). Everything autosaves with a brief "✓ Saved".
-**Calls:** `app_settings`, `label_vocab`, `session_storage` (disk estimate),
-`eeg_module`/`headband_source` (BLE search), `round_bell` (Test sound).
-**Gotcha:** quality is stored as resolution + bitrate in `app_settings`, and the
-GB/hour and disk-estimate numbers are **derived** from the bitrate (not
-hardcoded) — `tests/test_settings_screen.py` asserts this.
+Settings (DESIGN "Settings", design F), four cards that save the moment they
+change: **This computer** (Your name; the recordings folder + Change —
+`apply_new_folder`), **Label list** and **Fighter colours** (both *shared with
+the team*: chips with ×, "+ Add" / "+ Add colour"; `label_vocab`,
+`fighters`), and **Advanced** (folded: head movement, pulse, cameras at 60 fps,
+LSL; which headband each boxer wears with the Bluetooth search and the
+same-headband guard; video quality). The round plan and the bell are set on Get
+ready instead. **Calls:** `app_settings`, `label_vocab`, `fighters`,
+`eeg_module` (BLE search).
 
 ### `docs_screen.py`
 The in-app Documentation screen. Renders the Markdown under `docs/` at runtime
@@ -654,6 +662,15 @@ at each point (app started, flow open, recording, Saved, XDF built, flow left).
 Run it after touching anything that owns a file, socket, pipe, thread or
 subprocess; a healthy run prints the same numbers for every recording.
 
+### `tools/soak_test.py`
+The long-recording check (Part 4): a 3-round, 12-minute simulated recording at
+60 fps with 4 cameras and 2 headbands, then three short recordings, through the
+real app. Prints frames delivered / not delivered by the cameras, encoder drops,
+EEG samples missing, memory and descriptor / thread / child counts at each
+point; exits nonzero if any limit is crossed. `--minutes`, `--switch-ms`,
+`--gc-debug`. Not part of the suite (it takes ~20 min); `tests/test_stability.py`
+runs a short version.
+
 ### `tools/render_screens.py`
 Drives the app under `BRAIN_BATTLE_SIMULATE=1` to produce screenshots: a review
 dump into `screens/`, and (`--docs`) the curated `docs/images/*.png` pointed at a
@@ -698,6 +715,7 @@ throwaway settings file with a labeller name — neither is a standalone test.
 | `test_capture_clock.py` | Capture-clock reconciliation, co-registration, manifest bridge. |
 | `test_xdf.py` | The XDF writer and `recording.xdf` read back with pyxdf; the one capture clock vs. `pylsl.local_clock()`. |
 | `test_xdf_csv_parity.py` | Every `recording.xdf` stream also exists as its own CSV in the export, with the same samples and times (minus the buzzer-test correction). |
+| `test_stability.py` | A camera that stalls is noticed within 2 s, reopened, and keeps writing the same video (history, `timing_quality.csv`, Recording banner); a headband dropped repeatedly reconnects each time; a contact-log write failure reaches the operator; a short soak (zero encoder drops, no EEG gaps). |
 | `test_timing.py` | Live timing monitors, de-jittered headband times, tap detection, and the buzzer calibration recovering known simulated delays within 2 ms. |
 | `test_moments.py` | Moment notes in the manifest and `moments.csv`, edited later; "Needs labels" until every moment has a note; the XDF Moments stream. |
 | `test_lsl_streams.py` | The live LSL outlets as a real LSL receiver sees them, incl. a simulated headband. |

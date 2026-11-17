@@ -28,7 +28,7 @@ do — organized as a symptom → cause → fix table per topic. See the
 |---|---|---|
 | "Not enough space" on Get ready, Start recording switched off | Free space is below what this session is estimated to need | Free up space, shorten the session (fewer/shorter rounds), or pick a smaller [video quality](settings.md) |
 | "! Low space" warning, but you can still start | Free space is tight but above the hard minimum | You can continue, but consider freeing up space before a long session |
-| The sidebar's free-space bar turns amber or red | Same idea, shown continuously rather than just at Set up | Free up space, or change the [recordings folder](settings.md) to a drive with more room |
+| The foot of Sessions shows little free space | Same idea, shown continuously rather than just on Get ready | Free up space, or change the [recordings folder](settings.md) to a drive with more room |
 
 ## Interrupted recordings
 

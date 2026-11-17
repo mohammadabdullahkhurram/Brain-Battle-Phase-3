@@ -46,5 +46,5 @@ Explorer** (Windows) takes you to the file.
 - You can export as often as you like. Each export contains the labels as they
   are at that moment, from everyone who has labelled so far.
 - The recording's status in Sessions changes to **Exported**.
-- A recording's history notes each export: who made it, whether names were
-  replaced, and whose labels it contained.
+- A recording's history notes each export: who made it and whose labels it
+  contained.

@@ -1,69 +1,59 @@
 # First run
 
 **What this page covers:** what you'll see the first time you open Brain
-Battle, where your recordings are saved, and what to check in Settings
-before your first real session.
+Battle, where your recordings are saved, and what to check before your first
+real session.
 
-## The empty Sessions screen
+## Where are your team's recordings?
 
-The app opens on **Sessions**, titled "Sessions" with the subtitle "Every
-recording in your recordings folder. Click one to watch it back and label
-it." On a fresh install this is empty:
+![The first-run screen: a shared team folder, or just this computer.](../images/welcome.png)
 
-> No recordings yet. Press New recording to make your first one.
+The first time Brain Battle opens on a computer it asks once where the team's
+recordings are:
 
-That's expected — there's nothing to show until you record something. The
-**New recording** button is there from the start — at the top of the screen
-and, on every screen, at the top of the sidebar.
+- **A shared team folder** — a folder on a shared drive the whole team uses.
+  Press **Choose folder…**; if it already holds recordings the screen says so
+  ("✓ Found 5 recordings and your team's settings in this folder"), and you get
+  the team's label list and fighter colours with them. **Can't see the shared
+  drive?** explains how to connect it on this computer.
+- **Just this computer** — **Documents › Brain Battle Data**.
 
-## Tell the app who you are
+Press **Continue**. You can change it later in
+[Settings](../user-guide/settings.md).
 
-Near the bottom of the sidebar is **Set your name**. Click it and type your
-name. Labels you place are saved under it, separately from anyone else's — see
-[Review & Label](../user-guide/review-and-label.md#who-is-labelling). If you
-skip this, the app asks the first time you label.
+## The Sessions screen
+
+The app then opens on **Sessions**. On a fresh folder it is empty — "No
+recordings yet" — until you record something. The big blue **New recording**
+button is at the top.
+
+## Your name
+
+Labels you place are saved under your name, separately from anyone else's — see
+[Review & Label](../user-guide/review-and-label.md#who-is-labelling). The app
+asks the first time you label; you can also set it in **Settings → This
+computer**. Fighters never have names in the app — only codes.
 
 ## Where recordings are saved
 
-Brain Battle writes every recording into one **recordings folder** (its
-exact name and location are shown in Settings, and at the bottom of the
-sidebar on every screen, with a free-space bar). By default that's a folder
-named **Brain Battle Data** inside your **Documents** folder.
+Every recording gets its own dated folder inside the recordings folder, named
+`YYYY-MM-DD HH-MM <code A> vs <code B>` (for example
+`2026-11-17 14-05 K7Q2 vs M3XA`), so recordings sort by date in a file browser
+too. The foot of Sessions shows the folder and its free space.
 
-Each recording gets its own dated subfolder, named
-`YYYY-MM-DD HH-MM <Boxer A name> vs <Boxer B name>`, so recordings sort
-naturally by date and you can tell sessions apart at a glance in a file
-browser too — not just inside the app.
+## What to check before your first real session
 
-You can point the app at a different folder (for example a shared drive, so
-a whole team sees the same recordings and labels) from
-[Settings](../user-guide/settings.md) → **Recordings folder** → **Change
-folder…**.
+Open **Settings** (the gear, top right):
 
-## What to check in Settings before your first real session
+1. **Recordings folder** — pointing where you expect? Set a shared folder here
+   first, before recording anything.
+2. **Advanced → Which headband each boxer wears** — once a real Muse-S is on
+   nearby, press **Search for a new headband** and pick it for each boxer.
+3. **Advanced → Video quality** — Standard (960×540) is recommended.
+4. **Fighter colours** and the **Label list** — shared with the team.
 
-Open **Settings** from the bottom of the sidebar and look at, in order:
-
-1. **Recordings folder** — is it pointing where you expect? If you're
-   sharing a folder with a team, set it here first, before recording
-   anything.
-2. **Headbands** — Boxer A and Boxer B each need a headband assigned. The
-   app ships with two placeholder device names; once you've switched a
-   real Muse-S on nearby, press **Search for a new headband** and pick the
-   real ones.
-3. **Video quality** — Standard (960×540) is recommended and is selected by
-   default; change it here if you need higher resolution or want to save
-   disk space, and the "about X GB per hour per camera" figure next to each
-   option updates to match.
-4. **Session defaults** — rounds, round length, break length, and rest
-   before round 1. These pre-fill the plan on the **Get ready** screen of
-   every new recording, so set them once here instead of re-typing them
-   every time.
-5. **Fighter colours** — the colours fighters can wear (Red, Blue and Black
-   are always there), shared with the team.
-
-Everything in Settings saves automatically as you change it — there's no
-Save button, just a brief "✓ Saved" confirmation.
+The plan (rounds, round length, break, baseline) is set on the **Get ready**
+screen and remembered for next time. Everything saves automatically.
 
 ## Trying it without cameras or headbands
 

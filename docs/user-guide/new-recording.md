@@ -1,138 +1,115 @@
 # New recording
 
 **What this page covers:** making a recording, from pressing **New recording**
-to the "Recording saved" screen. There are three screens: **Get ready**,
-**Recording** and **Saved**. Press the **?** button on any of them to come back
-to the right part of this page.
+to "Recording saved". There are three screens: **Get ready**, **Recording** and
+**Saved**. **✕ Cancel** (top left) leaves at any time.
 
-Press **New recording** — the dark button at the top of the sidebar, or the
-button on the Sessions screen. The sidebar disappears while you record, so
-nothing is in the way. **Cancel** (top left) leaves without recording.
+![The new-recording flow: Get ready with its checklist and the buzzer test, the recording with its automatic markers and moments, and Saved.](../diagrams/new-recording-flow.png)
 
 ## Step 1 — Get ready
 
-![Get ready: the four camera pictures and both headbands on top, the session plan and the Start button underneath.](../images/get-ready.png)
+![Get ready: the checklist on the left; the cameras, both boxers and the plan on the right.](../images/get-ready.png)
 
-Everything you need before pressing Start is on this one screen. The cameras and
-headbands connect by themselves as soon as the screen opens, so you can type the
-boxers' names while they do.
+The cameras and headbands connect by themselves while you fill in the rest.
+**Work down the checklist on the left.** **Start recording** unlocks when every
+required item is green; until then it says, for example, "Fix 2 things above to
+start".
 
-**Top half — check the devices**
+- **Headband A / B connected.** Switch each headband on. A headband that drops
+  out says "Lost connection" with a **Reconnect** button.
+- **Good signal on all sensors.** Each boxer's card shows a head seen from
+  above with its four sensors: green when the signal looks good, orange when it
+  looks poor. "The right-ear signal (TP10) looks poor" usually means the band is
+  not flat behind the ear, or hair is in the way. Adjust it and press **I've
+  adjusted it**. *This is the app's own judgement from the signal — the
+  headband does not report how well it fits — so it advises but never blocks
+  Start.* Under it is the live brain activity, five traces, five seconds across.
+- **4 cameras connected.** Four live pictures, each with its frame rate (60 fps
+  when Settings › Advanced › "Record cameras at 60 fps" is on). A camera that is
+  not found shows a dashed outline: check its USB cable and press **Search
+  again**. A camera that can only do 30 fps says so.
+- **Fighter codes and colours.** Give each fighter a **code** — exactly 4
+  capital letters or digits, like `K7Q2`; **New code** makes one up — and the
+  **colour** they wear. The two codes and the two colours must differ. No names
+  are stored anywhere; see [Personal data note](../research-and-data/personal-data.md).
+- **Timing checked** (recommended). Press **⏱ Test timing**, then **Run
+  buzzer test**. At each of the 5 beeps, both boxers tap their headband once,
+  in view of the cameras. The app finds the taps in every camera and headband,
+  measures how late each device is, and corrects for it. The dialog says
+  whether the largest difference left is under the 10 ms goal. See
+  [Timing & accuracy](../research-and-data/timing-and-accuracy.md).
+- **Enough space.** How much the recording needs and how much is free.
 
-- The line under the title says how many of the six devices are ready, for
-  example "6 of 6 devices ready". If something is missing it says what, and
-  that you can still record without it — it just will not be recorded.
-- **Cameras.** Four live pictures: Side camera 1, Side camera 2, Boxer A view,
-  Boxer B view. Each says "Connected" with its frames per second. A camera that
-  cannot be found gets a red border and the message "Not found. Check the USB
-  cable and the video receiver, then press Search again." If a picture shows the
-  wrong camera, press **Change** on it and pick the right one; the choice is
-  remembered.
-- **Headbands.** One card per boxer with the headband's name, "Connected" and
-  its battery level. Under it, four sensors — Left ear, Left forehead, Right
-  forehead, Right ear — each with a tick for good contact or an exclamation
-  mark for weak contact. A weak sensor comes with a tip, for example "Move the
-  band so the sensor sits flat behind the right ear. Brush hair out of the
-  way." Below that is the live brain activity (EEG): five traces, ten seconds
-  across, newest on the right. Flat lines or wild swings mean the band needs
-  re-seating.
-- **Search again** looks for cameras and headbands again, for example after
-  plugging something in. A headband that drops out shows "Lost connection" and
-  a **Reconnect** button.
-
-**Bottom half — plan the session**
-
-- **Fighter codes.** Each fighter gets a 4-character code (capital letters and
-  digits, like K7Q2); **New code** makes one up. The two codes must differ. No
-  names are stored — see
-  [Personal data note](../research-and-data/personal-data.md).
-- **Ring the bell at the start and end of each round** — on or off for this
-  recording.
-- **Rounds, Round length, Break between, Rest before round 1.** Use − and +.
-  They start at the values in [Settings](settings.md).
-- The coloured bar shows the whole session: rest, each round, each break. The
-  sentence under it says the same in words and when the recording will stop by
-  itself.
-- The **disk line** says whether there is enough space. If there is not, the
-  Start button is switched off until you free some space or shorten the
-  session. If the recordings folder is on a network drive you are told that
-  recording straight to it is risky — see [Troubleshooting](troubleshooting.md).
+**⇄ Swap the headbands between Boxer A and Boxer B** if the bands are on the
+wrong boxers. **The plan:** Rounds, Round, Break and Baseline (− and +), and
+**Ring the bell at the start and end of each round**. The line beside it says
+the total — "0:15 lead-in + 12:00 = 12:15 in total" — and the plan is
+remembered for next time.
 
 Press **Start recording**. Recording starts **15 seconds before the
 baseline** (the lead-in), so every device is running before anything that
-matters happens. The start and end of the recording, the baseline, every round
-and every break are marked automatically.
+matters happens.
 
 ## Step 2 — Recording
 
-![Recording: the status strip, the large countdown on a card tinted by the phase, Mark this moment, and the cameras and headbands down the side.](../images/recording.png)
+![Recording: the four cameras, the countdown and plan bar under them, Mark this moment, both boxers' brain activity, the timing line.](../images/recording.png)
 
-This screen is built to be read from across the room.
+- **The header** shows **● REC** with the time recorded, the two fighters, and
+  "everything is recording" — or "check the warning" when something needs
+  attention (a yellow banner says what, for example "Side camera 2 stopped
+  sending pictures — reconnecting").
+- **The four cameras**, each with "Recording" and a timecode.
+- **Under the cameras:** how long is left — "2:41 left in round 2" (during the
+  lead-in: "until the baseline starts") — which part this is ("Round 2 of 3"),
+  how many rounds are done, what comes next, and the plan bar with a red line at
+  "now". The start and end of the recording, of the baseline and of every round
+  and break are **marked automatically**; with the bell on, it rings at the
+  start **and the end** of every round.
+- **⚑ Mark this moment** (or press **M**) marks this instant. A small window
+  asks "What did you see? (optional)" — type a note and press **Save note**
+  (Enter), or **Add note later** (Esc) and write it in
+  [Review & Label](review-and-label.md). Recording never pauses.
+- **Right:** each boxer's head sensors, signal ("check the band in the next
+  break" if it looks poor), battery, and live brain activity. Grey dashed lines
+  with grey labels are the automatic markers; red ones are moments.
+- **⏱ Timing** — the result of the buzzer test, or "not measured this
+  session". Click it for the live timing numbers; recording carries on.
 
-- **The strip at the top** is green and says "All 4 cameras and 2 headbands are
-  recording" while everything is fine. If something goes wrong it turns amber
-  and says what — for example "Boxer B's headband lost connection". The red
-  **REC** clock counts the whole recording.
-- **The large card** shows the phase in words ("Rest before round 1", "Round 2
-  of 3", "Break"), a very large countdown of the time left in it, and what comes
-  next. The card's colour changes with the phase — grey for rest, blue for a
-  round, amber for a break — so you can tell the phase at a glance; the words
-  always say it too.
-- **Mark this moment** (or press **M**) puts a mark at this instant when
-  something worth finding again happens. You do not have to say what it was;
-  you name it later in Review & Label. The line under the button confirms each
-  mark.
-- The bar at the bottom of the card is the whole session with a red line at
-  "now".
-- **Down the side:** the four cameras (each says "Recording", and how many
-  frames were lost if any) and both headbands with their four sensors and live
-  brain activity. A dashed line on the brain activity marks each round start
-  and each marked moment.
+If a headband drops out, press **Reconnect**; its file continues when it is
+back. If a camera stops sending pictures it is reopened by itself and its video
+continues in the same file. The computer is kept awake for the whole recording.
 
-If a headband drops out, press **Reconnect** on its card; recording carries on
-and the headband's file continues when it is back. The computer is kept awake
-for the whole recording.
-
-**If a red message appears saying something "could not be saved".** The app
-could not write part of the recording's notes (for example the round and break
-times) to the recordings folder. The cameras and headbands keep recording.
-Check that the drive is still connected and has free space; when the recording
-ends, the Saved screen lists what is affected.
+**If a red message says something "could not be saved"**, part of the
+recording's notes (for example the sensor-contact notes) could not be written
+to the recordings folder. The cameras and headbands keep recording. Check the
+drive; the Saved screen will say "saved, but with problems".
 
 **Stopping early.** The recording stops by itself at the end of the last round.
-To stop sooner press **Stop recording**; the screen asks "Stop recording now?"
-and you choose **Keep recording** or **Stop and save**. Everything recorded so
-far is kept.
+To stop sooner press **■ Stop recording**; the app asks first. Everything
+recorded so far is kept. Leaving with **✕ Cancel** while recording also keeps
+everything, but marks the recording *Interrupted*.
 
 ## Step 3 — Saved
 
-![Saved: what was saved, anything worth checking, and what to do next.](../images/saved.png)
+![Saved: what was saved, the timing result, anything worth checking, and what to do next.](../images/saved.png)
 
-A list of what was saved, read from the real files: each camera's video, each
-boxer's brain recording, the rounds and breaks, the moments you marked, and the
-single analysis file (`recording.xdf`) that puts everything on one timeline.
+A list read from the real files: the camera videos ("No frames lost" or how
+many), the brain recordings (and head movement), how many **automatic
+markers**, the **moments you marked** and how many have notes, the **Timing
+report** (or **Timing not measured**), anything **Worth checking** (weak
+contact for a while, a camera that was reconnected, a camera that could only do
+30 fps), and the analysis file `recording.xdf`. **Open folder** shows the
+recording's folder, named like `2026-11-17 14-05 K7Q2 vs M3XA`.
 
-Under **Worth checking** you may see things to look at before the boxers leave,
-for example "Weak contact for about 2 minutes in round 2", lost video frames, or
-a camera that recorded at an unexpected speed.
+If the heading reads **"Recording saved, but with problems"**, part of the
+recording could not be written — the list says what. Keep the recording and tell
+whoever looks after the app.
 
-If the heading reads **"Recording saved, but with problems"** with a warning
-sign instead of a tick, part of the recording could not be written — the first
-line under Worth checking says what. Keep the recording, and tell whoever looks
-after the app before recording again.
-
-Then choose:
-
-- **Label this recording** — opens it in [Review & Label](review-and-label.md).
-- **Record another** — back to Get ready.
-- **Back to sessions**.
-- **Show in Finder** (Mac) / **Show in Explorer** (Windows) — opens the
-  recording's folder.
+Then: **Start labelling →**, **Back to sessions**, or **Record another**.
 
 ## If something goes wrong
 
 - The app closed or the computer crashed mid-recording: nothing recorded up to
-  that moment is lost. Next time you open the app, Sessions shows "A recording
-  was interrupted" — see [Sessions](sessions.md).
-- "The recordings folder can't be reached": the drive it is on is not
-  connected. See [Troubleshooting](troubleshooting.md).
+  that moment is lost. Sessions shows "A recording was interrupted".
+- "The recordings folder can't be reached": the drive is not connected. See
+  [Troubleshooting](troubleshooting.md).

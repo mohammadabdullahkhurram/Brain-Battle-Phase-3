@@ -4,14 +4,34 @@ Brain Battle is a desktop app for a neuroscience study of boxing, made at
 Constructor University Bremen. During a sparring session it records **four
 cameras** and **two Muse-S EEG headbands** (one per boxer) at the same time, on
 one shared clock. Afterwards you can watch everything back together, mark what
-happened (a jab, a block, a clinch…), and export the data for analysis. It runs
+happened (a punch thrown, landed or blocked, a clinch…), and export the data
+for analysis. Fighters are stored only as **4-character codes and colours**
+(like `K7Q2` in red) — never by name. It runs
 on Mac and Windows, and has a **demo mode** that needs no cameras or headbands —
 that is what you use to try it out.
+
+> **Which version to test:** there is no `staging` branch yet, so testers use
+> **`develop`** (the commands below fetch it). Once the owner has approved
+> `develop`, a `staging` branch will be made for testing.
 
 > **Tested only in simulation so far.** Everything works with *simulated*
 > cameras and headbands, and the automatic tests pass on Mac and Windows. Real
 > Muse headbands, real cameras and real Windows PCs have **not** been tried
 > yet. If you test on one of those, please tell us what happened.
+
+## What it looks like
+
+- **Sessions** — every recording (`● K7Q2 vs ● M3XA`), its status, and a big
+  **New recording** button.
+- **New recording** — *Get ready* (a checklist: headbands, signal, cameras,
+  codes and colours, a buzzer **timing test**, space), *Recording* (starts
+  15 s before the baseline; rounds and breaks are marked automatically; the
+  bell rings at the start and end of each round; **M** marks a moment with an
+  optional note), *Saved*.
+- **Review & Label** — the four cameras, both boxers' EEG, labels, custom
+  notes and the notes on marked moments; compare with other labellers.
+- **Settings** — your name, the recordings folder, the team's label list and
+  fighter colours, and Advanced options.
 
 ## Run it on Mac
 
@@ -25,12 +45,12 @@ that is what you use to try it out.
    - **With git** (run `xcode-select --install` once if `git` is missing):
      ```bash
      cd ~
-     git clone --branch staging https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3.git
+     git clone --branch develop https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3.git
      cd Brain-Battle-Phase-3
      ```
    - **Without git:** open the
      [GitHub page](https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3),
-     switch the branch menu from `main` to **`staging`**, click
+     switch the branch menu from `main` to **`develop`**, click
      **Code → Download ZIP**, unzip it into your home folder, and in Terminal
      `cd` into the unzipped folder.
 4. **Install the app** (takes a few minutes the first time):
@@ -70,12 +90,12 @@ that is what you use to try it out.
      default options):
      ```powershell
      cd $HOME
-     git clone --branch staging https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3.git
+     git clone --branch develop https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3.git
      cd Brain-Battle-Phase-3
      ```
    - **Without git:** open the
      [GitHub page](https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3),
-     switch the branch menu from `main` to **`staging`**, click
+     switch the branch menu from `main` to **`develop`**, click
      **Code → Download ZIP**, unzip it into your user folder, and in
      PowerShell `cd` into the unzipped folder.
 4. **Install the app** (takes a few minutes the first time):
@@ -100,9 +120,9 @@ that is what you use to try it out.
    run `git pull` and then `python -m pip install -e .` again. Without git,
    download the ZIP again (step 3) and repeat step 4.
 
-If Windows asks whether Python may use the network, either answer is fine for
-demo mode (the app shares live signals on the local network for research
-tools).
+Live signals for other programs (LSL) are **off** by default (Settings →
+Advanced). If you switch them on, Windows or macOS may ask whether Python may
+use the network — either answer is fine for recording.
 
 ## If something goes wrong
 
@@ -111,7 +131,7 @@ tools).
 | `python` / `python3` "not found" or "not recognized" | Python is not on your PATH. Windows: run the installer again, choose *Modify*, and tick "Add Python to environment variables" — or type `py` instead of `python`. Mac: use `python3`, not `python`. |
 | Recording won't start and the app says ffmpeg is missing | Install ffmpeg (step 2), then **close and reopen** Terminal / PowerShell and start the app again. |
 | `pip install` stops with an error | Run `python -m pip install --upgrade pip` (Mac: `python3 -m pip …`) and try step 4 again. Check you are inside the `Brain-Battle-Phase-3` folder (it contains `pyproject.toml`). |
-| The Sessions screen is empty | The app is looking at a different folder. The sidebar shows which one; change it in **Settings**, or start the app with `BRAIN_BATTLE_CAPTURE_DIR` as in step 6. |
+| The Sessions screen is empty | The app is looking at a different folder. The foot of Sessions shows which one; change it in **Settings**, or start the app with `BRAIN_BATTLE_CAPTURE_DIR` as in step 6. |
 
 More answers: the **Troubleshooting** and **FAQ** pages in the app's
 **Documentation** screen ([docs/user-guide/troubleshooting.md](docs/user-guide/troubleshooting.md)).
@@ -129,7 +149,7 @@ Send a message (or open an issue on GitHub) with:
      (copy the last 30 or so lines), and
    - if it happened during or after a recording, the file
      `session_<date>_<time>.log` inside that recording's folder (Sessions →
-     `⋯` next to the recording → *Show in Finder* / *Show in Explorer*).
+     right-click the recording → *Show in Finder* / *Show in Explorer*).
 5. **Your computer** — Mac or Windows, and the version shown in the window
    title (e.g. `3.1.0-dev`).
 
@@ -137,7 +157,7 @@ Send a message (or open an issue on GitHub) with:
 
 The full documentation — user guide, file formats, how timing works,
 architecture, decisions — is readable **inside the app** (the
-**Documentation** screen in the sidebar) and as Markdown under
+**Documentation** button at the top) and as Markdown under
 [`docs/`](docs/). Developers should start with
 [`AGENTS.md`](AGENTS.md) (current state, branch and tag rules, test map),
 [Developer setup & workflow](docs/developer-guide/setup-and-workflow.md) and
@@ -154,7 +174,7 @@ look at one (read-only), inside the code folder run, for example:
 
 ```bash
 git checkout v3.0.0-beta.2      # go to that version
-git checkout staging            # come back to the version under test
+git checkout develop            # come back to the version under test
 ```
 
 Dates are the date of the tagged commit. Newest first.

@@ -104,13 +104,33 @@ def test_events_csv_ordering():
           clinch is not None and clinch["t_end"] not in ("", None), str(clinch))
 
 
+def test_export_dialog():
+    """The Export for analysis window (design F) opens, lists what is always
+    included, offers the two video choices and the codes note."""
+    from PyQt6.QtWidgets import QApplication
+    QApplication.instance() or QApplication(sys.argv)
+    import brain_battle.data.export_module as em
+    dlg = em.ExportOptionsDialog(DEMO_ROOT)
+    try:
+        check("export window opens", dlg is not None)
+        check("the 4 camera videos: on; one combined video: off",
+              dlg._videos_cb.isChecked() and not dlg._merge_cb.isChecked())
+        check("the zip is named after the recording (codes, never names)",
+              dlg._name_lbl.text() == os.path.basename(DEMO_ROOT) + ".zip", dlg._name_lbl.text())
+        check("what is always included names the timing report",
+              any("timing_quality.csv" in t for t in em.ExportOptionsDialog.ALWAYS))
+    finally:
+        dlg.close()
+
+
 if __name__ == "__main__":
     from tools.generate_demo_session import generate_demo_session
     tmp = tempfile.mkdtemp(prefix="bb_exproot_")
     DEMO_ROOT = generate_demo_session(out=tmp, rounds=1, round_sec=10,
                                       break_sec=3, baseline_sec=3, seed=8,
-                                      boxer_a="Ivy", boxer_b="Zoe")["root"]
+                                      boxer_a="K7Q2", boxer_b="M3XA")["root"]
     test_bundle_contents()
+    test_export_dialog()
     test_events_csv_ordering()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:

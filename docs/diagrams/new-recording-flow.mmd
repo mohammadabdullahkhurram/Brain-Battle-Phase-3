@@ -1,17 +1,16 @@
 %%{init: {'themeVariables': {'fontSize': '16px'}}}%%
 flowchart TD
-    Start(["Press<br/>'New recording'"]) --> Ready["Step 1<br/>Get ready<br/>(devices + plan)"]
-    Ready -->|"device<br/>missing"| ReadyWarn["Picture shows a<br/>not-found message.<br/>Search again, or<br/>record without it."]
-    ReadyWarn --> Ready
-    Ready --> Disk{"Folder reachable<br/>and enough<br/>disk space?"}
-    Disk -->|"no"| DiskBlock["Start is switched off.<br/>Reconnect the drive,<br/>free up space or<br/>shorten the session."]
-    DiskBlock --> Ready
-    Disk -->|"yes: press<br/>Start recording"| Record["Step 2<br/>Recording"]
-    Record -->|"headband<br/>disconnects"| Reconnect["Reconnect button<br/>appears. Brain<br/>recording resumes."]
-    Reconnect --> Record
-    Record -->|"M key or<br/>Mark this moment"| Moment["Moment marked —<br/>name it in Review"]
-    Moment --> Record
-    Record -->|"Stop and save,<br/>or it finishes"| Saved["Step 3<br/>Saved"]
-    Saved --> Label["Label this recording<br/>(Review &amp; Label)"]
-    Saved --> Sessions["Back to<br/>sessions"]
+    Start(["Press<br/>'New recording'"]) --> Ready["Step 1 · Get ready<br/>checklist, codes,<br/>colours, plan"]
+    Ready -->|"Test timing"| Buzzer["Buzzer test:<br/>5 beeps, both boxers<br/>tap their headband"]
+    Buzzer -->|"corrections<br/>kept"| Ready
+    Ready -->|"something<br/>not green"| Fix["Start stays off:<br/>'Fix N things<br/>above to start'"]
+    Fix --> Ready
+    Ready -->|"Start recording"| Lead["Recording starts:<br/>15 s lead-in"]
+    Lead --> Rounds["Baseline, rounds,<br/>breaks — marked<br/>automatically;<br/>bell at both ends<br/>of every round"]
+    Rounds -->|"M"| Moment["Moment + note<br/>(Save note / later);<br/>nothing pauses"]
+    Moment --> Rounds
+    Rounds -->|"camera stalls /<br/>headband drops"| Recover["Reopened /<br/>Reconnect —<br/>same files"]
+    Recover --> Rounds
+    Rounds -->|"finishes or<br/>Stop recording"| Saved["Step 3 · Saved<br/>timing result,<br/>worth checking"]
+    Saved --> Label["Start labelling<br/>(Review &amp; Label)"]
     Saved --> Another["Record<br/>another"]

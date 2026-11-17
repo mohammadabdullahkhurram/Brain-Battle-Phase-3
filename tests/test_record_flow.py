@@ -92,12 +92,11 @@ def _new_flow():
 
 
 def _setup_short(flow, rest=2, rnd=10, brk=2, rounds=2, a="K7Q2", b="M3XA"):
-    """Enter Set up, then force a short session (steppers clamp round ≥ 10s)."""
+    """A short plan (shorter than Get ready's buttons offer) and the two codes."""
+    from brain_battle.capture.session_controller import SessionConfig
     flow.goto_setup()
-    su = flow._setup_step
-    su._st_rest.set_value(rest); su._st_round.set_value(rnd)
-    su._st_break.set_value(brk); su._st_rounds.set_value(rounds)
-    su._name_a.setText(a); su._name_b.setText(b); su._recompute()
+    flow.set_plan(SessionConfig(num_rounds=rounds, round_sec=rnd, break_sec=brk, baseline_sec=rest))
+    flow.set_fighters(a, b)
 
 
 # ─── 1. end to end ────────────────────────────────────────────────────────────
@@ -180,8 +179,14 @@ def test_end_to_end():
 
         # recording.xdf: built in the background from the finished files
         check("recording.xdf build finished", flow.wait_for_xdf(30))
-        check("Saved screen reports the XDF", "saved" in flow._saved_step._xdf_row.findChildren(
-            __import__("PyQt6.QtWidgets", fromlist=["QLabel"]).QLabel)[1].text())
+        details = flow._saved_step.item_details()
+        check("Saved screen reports the analysis file",
+              any(t == "Analysis file" and ok and "recording.xdf" in d for t, d, ok in details),
+              str(details))
+        titles = flow._saved_step.item_titles()
+        check("Saved lists videos, brain recordings, automatic markers, moments, timing",
+              titles[:4] == ["4 camera videos", "2 brain recordings", "10 automatic markers",
+                             "1 moment you marked"] and "Timing not measured" in titles, str(titles))
         import pyxdf
         streams, _ = pyxdf.load_xdf(os.path.join(root, "recording.xdf"))
         by = {st["info"]["name"][0]: st for st in streams}
@@ -235,7 +240,8 @@ def test_end_to_end():
         try:
             rt.load_session_folder(root); rt.wait_loaded()
             check("Review sees the phase markers", len(read_phase_markers(root)) >= 4)
-            check("Review surfaces the marked moment to name", len(rt._moments) == 1)
+            check("Review shows the marked moment on the Moments lane, with no note yet",
+                  len(rt._strip.moments) == 1 and not rt._strip.moments[0]["note"])
         finally:
             rt.shutdown()
     finally:
@@ -283,12 +289,15 @@ def test_missing_camera():
         check("only 3 cameras connect", live == 3, f"live={live}")
         missing = [s for s in flow._cams if s.device is None]
         check("the 4th slot has no device (shows the red 'not found' tile)", len(missing) == 1)
-        flow._connect_step.on_tick()
-        check("summary reads '5 of 6 devices ready'",
-              "5 of 6" in flow._connect_step._summary.text(),
-              flow._connect_step._summary.text())
-        check("explanation says the missing camera won't be recorded",
-              "camera" in flow._connect_step._explain.text().lower())
+        gr = flow._get_ready
+        flow.set_fighters("K7Q2", "M3XA"); gr._recompute()
+        cam = next(c for c in gr.checks() if c[1] == "4 cameras connected")
+        check("checklist: '4 cameras connected' is not ticked and names the missing camera",
+              not cam[0] and "Boxer B view" in cam[2] and "not found" in cam[2], str(cam))
+        check("Start stays off until it is fixed; the note says how many things to fix",
+              not gr._start.isEnabled() and gr.start_note.text().startswith("Fix 1 thing"),
+              gr.start_note.text())
+        check("Cameras card says 3 of 4 connected", gr.cam_count.text() == "3 of 4 connected")
     finally:
         flow.shutdown(); pump(0.3)
 
@@ -356,8 +365,8 @@ def test_disk_blocked():
         shutil.disk_usage = lambda p: _TinyUsage()
         flow.begin_recording()
         check("disk-blocked: recording does NOT start", not flow.is_recording())
-        check("disk-blocked: stayed on the Set up step",
-              flow._stack.currentIndex() == flow.STEP_SETUP)
+        check("disk-blocked: stayed on Get ready",
+              flow._stack.currentIndex() == flow.STEP_READY)
         check("disk-blocked: showed a blocking message", _FakeMsg.calls["critical"] == 1)
     finally:
         record_flow.QMessageBox = real_msg
@@ -434,43 +443,65 @@ def test_every_step_fits():
     _fresh_env()
     flow = _new_flow()
     win = QMainWindow(); win.setCentralWidget(flow)
+    long_info = {"meta": "demo", "folder_line": "z", "problems": ["p"],
+                 "items": [(True, "4 camera videos", "Side camera 1, Side camera 2."),
+                           (False, "Worth checking", "x " * 80)]}
     try:
         flow.start(); pump(1.8)
         _setup_short(flow)
         flow._cfg = flow._setup_step.config()
         flow._recording_step.reset_for_recording()
-        flow._saved_step.populate({"meta": "demo", "checklist": [("✓", "x", None)],
-                                    "worth_checking": ["y"], "folder_line": "z"})
+        flow._saved_step.populate(long_info)
         for W, H in [(1440, 900), (1280, 800), (1180, 720)]:
             win.resize(W, H); win.show(); pump(0.2)
-            for step, name in [(flow.STEP_CONNECT, "Connect"), (flow.STEP_SETUP, "Set up"),
-                               (flow.STEP_RECORD, "Recording"), (flow.STEP_SAVED, "Saved")]:
+            for step, name in [(flow.STEP_READY, "Get ready"), (flow.STEP_RECORD, "Recording"),
+                               (flow.STEP_SAVED, "Saved")]:
                 flow._set_step(step); pump(0.2)
                 ov = _overflows(win, flow._stack.currentWidget())
                 check(f"[{W}x{H}] step '{name}' nothing clipped", len(ov) == 0, str(ov[:3]))
-            # the warning states: every kind of failed write at once (the longest text)
             flow._write_problems = list(flow._WHAT.values())
             flow._recording_step.show_write_problem(flow.write_problem_text())
-            flow._recording_step._confirm.setVisible(True)      # with the stop question open too
             flow._set_step(flow.STEP_RECORD); pump(0.2)
             ov = _overflows(win, flow._recording_step)
             check(f"[{W}x{H}] Recording with the could-not-save warning: nothing clipped",
                   len(ov) == 0 and flow._recording_step._write_banner.isVisible(), str(ov[:3]))
-            flow._saved_step.populate({
-                "meta": "demo", "checklist": [("!", "Some round and break times were not saved", None)],
-                "worth_checking": [flow.write_problem_text()], "folder_line": "z",
-                "problems": ["p"]})
             flow._set_step(flow.STEP_SAVED); pump(0.2)
-            ov = _overflows(win, flow._saved_step)
-            check(f"[{W}x{H}] Saved 'with problems': nothing clipped, heading fully shown",
-                  len(ov) == 0 and flow._saved_step._head.text() == flow._saved_step.HEAD_PROBLEM
-                  and flow._saved_step._head.sizeHint().width() <= flow._saved_step._head.width(),
-                  str(ov[:3]))
+            check(f"[{W}x{H}] Saved 'with problems' heading",
+                  flow._saved_step._head.text() == flow._saved_step.HEAD_PROBLEM)
             flow._write_problems = []
             flow._recording_step.show_write_problem("")
-            flow._recording_step._confirm.setVisible(False)
-            flow._saved_step.populate({"meta": "demo", "checklist": [("✓", "x", None)],
-                                        "worth_checking": ["y"], "folder_line": "z"})
+    finally:
+        flow.shutdown(); pump(0.3)
+
+
+def test_moment_popup_and_notes():
+    """M opens the note popup; recording, timer and capture never pause; Save
+    note writes the note; Esc means later; the count on screen follows."""
+    _fresh_env()
+    flow = _new_flow()
+    try:
+        flow.start(); pump(1.8)
+        _setup_short(flow, rest=2, rnd=20, brk=2, rounds=1)
+        flow.begin_recording(); pump(3.0)
+        flow.mark_moment(); pump(0.1)
+        dlg = flow._moment_dialog
+        check("M opens the moment popup", dlg is not None)
+        el0 = flow._elapsed_session(); pump(1.0)
+        check("the recording keeps going while the popup is open",
+              flow.is_recording() and flow._elapsed_session() > el0 + 0.8)
+        check("Save note is off until something is typed", not dlg.save_btn.isEnabled())
+        dlg.note.setPlainText("B dropped the guard"); dlg.save_note(); pump(0.2)
+        flow.mark_moment(); pump(0.2)
+        flow._moment_dialog.add_later(); pump(0.2)
+        man = json.load(open(os.path.join(str(flow._layout.root), "session_manifest.json")))
+        check("moments stored as {t, note}: one with its note, one for later",
+              [m["note"] for m in man["moments"]] == ["B dropped the guard", ""], str(man["moments"]))
+        check("Recording says '2 moments marked · 1 with notes.'",
+              flow._recording_step._moment_lbl.text() == "2 moments marked · 1 with notes.",
+              flow._recording_step._moment_lbl.text())
+        rows = list(__import__("csv").DictReader(open(os.path.join(str(flow._layout.root), "moments.csv"))))
+        check("moments.csv follows", [r["note"] for r in rows] == ["B dropped the guard", ""])
+        flow.stop_and_save(); pump(0.5)
     finally:
         flow.shutdown(); pump(0.3)
 
@@ -512,6 +543,7 @@ if __name__ == "__main__":
     test_disk_blocked()
     test_quit_confirmation()
     test_every_step_fits()
+    test_moment_popup_and_notes()
     test_no_simulation_when_unset()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:

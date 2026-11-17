@@ -64,7 +64,7 @@ def _install_text_free_camera():
     import numpy as np
     import brain_battle.capture.simulation as sim
 
-    def _neutral_render(self, n):
+    def _neutral_render(self, n, out=None):
         import cv2
         # A soft vertical gradient reads as a camera view rather than a flat
         # rectangle; brightness varies a little per camera index for variety.
@@ -153,6 +153,8 @@ _DOCS_NAMES = {
     "06b_review-compare": "review-compare",
     "07_settings": "settings",
     "09_export": "export",
+    "00_welcome": "welcome",
+    "03_timing": "timing",
 }
 
 
@@ -191,6 +193,12 @@ def main():
                 fn = os.path.join(OUT, f"{name}_{w}x{h}.png")
                 win.grab().save(fn)
             saved.append(fn)
+
+    # ── the first-run screen ──
+    win.show()
+    win._shell.set_current_index(win.IDX_WELCOME)
+    _pump(app, 0.3)
+    grab("00_welcome")
 
     # ── Sessions, empty (no recordings yet) ──
     win.show()
@@ -231,24 +239,38 @@ def main():
     win._shell.set_current_index(win.IDX_RECORD)   # starts the flow (scans devices)
     flow = win.record_flow
     _pump(app, 1.8)                                 # let sim cameras + bands connect
-    su = flow._setup_step
-    su._st_rest.set_value(4); su._st_round.set_value(30); su._st_break.set_value(0)
-    su._st_rounds.set_value(1); su._name_a.setText("Sam"); su._name_b.setText("Alex")
-    su._recompute()
-    flow._ready_page.on_tick()
-    _pump(app, 0.2)
+    from brain_battle.capture.session_controller import SessionConfig
+    flow.set_plan(SessionConfig(num_rounds=1, round_sec=30, break_sec=0, baseline_sec=4))
+    flow.set_fighters("K7Q2", "M3XA", "Red", "Blue")
+    flow._get_ready.on_tick(); flow._get_ready._recompute()
+    _pump(app, 0.4)
     grab("02_get-ready")
+
+    # ── the Test timing dialog, after a buzzer test (rendered on its own) ──
+    done = {}
+    flow.run_buzzer_test(on_done=lambda cal: done.setdefault("cal", cal))
+    t0 = time.time()
+    while "cal" not in done and time.time() - t0 < 20:
+        _pump(app, 0.1)
+    from brain_battle.ui.record_screens import TimingDialog
+    td = TimingDialog(flow, recording=False)
+    td.resize(800, td.sizeHint().height()); td.show(); _pump(app, 0.6); td.refresh(); _pump(app, 0.2)
+    fn = os.path.join(OUT, "timing.png" if DOCS_MODE else "03_timing_dialog.png")
+    td.grab().save(fn); saved.append(fn); td.done(0)
 
     flow.begin_recording()
     # run into the round, mark a moment, then grab mid-round
     t0 = time.time()
     marked = False
-    while time.time() - t0 < 10:
+    while time.time() - t0 < 30:
         _pump(app, 0.1)
-        if not marked and time.time() - t0 > 7:
+        if not marked and time.time() - t0 > 17:
             flow.mark_moment(); marked = True
+            flow.set_moment_note(0, "B dropped the guard after a combination")
+            if flow._moment_dialog is not None:
+                flow._moment_dialog.close()
         if flow._controller.current_phase_info and \
-                flow._controller.current_phase_info.phase.value == "round" and time.time() - t0 > 8:
+                flow._controller.current_phase_info.phase.value == "round" and time.time() - t0 > 23:
             break
     flow._recording_step.on_tick()
     grab("04_recording")
@@ -265,17 +287,21 @@ def main():
     # a second labeller's labels, so the screen shows what comparing looks like
     import brain_battle.data.labels_store as _ls
     other = _ls.open_for_labeller(flow._saved_root, "Jonas R")
-    for t, name, who, col in ((4.7, "Jab", "A", "#3D4FD6"), (5.9, "Cross", "A", "#7C3AED"),
-                              (7.4, "Hook", "B", "#0F766E")):
+    for t, name, who, col in ((19.7, "Punch thrown", "A", "#2155D6"),
+                              (20.9, "Punch landed", "A", "#0F7A62"),
+                              (22.4, "Punch blocked", "B", "#465063")):
         other.add(_ls.new_label(name, who, "point", t, color=col, created_by="Jonas R"))
     other.save()
     review.load_session_folder(flow._saved_root)
     review.wait_loaded()
-    for t, key in ((4.6, 0), (5.4, 1), (6.3, 4)):
+    for t, key in ((19.6, 0), (20.4, 1), (21.3, 4)):
         review._seek(t); _pump(app, 0.1)
         if key < len(review._vocab):
             review._place_from_vocab(review._vocab[key])
-    review._seek(5.0)
+    review._seek(22.0)
+    review.start_note(); review._note_text.setPlainText("A pressing forward, B backing off")
+    review.add_note()
+    review._seek(20.0)
     _pump(app, 0.8)
     grab("06_review-and-label")
     review._tabs.set_value("compare", emit=True)

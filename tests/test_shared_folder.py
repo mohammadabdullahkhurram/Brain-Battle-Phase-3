@@ -296,10 +296,23 @@ def test_folder_missing():
           and page._empty_title.text() == "No recordings yet")
     page.shutdown()
 
-    from brain_battle.ui.sidebar_shell import SidebarShell
-    shell = SidebarShell(capture_dir=os.path.join(gone, "nope"))
-    check("the sidebar's folder card says the folder can't be reached",
-          not shell.folder_reachable() and "Can't be reached" in shell._free_label.text())
+    if os.name == "nt":                   # Windows ignores folder permission bits
+        return
+    import brain_battle.data.app_settings as aps
+    s = aps.load(); s.capture_dir = os.path.join(gone, "nope", "deeper"); s.save()
+    old_env = os.environ.pop("BRAIN_BATTLE_CAPTURE_DIR", None)
+    try:
+        os.chmod(gone, 0o500)            # cannot be created inside: unusable
+        from brain_battle.ui.settings_screen import SettingsScreen
+        st = SettingsScreen()
+        check("Settings says the recordings folder can't be used",
+              not st._folder_problem.isHidden() and bool(st._folder_problem.text()),
+              st._folder_problem.text()[:80])
+        st.close()
+    finally:
+        os.chmod(gone, 0o700)
+        if old_env is not None:
+            os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = old_env
 
 
 def test_review_keeps_unsaved_labels():

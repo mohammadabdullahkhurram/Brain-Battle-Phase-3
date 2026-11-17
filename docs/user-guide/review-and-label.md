@@ -1,81 +1,83 @@
 # Review & Label
 
 **What this page covers:** watching a recording back and marking what happened
-in it — and, when more than one person labels the same recording, comparing
-your labels with theirs.
+in it — labels, custom notes, the notes on marked moments — and, when more than
+one person labels the same recording, comparing your labels with theirs.
 
-![Review & Label: the four videos, brain activity, the transport and timeline, and the Label panel.](../images/review-and-label.png)
+![Review & Label: the four cameras, the Label panel, both boxers' EEG, the transport and the lanes.](../images/review-and-label.png)
 
 Open a recording from **Sessions**. Your labels and the timeline appear at
 once; the videos and brain activity follow a moment later.
 
 ## Who is labelling
 
-The first time you open Review & Label the panel on the right asks **"Who is
-labelling?"**. Type your name and press **Start labelling**. You are asked only
-once; the name appears at the top of the panel and in the sidebar, and you can
-change it in [Settings](settings.md).
+The first time you label, the app asks **"Who is labelling?"**. Type your name;
+you are asked only once on this computer, and you can change it in
+[Settings](settings.md) (or **Not you?** in the panel). Only labellers have
+names — fighters are always their codes.
 
-Your name matters because **every labeller's labels are kept separately**. Your
-labels are saved in your own file inside the recording's folder, so two people
-can label the same recording — even at the same time, on two computers sharing
-one recordings folder — without overwriting each other. Use the same name on
-every computer you label on.
+**Every labeller's labels are kept separately**, in your own file inside the
+recording's folder, so two people can label the same recording — even at the
+same time, on two computers sharing one recordings folder — without overwriting
+each other. Use the same name on every computer.
 
 ## The screen
 
-- **Top bar** — **Sessions** goes back to the list. The title says which
-  recording this is. "All labels saved" confirms that everything you have done
-  is on disk — there is no Save button. **Export for analysis** makes the files
-  for analysis (see [Export](export.md)).
-- **Videos** — the four cameras, always showing the same instant. The button in
-  the corner of a picture makes that camera fill the area; press it again for
-  all four.
-- **Brain activity (EEG)** — both boxers' brain activity around the current
-  moment, as a standard EEG display. **Hide** folds it away to give the videos
-  more room; **Show** brings it back. See
-  [Brain activity (EEG)](#brain-activity-eeg) below.
-- **Transport and timeline** — always visible under the videos.
-  - Back one frame · play/pause · forward one frame, then the time and the
-    current phase ("Round 2 · 0:12 in").
-  - **‹** and **›** jump to the previous and next label.
-  - **Speed**: 0.25×, 0.5×, 1×, 2×.
-  - The timeline shows the whole recording: a **Phases** row (rest, rounds,
-    breaks — set automatically during recording), then your labels in three
-    rows: **Boxer A**, **Boxer B**, **Both**. A short line is a moment; a bar is
-    something that lasted a while. Click or drag anywhere to move; clicking
-    near a label lands exactly on it.
-- **Label panel** — on the right; described next.
+- **Header** — **‹ Sessions** goes back. The title shows the two fighters
+  (`● K7Q2 vs ● M3XA`), the date and the length. **My labels / Compare**
+  appears when someone else has labelled too. "✓ All labels saved" confirms
+  everything is on disk — there is no Save button. **Export for analysis** (see
+  [Export](export.md)).
+- **Cameras** — the four cameras, always at the same instant. The button in a
+  picture's corner makes it fill the area; press again for all four.
+- **The panel on the right** — **Label** (described below) and **Activity**
+  (the recording's history).
+- **Brain activity (EEG)** — both boxers around the current moment. See
+  [Brain activity (EEG)](#brain-activity-eeg).
+- **Transport** — back a frame · play/pause · forward a frame, the time ("3:27
+  of 12:15 · Round 2"), and the speed (0.25×, 0.5×, 1×, 2×).
+- **Lanes** — the whole recording, one row each: **Rounds** (lead-in,
+  baseline, rounds, breaks); **System** (a grey tick for every automatic marker
+  — click one to see, for example, `ROUND_2_START · 05:15.00`); **A · K7Q2**,
+  **B · M3XA** and **Both** (your labels; a short line is a moment, a bar lasts
+  a while); **Notes** (custom notes); **Moments** (the moments marked while
+  recording, ⚑). Click or drag anywhere to move.
 
 ## Placing a label
 
-1. **Who did it?** Choose Boxer A, Boxer B or Both (or press **Tab** to switch).
-2. **What happened?** Click a label or press its number (1–9). It is placed at
-   the moment the video is showing.
+The panel says "Add a label at 3:27".
 
-Labels that **last a while** (Clinch and Referee stop in the starting list):
-press the number when it starts and again when it ends. Between the two presses
-a note reminds you which label is open; **Esc** cancels it.
+1. **Who did it?** — **A · K7Q2**, **B · M3XA** or **Both** (Tab switches).
+2. **What happened?** — click a label or press its number (1–8). It is placed
+   at the moment the video shows. The starting list is Punch thrown, Punch
+   landed, Punch missed, Punch blocked, Punch dodged, Clinch, Knockdown and
+   Referee break; the team can change it in [Settings](settings.md).
 
-Slow the video down (0.5× or 0.25×) or step frame by frame to place a label
-precisely.
+Labels that **last a while** (Clinch, Referee break): press the number when it
+starts and again when it ends; **Esc** cancels. Slow the video down or step
+frame by frame to be precise. Click a label on the lanes to select it;
+**Delete** removes it. **Undo** (⌘Z on a Mac, Ctrl+Z on Windows; with Shift it
+redoes).
 
-## My labels
+## Custom notes
 
-The **My labels** tab lists what you have placed, newest first: time, boxer,
-label. Click a row to jump to it; the **✕** on a row removes it. The **undo**
-button (or ⌘Z on a Mac, Ctrl+Z on Windows) takes back your last change; with
-Shift it redoes it.
+For something the label list does not cover, press **Custom note…** (or **N**):
+choose who, type what you saw, and press **Add note**. A note sits on the
+**Notes** lane at that moment. Notes never become part of the label list and
+are not counted when comparing labellers; they are exported with your labels
+(`labels.csv`, column `text`).
 
-**Marked moments.** Moments marked with **M** during recording appear at the top
-of the list as "Marked moment — click to name". Click one, choose who and what,
-and it becomes a normal label of yours. The mark stays in the recording, so
-each labeller names it for themselves.
+## Moments marked while recording
+
+Moments marked with **M** during the recording are on the **Moments** lane.
+Click one: the panel shows "Moment at 3:27" with the observer's note — write or
+correct it (it saves as you type) — and the label list, to put one of your
+labels at exactly that instant. While any moment still has no note the panel
+says, for example, "2 marked moments have no note yet", and the recording stays
+*Needs labels* in Sessions.
 
 **Labels from before the app asked for names.** If a recording was labelled with
-an older version of the app, a note says so. If you placed those labels, press
-**These are mine** to take them over. Otherwise leave them; they stay available
-for comparison.
+an older version, a note says so; press **These are mine** if you placed them.
 
 ## Comparing with another labeller
 
@@ -127,7 +129,9 @@ contact: right ear" at that moment.
 | Space | Play / pause |
 | ← → | One frame back / forward (with Shift: one second) |
 | ↑ ↓ | Previous / next label |
-| 1–9 | Place that label |
+| 1–9 | Place that label (the list's first nine) |
+| N | Custom note |
+| Delete | Remove the selected label |
 | Tab | Switch boxer (A → B → Both) |
 | Esc | Cancel a label that is waiting for its end |
 | ⌘Z / Ctrl+Z | Undo (with Shift: redo) |

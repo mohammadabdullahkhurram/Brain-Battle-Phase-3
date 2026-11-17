@@ -118,7 +118,7 @@ continue to [First run](first-run.md).
 
 To let several computers — Macs, Windows PCs, or a mix — work with the same
 recordings, point each one at the same shared folder in **Settings →
-Recordings folder**. See [Settings](../user-guide/settings.md#recordings-folder).
+Recordings folder**. See [Settings](../user-guide/settings.md#this-computer).
 
 ## Troubleshooting the install
 

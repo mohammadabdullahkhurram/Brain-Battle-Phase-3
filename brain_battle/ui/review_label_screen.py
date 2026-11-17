@@ -39,12 +39,12 @@ from __future__ import annotations
 import os
 import time
 
-from PyQt6.QtCore import Qt, pyqtSignal, QRect, QRectF, QEvent, QThread, QTimer, QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QRect, QRectF, QPointF, QEvent, QThread, QTimer, QSize
 from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QFont, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
     QScrollArea, QSizePolicy, QToolTip, QApplication,
-    QDialog, QComboBox, QStackedWidget, QLineEdit,
+    QDialog, QComboBox, QStackedWidget, QLineEdit, QTextEdit,
 )
 
 import brain_battle.ui.design_tokens as dt
@@ -440,172 +440,240 @@ class BrainActivityCard(QFrame):
 
 # ── timeline ────────────────────────────────────────────────────────────────────
 
-class TimelineStrip(QWidget):
-    """The whole recording at a glance: a Phases row (rest / rounds / breaks),
-    one lane per boxer for YOUR labels (Boxer A, Boxer B, Both), and — while
-    comparing — one grey lane per other labeller. Click or drag to move the
-    playhead; clicking near a label jumps exactly onto it."""
-    seek_requested = pyqtSignal(float)
+def _tint(hex_colour: str, amount: float) -> str:
+    """The colour mixed with white (amount = how much colour), like CSS
+    color-mix(in srgb, c 10%, white)."""
+    c = QColor(hex_colour)
+    mix = lambda v: int(round(255 - (255 - v) * amount))
+    return QColor(mix(c.red()), mix(c.green()), mix(c.blue())).name()
 
-    _PHASE_H = 24
-    _LANE_H = 20
-    _GUTTER = 62          # lane names live here, never on top of the labels
-    _LANES = ["A", "B", "Both"]
+
+class LaneTimeline(QWidget):
+    """The whole recording as lanes (design F): **Rounds** (lead-in, baseline,
+    rounds, breaks), **System** (a tick per automatic marker), **A · code**,
+    **B · code**, **Both** (label chips; a label that lasts a while is as wide
+    as it lasts; another labeller's are faded while comparing), **Notes**
+    (custom notes) and **Moments** (⚑ marked moments, with their note or "add
+    a note"). One red playhead. Click empty space to seek; click a chip or a
+    tick to select it."""
+    seek_requested = pyqtSignal(float)
+    selected = pyqtSignal(str, object)        # kind ("label"|"note"|"moment"|"system"), key
+    LABEL_W = 76
+    LANES = (("rounds", 20), ("system", 16), ("A", 23), ("B", 23), ("Both", 23),
+             ("notes", 23), ("moments", 23))
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.duration = 1.0
-        self.phases = []
-        self.labels = []
-        self.others = []           # [(labeller name, [labels])] — read-only, grey
-        self.playhead = 0.0
-        self._phase_rects = []     # (QRect, full_name) for tooltips
+        self.duration = 0.001
+        self.spans = []                # (t0, t1, label)
+        self.system = []               # (t, label)
+        self.labels = []               # my labels (incl. notes)
+        self.others = []               # [(name, labels)] while comparing
+        self.moments = []              # [{"t_session_seconds", "note"}]
+        self.names = {"A": "A", "B": "B"}
+        self.colours = {"A": dt.boxer_colors("A")[0], "B": dt.boxer_colors("B")[0]}
+        self.selection = None          # (kind, key)
+        self._t = 0.0
+        self._hits = []                # (QRectF, kind, key)
+        self.setMinimumHeight(self._height())
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._resize()
 
-    def _resize(self):
-        self.setFixedHeight(self._PHASE_H + 4
-                            + (len(self._LANES) + len(self.others)) * self._LANE_H + 4)
+    def _height(self):
+        return sum(h + 5 for _k, h in self.LANES) + 20
 
-    def set_session(self, duration, phases, labels):
-        self.duration = max(0.001, float(duration)); self.phases = list(phases)
-        self.labels = list(labels); self.update()
+    # data
+    def set_session(self, duration, phases, labels=None):
+        self.duration = max(0.001, float(duration or 0))
+        self.spans = session_storage.phase_spans(phases, duration)
+        self.system = [(float(t), lab) for t, _pid, lab in phases]
+        if labels is not None:
+            self.labels = list(labels)
+        self.update()
 
     def set_labels(self, labels):
         self.labels = list(labels); self.update()
 
     def set_others(self, others):
-        self.others = [(n, list(l)) for n, l in (others or [])]
-        self._resize(); self.update()
+        self.others = list(others); self.update()
+
+    def set_moments(self, moments):
+        self.moments = list(moments); self.update()
+
+    def set_fighters(self, names, colours):
+        self.names = dict(names); self.colours = dict(colours); self.update()
 
     def set_playhead(self, t):
-        self.playhead = float(t); self.update()
+        self._t = float(t); self.update()
+
+    def set_selection(self, sel):
+        self.selection = sel; self.update()
+
+    # geometry
+    def _plot_x0(self):
+        return float(self.LABEL_W)
 
     def _x(self, t):
-        return self._GUTTER + (self.width() - self._GUTTER - 4) * (t / self.duration)
+        w = self.width() - self.LABEL_W - 4
+        return self.LABEL_W + max(0.0, min(1.0, t / self.duration)) * w
 
     def _t_at(self, x):
-        return max(0.0, min(self.duration,
-                            (x - self._GUTTER) / max(1, self.width() - self._GUTTER - 4) * self.duration))
+        w = max(1.0, self.width() - self.LABEL_W - 4)
+        return max(0.0, min(self.duration, (x - self.LABEL_W) / w * self.duration))
 
-    def _lane_y(self, who):
-        i = self._LANES.index(who) if who in self._LANES else 2
-        return self._PHASE_H + 4 + i * self._LANE_H
-
-    def _other_y(self, i):
-        return self._PHASE_H + 4 + (len(self._LANES) + i) * self._LANE_H
+    def lane_rect(self, key):
+        y = 0
+        for k, h in self.LANES:
+            if k == key:
+                return QRectF(self.LABEL_W, y, self.width() - self.LABEL_W - 4, h)
+            y += h + 5
+        return QRectF()
 
     def mousePressEvent(self, e):
-        x = e.position().x()
-        best, bd = None, 8
-        everything = list(self.labels) + [l for _n, labs in self.others for l in labs]
-        for lab in everything:
-            if abs(self._x(lab["t_start"]) - x) < bd:
-                best, bd = lab["t_start"], abs(self._x(lab["t_start"]) - x)
-        self.seek_requested.emit(best if best is not None else self._t_at(x))
+        pos = e.position()
+        for rect, kind, key in reversed(self._hits):
+            if rect.contains(pos):
+                self.selection = (kind, key)
+                self.selected.emit(kind, key)
+                self.update()
+                return
+        if pos.x() >= self.LABEL_W:
+            self.selection = None
+            self.seek_requested.emit(self._t_at(pos.x()))
 
     def mouseMoveEvent(self, e):
-        if e.buttons() & Qt.MouseButton.LeftButton:
-            self.seek_requested.emit(self._t_at(e.position().x())); return
-        pt = e.position().toPoint()
-        for rect, full in self._phase_rects:
-            if rect.contains(pt):
-                QToolTip.showText(e.globalPosition().toPoint(), full, self); return
-        QToolTip.hideText()
+        if e.buttons() & Qt.MouseButton.LeftButton and e.position().x() >= self.LABEL_W:
+            self.seek_requested.emit(self._t_at(e.position().x()))
 
-    def paintEvent(self, e):
+    # painting
+    def paintEvent(self, _e):
         p = QPainter(self)
         try:
-            self._paint(p)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            self._hits = []
+            small = QFont("Inter"); small.setPixelSize(12)
+            chipf = QFont("Inter"); chipf.setPixelSize(11); chipf.setWeight(QFont.Weight.DemiBold)
+            titles = {"rounds": ("Rounds", dt.text_tertiary(), 400),
+                      "system": ("System", dt.text_tertiary(), 400),
+                      "A": (f"A · {self.names.get('A', 'A')}", self.colours["A"], 700),
+                      "B": (f"B · {self.names.get('B', 'B')}", self.colours["B"], 700),
+                      "Both": ("Both", dt.text_secondary(), 700),
+                      "notes": ("Notes", dt.text_secondary(), 600),
+                      "moments": ("Moments", dt.warning_color(), 600)}
+            bgs = {"rounds": None, "system": "#FAFBFC", "A": None, "B": None, "Both": "#F4F5F8",
+                   "notes": "#F6F7FA", "moments": "#FFFAF3"}
+            for key, h in self.LANES:
+                r = self.lane_rect(key)
+                text, col, wt = titles[key]
+                f = QFont("JetBrains Mono" if key in ("A", "B") else "Inter")
+                f.setPixelSize(12); f.setWeight(QFont.Weight(wt))
+                p.setFont(f); p.setPen(QColor(col))
+                p.drawText(QRectF(0, r.y(), self.LABEL_W - 6, r.height()),
+                           Qt.AlignmentFlag.AlignVCenter, text)
+                bg = bgs[key] or (_tint(self.colours[key], 0.10) if key in ("A", "B") else None)
+                if bg:
+                    p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(bg))
+                    p.drawRoundedRect(r, 6, 6)
+            # rounds
+            r = self.lane_rect("rounds")
+            p.setFont(chipf)
+            for t0, t1, lab in self.spans:
+                u = (lab or "").upper()
+                x0, x1 = self._x(t0), self._x(min(t1, self.duration))
+                rr = QRectF(x0, r.y(), max(1.0, x1 - x0 - 2), r.height())
+                if u.startswith("ROUND"):
+                    bg, fg = "#DCE6FB", dt.accent_hover()
+                elif u.startswith("RECORDING_START"):
+                    bg, fg = "#F6F7FA", dt.text_tertiary()
+                else:
+                    bg, fg = "#EEF1F6", dt.text_tertiary()
+                p.setPen(Qt.PenStyle.NoPen); p.setBrush(QColor(bg)); p.drawRoundedRect(rr, 4, 4)
+                name = "" if u.startswith("RECORDING_START") else friendly_phase(lab)
+                if name and p.fontMetrics().horizontalAdvance(name) + 6 < rr.width():
+                    p.setPen(QColor(fg)); p.drawText(rr, Qt.AlignmentFlag.AlignCenter, name)
+            # system ticks
+            r = self.lane_rect("system")
+            for i, (t, lab) in enumerate(self.system):
+                x = self._x(t)
+                sel = self.selection == ("system", i)
+                p.setPen(QPen(QColor(dt.text_primary() if sel else dt.system_marker()), 3 if sel else 2))
+                p.drawLine(QPointF(x, r.y() + 2), QPointF(x, r.bottom() - 2))
+                self._hits.append((QRectF(x - 4, r.y(), 8, r.height()), "system", i))
+            # labels (mine + others faded)
+            def chip(lab, faded=False):
+                if lab.get("type") == "note":
+                    lane, text = "notes", "▢ " + str(lab.get("text", ""))[:26]
+                    col = dt.text_secondary()
+                else:
+                    lane, text = (lab.get("who") or "Both"), str(lab.get("label", ""))
+                    col = lab.get("color", dt.accent())
+                r = self.lane_rect(lane if lane in ("A", "B", "Both", "notes") else "Both")
+                x0 = self._x(float(lab["t_start"]))
+                fm = p.fontMetrics()
+                w = fm.horizontalAdvance(text) + 14
+                if lab.get("t_end") is not None:
+                    w = max(w, self._x(float(lab["t_end"])) - x0)
+                rr = QRectF(x0, r.y() + 2, w, r.height() - 4)
+                sel = self.selection == ("note" if lane == "notes" else "label", lab.get("id"))
+                c = QColor(col)
+                if faded:
+                    c.setAlpha(80)
+                if lane == "notes":
+                    p.setBrush(QColor("#FFFFFF")); p.setPen(QPen(c, 1))
+                else:
+                    p.setBrush(c); p.setPen(Qt.PenStyle.NoPen)
+                p.drawRoundedRect(rr, 5, 5)
+                if sel:
+                    p.setPen(QPen(QColor(dt.text_primary()), 2)); p.setBrush(Qt.BrushStyle.NoBrush)
+                    p.drawRoundedRect(rr.adjusted(-1, -1, 1, 1), 6, 6)
+                p.setPen(QColor(dt.text_secondary() if lane == "notes" else "#FFFFFF"))
+                p.drawText(rr.adjusted(6, 0, -3, 0), Qt.AlignmentFlag.AlignVCenter,
+                           fm.elidedText(text, Qt.TextElideMode.ElideRight, int(rr.width() - 8)))
+                if not faded:
+                    self._hits.append((rr, "note" if lane == "notes" else "label", lab.get("id")))
+            p.setFont(chipf)
+            for _name, labs in self.others:
+                for lab in labs:
+                    chip(lab, faded=True)
+            for lab in self.labels:
+                chip(lab)
+            # moments
+            r = self.lane_rect("moments")
+            for i, m in enumerate(self.moments):
+                t = float(m["t_session_seconds"])
+                note = m.get("note") or ""
+                text = f"⚑ {_fmt_mmss(t)} · " + (note[:22] + ("…" if len(note) > 22 else "")
+                                                 if note else "add a note")
+                x0 = self._x(t)
+                w = min(p.fontMetrics().horizontalAdvance(text) + 14, r.width() * 0.3)
+                rr = QRectF(x0, r.y() + 2, w, r.height() - 4)
+                p.setPen(QPen(QColor(dt.warning_color()), 1.2))
+                p.setBrush(QColor(dt.warning_bg() if not note else "#FFFFFF"))
+                p.drawRoundedRect(rr, 5, 5)
+                if self.selection == ("moment", i):
+                    p.setPen(QPen(QColor(dt.text_primary()), 2)); p.setBrush(Qt.BrushStyle.NoBrush)
+                    p.drawRoundedRect(rr.adjusted(-1, -1, 1, 1), 6, 6)
+                p.setPen(QColor(dt.warning_color()))
+                p.drawText(rr.adjusted(6, 0, -3, 0), Qt.AlignmentFlag.AlignVCenter,
+                           p.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, int(w - 8)))
+                self._hits.append((rr, "moment", i))
+            # axis + playhead
+            last = self.lane_rect(self.LANES[-1][0])
+            p.setFont(small); p.setPen(QColor(dt.text_tertiary()))
+            for k in range(5):
+                t = self.duration * k / 4
+                x = self._x(t)
+                p.drawText(QRectF(x - 30, last.bottom() + 3, 60, 14),
+                           Qt.AlignmentFlag.AlignCenter, _fmt_mmss(t))
+            x = self._x(self._t)
+            p.setPen(QPen(QColor(dt.record_red()), 2))
+            p.drawLine(QPointF(x, 0), QPointF(x, last.bottom()))
         finally:
             p.end()
 
-    def _draw_label(self, p, lab, y, col, hollow=False):
-        x0 = self._x(lab["t_start"])
-        h = self._LANE_H - 7
-        if lab.get("t_end") is not None:
-            x1 = self._x(lab["t_end"])
-            rect = QRectF(x0, y + 3, max(3, x1 - x0), h)
-            if hollow:
-                p.setBrush(QColor(col.red(), col.green(), col.blue(), 40))
-                p.setPen(QPen(col, 1.2))
-            else:
-                p.setBrush(QColor(col.red(), col.green(), col.blue(), 170))
-                p.setPen(Qt.PenStyle.NoPen)
-            p.drawRoundedRect(rect, 3, 3)
-        else:
-            p.setPen(QPen(col, 1.4 if hollow else 2.4, Qt.PenStyle.SolidLine,
-                          Qt.PenCapStyle.RoundCap))
-            p.drawLine(int(x0), y + 3, int(x0), y + 3 + h)
 
-    def _paint(self, p):
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        W = self.width(); pal = dt._p()
-        colmap = {"baseline": pal.phase_rest, "round": pal.phase_round,
-                  "break": pal.phase_break, "done": pal.phase_rest}
-        gutter_font = QFont("Inter"); gutter_font.setPixelSize(11)
-        # gutter: lane names
-        p.setFont(gutter_font); p.setPen(QColor(dt.text_tertiary()))
-        p.drawText(QRectF(0, 2, self._GUTTER - 6, self._PHASE_H - 4),
-                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, "Phases")
-        self._phase_rects = []
-        if self.phases:
-            bounds = list(self.phases) + [(self.duration, "", "")]
-            phase_font = QFont("Inter"); phase_font.setPixelSize(11)
-            phase_font.setWeight(QFont.Weight.DemiBold)
-            for i in range(len(self.phases)):
-                t0, pid, lbl = self.phases[i]
-                if pid == "done":
-                    continue
-                t1 = bounds[i + 1][0]
-                bg, fg = colmap.get(pid, pal.phase_rest)
-                x0, x1 = self._x(t0), self._x(t1)
-                bw = max(1, x1 - x0 - 1)
-                p.setBrush(QColor(bg)); p.setPen(Qt.PenStyle.NoPen)
-                p.drawRoundedRect(QRectF(x0, 2, bw, self._PHASE_H - 4), 5, 5)
-                full = friendly_phase(lbl)
-                self._phase_rects.append((QRect(int(x0), 2, int(bw), self._PHASE_H - 4), full))
-                # longest label that fits, never mid-word
-                p.setFont(phase_font)
-                fm = p.fontMetrics()
-                text = full if fm.horizontalAdvance(full) + 12 <= bw else short_phase(lbl)
-                if fm.horizontalAdvance(text) + 10 <= bw:
-                    p.setPen(QColor(fg))
-                    p.drawText(QRectF(x0 + 6, 2, bw - 8, self._PHASE_H - 4),
-                               Qt.AlignmentFlag.AlignVCenter, text)
-        p.setFont(gutter_font)
-        for who in self._LANES:
-            y = self._lane_y(who)
-            p.setPen(QColor(dt.border()))
-            p.drawLine(self._GUTTER, y + self._LANE_H - 1, W - 4, y + self._LANE_H - 1)
-            p.setPen(QColor(dt.boxer_colors(who)[2] if who in ("A", "B") else dt.text_tertiary()))
-            p.drawText(QRectF(0, y, self._GUTTER - 6, self._LANE_H),
-                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                       who if who == "Both" else f"Boxer {who}")
-        for lab in self.labels:
-            self._draw_label(p, lab, self._lane_y(lab.get("who", "Both")),
-                             QColor(lab.get("color", dt.accent())))
-        grey = QColor(dt.other_labeller())
-        for i, (name, labs) in enumerate(self.others):
-            y = self._other_y(i)
-            p.setPen(QColor(dt.border()))
-            p.drawLine(self._GUTTER, y + self._LANE_H - 1, W - 4, y + self._LANE_H - 1)
-            p.setPen(grey)
-            short = p.fontMetrics().elidedText(name, Qt.TextElideMode.ElideRight, self._GUTTER - 8)
-            p.drawText(QRectF(0, y, self._GUTTER - 6, self._LANE_H),
-                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, short)
-            for lab in labs:
-                self._draw_label(p, lab, y, grey, hollow=True)
-        px = self._x(self.playhead)
-        p.setPen(QPen(QColor(dt.text_primary()), 1.6))
-        p.drawLine(int(px), 0, int(px), self.height())
-        p.setBrush(QColor(dt.text_primary())); p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(QRectF(px - 4, 0, 8, 5), 2, 2)
+TimelineStrip = LaneTimeline      # the older name
 
-
-# ── background media loader ─────────────────────────────────────────────────────
 
 class _MediaLoadWorker(QThread):
     """Off the UI thread: open the camera decoders (reads every sidecar) and
@@ -665,7 +733,7 @@ class ReviewLabelScreen(QWidget):
     help_requested   = pyqtSignal()
     labeller_changed = pyqtSignal(str)      # "Your name" was set from this screen
 
-    PANEL_WIDTH = 348
+    PANEL_WIDTH = 360
     OTHERS_POLL_MS = 5000                   # how often other labellers' files are re-read
 
     def __init__(self, parent=None):
@@ -705,111 +773,123 @@ class ReviewLabelScreen(QWidget):
     def _build(self):
         root = QVBoxLayout(self); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
         root.addWidget(self._build_topbar())
-        body = QHBoxLayout(); body.setContentsMargins(16, 12, 16, 12); body.setSpacing(12)
-
-        # Left: the videos + brain activity scroll; the transport and timeline
-        # are PINNED below, so the tools you navigate with never scroll away.
-        left = QVBoxLayout(); left.setSpacing(10)
+        page = QVBoxLayout(); page.setContentsMargins(24, 14, 24, 14); page.setSpacing(12)
+        page.addWidget(self._build_compare_banner())
         self._scroll = QScrollArea(); self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         content = QWidget(); content.setObjectName("reviewContent")
         content.setStyleSheet(f"#reviewContent {{ background: {dt.canvas_bg()}; }}")
-        cv = QVBoxLayout(content); cv.setContentsMargins(0, 0, 0, 0); cv.setSpacing(10)
-
+        cv = QVBoxLayout(content); cv.setContentsMargins(0, 0, 0, 0); cv.setSpacing(12)
+        top = QHBoxLayout(); top.setSpacing(18)
         self._grid = VideoGrid([("", "Side camera 1"), ("", "Side camera 2"),
                                 ("", "Boxer A view"), ("", "Boxer B view")])
-        grid_wrap = QFrame()
-        grid_wrap.setObjectName("videoWrap")
-        grid_wrap.setStyleSheet(f"#videoWrap {{ background: {dt.stage()}; "
-                                f"border-radius: {dt.RADIUS_LG}px; }}")
+        grid_wrap = QFrame(); grid_wrap.setObjectName("videoWrap")
+        grid_wrap.setStyleSheet(f"#videoWrap {{ background: {dt.stage()}; border-radius: 12px; }}")
         gw = QVBoxLayout(grid_wrap); gw.setContentsMargins(6, 6, 6, 6); gw.addWidget(self._grid)
-        grid_wrap.setMinimumHeight(220)
-        cv.addWidget(grid_wrap, 1)
-
+        grid_wrap.setMinimumHeight(240)
+        top.addWidget(grid_wrap, 3)
+        self._labels_panel = self._build_labels_panel()
+        top.addWidget(self._labels_panel, 0)
+        cv.addLayout(top, 1)
         self._brain = BrainActivityCard()
         cv.addWidget(self._brain)
         self._scroll.setWidget(content)
-        left.addWidget(self._scroll, 1)
-        left.addWidget(self._build_dock())          # pinned: transport + timeline
-        body.addLayout(left, 1)
-
-        self._labels_panel = self._build_labels_panel()
-        body.addWidget(self._labels_panel)
-        root.addLayout(body, 1)
+        page.addWidget(self._scroll, 1)
+        page.addWidget(self._build_dock())          # pinned: transport + lanes
+        root.addLayout(page, 1)
 
     def _build_topbar(self):
-        bar = QFrame(); bar.setFixedHeight(60); bar.setObjectName("topBar")
+        bar = QFrame(); bar.setFixedHeight(66); bar.setObjectName("topBar")
         bar.setStyleSheet(f"#topBar {{ background: {dt.surface()}; "
                           f"border-bottom: 1px solid {dt.border()}; }}")
-        h = QHBoxLayout(bar); h.setContentsMargins(12, 8, 16, 8); h.setSpacing(10)
-        back = ui.ghost_button("Sessions", icon="arrow-left")
-        back.setMinimumHeight(40)
-        back.clicked.connect(self.back_to_sessions.emit)
+        h = QHBoxLayout(bar); h.setContentsMargins(16, 8, 24, 8); h.setSpacing(16)
+        back = QPushButton("‹  Sessions"); back.setMinimumHeight(40)
+        back.setCursor(Qt.CursorShape.PointingHandCursor)
+        back.setStyleSheet(f"QPushButton {{ border: 0; background: transparent; color: #475467; "
+                           f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_MD}px; font-weight: 500; "
+                           f"padding: 8px 10px; }}")
+        back.clicked.connect(self._leave)
         h.addWidget(back)
         tv = QVBoxLayout(); tv.setSpacing(0); tv.setContentsMargins(0, 0, 0, 0)
-        self._title = QLabel("Review & Label")
+        self._title = QLabel("Review & Label"); self._title.setTextFormat(Qt.TextFormat.RichText)
         self._title.setStyleSheet(dt.css_text(dt.SIZE_LG, 700))
-        self._title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._subtitle = QLabel("Open a recording from Sessions")
-        self._subtitle.setStyleSheet(dt.css_text(dt.SIZE_XS, 400, dt.text_tertiary()))
-        self._subtitle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._subtitle.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary(),
+                                                 f"font-family: {dt.FONT_MONO};"))
         tv.addWidget(self._title); tv.addWidget(self._subtitle)
         h.addLayout(tv, 1)
+        self._tabs = ui.Segmented([("My labels", "mine"), ("Compare", "compare")],
+                                  current="mine", height=36)
+        self._tabs.changed.connect(self._on_tab)
+        h.addWidget(self._tabs)
         self._autosave = ui.StatusLine("All labels saved", "ok", size=dt.SIZE_SM, wrap=False)
-        self._autosave.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
         h.addWidget(self._autosave)
         help_btn = ui.help_button()
         help_btn.clicked.connect(self.help_requested.emit)
         h.addWidget(help_btn)
-        self._export_btn = ui.primary_button("Export for analysis", icon="download")
-        self._export_btn.setMinimumHeight(40)
+        self._export_btn = ui.primary_button("Export for analysis")
         self._export_btn.clicked.connect(self._open_export)
         h.addWidget(self._export_btn)
         return bar
 
+    def _build_compare_banner(self):
+        self._compare_banner = ui.Card(tone="info", radius=14)
+        h = QHBoxLayout(self._compare_banner); h.setContentsMargins(16, 10, 16, 10); h.setSpacing(10)
+        tv = QVBoxLayout(); tv.setSpacing(2)
+        self._agree_text = ui.body("", color=dt.accent_hover(), size=dt.SIZE_SM, weight=600)
+        self._agree_sub = ui.muted("", size=dt.SIZE_XS)
+        tv.addWidget(self._agree_text); tv.addWidget(self._agree_sub)
+        h.addLayout(tv, 1)
+        self._compare_combo = QComboBox(); self._compare_combo.setFixedHeight(32)
+        self._compare_combo.setStyleSheet(dt.qss_combo(compact=True))
+        self._compare_combo.setToolTip("Whose labels to show beside yours")
+        self._compare_combo.currentIndexChanged.connect(self._on_compare_changed)
+        h.addWidget(self._compare_combo)
+        self._tol_combo = _small_combo(
+            [(f"within {t:g} s", t) for t in label_agreement.TOLERANCES], self._tolerance,
+            "Two labels count as the same event when they are the same label for the same "
+            "boxer and start within this long of each other.")
+        self._tol_combo.setFixedHeight(32)
+        self._tol_combo.currentIndexChanged.connect(self._on_tolerance_changed)
+        h.addWidget(self._tol_combo)
+        self._compare_banner.setVisible(False)
+        return self._compare_banner
+
     def _build_dock(self):
-        """Transport + timeline, always visible under the videos."""
+        """Transport + lanes, always visible under the videos and the EEG."""
         dock = QFrame(); dock.setObjectName("dock")
         dock.setStyleSheet(dt.qss_card("dock"))
-        v = QVBoxLayout(dock); v.setContentsMargins(14, 10, 14, 10); v.setSpacing(8)
-        h = QHBoxLayout(); h.setSpacing(6)
-        self._back_btn = self._tbtn("step-back", "Back one frame (←)", lambda: self._step(-1))
-        self._play_btn = QPushButton()
-        self._play_btn.setFixedSize(48, 40)
+        v = QVBoxLayout(dock); v.setContentsMargins(16, 8, 16, 10); v.setSpacing(6)
+        h = QHBoxLayout(); h.setSpacing(10)
+        self._play_btn = QPushButton(); self._play_btn.setFixedSize(42, 42)
         self._play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._play_btn.setToolTip("Play / pause (Space)")
-        self._play_btn.setAccessibleName("Play or pause")
-        self._play_btn.setStyleSheet(dt.qss_primary_button() + " QPushButton { padding: 0; }")
+        self._play_btn.setToolTip("Play / pause (Space)"); self._play_btn.setAccessibleName("Play")
+        self._play_btn.setStyleSheet(dt.qss_primary_button() + " QPushButton { padding: 0; "
+                                     "border-radius: 21px; }")
         self._play_btn.clicked.connect(self._toggle_play)
-        self._fwd_btn = self._tbtn("step-forward", "Forward one frame (→)", lambda: self._step(1))
-        h.addWidget(self._back_btn); h.addWidget(self._play_btn); h.addWidget(self._fwd_btn)
-        h.addSpacing(8)
-        self._time_lbl = ui.TimerLabel(px=17)
-        self._time_lbl.set_template("00:00.00 / 00:00.00")
-        self._time_lbl.setText("00:00.00 / 00:00.00")
+        h.addWidget(self._play_btn)
+        self._time_lbl = ui.TimerLabel(px=16)
+        self._time_lbl.set_template("00:00.00")
+        self._time_lbl.setText("00:00.00")
         h.addWidget(self._time_lbl)
-        self._phase_chip = QLabel("")
-        self._phase_chip.setStyleSheet(dt.css_text(dt.SIZE_SM, 600, dt.text_secondary()))
-        self._phase_chip.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._phase_chip = ui.muted("", size=dt.SIZE_MD, wrap=False)
         h.addWidget(self._phase_chip, 1)
-        for text, tip, step in (("‹", "Jump to the previous label (↑)", -1),
-                                ("›", "Jump to the next label (↓)", 1)):
-            b = ui.secondary_button(text, compact=True, tip=tip)
-            b.setFixedSize(36, 34); b.setAccessibleName(tip)
-            b.setStyleSheet(dt.qss_secondary_button(True) +
-                            " QPushButton { padding: 0 0 3px 0; font-size: 18px; }")
-            b.clicked.connect(lambda _c=False, d=step: self._jump_label(d))
-            h.addWidget(b)
-        h.addSpacing(4)
-        self._speed = ui.Segmented([(lbl, s) for s, lbl in _SPEEDS], current=1.0, height=34)
+        self._sys_chip = QLabel(""); self._sys_chip.setObjectName("sysChip")
+        self._sys_chip.setStyleSheet(f"#sysChip {{ background: {dt.card_bg_hover()}; border-radius: 6px; "
+                                     f"padding: 3px 8px; font-family: {dt.FONT_MONO}; "
+                                     f"font-size: {dt.SIZE_SM}px; }}")
+        self._sys_chip.setVisible(False)
+        h.addWidget(self._sys_chip)
+        self._speed = ui.Segmented([(lbl, s) for s, lbl in _SPEEDS], current=1.0, height=32)
         self._speed.setToolTip("Playback speed")
         self._speed.changed.connect(self._set_speed)
-        self._speed_group = self._speed       # (kept name: the buttons of the speed control)
+        self._speed_group = self._speed
         h.addWidget(self._speed)
         v.addLayout(h)
-        self._strip = TimelineStrip()
-        self._strip.seek_requested.connect(self._seek)
+        self._strip = LaneTimeline()
+        self._strip.seek_requested.connect(self._on_timeline_seek)
+        self._strip.selected.connect(self._on_timeline_select)
         v.addWidget(self._strip)
         self._timeline_card = dock
         self._set_play_icon(False)
@@ -822,42 +902,55 @@ class ReviewLabelScreen(QWidget):
 
     def _set_play_icon(self, playing):
         self._play_btn.setIcon(QIcon(dt.icon_pixmap("pause" if playing else "play",
-                                                    color="#FFFFFF", size=18)))
-        self._play_btn.setIconSize(QSize(18, 18))
+                                                    color="#FFFFFF", size=16)))
+        self._play_btn.setIconSize(QSize(16, 16))
+
+    def _label_grid_widget(self, for_moment=False):
+        grid = QGridLayout(); grid.setSpacing(6)
+        return grid
 
     def _build_labels_panel(self):
         panel = QFrame(); panel.setObjectName("labelPanel"); panel.setFixedWidth(self.PANEL_WIDTH)
         panel.setStyleSheet(dt.qss_card("labelPanel"))
-        v = QVBoxLayout(panel); v.setContentsMargins(16, 14, 16, 12); v.setSpacing(8)
+        v = QVBoxLayout(panel); v.setContentsMargins(16, 12, 16, 12); v.setSpacing(8)
+        self._panel_tabs = ui.Segmented([("Label", "label"), ("Activity", "activity")],
+                                        current="label", height=34)
+        self._panel_tabs.changed.connect(self._on_panel_tab)
+        v.addWidget(self._panel_tabs)
+        self._panel_stack = QStackedWidget()
+        v.addWidget(self._panel_stack, 1)
 
-        # who is labelling
-        idrow = QHBoxLayout(); idrow.setSpacing(8)
-        idrow.addWidget(ui.heading("Label"))
-        idrow.addStretch()
-        self._labeller_chip = ui.ghost_button("", icon="user", compact=True,
-                                              tip="Labels you place are saved under this name.")
+        # ── Label tab: normal / custom note / moment ──
+        self._mode_stack = QStackedWidget()
+        self._panel_stack.addWidget(self._mode_stack)
+        normal = QWidget(); nv = QVBoxLayout(normal); nv.setContentsMargins(0, 0, 0, 0); nv.setSpacing(8)
+        idrow = QHBoxLayout(); idrow.setSpacing(6)
+        self._add_head = QLabel("Add a label"); self._add_head.setStyleSheet(dt.css_text(dt.SIZE_MD, 700))
+        idrow.addWidget(self._add_head, 1)
+        self._labeller_chip = QPushButton("")
+        self._labeller_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._labeller_chip.setToolTip("Labels you place are saved under this name. Not you?")
+        self._labeller_chip.setStyleSheet(f"QPushButton {{ border: 0; background: transparent; "
+                                          f"color: {dt.accent()}; font-family: {dt.FONT_UI}; "
+                                          f"font-size: {dt.SIZE_SM}px; font-weight: 600; }}")
         self._labeller_chip.clicked.connect(self._show_name_ask)
         idrow.addWidget(self._labeller_chip)
-        v.addLayout(idrow)
-
-        # "Your name", asked once
+        nv.addLayout(idrow)
         self._name_ask = ui.Card(tone="info", radius=dt.RADIUS_MD)
         na = QVBoxLayout(self._name_ask); na.setContentsMargins(12, 10, 12, 12); na.setSpacing(8)
         na.addWidget(ui.body("Who is labelling?", color=dt.text_primary(), weight=700))
-        na.addWidget(ui.muted("Your labels are saved under your name, separately from anyone "
-                              "else's, so two people can label the same recording.",
+        na.addWidget(ui.muted("Your labels are saved under your name, so several people can label "
+                              "the same session. We only ask once on this computer.",
                               size=dt.SIZE_XS))
-        self._name_edit = QLineEdit(); self._name_edit.setPlaceholderText("Your name")
+        self._name_edit = QLineEdit(); self._name_edit.setPlaceholderText("e.g. Maya K")
         self._name_edit.setMinimumHeight(40); self._name_edit.setStyleSheet(dt.qss_input())
         self._name_edit.returnPressed.connect(self._confirm_name)
         na.addWidget(self._name_edit)
-        self._name_ok = ui.primary_button("Start labelling")
+        self._name_ok = ui.primary_button("Save")
         self._name_ok.clicked.connect(self._confirm_name)
         na.addWidget(self._name_ok)
-        v.addWidget(self._name_ask)
-
-        # 1 · who did it
-        v.addWidget(ui.caption("Who did it?"))
+        nv.addWidget(self._name_ask)
+        nv.addWidget(ui.body("1 · Who?", weight=600, size=dt.SIZE_SM))
         who_row = QHBoxLayout(); who_row.setSpacing(6)
         self._who_btns = {}
         for which in ("A", "B", "Both"):
@@ -865,43 +958,117 @@ class ReviewLabelScreen(QWidget):
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(lambda _c=False, w=which: self._set_who(w))
             self._who_btns[which] = b; who_row.addWidget(b, 1)
-        v.addLayout(who_row)
-
-        # 2 · what happened
-        v.addWidget(ui.caption("What happened?  ·  click or press the number"))
+        nv.addLayout(who_row)
+        nv.addWidget(ui.body("2 · What happened?", weight=600, size=dt.SIZE_SM))
         self._label_grid = QGridLayout(); self._label_grid.setSpacing(6)
-        v.addLayout(self._label_grid)
+        nv.addLayout(self._label_grid)
         self._pending_note = ui.Card(tone="warn", radius=dt.RADIUS_SM)
         pn = QHBoxLayout(self._pending_note); pn.setContentsMargins(10, 8, 10, 8)
         self._pending_text = ui.body("", color=dt._p().warning_text, size=dt.SIZE_XS, weight=500)
         pn.addWidget(self._pending_text, 1)
         self._pending_note.setVisible(False)
-        v.addWidget(self._pending_note)
+        nv.addWidget(self._pending_note)
         self._clinch_note = ui.muted("", size=dt.SIZE_XS)
-        v.addWidget(self._clinch_note)
-        v.addWidget(ui.hline())
-
-        # My labels | Compare
-        tabs = QHBoxLayout(); tabs.setSpacing(6)
-        self._tabs = ui.Segmented([("My labels", "mine"), ("Compare", "compare")],
-                                  current="mine", height=32)
-        self._tabs.changed.connect(self._on_tab)
-        tabs.addWidget(self._tabs); tabs.addStretch()
-        self._undo_btn = ui.icon_button("undo", f"Undo ({platform_utils.shortcut('Z')})", size=32)
+        nv.addWidget(self._clinch_note)
+        self._note_btn = QPushButton("▢  Custom note…")
+        self._note_btn.setMinimumHeight(40); self._note_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._note_btn.setStyleSheet(f"QPushButton {{ border: 1px dashed {dt.border_strong()}; "
+                                     f"background: {dt.surface()}; color: {dt.accent_hover()}; "
+                                     f"border-radius: 10px; font-family: {dt.FONT_UI}; "
+                                     f"font-size: {dt.SIZE_MD}px; font-weight: 600; }}")
+        self._note_btn.clicked.connect(self.start_note)
+        nv.addWidget(self._note_btn)
+        self._sel_strip = QFrame(); self._sel_strip.setObjectName("selStrip")
+        self._sel_strip.setStyleSheet(f"#selStrip {{ background: {dt.card_bg_hover()}; border-radius: 10px; }}")
+        ss_ = QHBoxLayout(self._sel_strip); ss_.setContentsMargins(10, 6, 6, 6)
+        self._sel_text = ui.body("", size=dt.SIZE_SM); ss_.addWidget(self._sel_text, 1)
+        self._sel_delete = ui.secondary_button("Delete", compact=True)
+        self._sel_delete.clicked.connect(self._delete_selected)
+        ss_.addWidget(self._sel_delete)
+        self._sel_strip.setVisible(False)
+        nv.addWidget(self._sel_strip)
+        self._moments_warn = QLabel(""); self._moments_warn.setWordWrap(True)
+        self._moments_warn.setObjectName("momWarn")
+        self._moments_warn.setStyleSheet(f"#momWarn {{ background: {dt.warning_bg()}; color: "
+                                         f"{dt.warning_color()}; border-radius: 10px; padding: 8px 10px; "
+                                         f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; "
+                                         f"font-weight: 500; }}")
+        self._moments_warn.setVisible(False)
+        nv.addWidget(self._moments_warn)
+        self._legacy_note = ui.Card(tone="info", radius=dt.RADIUS_SM)
+        ln = QVBoxLayout(self._legacy_note); ln.setContentsMargins(10, 8, 10, 8); ln.setSpacing(6)
+        self._legacy_text = ui.body("", color=dt.text_secondary(), size=dt.SIZE_XS)
+        ln.addWidget(self._legacy_text)
+        self._legacy_btn = ui.secondary_button("These are mine", compact=True)
+        self._legacy_btn.clicked.connect(self._claim_legacy)
+        ln.addWidget(self._legacy_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        self._legacy_note.setVisible(False)
+        nv.addWidget(self._legacy_note)
+        nv.addStretch()
+        foot = QHBoxLayout()
+        foot.addWidget(ui.muted("Space play · 1–8 label · N note", size=dt.SIZE_SM), 1)
+        self._undo_btn = ui.secondary_button("Undo", compact=True)
         self._undo_btn.clicked.connect(self.undo)
-        tabs.addWidget(self._undo_btn)
-        v.addLayout(tabs)
+        foot.addWidget(self._undo_btn)
+        nv.addLayout(foot)
+        self._mode_stack.addWidget(normal)
 
-        self._tab_stack = QStackedWidget()
-        self._tab_stack.addWidget(self._build_mine_tab())
-        self._tab_stack.addWidget(self._build_compare_tab())
-        v.addWidget(self._tab_stack, 1)
+        # custom note
+        note = QWidget(); tv = QVBoxLayout(note); tv.setContentsMargins(0, 0, 0, 0); tv.setSpacing(8)
+        self._note_head = QLabel("Custom note"); self._note_head.setStyleSheet(dt.css_text(dt.SIZE_MD, 700))
+        tv.addWidget(self._note_head)
+        tv.addWidget(ui.muted("Describe what is happening. Custom notes stay with this session only; "
+                              "they are not added to the label list.", size=dt.SIZE_SM))
+        nrow = QHBoxLayout(); nrow.setSpacing(6)
+        self._note_who_btns = {}
+        for which in ("A", "B", "Both"):
+            b = QPushButton(which); b.setCheckable(True); b.setMinimumHeight(38)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.clicked.connect(lambda _c=False, w=which: self._set_who(w))
+            self._note_who_btns[which] = b; nrow.addWidget(b, 1)
+        tv.addLayout(nrow)
+        self._note_text = QTextEdit(); self._note_text.setAcceptRichText(False)
+        self._note_text.setPlaceholderText("e.g. A keeps pressing forward, B backs onto the ropes "
+                                           "and covers up")
+        self._note_text.setFixedHeight(110)
+        self._note_text.textChanged.connect(
+            lambda: self._note_save.setEnabled(bool(self._note_text.toPlainText().strip())))
+        tv.addWidget(self._note_text)
+        nb = QHBoxLayout(); nb.addStretch()
+        cancel = ui.secondary_button("Cancel", compact=True); cancel.clicked.connect(self.cancel_note)
+        self._note_save = ui.primary_button("Add note", compact=True)
+        self._note_save.clicked.connect(self.add_note); self._note_save.setEnabled(False)
+        nb.addWidget(cancel); nb.addWidget(self._note_save)
+        tv.addLayout(nb); tv.addStretch()
+        self._mode_stack.addWidget(note)
 
-        z = platform_utils.shortcut("Z")
-        helpl = ui.muted(f"Space play/pause · ← → one frame (Shift: 1 second) · ↑ ↓ previous/next "
-                         f"label · 1–9 place a label · Tab switch boxer · {z} undo",
-                         size=dt.SIZE_CAPTION)
-        v.addWidget(helpl)
+        # a marked moment
+        mom = QWidget(); mv = QVBoxLayout(mom); mv.setContentsMargins(0, 0, 0, 0); mv.setSpacing(8)
+        mh = QHBoxLayout()
+        self._moment_head = QLabel("Moment"); self._moment_head.setStyleSheet(dt.css_text(dt.SIZE_MD, 700))
+        mh.addWidget(self._moment_head, 1)
+        done = ui.secondary_button("Done", compact=True); done.clicked.connect(self._deselect)
+        mh.addWidget(done)
+        mv.addLayout(mh)
+        mv.addWidget(ui.body("Observer’s note", weight=600, size=dt.SIZE_SM))
+        self._moment_note = QTextEdit(); self._moment_note.setAcceptRichText(False)
+        self._moment_note.setPlaceholderText("What did you see at this moment?")
+        self._moment_note.setFixedHeight(90)
+        self._moment_note.textChanged.connect(self._on_moment_note_edited)
+        mv.addWidget(self._moment_note)
+        mv.addWidget(ui.muted("You can also pick a label below to put a label at this exact moment.",
+                              size=dt.SIZE_SM))
+        self._moment_grid = QGridLayout(); self._moment_grid.setSpacing(6)
+        mv.addLayout(self._moment_grid); mv.addStretch()
+        self._mode_stack.addWidget(mom)
+        self._moment_save_timer = QTimer(self); self._moment_save_timer.setSingleShot(True)
+        self._moment_save_timer.setInterval(700)
+        self._moment_save_timer.timeout.connect(self._save_moment_note)
+
+        # ── Activity tab ──
+        self._act_scroll, self._act_host, self._act_layout = self._scroll_list("activityHost")
+        self._panel_stack.addWidget(self._act_scroll)
+        self._selected = None          # ("label"|"note", id) or ("moment", index)
         self._set_who("A")
         self._refresh_identity()
         return panel
@@ -912,60 +1079,188 @@ class ReviewLabelScreen(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         host = QWidget(); host.setObjectName(name)
         host.setStyleSheet(f"#{name} {{ background: {dt.card_bg()}; }}")
-        lay = QVBoxLayout(host); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(4)
+        lay = QVBoxLayout(host); lay.setContentsMargins(0, 0, 0, 0); lay.setSpacing(0)
         lay.addStretch()
         scroll.setWidget(host)
         return scroll, host, lay
 
-    def _build_mine_tab(self):
-        w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(0, 0, 0, 0); v.setSpacing(6)
-        self._placed_head = ui.muted("No labels yet", size=dt.SIZE_XS, wrap=False)
-        v.addWidget(self._placed_head)
-        self._legacy_note = ui.Card(tone="info", radius=dt.RADIUS_SM)
-        ln = QVBoxLayout(self._legacy_note); ln.setContentsMargins(10, 8, 10, 8); ln.setSpacing(6)
-        self._legacy_text = ui.body("", color=dt.text_secondary(), size=dt.SIZE_XS)
-        ln.addWidget(self._legacy_text)
-        self._legacy_btn = ui.secondary_button("These are mine", compact=True)
-        self._legacy_btn.clicked.connect(self._claim_legacy)
-        ln.addWidget(self._legacy_btn, 0, Qt.AlignmentFlag.AlignLeft)
-        self._legacy_note.setVisible(False)
-        v.addWidget(self._legacy_note)
-        self._placed_scroll, self._placed_host, self._placed_layout = self._scroll_list("placedHost")
-        v.addWidget(self._placed_scroll, 1)
-        return w
+    # ---- the panel: tabs, modes, selection ----
+    def _on_panel_tab(self, key):
+        self._panel_stack.setCurrentIndex(0 if key == "label" else 1)
+        if key == "activity":
+            self._refresh_activity()
 
-    def _build_compare_tab(self):
-        w = QWidget(); v = QVBoxLayout(w); v.setContentsMargins(0, 0, 0, 0); v.setSpacing(6)
-        row = QHBoxLayout(); row.setSpacing(6)
-        self._compare_combo = QComboBox(); self._compare_combo.setFixedHeight(30)
-        self._compare_combo.setStyleSheet(dt.qss_combo(compact=True))
-        self._compare_combo.setToolTip("Whose labels to show beside yours")
-        self._compare_combo.currentIndexChanged.connect(self._on_compare_changed)
-        row.addWidget(self._compare_combo, 1)
-        self._tol_combo = _small_combo(
-            [(f"within {t:g} s", t) for t in label_agreement.TOLERANCES], self._tolerance,
-            "Two labels count as the same event when they are the same label for the same "
-            "boxer and start within this long of each other.")
-        self._tol_combo.setFixedHeight(30)
-        self._tol_combo.currentIndexChanged.connect(self._on_tolerance_changed)
-        row.addWidget(self._tol_combo)
-        v.addLayout(row)
-        self._agree_card = ui.Card(tone="subtle", radius=dt.RADIUS_SM)
-        ac = QVBoxLayout(self._agree_card); ac.setContentsMargins(10, 8, 10, 8); ac.setSpacing(2)
-        self._agree_text = ui.body("", color=dt.text_primary(), size=dt.SIZE_SM, weight=500)
-        self._agree_sub = ui.muted("", size=dt.SIZE_XS)
-        ac.addWidget(self._agree_text); ac.addWidget(self._agree_sub)
-        v.addWidget(self._agree_card)
-        self._diff_scroll, self._diff_host, self._diff_layout = self._scroll_list("diffHost")
-        v.addWidget(self._diff_scroll, 1)
-        return w
+    def _refresh_activity(self):
+        ui.clear_layout(self._act_layout, keep_last=1)
+        if not self._root:
+            return
+        for e in reversed(session_history.read_history(self._root)):
+            who, what = session_history.describe(e)
+            when = platform_utils.format_iso(e.get("time", ""), fallback=e.get("time", ""))
+            row = QLabel(f"<span style='color:{dt.text_tertiary()};font-family:{dt.FONT_MONO};"
+                         f"font-size:11px'>{when}</span><br><b>{who}</b> {what}")
+            row.setTextFormat(Qt.TextFormat.RichText); row.setWordWrap(True)
+            row.setObjectName("actRow")
+            row.setStyleSheet(f"#actRow {{ border-bottom: 1px solid #EEF1F6; padding: 7px 0; "
+                              f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; }}")
+            self._act_layout.insertWidget(self._act_layout.count() - 1, row)
+
+    def activity_lines(self) -> list:
+        return [self._act_layout.itemAt(i).widget().text()
+                for i in range(self._act_layout.count() - 1)]
+
+    def _current_t(self):
+        return self._player.t if self._player else getattr(self, "_t_shown", 0.0)
+
+    def start_note(self):
+        """Custom note… (N): describe something in your own words."""
+        if not self._labeller:
+            self._show_name_ask(); return
+        self._selected = None; self._strip.set_selection(None)
+        self._note_head.setText(f"Custom note at {_fmt_mmss(self._current_t())}")
+        self._note_text.clear()
+        self._panel_tabs.set_value("label", emit=True)
+        self._mode_stack.setCurrentIndex(1)
+        self._note_text.setFocus()
+
+    def cancel_note(self):
+        self._note_text.clear()
+        self._mode_stack.setCurrentIndex(0)
+
+    def add_note(self, text: str | None = None):
+        """Add note: a label of type "note" — who, when, the text, you."""
+        text = (self._note_text.toPlainText() if text is None else text).strip()
+        if not text:
+            return None
+        if not self._labeller:
+            self._show_name_ask(); return None
+        lab = labels_store.new_note(text, self._who, self._current_t(), created_by=self._labeller)
+        self._store.add(lab)
+        self._note_text.clear()
+        self._mode_stack.setCurrentIndex(0)
+        self._after_change(added=lab)
+        self._select(("note", lab["id"]))
+        return lab
+
+    def _on_timeline_seek(self, t):
+        self._deselect()
+        self._seek(t)
+
+    def _on_timeline_select(self, kind, key):
+        if kind == "system":
+            if 0 <= key < len(self._phases):
+                t, _pid, lab = self._phases[key]
+                self._sys_chip.setText(f"{lab} · {_fmt_time(t)}")
+                self._sys_chip.setVisible(True)
+                self._seek(t)
+            return
+        self._select((kind, key))
+
+    def _select(self, sel):
+        self._selected = sel
+        self._strip.set_selection(sel)
+        kind, key = sel
+        if kind == "moment":
+            if not (0 <= key < len(self._all_moments)):
+                return
+            m = self._all_moments[key]
+            self._seek(float(m["t_session_seconds"]))
+            self._moment_head.setText(f"Moment at {_fmt_mmss(m['t_session_seconds'])}")
+            self._moment_note.blockSignals(True)
+            self._moment_note.setPlainText(m.get("note") or "")
+            self._moment_note.blockSignals(False)
+            self._panel_tabs.set_value("label", emit=True)
+            self._mode_stack.setCurrentIndex(2)
+            return
+        lab = self._store.by_id(key)
+        if lab is None:
+            for _n, labs in self._others.items():
+                lab = next((l for l in labs if l.get("id") == key), None) or lab
+        if lab is None:
+            return
+        self._seek(float(lab["t_start"]))
+        mine = self._store.by_id(key) is not None
+        what = (f"“{lab.get('text', '')}”" if lab.get("type") == "note" else lab.get("label", ""))
+        self._sel_text.setText(f"Selected: <b>{what}</b> ({lab.get('who', '')}) at "
+                               f"{_fmt_mmss(lab['t_start'])} · {lab.get('created_by') or lab.get('labeller', '')}")
+        self._sel_text.setTextFormat(Qt.TextFormat.RichText)
+        self._sel_delete.setVisible(mine)
+        self._sel_strip.setVisible(True)
+        self._mode_stack.setCurrentIndex(0)
+
+    def _deselect(self):
+        self._selected = None
+        self._strip.set_selection(None)
+        self._sel_strip.setVisible(False)
+        self._sys_chip.setVisible(False)
+        if self._mode_stack.currentIndex() == 2:
+            self._save_moment_note()
+            self._mode_stack.setCurrentIndex(0)
+
+    def _delete_selected(self):
+        if self._selected and self._selected[0] in ("label", "note"):
+            self._delete_label(self._selected[1])
+            self._deselect()
+
+    def _on_moment_note_edited(self):
+        self._moment_save_timer.start()
+
+    def _save_moment_note(self):
+        """The observer's note of the selected moment: saved into the recording
+        (manifest + moments.csv), shared with everyone who opens it."""
+        self._moment_save_timer.stop()
+        if not (self._selected and self._selected[0] == "moment" and self._root):
+            return
+        i = self._selected[1]
+        if not (0 <= i < len(self._all_moments)):
+            return
+        m = self._all_moments[i]
+        text = session_storage.clean_note(self._moment_note.toPlainText())
+        if text == (m.get("note") or ""):
+            return
+        had = bool(m.get("note"))
+        if session_storage.set_moment_note(self._root, m["t_session_seconds"], text):
+            m["note"] = text
+            if text and not had:
+                try:
+                    session_history.log_event(self._root, session_history.EVENT_MOMENT_NOTED,
+                                              {"t_session_seconds": m["t_session_seconds"],
+                                               "note": text}, user=self._labeller or None)
+                except Exception:
+                    pass
+            self._mark_saved()
+        else:
+            self._autosave.set("Not saved — the recordings folder can't be reached.", "bad")
+        self._strip.set_moments(self._all_moments)
+        self._refresh_moments_warning()
+
+    def set_moment_note(self, index: int, text: str) -> bool:
+        """Write a moment's note (tests and keyboard users)."""
+        self._select(("moment", index))
+        self._moment_note.setPlainText(text)
+        self._save_moment_note()
+        return self._all_moments[index].get("note") == session_storage.clean_note(text)
+
+    def _refresh_moments_warning(self):
+        n = sum(1 for m in self._all_moments if not m.get("note"))
+        self._moments_warn.setText(f"{n} marked moment{'s' if n != 1 else ''} "
+                                   f"{'have' if n != 1 else 'has'} no note yet — click "
+                                   f"{'them' if n != 1 else 'it'} on the timeline")
+        self._moments_warn.setVisible(bool(n) and not self._sel_strip.isVisible())
+
+    def _leave(self):
+        """‹ Sessions: everything is already saved; say so if labels were added."""
+        if self._unsaved and self._root:
+            self._save_now()
+        self._save_moment_note()
+        self.back_to_sessions.emit()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        self._brain.fit_to(self._scroll.viewport().height())
+        self._brain.fit_to(self._scroll.viewport().height() - 240)
 
     def showEvent_fit(self):
-        self._brain.fit_to(self._scroll.viewport().height())
+        self._brain.fit_to(self._scroll.viewport().height() - 240)
 
     # ---- who is labelling ----
     def labeller(self) -> str:
@@ -973,10 +1268,9 @@ class ReviewLabelScreen(QWidget):
 
     def _refresh_identity(self):
         named = bool(self._labeller)
-        self._labeller_chip.setText(self._labeller if named else "Set your name")
+        self._labeller_chip.setText(f"as {self._labeller} · Not you?" if named
+                                    else "you’ll be asked your name")
         self._name_ask.setVisible(not named)
-        for b in getattr(self, "_label_btn_widgets", []):
-            b.setEnabled(named)
 
     def _show_name_ask(self):
         self._name_edit.setText(self._labeller)
@@ -1002,15 +1296,6 @@ class ReviewLabelScreen(QWidget):
             self._open_labels()
             self._refresh_all_labels()
 
-    def set_names_hidden(self, hidden: bool) -> None:
-        if bool(hidden) == self._hide_names:
-            return
-        self._hide_names = bool(hidden)
-        self._update_who_button_labels()
-        if self._root:
-            self._refresh_titles()
-            self._brain.set_names(self._brain_names())
-
     def _shown(self, which):
         return self._names.get(which) or f"Boxer {which}"
 
@@ -1018,7 +1303,7 @@ class ReviewLabelScreen(QWidget):
         return bool(self._names.get(which)) and not self._hide_names
 
     def _brain_names(self):
-        return [f"Boxer {w}" + (f" · {self._names[w]}" if self._has_name(w) else "")
+        return [f"Boxer {w} · {self._names[w]}" if self._names.get(w) else f"Boxer {w}"
                 for w in ("A", "B")]
 
     # ---- loading (labels-first; media in the background) ----
@@ -1027,14 +1312,21 @@ class ReviewLabelScreen(QWidget):
         self._root = root
         self._loaded = False
         self._labeller = app_settings.labeller_name() or self._labeller
-        self._hide_names = False
         self._refresh_identity()
+        self._deselect()
+        self._mode_stack.setCurrentIndex(0)
+        self._panel_tabs.set_value("label", emit=True)
         recordings_dir = os.path.dirname(os.path.abspath(root))
         self._vocab = label_vocab.load(recordings_dir)
         self._rebuild_label_buttons()
 
         man = session_storage._read_manifest(root) or {}
         self._names = {w: fighters.display(man, w) for w in ("A", "B")}
+        self._fcolours = {w: fighters.info(man, w)["colour_hex"] or dt.boxer_colors(w)[0]
+                          for w in ("A", "B")}
+        self._stopped_early = bool(man.get("stopped_early"))
+        self._interrupted = bool(man.get("interrupted"))
+        self._strip.set_fighters(self._names, self._fcolours)
         self._started_at = man.get("started_at", "") or ""
         cfg = man.get("config") or {}
         self._rounds = int(cfg.get("num_rounds") or 0)
@@ -1105,18 +1397,20 @@ class ReviewLabelScreen(QWidget):
 
     def _refresh_titles(self):
         a, b = self._names.get("A"), self._names.get("B")
+        fc = getattr(self, "_fcolours", {})
         when = platform_utils.format_iso(self._started_at,
                                          fallback=os.path.basename(self._root or ""))
-        if self._hide_names:
-            vs = "Boxer A vs Boxer B"
-        else:
-            vs = f"{a} vs {b}" if a and b else (a or b or "No names")
-        self._title.setText(f"{when} · {vs}")
+        self._title.setText(ui.versus_html(a or "Boxer A", fc.get("A"), b or "Boxer B",
+                                           fc.get("B"), 16))
         mins = max(1, round(self._duration / 60)) if self._duration else 0
-        self._subtitle.setText(self._subtitle_text(mins, self._rounds))
+        self._subtitle.setText(f"{when} · " + self._subtitle_text(mins, self._rounds))
 
     def _subtitle_text(self, mins, rounds, a=None, b=None):
-        bits = [f"{mins} min", f"{rounds} round{'s' if rounds != 1 else ''}"]
+        bits = [f"{rounds} round{'s' if rounds != 1 else ''}", f"{mins} min"]
+        if getattr(self, "_interrupted", False):
+            bits = [f"Interrupted · saved up to {_fmt_mmss(self._duration)}"]
+        elif getattr(self, "_stopped_early", False):
+            bits = [f"Stopped early · {_fmt_mmss(self._duration)}"]
         n = len(self._others)
         if n:
             bits.append(f"also labelled by {', '.join(self._others)}" if n <= 2
@@ -1162,25 +1456,30 @@ class ReviewLabelScreen(QWidget):
         self._grid = new
 
     def _rebuild_label_buttons(self):
-        ui.clear_layout(self._label_grid)
+        """The label list as buttons (keys 1–8/9), twice: in "What happened?"
+        and in the moment editor (puts the label at the moment's time)."""
         self._label_buttons = {}
         self._label_btn_widgets = []
         long_ones = []
-        for i, entry in enumerate(self._vocab):
-            key = entry.get("key", i + 1)
-            b = QPushButton(f"{key}   {entry['name']}")
-            b.setMinimumHeight(40); b.setCursor(Qt.CursorShape.PointingHandCursor)
-            b.setStyleSheet(_label_button_qss(entry.get("color", dt.accent())))
-            lasts = entry.get("kind") == label_vocab.DURATION
-            b.setToolTip(f"Press {key}" + (" when it starts and again when it ends"
-                                          if lasts else " to place it at the current moment"))
-            b.clicked.connect(lambda _c=False, e=entry: self._place_from_vocab(e))
-            b.setEnabled(bool(self._labeller))
-            self._label_grid.addWidget(b, i // 2, i % 2)
-            self._label_buttons[key] = entry
-            self._label_btn_widgets.append(b)
-            if lasts:
-                long_ones.append(entry["name"])
+        for grid, at_moment in ((self._label_grid, False), (self._moment_grid, True)):
+            ui.clear_layout(grid)
+            for i, entry in enumerate(self._vocab):
+                key = entry.get("key", i + 1)
+                b = QPushButton(f"{key if key < 10 else ''}   {entry['name']}")
+                b.setMinimumHeight(38); b.setCursor(Qt.CursorShape.PointingHandCursor)
+                b.setStyleSheet(_label_button_qss(entry.get("color", dt.accent())))
+                lasts = entry.get("kind") == label_vocab.DURATION
+                b.setToolTip(f"Press {key}" + (" when it starts and again when it ends"
+                                              if lasts and not at_moment else ""))
+                if at_moment:
+                    b.clicked.connect(lambda _c=False, e=entry: self._label_at_moment(e))
+                else:
+                    b.clicked.connect(lambda _c=False, e=entry: self._place_from_vocab(e))
+                    self._label_buttons[key] = entry
+                    self._label_btn_widgets.append(b)
+                    if lasts:
+                        long_ones.append(entry["name"])
+                grid.addWidget(b, i // 2, i % 2)
         if long_ones:
             names = " and ".join(long_ones) if len(long_ones) <= 2 else \
                 ", ".join(long_ones[:-1]) + " and " + long_ones[-1]
@@ -1189,11 +1488,17 @@ class ReviewLabelScreen(QWidget):
                                       f"starts and again when it ends (Esc cancels).")
         self._clinch_note.setVisible(bool(long_ones))
 
+    def _label_at_moment(self, entry):
+        """A label exactly at the selected moment's time."""
+        if not self._labeller:
+            self._show_name_ask(); return
+        if not (self._selected and self._selected[0] == "moment"):
+            return
+        t = float(self._all_moments[self._selected[1]]["t_session_seconds"])
+        self._commit_label(entry, t, None)
+
     def _update_who_button_labels(self):
-        for which in ("A", "B"):
-            self._who_btns[which].setText(
-                f"{which} · {self._names[which]}" if self._has_name(which) else f"Boxer {which}")
-        self._who_btns["Both"].setText("Both")
+        self._set_who(self._who)
 
     # ---- transport / playhead ----
     def _toggle_play(self):
@@ -1236,37 +1541,49 @@ class ReviewLabelScreen(QWidget):
         self._grid.set_frames(frames)
 
     def _on_playhead(self, t):
+        self._t_shown = t
         self._brain.set_playhead(t)
         self._brain.update_contact(t)
         self._strip.set_playhead(t)
-        self._time_lbl.setText(f"{_fmt_time(t)} / {_fmt_time(self._duration)}")
-        text, pid = self._phase_text(t)
-        self._phase_chip.setText(text)
-        if pid != getattr(self, "_chip_pid", None):
-            self._chip_pid = pid
-            self._phase_chip.setStyleSheet(dt.css_text(
-                dt.SIZE_SM, 600, dt.phase_fill(pid)[1] if pid else dt.text_secondary()))
+        self._time_lbl.setText(_fmt_time(t))
+        text, _pid = self._phase_text(t)
+        self._phase_chip.setText(f"of {_fmt_mmss(self._duration)}" + (f" · {text}" if text else ""))
+        self._add_head.setText(f"Add a label at {_fmt_mmss(t)}")
 
     def _on_state(self, playing):
         self._set_play_icon(playing)
 
     def _phase_text(self, t):
         active = None
-        for (mt, pid, label) in self._phases:
+        for (mt, pid, label) in [m for m in self._phases if session_storage.is_phase_start(m[2])]:
             if mt <= t + 1e-6:
                 active = (mt, pid, label)
             else:
                 break
         if active is None or active[1] == "done":
             return "", None
-        return f"{friendly_phase(active[2])} · {_fmt_mmss(t - active[0])} in", active[1]
+        return friendly_phase(active[2]), active[1]
 
     # ---- labels ----
     def _set_who(self, which):
         self._who = which
-        for w, btn in self._who_btns.items():
-            btn.setStyleSheet(_who_qss(w, w == which))
-            btn.setChecked(w == which)
+        fc = getattr(self, "_fcolours", {"A": dt.boxer_colors("A")[0], "B": dt.boxer_colors("B")[0]})
+        for btns in (self._who_btns, getattr(self, "_note_who_btns", {})):
+            for w, btn in btns.items():
+                on = w == which
+                if w == "Both":
+                    btn.setText("Both")
+                    bd, bg = (dt.text_secondary(), "#F1F3F7") if on else (dt.border_strong(), dt.surface())
+                else:
+                    btn.setText(f"{w} · {self._names.get(w) or ('Boxer ' + w)}")
+                    col = QColor(fc.get(w))
+                    bd = fc.get(w) if on else dt.border_strong()
+                    bg = _tint(fc.get(w), 0.12) if on else dt.surface()
+                btn.setStyleSheet(f"QPushButton {{ border: {'2px' if on else '1px'} solid {bd}; "
+                                  f"background: {bg}; color: {dt.text_primary()}; border-radius: 10px; "
+                                  f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; "
+                                  f"font-weight: {700 if on else 500}; }}")
+                btn.setChecked(on)
 
     def _cycle_who(self):
         order = ["A", "B", "Both"]
@@ -1327,63 +1644,31 @@ class ReviewLabelScreen(QWidget):
         self._refresh_all_labels()
 
     def _refresh_all_labels(self):
-        self._moments = [m for m in self._all_moments
-                         if not self._store.moment_named(m["t_session_seconds"])]
-        self._refresh_placed()
+        self._moments = list(self._all_moments)
         self._strip.set_labels(self._timeline_labels())
+        self._strip.set_moments(self._all_moments)
+        self._undo_btn.setEnabled(self._store.can_undo())
         self._refresh_compare()
         self._refresh_legacy_note()
+        self._refresh_moments_warning()
         self._brain.set_markers(self._eeg_markers())
 
     def _eeg_markers(self):
         """Every event of the recording as (time, text, colour) for the EEG
-        display: phase starts, marked moments, and your placed labels."""
-        pal = dt._p()
-        fg = {"baseline": pal.phase_rest[1], "round": pal.phase_round[1],
-              "break": pal.phase_break[1], "done": pal.phase_rest[1]}
-        out = [(t, short_phase(label), fg.get(pid, dt.text_secondary()))
-               for t, pid, label in self._phases]
-        out += [(float(m["t_session_seconds"]), "Moment", dt.record_red()) for m in self._moments]
+        display: the automatic system markers in grey, marked moments in red,
+        your labels and notes in their colours."""
+        out = [(t, label, dt.system_marker()) for t, _pid, label in self._phases]
+        out += [(float(m["t_session_seconds"]), "MOMENT", dt.record_red()) for m in self._all_moments]
         for lab in self._store.labels:
             col = lab.get("color", dt.accent())
-            text = f"{lab.get('label', '')} · {lab.get('who', '')}"
-            out.append((float(lab["t_start"]), text, col))
+            name = "Note" if labels_store.is_note(lab) else lab.get("label", "")
+            out.append((float(lab["t_start"]), f"{name} · {lab.get('who', '')}", col))
             if lab.get("t_end") is not None:
-                out.append((float(lab["t_end"]), f"{lab.get('label', '')} ends", col))
+                out.append((float(lab["t_end"]), f"{name} ends", col))
         return out
 
-    # ---- marked moments (unnamed until named here) ----
-    def _moment_pseudo_labels(self):
-        """Moments rendered as unnamed point labels to be named here."""
-        return [{"id": f"moment:{i}", "label": "Marked moment — click to name",
-                 "who": "Both", "kind": "point",
-                 "t_start": float(mo["t_session_seconds"]), "t_end": None,
-                 "color": dt.record_red(), "moment": True}
-                for i, mo in enumerate(self._moments)]
-
     def _timeline_labels(self):
-        return list(self._store.labels) + self._moment_pseudo_labels()
-
-    def _name_moment(self, moment_pseudo):
-        if not self._labeller:
-            self._show_name_ask(); return
-        t = float(moment_pseudo["t_start"])
-        dlg = _MomentNameDialog(self._vocab, {w: self._shown(w) if self._has_name(w) else None
-                                              for w in ("A", "B")}, self)
-        if dlg.exec() != QDialog.DialogCode.Accepted or dlg.result_entry is None:
-            return
-        self._apply_moment_name(t, dlg.result_entry, dlg.result_who)
-
-    def _apply_moment_name(self, t, entry, who):
-        """Turn the marked moment at ``t`` into a normal label of mine. The mark
-        itself stays in the recording, so every labeller can name it."""
-        lab = labels_store.new_label(
-            label=entry["name"], who=who, kind=label_vocab.POINT,
-            t_start=t, t_end=None, color=entry.get("color", dt.accent()),
-            created_by=self._labeller)
-        self._store.add(lab)
-        self._store.mark_moment_named(t)
-        self._after_change(added=lab)
+        return list(self._store.labels)
 
     # ---- saving ----
     def _autosave_and_history(self, added=None, removed=None):
@@ -1397,7 +1682,8 @@ class ReviewLabelScreen(QWidget):
                     session_history.log_event(
                         self._root, event,
                         {"label": lab["label"], "who": lab.get("who"),
-                         "t_start": lab.get("t_start"), "labeller": self._labeller},
+                         "t_start": lab.get("t_start"), "labeller": self._labeller,
+                         "type": lab.get("type") or "label"},
                         user=self._labeller)
         except Exception:
             pass
@@ -1428,84 +1714,6 @@ class ReviewLabelScreen(QWidget):
 
     def _mark_saved(self):
         self._autosave.set("All labels saved", "ok")
-
-    # ---- "My labels" ----
-    def _refresh_placed(self):
-        ui.clear_layout(self._placed_layout, keep_last=1)
-        labels = sorted(self._store.labels, key=lambda x: x.get("created_at", ""), reverse=True)
-        moments = self._moment_pseudo_labels()
-        n = len(labels)
-        head = f"{n} label{'s' if n != 1 else ''} placed, newest first" if n else \
-            ("No labels yet — play the video and press a number when something happens."
-             if self._labeller else "No labels yet")
-        if moments:
-            head = f"{len(moments)} marked moment{'s' if len(moments) != 1 else ''} to name · " + \
-                   (f"{n} label{'s' if n != 1 else ''}" if n else "no labels yet")
-        self._placed_head.setText(head)
-        self._placed_head.setWordWrap(not n)
-        self._tabs.button("mine").setText(f"My labels  {n}")
-        self._undo_btn.setEnabled(self._store.can_undo())
-        # Moments to name first (they need attention), then placed labels.
-        for mo in moments:
-            self._placed_layout.insertWidget(self._placed_layout.count() - 1, self._moment_row(mo))
-        for lab in labels:
-            self._placed_layout.insertWidget(self._placed_layout.count() - 1,
-                                             self._label_row(lab, deletable=True))
-
-    def _label_row(self, lab, deletable=False, tag=None):
-        """time · who · colour · name [· tag] [· delete]. Click to jump there."""
-        row = QFrame(); row.setObjectName("row")
-        row.setStyleSheet(f"QFrame#row {{ background: {dt.surface()}; border: 1px solid "
-                          f"{dt.border()}; border-radius: {dt.RADIUS_SM}px; }}"
-                          f"QFrame#row:hover {{ background: {dt.surface_subtle()}; }}")
-        row.setCursor(Qt.CursorShape.PointingHandCursor)
-        h = QHBoxLayout(row); h.setContentsMargins(8, 5, 4, 5); h.setSpacing(7)
-        tstr = _fmt_time(lab["t_start"]) + (f"–{_fmt_time(lab['t_end'])}"
-                                            if lab.get("t_end") is not None else "")
-        t = QLabel(tstr)
-        t.setStyleSheet(dt.css_text(dt.SIZE_XS, 500, dt.text_secondary()))
-        who = lab.get("who", "")
-        wl = QLabel(who)
-        wcol = dt.boxer_colors(who)[2] if who in ("A", "B") else dt.text_tertiary()
-        wl.setStyleSheet(dt.css_text(dt.SIZE_XS, 700, wcol))
-        name = QLabel(lab.get("label", ""))
-        name.setStyleSheet(dt.css_text(dt.SIZE_SM, 500))
-        h.addWidget(t); h.addWidget(wl)
-        h.addWidget(ui.Dot(lab.get("color", dt.accent()) if deletable or tag is None
-                           else dt.other_labeller(), 9))
-        h.addWidget(name, 1)
-        if tag:
-            tl = QLabel(tag); tl.setStyleSheet(dt.css_text(dt.SIZE_CAPTION, 600, dt.text_tertiary()))
-            h.addWidget(tl)
-        if deletable:
-            dele = ui.icon_button("x", "Remove this label", size=26, color=dt.text_tertiary(),
-                                  bordered=False)
-            dele.clicked.connect(lambda _c=False, i=lab["id"]: self._delete_label(i))
-            h.addWidget(dele)
-        else:
-            h.addSpacing(4)
-        def _seek_to(_e, ts=lab["t_start"]):
-            self._seek(ts)
-        row.mousePressEvent = _seek_to
-        return row
-
-    def _moment_row(self, mo):
-        """A 'Marked moment — click to name' row (DESIGN §6)."""
-        row = QFrame(); row.setObjectName("row")
-        row.setStyleSheet(
-            f"QFrame#row {{ background: {dt._p().warning_bg}; border: 1px solid "
-            f"{dt.warning_color()}; border-radius: {dt.RADIUS_SM}px; }}")
-        h = QHBoxLayout(row); h.setContentsMargins(8, 7, 8, 7); h.setSpacing(7)
-        t = QLabel(_fmt_time(mo["t_start"]))
-        t.setStyleSheet(dt.css_text(dt.SIZE_XS, 500, dt._p().warning_text))
-        name = QLabel("Marked moment — click to name")
-        name.setStyleSheet(dt.css_text(dt.SIZE_SM, 600, dt._p().warning_text))
-        h.addWidget(t); h.addWidget(name, 1)
-        row.setCursor(Qt.CursorShape.PointingHandCursor)
-        def _click(_e, m=mo):
-            self._seek(m["t_start"]); self._name_moment(m)
-        row.mousePressEvent = _click
-        return row
 
     # ---- labels from before labeller names ----
     def _refresh_legacy_note(self):
@@ -1538,8 +1746,6 @@ class ReviewLabelScreen(QWidget):
 
     # ---- Compare ----
     def _on_tab(self, key):
-        self._tab_stack.setCurrentIndex(0 if key == "mine" else 1)
-        self._undo_btn.setVisible(key == "mine")
         self._refresh_compare()
 
     def comparing(self) -> bool:
@@ -1556,8 +1762,10 @@ class ReviewLabelScreen(QWidget):
         if self._compare_with:
             self._compare_combo.setCurrentIndex(self._compare_combo.findData(self._compare_with))
         self._compare_combo.blockSignals(False)
-        self._compare_combo.setEnabled(bool(names))
-        self._tabs.button("compare").setText(f"Compare  {len(names)}" if names else "Compare")
+        self._compare_combo.setVisible(len(names) > 1)
+        self._tabs.setVisible(bool(names))
+        if not names and self._tabs.value() == "compare":
+            self._tabs.set_value("mine")
 
     def _on_compare_changed(self, _i):
         self._compare_with = self._compare_combo.currentData()
@@ -1571,43 +1779,29 @@ class ReviewLabelScreen(QWidget):
         return list(self._others.get(self._compare_with, [])) if self.comparing() else []
 
     def agreement(self):
-        """How far my labels and the compared labeller's agree (or None)."""
+        """How far my labels and the compared labeller's agree (custom notes
+        left out), or None."""
         if not self._compare_with:
             return None
-        return label_agreement.compare(self._store.labels, self._others.get(self._compare_with, []),
-                                       self._labeller or "You", self._compare_with, self._tolerance)
+        mine = [l for l in self._store.labels if not labels_store.is_note(l)]
+        theirs = [l for l in self._others.get(self._compare_with, []) if not labels_store.is_note(l)]
+        return label_agreement.compare(mine, theirs, self._labeller or "You",
+                                       self._compare_with, self._tolerance)
 
     def _refresh_compare(self):
         on = self.comparing()
         self._strip.set_others([(self._compare_with, self._others[self._compare_with])] if on else [])
-        if self._tabs.value() != "compare":
-            return
-        ui.clear_layout(self._diff_layout, keep_last=1)
-        self._tol_combo.setEnabled(bool(self._compare_with))
-        if not self._compare_with:
-            self._agree_text.setText("Nobody else has labelled this recording yet.")
-            self._agree_sub.setText("When another person labels it — on this computer or on "
-                                    "another one that uses the same recordings folder — their "
-                                    "labels appear here beside yours.")
+        self._compare_banner.setVisible(on)
+        if not on:
             return
         ag = self.agreement()
-        self._agree_text.setText(ag.sentence(a_is_you=True))
+        self._agree_text.setText(ag.sentence(a_is_you=True)
+                                 + f" Faded chips are {self._compare_with}’s.")
         self._agree_sub.setText(
             f"“The same event” means the same label for the same boxer, starting within "
             f"{self._tolerance:g} s of each other."
             + (f" On those, you differ by {ag.mean_time_difference:.2f} s on average."
                if ag.matched else ""))
-        rows = [(lab, "only you") for lab in ag.only_a] + \
-               [(lab, f"only {self._compare_with}") for lab in ag.only_b]
-        rows.sort(key=lambda r: float(r[0]["t_start"]))
-        for lab, tag in rows:
-            mine = tag == "only you"
-            self._diff_layout.insertWidget(self._diff_layout.count() - 1,
-                                           self._label_row(lab, deletable=False,
-                                                           tag=tag if not mine else "only you"))
-        if not rows and ag.total:
-            self._diff_layout.insertWidget(0, ui.muted("No differences — every event was marked "
-                                                       "by both of you.", size=dt.SIZE_XS))
 
     # ---- keyboard ----
     def _typing_now(self) -> bool:
@@ -1637,7 +1831,9 @@ class ReviewLabelScreen(QWidget):
         if key == Qt.Key.Key_Tab:
             self._cycle_who(); return True
         if key == Qt.Key.Key_Escape:
-            self._cancel_pending(); return True
+            self._cancel_pending(); self._deselect(); return True
+        if key == Qt.Key.Key_N:
+            self.start_note(); return True
         if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
             entry = (getattr(self, "_label_buttons", {}) or {}).get(key - Qt.Key.Key_0)
             if entry:
@@ -1667,6 +1863,9 @@ class ReviewLabelScreen(QWidget):
             return
         if self._unsaved:
             self._save_now()
+        self._save_moment_note()
+        if self._player:
+            self._player.pause() if hasattr(self._player, "pause") else None
         from brain_battle.data.export_module import ExportOptionsDialog
         ExportOptionsDialog(self._root, None, self._phases, self).exec()
 
@@ -1685,51 +1884,6 @@ class ReviewLabelScreen(QWidget):
             except Exception:
                 pass
             self._player = None
-
-
-class _MomentNameDialog(QDialog):
-    """Name a marked moment (DESIGN §6): pick who did it, then the label. The
-    chosen label turns the moment into a normal label."""
-
-    def __init__(self, vocab, names, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Name this moment")
-        self.setMinimumWidth(400)
-        self.result_entry = None
-        self.result_who = "Both"
-        v = QVBoxLayout(self); v.setContentsMargins(22, 20, 22, 20); v.setSpacing(10)
-        v.addWidget(ui.heading("Name this moment", size=dt.SIZE_XL))
-        v.addWidget(ui.caption("Who did it?"))
-        who_row = QHBoxLayout(); who_row.setSpacing(6)
-        self._who_btns = {}
-        for which in ("A", "B", "Both"):
-            text = (f"{which} · {names.get(which)}" if which in ("A", "B") and names.get(which)
-                    else (which if which == "Both" else f"Boxer {which}"))
-            b = QPushButton(text); b.setCheckable(True); b.setMinimumHeight(40)
-            b.setCursor(Qt.CursorShape.PointingHandCursor)
-            b.clicked.connect(lambda _c=False, w=which: self._set_who(w))
-            self._who_btns[which] = b; who_row.addWidget(b)
-        v.addLayout(who_row)
-        v.addWidget(ui.caption("What happened?"))
-        grid = QGridLayout(); grid.setSpacing(6)
-        for i, entry in enumerate(vocab):
-            btn = QPushButton(f"{entry.get('key', i + 1)}   {entry['name']}")
-            btn.setMinimumHeight(40); btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(_label_button_qss(entry.get("color", dt.accent())))
-            btn.clicked.connect(lambda _c=False, e=entry: self._pick(e))
-            grid.addWidget(btn, i // 2, i % 2)
-        v.addLayout(grid)
-        self._set_who("Both")
-
-    def _set_who(self, which):
-        self.result_who = which
-        for w, b in self._who_btns.items():
-            b.setChecked(w == which)
-            b.setStyleSheet(_who_qss(w, w == which))
-
-    def _pick(self, entry):
-        self.result_entry = entry
-        self.accept()
 
 
 __all__ = ["ReviewLabelScreen", "read_phase_markers", "friendly_phase", "short_phase",

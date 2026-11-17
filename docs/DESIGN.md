@@ -3,355 +3,258 @@
 **This file is the source of truth for all UI work.** If code and this file
 disagree, ask; don't guess.
 
-**History.** First approved 2026-10-27 from clickable mockups. Amended
-2026-11-13 for the standard EEG viewer
-(`docs/decisions/adr-0016-standard-eeg-viewer.md`). **Rewritten 2026-11-13 for
-the November 2026 redesign** — the owner asked for a real redesign and left
-everything open except light mode; the reasoning is in
-`docs/decisions/adr-0018-november-2026-redesign.md`, and before/after pictures
-of every screen are in `docs/reviews/redesign/`. This rewrite awaits the owner's
-review like the rest of `develop`.
+**History.** First approved 2026-10-27; rewritten 2026-11-13 for the November
+redesign (ADR-0018). **Rewritten 2026-11-17 for design F** — the approved
+clickable prototype `docs/design/prototype.html` (open it in a browser), with
+the professor's changes: fighter codes and colours instead of names
+([ADR-0023](decisions/adr-0023-fighter-codes-and-colours.md)), a 15 s lead-in,
+automatic system markers, moment notes, custom notes, the bell at both ends of a
+round, and the timing check ([ADR-0024](decisions/adr-0024-timing-check-and-buzzer-calibration.md)).
+Where the prototype and the written brief differed, the brief won; the
+differences are listed at the end. Awaits the owner's review with the rest of
+`develop`.
 
 ## Who it is for
 
 - **Operators** — researchers and assistants running a session in a gym or lab,
-  often standing, often in a hurry, sometimes looking at the screen from a few
-  metres away.
-- **Labellers and analysts** — at a desk, for hours, with a keyboard. More than
-  one person may label the same recording.
+  often standing, sometimes reading the screen from a few metres away.
+- **Labellers and analysts** — at a desk, for hours, with a keyboard. Several
+  people may label the same recording.
 
 None of them are developers.
 
 ## Principles
 
-1. **The three jobs are obvious and short:** start a recording, label a
-   recording, export. Each is reachable in one click from where you are.
+1. **Three jobs, one click each:** start a recording, label a recording,
+   export it.
 2. **Plain language only.** Never show: sync, align, offset, xcorr, capture
-   clock, POV, DSLR, baseline, monotonic, schema, slug.
-   *One deliberate exception:* the brain-activity display is a standard EEG
-   viewer and shows the electrode names TP9, AF7, AF8, TP10 and AUX,
-   microvolts and a time axis, always with the plain location available beside
-   them ("left ear"). Channel codes appear nowhere else.
-3. **Light mode only.** No theme toggle, no dark palette. (The area behind
-   video is dark because it is picture, not interface.)
-4. **Status is never colour alone:** an icon with its own shape, or a glyph
-   (✓ ! ✕), plus words.
-5. **Errors say what happened and what to do** ("The recordings folder can't be
-   reached. Check that the drive is connected, then press Try again.").
-6. **Nothing is lost silently.** Autosave everywhere; when something cannot be
-   saved the screen says so and retries.
-7. **It reads the same on Mac and Windows.** The file manager is "Finder" on a
-   Mac and "Explorer" on Windows; shortcuts are written ⌘Z or Ctrl+Z.
-8. **Sizes.** Main actions are at least 44 px tall. Text contrast meets WCAG AA
-   (4.5:1). Everything fits 1440×900 and 1280×800 with nothing clipped, and
-   stays usable at the minimum window, 1180×720.
+   clock, POV, monotonic, schema, slug. *Deliberate exceptions:* the EEG
+   display is a standard viewer (TP9, AF7, AF8, TP10, AUX, µV, a time axis); the
+   automatic markers are shown by their code (`ROUND_1_START`) in grey; the
+   timing check speaks of delay, jitter and milliseconds — the people who read
+   those screens need the real words.
+3. **Fighters are codes and colours, never names.** A labeller has a name.
+4. **Light mode only.** The area behind video is dark because it is picture.
+5. **Status is never colour alone:** a glyph (✓ ! ✕ ●) plus words.
+6. **Errors say what happened and what to do.**
+7. **Nothing is lost silently.** Autosave everywhere; a failed save says so.
+8. **Recording never pauses** — not for a note, not for the timing check.
+9. **Mac and Windows read the same** (Finder / Explorer, ⌘Z / Ctrl+Z).
+10. **Sizes:** main actions ≥ 42 px; text contrast ≥ 4.5:1; everything fits
+    1440×900 and 1280×800, usable at 1180×720.
 
 ## Vocabulary (UI word ← internal name)
 
-- Side camera 1 / Side camera 2 ← DSLR / side cams
-- Boxer A view / Boxer B view ← POV 01 / POV 02
-- Headband ← Muse-S; Brain activity ← EEG (the display's title is "Brain
-  activity (EEG)")
-- Rest before round 1 ← baseline; Round N, Break ← phase markers
-- Recording ← session capture; Recordings folder ← capture dir
-- "Weak contact: left ear" ← per-channel signal quality (TP9 = left ear, AF7 =
-  left forehead, AF8 = right forehead, TP10 = right ear)
-- Your name / labeller ← the person placing labels
-- Moment / Lasts a while ← point / duration label
-- "the same event" ← two labellers' labels matched within a tolerance
-- Show in Finder (Mac) / Show in Explorer (Windows) ← reveal in file manager
+- Side camera 1 / 2 ← side cams; Boxer A view / Boxer B view ← POV 01 / 02
+- Headband ← Muse-S; the EEG display shows the electrode names
+- Fighter code (K7Q2) and colour ← `boxers.A.code` / `colour`
+- Lead-in · Baseline · Round N · Break ← phases; automatic markers ← system
+  markers (`RECORDING_START` … `RECORDING_END`)
+- Moment (⚑, M) ← a "Mark this moment"; its note ← `moments[].note`
+- Custom note ← a label with `type: "note"`
+- "signal looks poor" ← the contact heuristic (the band does not report fit)
+- Test timing / buzzer test ← the timing check (ADR-0024)
+- Your name / labeller
 
 ## Design tokens
 
-Font: Inter (bundled; the system font if the file is missing). Code in the
-Documentation screen: JetBrains Mono (bundled). Timers and counts use
-equal-width digits so they do not jiggle.
+Fonts: **Inter** (UI) and **JetBrains Mono** (codes, times, file names), both
+bundled. Timers use equal-width digits.
 
-- **Type:** screen title 30 · large 24 · card/dialog title 20 · heading 16 ·
-  body 14 · small 13 · extra small 12 · caption 11 (px). Captions above groups
-  of controls are small capitals with letter-spacing.
-- **Surfaces:** Ground #F3F4F6 · Surface #FFFFFF · Subtle surface #F9FAFB ·
-  Border #E4E7EC · Strong border #CDD2DA · Stage (behind video) #0B0F17
-- **Text:** Ink #101828 · Secondary #344054 · Muted #5D6B82
-- **Accent:** #4F46E5 (hover #4338CA, pressed #3730A3) · Accent soft #EEF2FF
-- **Primary dark** (the sidebar's New recording button, the active step):
-  Ink #101828 with white text
-- **Success** #067647 on #ECFDF3 (text #085D3A) · **Warning** #B54708 on
-  #FFFAEB (text #7A2E0E) · **Danger** #B42318 on #FEF3F2 (text #912018) ·
-  **Record red** #DC2626
-- **Boxer A:** #0E7490 line, #ECFEFF soft, #0B5566 text · **Boxer B:** #C2410C
-  line, #FFF4ED soft, #8F300A text. Always paired with the letter A/B.
-- **Another labeller's labels:** #667085 grey, drawn hollow — never a boxer or
-  label colour.
-- **Phases** (soft fill / text): Rest #EAECF0 / #344054 · Round #E0E7FF /
-  #3730A3 · Break #FEF0C7 / #93370D
-- **Radii:** 8 px small controls, 10 px controls, 14 px cards, 18 px the
-  Recording hero. **Spacing scale:** 4 / 8 / 12 / 16 / 20 / 24 / 32.
-- **Label palette defaults:** Jab #3D4FD6, Cross #7C3AED, Hook #0F766E,
-  Uppercut #B45309, Block #4B5563, Clinch #BE185D (lasts a while), Knockdown
-  #B91C1C, Referee stop #15171C (lasts a while).
+- **Surfaces:** background `#F6F8FC` · surface `#FFFFFF` · line `#E3E8F0` ·
+  strong line `#D9DFEA` · behind video `#1D2433`
+- **Text:** ink `#0F172A` · secondary `#344054` · muted `#556070`
+- **Blue (the one accent):** `#2155D6` · hover/text `#1A44AD` · soft `#EAF0FD`
+- **EEG:** traces navy `#1C2A8C` · frame `#30343C` · grid `#DCDFE5` · automatic
+  markers grey `#8A93A3` · moments red · labels in their colours
+- **Good** `#1E7B3C` on `#E5F3EA` · **Warn** `#8A4200` on `#FDF0E3` (border
+  `#F2B57A`) · **Red** `#D93025` (text `#B3261E`, soft `#FCE4E2`)
+- **Head sensor dots:** good `#2E9E5B` · poor `#E8890C`
+- **Fighter colours:** Red `#D3241B` · Blue `#1B45C4` · Black `#111111` (more
+  can be added for the team)
+- **Status chips:** Needs labels (warn) · Labelled (good) · Exported (blue) ·
+  Interrupted (red)
+- **Label list defaults (keys 1–8):** Punch thrown `#2155D6`, Punch landed
+  `#0F7A62`, Punch missed `#7A3FC4`, Punch blocked `#465063`, Punch dodged
+  `#A8570A`, Clinch `#B5246B` (lasts a while), Knockdown `#B42318`, Referee break
+  `#161A22` (lasts a while)
+- **Radii:** 10 px controls, 16 px cards, 18–22 px hero cards. Type: 28 page
+  title · 22 card title · 17 section · 15 body · 13 small.
 
 ## Components
 
-One shared set (`brain_battle/ui/widgets.py`); screens do not restyle their own.
-
-- **Buttons:** primary (accent, filled) — one per screen at most, for the main
-  action; secondary (white, bordered); ghost (no border until hovered — Back,
-  Cancel, icon buttons); danger (record red — Start recording, Stop). Compact
-  variants are 34 px for rows and toolbars.
-- **Card:** white, 1 px border, 14 px radius. Tinted variants for ok / warning /
-  danger / info messages.
-- **Banner:** a full-width tinted card: icon, one or two sentences, actions on
-  the right.
-- **Status line:** icon + words (tick in a circle, warning triangle, cross in a
-  circle).
-- **Pill:** a small rounded status word ("✓ Labelled", "! Interrupted").
-- **Boxer badge / chip:** the round letter, or "A · Sam", in the boxer's colour.
-- **Segmented control:** a row of mutually exclusive choices (speed, tabs).
-- **Timer label:** hand-painted, equal-width digits, shrinks to fit.
+From `brain_battle/ui/widgets.py`: primary button (blue, one per screen), soft
+button (blue-soft), secondary (white, bordered), dashed "add" buttons, pill
+filters, status chips, the fighter badge (a square A/B in the fighter's
+colour), the fighter name (colour dot + code in bold mono), cards, banners,
+status lines, the head icon with four sensor dots, segmented controls, the flow
+layout for chips.
 
 ## App structure
 
-**Sidebar (244 px), top to bottom:** the brand · **New recording** (the one
-filled, dark button — it is the main thing people come to do) · Sessions ·
-Review & Label · (space) · **who is labelling** (a person icon and the name, or
-"Set your name"; click to change it) · **Hide names** (an eye; one click shows
-"Boxer A / Boxer B" instead of names on screen) · the **recordings-folder
-card** (name, free-space bar, "412 GB free · plenty of space"; red with "Can't
-be reached — is the drive connected?" when the folder is missing) ·
-Documentation · Settings.
-
-On Review & Label the sidebar collapses to a 72 px icon rail. The recording
-flow is full-screen with no sidebar: a top bar with **Cancel**, where you are
-("1 Get ready — 2 Record — 3 Saved"), and Help.
-
-Every screen has a **?** Help button that opens the documentation at that
-screen's page.
+A white **top header**: the logo (back to Sessions) · **Sessions** · (space) ·
+**Documentation** · the **Settings** gear. No sidebar. New recording and Review
+& Label are full-screen with their own headers. The first launch on a computer
+shows **Where are your team's recordings?** once.
 
 ## Screens
 
-### 1. Sessions (home; the app opens here)
+### 0. First run — Where are your team's recordings?
 
-- Title "Sessions", subtitle "Every recording in your recordings folder. Click
-  one to watch it back and label it." Right: Help, **Open folder in Finder /
-  Explorer** (secondary), **New recording** (primary).
-- **Banners**, when needed, above the controls:
-  - folder unreachable (danger): what happened, what to do, **Try again**;
-  - interrupted recording (warning): "A recording was interrupted — the
-    recording from <date, time> (<A> vs <B>) stopped unexpectedly at <m:ss>.
-    Everything recorded up to that point has been kept." **Open it** ·
-    **Dismiss** (dismissal is remembered).
-- **One row of controls:** status tabs with counts (All, Needs labelling,
-  Labelled, Exported, Interrupted) · search ("Search by name or date" — boxer
-  or labeller) · sort (Newest first / Oldest first).
-- **The list** is one card: a quiet header row, then one row per recording,
-  separated by hairlines. The whole row is clickable.
-  - *Recorded* — date (bold); under it time · length ("12 min · 3 rounds" or
-    "Stopped at 9:41 of 12:00").
-  - *Boxers* — "A · name" and "B · name" chips ("No names" if none; "A · Boxer
-    A" when names are hidden). A "Demo" pill on generated data.
-  - *Labels* — "24 labels" with the labellers' names underneath, or "No labels
-    yet".
-  - *Status* pill.
-  - *Actions* — **Label** (primary) if *you* have not labelled it yet, **Open**
-    (secondary) if you have; then **⋯**: Open and label · Export for analysis…
-    · Show in Finder / Explorer.
-- Status rules: Interrupted = flagged in the manifest; Needs labelling = no
-  labels from anyone; Labelled = at least one label from anyone; Exported = an
-  export exists.
-- Footer: "<n> of <m> sessions · <size> used in <folder name>".
-- Empty state: a card with "No recordings yet", "Press New recording to make
-  your first one." and the button.
+One card: a shared team folder (path, Choose folder…, "✓ Found 5 recordings
+and your team's settings in this folder") or Just this computer (Documents ›
+Brain Battle Data); "Can't see the shared drive?" (how to connect on this
+system); **Continue**; "You only see this once on this computer."
 
-### 2. Record — Get ready (step 1)
+### 1. Sessions (home)
 
-Everything before Start on one screen: what you *check* on top, what you *do*
-underneath. Devices connect by themselves when the screen opens.
+- A big blue **● New recording** button ("Connect the headbands and cameras,
+  give each fighter a code and colour, then follow the checklist."), and two
+  cards: **Recordings** (count) and **Labelled** ("3 of 6").
+- **Sessions** title, filter pills with counts (All · Needs labels · Labelled
+  · Exported · Interrupted), search ("Search a fighter code or date").
+- One card per recording: `● K7Q2 vs ● M3XA`; `Mon 16 Nov 2026 · 3 rounds ·
+  12 min` (or "Interrupted · saved up to 6:27"); a progress line ("You: 4
+  labels, 1 moment without a note"); the status chip; ⟲ (history drawer); the
+  right button — **Start labelling**, **Continue labelling**, **Add my labels**
+  or **Open**. A recording whose moments still lack a note is *Needs labels*.
+- History drawer: the fighters, who labelled (with counts), and every event,
+  newest first.
+- Footer: "Saved in Lab Server › Brain Battle Data · 73.9 GB free · fighters
+  are stored only as codes".
+- Banners: the interrupted-recording notice (Open it · Dismiss); the folder
+  can't be reached (Try again).
 
-- Title "Get ready"; under it "✓ 6 of 6 devices ready — Everything is
-  connected." or "! 5 of 6 devices ready — You can still record, but 1
-  headband will not be recorded." Right: **Search again**.
-- **Cameras** (left, wider): 2×2 live pictures — Side camera 1, Side camera 2,
-  Boxer A view, Boxer B view — each with its name, "✓ Connected · 30 frames per
-  second", and a **Change** button. A missing camera has a red border and "Not
-  found. Check the USB cable and the video receiver, then press Search again."
-- **Headbands** (right): one card per boxer — badge, "Boxer A · Sam ·
-  MuseS-7538", "✓ Connected · battery 82%"; the **contact strip** (four equal
-  cells in a fixed order: Left ear, Left forehead, Right forehead, Right ear,
-  each ✓ or !); a tip when a sensor is weak ("Move the band so the sensor sits
-  flat behind the left ear. Brush hair out of the way."); and the live EEG
-  display — five traces (TP9, AF7, AF8, TP10, AUX), 10 s across, newest at the
-  right, automatic µV scale shown on a scale bar. A lost headband shows
-  **Reconnect**.
-- **The plan** (one card across the bottom):
-  - row 1: A badge + name field, B badge + name field (both optional), "Ring a
-    bell when each round starts", and a line "Boxer A wears headband … · Boxer
-    B wears …";
-  - row 2: four steppers (− value +) — Rounds, Round length, Break between,
-    Rest before round 1 (defaults from Settings) · the proportional phase bar
-    with a sentence ("1:00 rest, then 3 rounds of 3:00 with 1:00 breaks. Stops
-    by itself at 12:00.") · the disk line (enough / low / not enough space /
-    folder unreachable / on a network drive) · "Saves to <folder> › <recording
-    name>" · **Start recording** (danger, large).
-- Start is switched off when there is not enough space or the folder cannot be
-  used; the disk line beside it says why.
+### 2. New recording — Get ready
 
-### 3. Record — Recording (step 2)
+Header: ✕ Cancel · **New recording** · 1 Get ready · 2 Record · 3 Saved.
 
-Read from across the room; used under pressure.
+- **Left, the checklist:** Headband A connected · Headband B connected · Good
+  signal on all sensors · 4 cameras connected · Fighter codes and colours ·
+  Timing checked (recommended) · Enough space. Then **⏱ Test timing** and
+  **● Start recording** — unlocked when every required item is green; under it
+  "Fix 2 things above to start" or "Recording starts 15 s before the baseline".
+  *Good signal* and *Timing checked* advise but never block (the signal is our
+  heuristic).
+- **Cameras:** the four live pictures ("60 fps", or a dashed "Not found"),
+  "4 of 4 connected", Search again.
+- **Boxer A / Boxer B cards:** the badge in the chosen colour; **Boxer A code**
+  (4 characters, typed in capitals; a wrong code is outlined red with "Use
+  exactly 4 capital letters or digits, like K7Q2."); **New code**; colour
+  swatches; the head with four sensor dots; "MuseS-7538 · battery 81%"; "✓
+  Signal looks good on all 4 sensors" or "The right-ear signal (TP10) looks
+  poor. Often the band isn't flat behind the ear or hair is in the way. Adjust
+  it, then press the button." + **I've adjusted it**; the live EEG (5 s).
+- **⇄ Swap the headbands between Boxer A and Boxer B.**
+- **The plan:** Rounds · Round · Break · Baseline steppers; "Ring the bell at
+  the start and end of each round"; "0:15 lead-in + 12:00 = 12:15 in total ·
+  remembered for next time".
+- **Test timing dialog:** a row per device — Rate, Delay (raw), Jitter,
+  Dropped, After correction — and **Run buzzer test**: 5 beeps 1.5 s apart, both
+  boxers tap their headband at each beep in view of the cameras. Result: "✓
+  Largest difference between devices after correction: 4 ms. Under the 10 ms
+  goal." or what to do if over.
 
-- **Status strip** (full width, green or amber): red "● REC 05:12" · "Sam vs
-  Alex" · "✓ All 4 cameras and 2 headbands are recording" or what is wrong ·
-  **Stop recording** (danger).
-- Stop asks inline: "Stop recording now? Round 2 is still running. Everything
-  recorded so far is kept, but the rest of the session will not happen."
-  **Keep recording** · **Stop and save**.
-- **If part of the recording's notes cannot be saved** (round and break times,
-  the recording's details or history), a red banner appears under the strip:
-  "Could not save the round and break times to the recordings folder. The
-  cameras and headbands keep recording. Check that the drive is still connected
-  and has free space." It stays until the recording ends. Hidden otherwise.
-- **The hero card**, tinted by the phase (rest grey, round blue, break amber):
-  the phase in words ("Round 2 of 3") · the countdown, as large as the card
-  allows · "left in this round" · a progress bar · what comes next ("Next:
-  Break, 1:00 · the bell rings when round 3 starts") · **Mark this moment (M)**
-  — a very large button · the confirmation line ("✓ Moment marked at 05:12 · 3
-  marked so far. You name them later, in Review.") · the whole-session phase
-  bar with a red now-line.
-- **Side column:** 2×2 small camera pictures ("● Recording", lost frames if
-  any); per boxer a headband card with status, the contact strip, and the live
-  EEG (the four skin electrodes, 5 s across, session time on the axis, a dashed
-  line at each round start and marked moment).
+### 3. New recording — Recording
 
-### 4. Record — Saved (step 3)
+Header: ✕ Cancel · ● REC 3:27 · **New recording** · `● K7Q2 vs ● M3XA ·
+everything is recording` · ✓ Get ready · 2 Record · 3 Saved · **■ Stop
+recording**.
 
-- A large tick, "Recording saved", "<date, time> · <A> vs <B> · 12 min · 3
-  rounds".
-- One card, a checklist read from the real files: each camera video (lost
-  frames if any), each brain recording, "3 rounds and 2 breaks marked
-  automatically", "n moments you marked — name them when you label",
-  "Everything on one timeline for analysis (recording.xdf) saved". Then
-  **Worth checking** (weak contact for about 2 minutes in round 2; lost
-  frames; a camera at an unexpected speed).
-- **When something essential could not be written** the screen must not look
-  like a clean save: the tick becomes an amber warning sign, the heading reads
-  "Recording saved, but with problems", the affected checklist line gets "!"
-  ("Some round and break times were not saved", "Boxer A brain recording was
-  not saved"), and the first line under Worth checking says what could not be
-  saved. A camera whose video is missing or incomplete counts too.
-- "Saved in <folder> › <recording folder> · 1.7 GB".
-- **Label this recording →** (primary) · **Record another** · **Back to
-  sessions** · **Show in Finder / Explorer**.
+- The four cameras with "Recording" and a timecode.
+- Under them, a card with the countdown (large mono "2:41" — small next to the
+  cameras, readable from a distance) "left in round 2" / "until the baseline
+  starts", the phase ("Round 2 of 3", "Lead-in (recording already running)"),
+  "1 of 3 rounds done · next: break", and the plan bar with a playhead.
+- **⚑ Mark this moment (M)**: a small window opens — "⚑ Moment marked at 3:27 ·
+  ● still recording", "What did you see? (optional)", **Add note later** /
+  **Save note**; Enter saves, Esc means later. Nothing pauses.
+- Right: each boxer — head sensors, badge, code, "Signal looks good on all 4
+  sensors" or "Right-ear signal (TP10) looks poor — check the band in the next
+  break", battery, the live EEG (5 s) with grey automatic markers and red
+  MOMENT markers. Then the timing line ("⏱ Timing: largest difference 4 ms after
+  correction ✓ · details" or "not measured this session") which opens the timing
+  dialog without pausing.
+- Problems appear as banners (a camera stopped sending pictures —
+  reconnecting; a headband lost; a file could not be saved).
+
+### 4. New recording — Saved
+
+✓ **Recording saved** (or "(stopped early)", or "Recording saved, but with
+problems"), the fighters, date and length, then a list: N camera videos (no
+frames lost), N brain recordings (and head movement), N automatic markers, N
+moments you marked (with / without notes), **Timing report** or **Timing not
+measured**, anything **Worth checking**, the analysis file; "Saved in … · Open
+folder". Buttons: **Start labelling →**, Back to sessions, Record another.
 
 ### 5. Review & Label
 
-One screen for watching and labelling. You label **as yourself**; other
-labellers' labels can be shown beside yours but never edited.
+Header: ‹ Sessions · `● K7Q2 vs ● M3XA` with date and length · My labels /
+Compare (when someone else has labelled) · "✓ All labels saved" · **Export for
+analysis**.
 
-- **Top bar:** ← Sessions · title "<date, time> · <A> vs <B>" · subtitle "12
-  min · 3 rounds · also labelled by Jonas R" · save status ("All labels saved",
-  or in red "Not saved — the recordings folder can't be reached…") · Help ·
-  **Export for analysis** (primary).
-- **Left, scrolling together:** the 2×2 video grid on a dark stage (name chip
-  and an enlarge button per picture); the **Brain activity (EEG)** card —
-  controls [Waves | Band power] [Timebase 2/5/10/20/30 s] [Scale Auto/10…1000
-  µV] [Filter 1–45 Hz] [taller] [Hide]; one block per boxer (badge + name, a
-  contact-quality line) with a standard EEG display: stacked traces labelled
-  TP9, AF7, AF8, TP10, AUX in the boxer's colour, a µV scale bar, the playhead
-  fixed in the centre, event markers as named dashed lines, one shared time
-  axis. **Hide** folds the card to its title row; on a small window it gives up
-  height so the videos keep the larger share.
-- **Left, pinned and always visible — the dock:**
-  - transport: back one frame · play/pause · forward one frame · "04:12.40 /
-    12:00.00" · the phase ("Round 2 · 0:12 in") · ‹ › previous/next label ·
-    speed [0.25× | 0.5× | 1× | 2×];
-  - timeline: lane names in a left gutter; a **Phases** row (Rest / Round /
-    Break bands, automatic, read-only); your labels in **Boxer A**, **Boxer
-    B**, **Both** (a line for a moment, a bar for something that lasted); while
-    comparing, one extra grey lane per other labeller; the playhead.
-- **Right — the Label panel (348 px):**
-  - header "Label" and who is labelling;
-  - if no name is set: a card "Who is labelling?" with a name field and **Start
-    labelling**; labels cannot be placed until it is filled in;
-  - "Who did it?" [A · name] [B · name] [Both];
-  - "What happened? · click or press the number": two columns of label
-    buttons, each with its colour and key 1–9; a note for labels that last a
-    while; an amber note while one is open ("Clinch started at 01:12.40 — press
-    6 again when it ends. Esc cancels.");
-  - tabs **My labels (n)** | **Compare (n)**, with Undo.
-    - *My labels:* marked moments to name first ("Marked moment — click to
-      name"), then placed labels newest first: time · who · colour · name · ✕.
-      Click a row to jump there. For recordings labelled before names existed:
-      a note with **These are mine**.
-    - *Compare:* whose labels [Jonas R (12) ▾] · tolerance [within 0.5 s ▾] ·
-      the agreement sentence ("You and Jonas R marked the same event 18 times
-      out of 24 (75% agreement). 4 only you marked, 2 only Jonas R marked.")
-      with one line on what "the same event" means · the list of differences
-      ("only you" / "only Jonas R"), each clickable.
-  - footer: the keyboard shortcuts — Space, ← → (Shift: one second), ↑ ↓, 1–9,
-    Tab, Esc, ⌘Z / Ctrl+Z.
+- Compare banner: "You and Jonas R agree on 3 of 4 labels (75%) within half a
+  second. Faded chips are Jonas R's."
+- The four cameras; beside them a panel with **Label** and **Activity**:
+  - Label: "Add a label at 3:27" · "as Maya K · Not you?"; **1 · Who?** A ·
+    K7Q2 / B · M3XA / Both; **2 · What happened?** the label list (keys 1–8);
+    **Custom note…** (N); the selected label with Delete; "2 marked moments have
+    no note yet — click them on the timeline"; "Space play · 1–8 label · N note"
+    · Undo.
+  - Custom note: who, the text, Cancel / Add note.
+  - A moment: "Moment at 3:27", the observer's note (saved as you type), and
+    the label list to put a label at that exact moment.
+  - Activity: the history.
+- The EEG of both boxers (10 s, playhead in the middle, grey automatic
+  markers, labels).
+- Transport: play, the time, "of 12:15 · Round 2", speeds 0.25–2×. **Lanes:**
+  Rounds · System (a grey tick per automatic marker; click shows
+  `ROUND_2_START · 05:15.00`) · A · K7Q2 · B · M3XA · Both · Notes · Moments.
+- Asked once: "Who is labelling?"
 
 ### 6. Export for analysis (a window)
 
-Opened from Review & Label or from a row's ⋯ menu in Sessions.
+The zip name; **Always included:** recording.xdf; the same data as separate
+CSV files; the timing report (timing_quality.csv); agreement, details, history.
+**Videos:** the 4 camera videos (on) · also one combined video (off). A green
+note: "Fighters appear only as their codes (K7Q2, M3XA) and colours. No names
+are stored, so there is nothing to hide." Save to … Change. Cancel / Export.
 
-- "Export for analysis"; a paragraph on what the zip contains, led by
-  recording.xdf, and whose labels are included ("Includes 36 labels from Jonas
-  R (12), Maya K (24).").
-- ☐ **Replace boxer names with Boxer A / Boxer B** — with a line on exactly
-  what it does and does not do. Starts as set in Settings.
-- ☐ **Also make one combined video of all four cameras (slow)**.
-- "Save as <path>" · **Change…**
-- **Cancel** · **Export** → a progress bar → "✓ Exported to <path>" with
-  **Show in Finder / Explorer** and **Done**.
+### 7. Settings ("Changes save automatically")
 
-### 7. Settings (autosaves; applies to the next recording)
-
-A list of the sections on the left; the sections on the right. "✓ Saved"
-appears briefly after each change.
-
-- **You** — Your name, with what it is for.
-- **Recordings folder** — name, path, free space (and "on a shared (network)
-  drive" when it is); **Change folder…**, **Show in Finder / Explorer**; text on
-  date-named folders and on sharing the folder between computers; a red line
-  when the folder cannot be reached.
-- **Headbands** — Boxer A → device, Boxer B → device; **Search for a new
-  headband**.
-- **Video quality** — Standard 960×540 30 fps (recommended, "about 2.2 GB per
-  hour per camera") · High 1280×720 · Light 640×360.
-- **Session defaults** — rounds, round length, break, rest before round 1;
-  "Ring a bell when each round starts" + **Test sound**.
-- **Extra signals and sharing** — "Record head movement" (on), "Record pulse"
-  (off; not yet tried with real headbands), "Share live signals with other lab
-  software on this network" (on).
-- **Boxer names and privacy** — "Replace boxer names with Boxer A / Boxer B in
-  exports" (off), "Hide boxer names on screen" (off), each with one line of
-  explanation.
-- **Label list** (stored in the recordings folder, shared by the team) — key,
-  swatch, name, "Moment" / "Lasts a while", ↑ ↓, remove; **+ Add label**.
-  Removing a label keeps already-placed ones.
-- Footer: "Brain Battle <version> · Constructor University".
+- **This computer:** Your name ("Only labellers have names. Fighters are
+  always codes."); Recordings folder + Change.
+- **Label list — Shared with the team:** chips with ×; + Add (type, Enter).
+  "One-off descriptions go in a Custom note while labelling."
+- **Fighter colours — Shared with the team:** Red, Blue, Black always there;
+  + Add colour (colour + name).
+- **Advanced** (folded): Record head movement (on) · Record pulse (off) ·
+  Record cameras at 60 fps (on) · Send live signals to other programs (LSL)
+  (off — "The app shows everything live without it."); which headband each
+  boxer wears; video quality.
 
 ### 8. Documentation
 
-The in-app manual: a section tree on the left, an always-visible search, the
-page on the right with back/forward. Opened by every Help button at the right
-page.
+Search in the screen; the full documentation (getting started, user guide,
+research & data, developer guide, decisions, project), technical where it needs
+to be.
 
 ## Behaviour that is part of the design
 
-- **Recording folder naming:** "YYYY-MM-DD HH-MM <A name> vs <B name>" (names
-  made safe for Mac and Windows file systems); recordings are found by their
-  manifest, not by folder name.
-- **Who is labelling:** a name, asked once, no accounts. Each labeller's labels
-  are stored separately inside the recording.
-- **Agreement:** the same label, the same boxer, start times within the
-  tolerance (overlap counts for lasting labels); each label matched once.
-- **Boxer names:** kept by default; hidden per export or on screen; neither
-  changes the recording on disk; videos still show the boxers.
-- **A folder that goes away:** every screen that needs it says so and what to
-  do; labels not yet saved are kept and saved when it returns.
-- **Moments marked during recording** appear as unnamed labels for every
-  labeller to name.
-- **Alignment is automatic and invisible** — there is nothing to click to
-  "sync".
+- Recording starts **15 s before the baseline**; the bell rings at the start
+  and end of every round; every phase start/end is marked automatically.
+- Moments never pause recording; a moment without a note keeps the recording in
+  "Needs labels".
+- Custom notes never enter the label list and are ignored by agreement.
+- Everything saves the moment it changes; failures are shown, never hidden.
+- The timing check never pauses recording; the buzzer test is run on Get ready.
+
+## Where the build differs from the prototype
+
+- **Signal** and **Timing** checklist items do not block Start (the brief: the
+  signal is a heuristic; timing is recommended). The prototype blocked on the
+  signal.
+- **Advanced** also holds the headband assignment and the video quality (they
+  have no other home); the round plan and bell are remembered from Get ready.
+- The prototype's Documentation sample is replaced by all existing pages.
+- A small Help (?) button stays on Review & Label.

@@ -139,6 +139,17 @@ def computer_name() -> str:
     return (name.split(".")[0] or os.environ.get("COMPUTERNAME") or "this computer")[:60]
 
 
+def connect_drive_hint(platform_name: Optional[str] = None) -> str:
+    """How to connect to a shared network drive on this computer."""
+    if is_mac(platform_name):
+        return ("Connect to it first: in Finder choose Go › Connect to Server. Your university "
+                "login is asked there, not here.")
+    if is_windows(platform_name):
+        return ("Connect to it first: in This PC choose Map network drive. Your university "
+                "login is asked there, not here.")
+    return "Connect to it first with your file manager. Your login is asked there, not here."
+
+
 def ffmpeg_install_hint(platform_name: Optional[str] = None) -> str:
     """One plain sentence on how to install ffmpeg on this computer."""
     if is_mac(platform_name):
@@ -152,4 +163,4 @@ def ffmpeg_install_hint(platform_name: Optional[str] = None) -> str:
 __all__ = ["is_windows", "is_mac", "format_date", "format_time", "format_date_time",
            "format_iso", "file_manager_name", "show_in_file_manager_label",
            "reveal_command", "reveal_in_file_manager", "open_folder", "shortcut",
-           "computer_name", "ffmpeg_install_hint"]
+           "computer_name", "ffmpeg_install_hint", "connect_drive_hint"]

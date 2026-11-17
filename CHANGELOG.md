@@ -7,6 +7,47 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
+**Design F — the new screens** (`docs/DESIGN.md`, rewritten from `docs/design/prototype.html`)
+- A white top header (logo · Sessions · Documentation · the Settings gear)
+  replaces the sidebar (`ui/header_shell.py`; `sidebar_shell.py` removed). A
+  first-run screen asks once where the team's recordings are
+  (`ui/welcome_screen.py`). Blue `#2155D6`, navy EEG `#1C2A8C`, Inter +
+  JetBrains Mono.
+- Sessions: big New recording button, Recordings / Labelled counts, status
+  pills, search by code, cards with the fighters' codes and colours, a progress
+  line, the status, a history drawer and the button for your next step.
+- New recording split into screens (`ui/record_screens.py`) and logic
+  (`ui/record_flow.py`): Get ready is a checklist (signal and timing advise,
+  never block); Recording has the countdown under the cameras, the moment
+  popup and the timing line; Saved lists the timing result.
+- Review & Label: lanes (Rounds, System, A, B, Both, Notes, Moments), Label /
+  Activity panel, custom notes (N), the moment editor, the compare banner.
+- Settings: This computer · Label list and Fighter colours (shared) · Advanced
+  (head movement on, pulse off, 60 fps on, LSL off, headbands, video quality).
+  The Test sound button and the plan defaults moved to Get ready (remembered).
+- The export window was redrawn (always included / videos / codes note); a
+  style error that stopped it opening was fixed and is now tested.
+- User guide, quick tour, first run, overview, README (testers use `develop`
+  — there is no `staging` yet; LSL off) and AGENTS.md updated; the
+  new-recording flow diagram was redrawn; every screenshot re-rendered
+  (`welcome.png` and `timing.png` are new).
+
+**Steadier recording** (Part 4)
+- Camera watchdog: a camera that delivers nothing for 2 s is reopened and keeps
+  writing the same video; shown on Recording, in the history
+  (`camera_stalled`, `camera_recovered`) and in `timing_quality.csv`.
+- Headband reconnects counted (`headband_reconnected`); repeated drops tested.
+- Capture never waits for ffmpeg: frames go through a bounded queue (peak use
+  is reported); frame buffers are reused; OpenCV runs single-threaded per
+  camera.
+- Contact-log write failures go through `RecordFlow._essential` (banner, a
+  non-clean Saved screen).
+- `tools/soak_test.py` (12-minute 60 fps soak + three short recordings) and
+  `tests/test_stability.py`.
+- Timing fixes found on the way: the headband time line no longer shifts later
+  samples when it clamps one, the camera tap detector samples finer, the rate
+  shown is measured between first and last arrival.
+
 **Timing: under 10 ms between all devices after correction** ([ADR-0024](docs/decisions/adr-0024-timing-check-and-buzzer-calibration.md))
 - Replaces the AGENTS.md note "don't invest in tighter sync": the professor
   needs < 10 ms.

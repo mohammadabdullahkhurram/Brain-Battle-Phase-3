@@ -54,8 +54,8 @@ otherwise, on purpose.
 1. Build the screen as a `QWidget` using `design_tokens` factories (no hex
    literals); emit a `help_requested` signal if it has a `?` button.
 2. Register it in `brain_battle_main.BrainBattleApp._build` via
-   `SidebarShell.add_page(...)` with its collapse/hide behaviour, and wire its
-   signals.
+   `HeaderShell.add_page(key, label, widget, nav=..., own_header=...)` and wire
+   its signals.
 3. If it has a Help button, route it in `brain_battle_main.open_help` to a docs
    page.
 4. Make it fit: `tests/test_layout_fit.py` must pass at all three sizes.

@@ -21,62 +21,72 @@ from PyQt6.QtGui  import QFont
 # (docs/DESIGN.md → "Design tokens")
 
 class _Palette:
-    # Surfaces
-    canvas          = "#F3F4F6"   # Ground
-    surface         = "#FFFFFF"   # Surface
-    surface_subtle  = "#F9FAFB"   # quiet fill inside a card (table header, wells)
+    # Surfaces (design F — docs/design/prototype.html :root tokens)
+    canvas          = "#F6F8FC"   # --bg
+    surface         = "#FFFFFF"   # --surface
+    surface_subtle  = "#F9FAFC"   # quiet fill inside a card (table header, wells)
     sidebar_bg      = "#FFFFFF"
     card_bg         = "#FFFFFF"
-    card_bg_hover   = "#F2F4F7"
+    card_bg_hover   = "#F1F3F7"
     raised          = "#FFFFFF"
-    stage           = "#0B0F17"   # behind video (the only dark surface: it is picture, not UI)
+    stage           = "#1D2433"   # --cam: behind video (picture, not UI)
 
     # Borders
-    border          = "#E4E7EC"
-    border_strong   = "#CDD2DA"
-    border_active   = "rgba(79, 70, 229, 0.45)"
+    border          = "#E3E8F0"   # --line
+    border_strong   = "#D9DFEA"   # --line2
+    border_active   = "rgba(33, 85, 214, 0.45)"
 
     # Text
-    text_primary    = "#101828"   # Ink
-    text_secondary  = "#344054"   # Secondary ink
-    text_tertiary   = "#5D6B82"   # Muted text (4.5:1 on Ground)
+    text_primary    = "#0F172A"   # --ink
+    text_secondary  = "#344054"   # --ink2
+    text_tertiary   = "#556070"   # --muted
     text_inverse    = "#FFFFFF"
 
-    # Accent
-    accent          = "#4F46E5"
-    accent_hover    = "#4338CA"
-    accent_pressed  = "#3730A3"
-    accent_ghost    = "#EEF2FF"   # Accent soft
-    accent_border   = "rgba(79, 70, 229, 0.35)"
+    # Accent (the one blue)
+    accent          = "#2155D6"   # --blue
+    accent_hover    = "#1A44AD"   # --blue-d
+    accent_pressed  = "#163A93"
+    accent_ghost    = "#EAF0FD"   # --blue-l
+    accent_border   = "rgba(33, 85, 214, 0.35)"
 
     # Semantic (foreground / soft-bg / on-soft text)
-    success         = "#067647"
-    success_bg      = "#ECFDF3"
-    success_text    = "#085D3A"
-    warning         = "#B54708"
-    warning_bg      = "#FFFAEB"
-    warning_text    = "#7A2E0E"
-    error           = "#B42318"   # Danger
-    error_bg        = "#FEF3F2"
-    error_text      = "#912018"
-    record_red      = "#DC2626"
-    info            = "#4F46E5"
+    success         = "#1E7B3C"   # --good
+    success_bg      = "#E5F3EA"
+    success_text    = "#1A6431"
+    warning         = "#8A4200"   # --warn
+    warning_bg      = "#FDF0E3"
+    warning_text    = "#8A4200"
+    warning_border  = "#F2B57A"
+    error           = "#B3261E"   # --red-d
+    error_bg        = "#FCE4E2"
+    error_text      = "#9B1C14"
+    record_red      = "#D93025"   # --red
+    info            = "#2155D6"
 
-    # Boxers (always paired with the A/B letter + name in the UI)
-    boxer_a_line    = "#0E7490"
-    boxer_a_soft    = "#ECFEFF"
+    # EEG viewer (a conventional viewer: navy traces on white, grey grid)
+    eeg_trace       = "#1C2A8C"   # --trace
+    eeg_frame       = "#30343C"   # --frame
+    eeg_grid        = "#DCDFE5"   # --grid
+    label_marker    = "#A18B12"   # a placed label / moment on the EEG (gold)
+    system_marker   = "#8A93A3"   # automatic system markers: grey
+
+    # Boxers (always paired with the A/B letter + code in the UI; the
+    # fighter's own colour, from the shared list, is used where it is known)
+    boxer_a_line    = "#0E7C86"
+    boxer_a_soft    = "#E6F4F5"
     boxer_a_text    = "#0B5566"
     boxer_b_line    = "#C2410C"
-    boxer_b_soft    = "#FFF4ED"
+    boxer_b_soft    = "#FDF4EE"
     boxer_b_text    = "#8F300A"
 
     # Another labeller's labels in Compare (never a boxer or label colour)
     other_labeller  = "#667085"
 
     # Phases: (soft-bg, text)
-    phase_rest      = ("#EAECF0", "#344054")
-    phase_round     = ("#E0E7FF", "#3730A3")
-    phase_break     = ("#FEF0C7", "#93370D")
+    phase_rest      = ("#EEF1F6", "#344054")
+    phase_round     = ("#DCE6FB", "#1A44AD")
+    phase_break     = ("#EEF1F6", "#556070")
+    phase_lead      = ("#F6F7FA", "#556070")
 
 
 def _p():
@@ -108,6 +118,13 @@ def warning_color():  return _p().warning
 def error_color():    return _p().error
 def record_red():     return _p().record_red
 def other_labeller(): return _p().other_labeller
+def eeg_trace():      return _p().eeg_trace
+def eeg_grid():       return _p().eeg_grid
+def label_marker():   return _p().label_marker
+def system_marker():  return _p().system_marker
+def warning_bg():     return _p().warning_bg
+def warning_border(): return _p().warning_border
+def error_bg():       return _p().error_bg
 def boxer_colors(which: str):
     """('A'|'B') → (line, soft_bg, text)."""
     p = _p()
@@ -128,7 +145,8 @@ def phase_colors():
 def phase_fill(phase_id: str):
     """(soft background, text) for a phase id."""
     p = _p()
-    return {"baseline": p.phase_rest, "round": p.phase_round, "break": p.phase_break,
+    return {"lead_in": p.phase_lead, "baseline": p.phase_rest, "round": p.phase_round,
+            "break": p.phase_break,
             "done": (p.success_bg, p.success_text)}.get(phase_id, p.phase_rest)
 
 
@@ -458,6 +476,26 @@ def qss_status_pill(kind: str = "idle") -> str:
 # ═══════════════════════════════════════════════════════════════ ICONS
 
 ICON_SVGS = {
+    "history":
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        'stroke="{c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>',
+    "note":
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        'stroke="{c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M4 4h16v12H8l-4 4z"/></svg>',
+    "wave":
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 20" fill="none" '
+        'stroke="{c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M1 10h5l2-6 3 12 3-9 2 5 2-2h11"/></svg>',
+    "timer":
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        'stroke="{c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg>',
+    "swap":
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        'stroke="{c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg>',
     "eye":
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
         'stroke="{c}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'

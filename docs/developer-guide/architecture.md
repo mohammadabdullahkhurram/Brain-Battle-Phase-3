@@ -61,11 +61,11 @@ subpackages. UI screens sit on top; capture, playback, and data/storage do the
 work; a support layer plus a couple of package-top modules (`app`, `version`,
 `paths`) cut across all of them.
 
-![Component diagram: the brain_battle.ui screens (sidebar shell, sessions, record flow, review & label, settings, docs, design tokens, fonts) sit above brain_battle.capture (camera/headband sources, usb_camera, eeg_module, session_controller, simulation, contact quality/log, keep-awake, round bell), brain_battle.playback (pyav_player), and brain_battle.data (session storage, history, labels, vocabulary, export, settings); a support layer plus package-top modules provide logging, docs navigation, paths and the app shell.](../diagrams/component.png)
+![Component diagram: the brain_battle.ui screens (header shell, sessions, record flow, review & label, settings, docs, design tokens, fonts) sit above brain_battle.capture (camera/headband sources, usb_camera, eeg_module, session_controller, simulation, contact quality/log, keep-awake, round bell), brain_battle.playback (pyav_player), and brain_battle.data (session storage, history, labels, vocabulary, export, settings); a support layer plus package-top modules provide logging, docs navigation, paths and the app shell.](../diagrams/component.png)
 
 | Subpackage | Modules | Job |
 |---|---|---|
-| **`ui/`** | `sidebar_shell`, `sessions_screen`, `record_flow`, `review_label_screen`, `eeg_viewer`, `settings_screen`, `docs_screen`, `design_tokens`, `fonts` | The four DESIGN screens behind a light sidebar shell, the EEG display, the in-app docs, and the light-only design system. |
+| **`ui/`** | `header_shell`, `welcome_screen`, `record_screens`, `sessions_screen`, `record_flow`, `review_label_screen`, `eeg_viewer`, `settings_screen`, `docs_screen`, `design_tokens`, `fonts` | The four DESIGN screens behind a light top header, the EEG display, the in-app docs, and the light-only design system. |
 | **`capture/`** | `clock`, `camera_source`, `headband_source`, `usb_camera`, `eeg_module`, `lsl_outlets`, `session_controller`, `simulation`, `contact_quality`, `contact_log`, `keep_awake`, `round_bell` | Turn live devices into files on disk during a recording (plus the dev-only simulator and the round bell). |
 | **`playback/`** | `pyav_player` | App-driven multi-camera decode on one playhead. |
 | **`data/`** | `signals`, `session_storage`, `session_xdf`, `xdf_writer`, `session_history`, `labels_store`, `label_vocab`, `export_module`, `app_settings` | On-disk layout, `recording.xdf`, the history log, labels + the shared vocabulary, the export bundle, and the settings store. |
@@ -76,13 +76,13 @@ main runtime interactions are drawn as [key flows](key-flows.md).
 
 ## The three screens (plus two)
 
-The product is **three screens plus Settings**, wired behind a light sidebar
-shell (`sidebar_shell.py`), with an in-app Documentation screen (`docs_screen.py`)
+The product is **three screens plus Settings**, wired behind a light top header
+(`header_shell.py`), with an in-app Documentation screen (`docs_screen.py`)
 added in documentation step D1:
 
 1. **Sessions** (`sessions_screen.py`) — the home library; the app opens here.
-2. **New recording** (`record_flow.py`) — a full-screen guided flow: Connect →
-   Set up → Record → Saved.
+2. **New recording** (`record_flow.py`) — a full-screen guided flow: Get ready →
+   Recording → Saved (screens in `record_screens.py`, logic in `record_flow.py`).
 3. **Review & Label** (`review_label_screen.py`) — one merged screen for playback
    and labelling on a single `t_session_seconds` playhead.
 4. **Settings** (`settings_screen.py`) — everything that used to be hardcoded.

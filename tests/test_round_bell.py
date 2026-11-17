@@ -10,7 +10,8 @@ Covers:
   2. SessionController's bell_requested fires at the START and END of every
      round (including the last), never for the lead-in, baseline or a break,
      and not when a round is stopped early.
-  3. SettingsScreen's Test sound button plays the bundled file, headless.
+  3. The flow's bell plays the bundled file, headless; Get ready's switch
+     says "start and end of each round".
   4. A missing WAV logs a warning and stays silent — RoundBell never raises.
   5. The credits entry for the bell (and the bundled Inter font) exists in
      docs/project/credits.md and nav.yml.
@@ -153,29 +154,29 @@ def test_bell_not_on_early_stop():
           events == ["RECORDING_END"], str(events))
 
 
-# ─── 3. Settings' Test sound plays the bundled file ────────────────────────
+# ─── 3. the bell plays the bundled file ─────────────────────────────────────
 
 def test_settings_test_sound_plays_bundled_bell():
-    os.environ["BRAIN_BATTLE_CONFIG"] = os.path.join(tempfile.mkdtemp(), "settings.json")
-    os.environ.pop("BRAIN_BATTLE_CAPTURE_DIR", None)
-    import brain_battle.data.app_settings as aps
-    s = aps.load(); s.capture_dir = tempfile.mkdtemp(prefix="bb_round_bell_cap_"); s.save()
-
+    """The recording flow's bell is the bundled recording, and playing it
+    headless never raises. (The round plan and the bell switch live on Get
+    ready now; Settings has no Test sound button.)"""
     import brain_battle.capture.round_bell as round_bell
-    from brain_battle.ui.settings_screen import SettingsScreen
-
-    st = SettingsScreen()
+    from brain_battle.ui.record_flow import RecordFlow
+    flow = RecordFlow()
     try:
-        st._on_test_sound()
-        ok = True
-    except Exception as e:
-        ok = False
-        print("    test-sound raised:", e)
-    check("Test sound doesn't crash headless", ok)
-    check("Test sound points at the bundled round bell, not a synthesized tone",
-          ok and st._beep.path() == round_bell.bundled_bell_path(),
-          getattr(st, "_beep", None) and st._beep.path())
-
+        try:
+            flow._beep.play()
+            ok = True
+        except Exception as e:
+            ok = False
+            print("    bell raised:", e)
+        check("the bell plays headless without raising", ok)
+        check("the bell is the bundled round bell, not a synthesized tone",
+              flow._beep.path() == round_bell.bundled_bell_path(), flow._beep.path())
+        check("Get ready's switch says start AND end of each round",
+              flow._get_ready._bell.text() == "Ring the bell at the start and end of each round")
+    finally:
+        flow.shutdown()
 
 # ─── 4. a missing WAV never crashes RoundBell ───────────────────────────────
 

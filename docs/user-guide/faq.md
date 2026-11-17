@@ -13,8 +13,8 @@ No. Everything saves to your recordings folder, on your own computer (or a
 shared drive you've pointed it at) — see [Settings](settings.md). Nothing
 leaves that folder unless you export it or copy it yourself.
 
-**Can I rename a boxer after I've started recording?**
-Not from the app. Boxer names are typed on the Get ready screen, before
+**Can I change a fighter's code after I've started recording?**
+Not from the app. Codes and colours are chosen on the Get ready screen, before
 you press Start recording.
 
 **What happens if I close my laptop's lid while recording?**

@@ -781,7 +781,7 @@ class ExportOptionsDialog(QDialog):
         title.setStyleSheet(dt.css_text(dt.SIZE_XL, 700))
         v.addWidget(title)
         self._name_lbl = QLabel(os.path.basename(self._dest))
-        self._name_lbl.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary(), mono=True))
+        self._name_lbl.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary(), f"font-family: {dt.FONT_MONO};"))
         v.addWidget(self._name_lbl)
 
         head = QLabel("Always included")

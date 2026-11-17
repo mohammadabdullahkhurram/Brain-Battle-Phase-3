@@ -33,19 +33,18 @@ running the session, and to make labelling what happened afterwards fast.
 
 ## The three screens
 
-Brain Battle has three screens plus Settings, reached from the sidebar on
-the left:
+Brain Battle has three screens plus Settings, reached from the header at
+the top:
 
 | Screen | What you do there |
 |---|---|
 | **Sessions** | The home screen — every past recording, searchable and sortable. Open one to watch it back. This is where the app opens. |
-| **New recording** | Three screens: get ready (check the cameras and headbands, type the boxer names, set the rounds), record, and a summary when you're done. |
+| **New recording** | Three screens: get ready (check the cameras and headbands, give each fighter a code and colour, test the timing, set the rounds), record, and a summary when you're done. |
 | **Review & Label** | Watch a recording back with both boxers' brain activity alongside the video, and mark events. |
 
-Settings (at the bottom of the sidebar) holds everything you'd want to
-change before a recording — which folder recordings are saved to, which
-headband belongs to which boxer, video quality, default round lengths, and
-the list of labels your team uses.
+Settings (the gear, top right) holds your name, the recordings folder, the
+team's label list and fighter colours, and — under Advanced — the extra
+sensors, 60 fps cameras, live signals (LSL), headbands and video quality.
 
 ## How the pieces fit together
 

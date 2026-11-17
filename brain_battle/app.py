@@ -89,7 +89,7 @@ class BrainBattleApp(QMainWindow):
         super().closeEvent(event)
 
     def _build(self):
-        from brain_battle.ui.sidebar_shell import SidebarShell
+        from brain_battle.ui.header_shell import HeaderShell
         import brain_battle.data.app_settings as app_settings
 
         self._restyle_app()   # apply the light global stylesheet once
@@ -98,11 +98,13 @@ class BrainBattleApp(QMainWindow):
         self.setCentralWidget(central)
         root = QVBoxLayout(central); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
 
+        first_run = not os.path.isfile(app_settings.config_path())
         capture_dir = app_settings.load().capture_dir_resolved()
-        self._shell = SidebarShell(capture_dir=capture_dir)
+        self._shell = HeaderShell(capture_dir=capture_dir)
 
-        # The three DESIGN screens: Sessions (home) → New recording (guided flow)
-        # → Review & Label (one merged PyAV-driven screen), plus Settings.
+        # Design F: a top header (logo · Sessions … Documentation · Settings);
+        # New recording (Get ready → Recording → Saved) and Review & Label are
+        # full-screen with their own headers.
         self.record_flow = RecordFlow()
         self.record_flow.session_saved.connect(self._on_session_saved)
         self.record_flow.exit_flow.connect(self._go_to_sessions)
@@ -113,32 +115,32 @@ class BrainBattleApp(QMainWindow):
         self._sessions_page = SessionsScreen(capture_dir)
         self._sessions_page.new_recording.connect(self._go_to_new_recording)
         self._sessions_page.open_session.connect(self._open_session_in_review)
+        self._sessions_page.export_session.connect(self._export_session)
         from brain_battle.ui.settings_screen import SettingsScreen
         self._settings_page = SettingsScreen()
         self._settings_page.capture_dir_changed.connect(self._on_capture_dir_changed)
         self._settings_page.labeller_changed.connect(self._on_labeller_changed)
-        self._settings_page.names_hidden_changed.connect(self._apply_names_hidden)
-        self._settings_page.help_requested.connect(lambda: self.open_help("settings"))
         from brain_battle.ui.docs_screen import DocsScreen
         self._docs_page = DocsScreen()
+        from brain_battle.ui.welcome_screen import WelcomeScreen
+        self._welcome_page = WelcomeScreen(capture_dir)
+        self._welcome_page.done.connect(self._on_welcome_done)
 
-        self._sessions_page.help_requested.connect(lambda: self.open_help("sessions"))
         self.record_flow.help_requested.connect(self.open_help)
+        self._sessions_page.help_requested.connect(lambda: self.open_help("sessions"))
+        self._settings_page.help_requested.connect(lambda: self.open_help("settings"))
         self._review_page.help_requested.connect(lambda: self.open_help("review-and-label"))
 
-        self._sessions_page.export_session.connect(self._export_session)
-        self.IDX_SESSIONS = self._shell.add_page("sessions", "Sessions", "home", self._sessions_page)
-        # New recording — the sidebar's one primary button — opens the
-        # full-screen guided flow (no sidebar).
-        self.IDX_RECORD   = self._shell.add_page("record", "New recording", "record",
-                                                 self.record_flow, hide_sidebar=True, primary=True)
-        self.IDX_REVIEW   = self._shell.add_page("review", "Review & Label", "layers",
-                                                 self._review_page, collapse_on_active=True)
-        # Documentation sits just above Settings in the bottom nav group.
-        self.IDX_DOCS     = self._shell.add_page("docs", "Documentation", "book",
-                                                 self._docs_page, bottom=True)
-        self.IDX_SETTINGS = self._shell.add_page("settings", "Settings", "settings",
-                                                 self._settings_page, bottom=True)
+        self.IDX_SESSIONS = self._shell.add_page("sessions", "Sessions", self._sessions_page, nav="left")
+        self.IDX_RECORD   = self._shell.add_page("record", "New recording", self.record_flow,
+                                                 own_header=True)
+        self.IDX_REVIEW   = self._shell.add_page("review", "Review & Label", self._review_page,
+                                                 own_header=True)
+        self.IDX_DOCS     = self._shell.add_page("docs", "Documentation", self._docs_page, nav="right")
+        self.IDX_SETTINGS = self._shell.add_page("settings", "Settings", self._settings_page, nav="gear")
+        self.IDX_WELCOME  = self._shell.add_page("welcome", "Welcome", self._welcome_page,
+                                                 own_header=True)
+        self._shell.set_extra(self.IDX_SETTINGS, self._settings_page.header_extra())
 
         # Compat shim for any code that walked up to a QTabWidget.
         class _ShellTabShim:
@@ -147,28 +149,19 @@ class BrainBattleApp(QMainWindow):
             def currentIndex(self): return self._shell.current_index()
         self.tabs = _ShellTabShim(self._shell)
 
-        # Refresh the Sessions library whenever the user navigates to it, and
-        # (re)enter the guided flow at step 1 when New recording is opened.
         self._shell.page_changed.connect(self._on_page_changed)
-
-        # Who is labelling + the quick "Hide names" switch live in the sidebar.
-        settings = app_settings.load()
-        self._shell.set_labeller(settings.labeller_name)
-        self._shell.identity_clicked.connect(self._edit_identity)
-        self._shell.names_hidden_changed.connect(self._on_hide_names_toggled)
         self._review_page.labeller_changed.connect(self._on_labeller_changed)
 
         root.addWidget(self._shell, 1)
-        self._shell.set_current_index(self.IDX_SESSIONS)   # app opens on Sessions
+        # First launch on this computer: where are the team's recordings?
+        self._shell.set_current_index(self.IDX_WELCOME if first_run else self.IDX_SESSIONS)
 
         # Populate the Sessions library once the window is up. Any recording
         # that was interrupted (crashed mid-session) last time is surfaced by
-        # the interrupted banner at the top of that screen — there is no
-        # separate recovery popup anymore.
+        # the interrupted banner at the top of that screen.
         QTimer.singleShot(0, self._sessions_page.refresh)
 
     def _on_page_changed(self, idx):
-        self._shell.refresh_folder_card()
         if idx == self.IDX_SESSIONS:
             self._sessions_page.refresh()
         elif idx == self.IDX_RECORD:
@@ -176,31 +169,28 @@ class BrainBattleApp(QMainWindow):
             self.record_flow.start()
         elif idx == self.IDX_SETTINGS:
             self._settings_page.refresh()
+        elif idx == self.IDX_WELCOME:
+            self._welcome_page.refresh()
 
-    # ── who is labelling / hiding names ──
-    def _edit_identity(self):
-        """The sidebar's "Your name" row: open Settings at that field."""
-        self._shell.set_current_index(self.IDX_SETTINGS)
-        self._settings_page.focus_labeller_name()
+    def _on_welcome_done(self, path):
+        self._on_capture_dir_changed(path)
+        self._settings_page.refresh()
+        self._go_to_sessions()
 
+    def show_welcome(self):
+        """Settings › Change (or the first launch): pick the team's folder."""
+        self._shell.set_current_index(self.IDX_WELCOME)
+
+    # ── who is labelling ──
     def _on_labeller_changed(self, name):
         """"Your name" was set (in Settings, or the first time Review & Label
         asked) — tell every place that shows or uses it."""
-        self._shell.set_labeller(name)
         self._review_page.set_labeller(name)
         self._sessions_page.set_labeller(name)
         self._settings_page.refresh()
 
-    def _on_hide_names_toggled(self, hidden):
-        self._apply_names_hidden(hidden)
-
-    def _apply_names_hidden(self, hidden):
-        self._shell.set_names_hidden(hidden)
-        self._sessions_page.set_names_hidden(hidden)
-        self._review_page.set_names_hidden(hidden)
-
     def _export_session(self, session_root):
-        """Sessions → ⋯ → Export for analysis: export without opening it."""
+        """Sessions → right-click → Export for analysis: export without opening it."""
         from brain_battle.data.export_module import ExportOptionsDialog
         ExportOptionsDialog(session_root, parent=self).exec()
         self._sessions_page.refresh()
@@ -211,15 +201,11 @@ class BrainBattleApp(QMainWindow):
     def _go_to_sessions(self):
         self._shell.set_current_index(self.IDX_SESSIONS)
 
-    # ── Help (?) buttons — Sessions / each record-flow step / Review & Label /
-    # Settings all open the Documentation tab at that screen's user-guide page.
+    # ── Help — each screen's ? opens Documentation at its user-guide page.
     _HELP_PAGES = {
         "sessions": "sessions",
         "review-and-label": "review-and-label",
         "settings": "settings",
-        # record_flow emits an ANCHOR, not a page id, one per guided-flow step —
-        # all four live on the single "new-recording" page (DESIGN: one page,
-        # §2-§5). Anything else passed through is treated as a page id.
         "step-1-get-ready": ("new-recording", "step-1-get-ready"),
         "step-2-recording": ("new-recording", "step-2-recording"),
         "step-3-saved": ("new-recording", "step-3-saved"),
@@ -235,20 +221,11 @@ class BrainBattleApp(QMainWindow):
         self._shell.set_current_index(self.IDX_DOCS)
 
     def _on_capture_dir_changed(self, path):
-        """Settings' [Change folder…] — repoint the folder card + Sessions
-        library at the new recordings folder (existing recordings stay put;
-        the guided flow reloads app_settings on its own next start())."""
+        """A new recordings folder: repoint the shell, Sessions and the flow
+        (existing recordings stay where they are)."""
         self._shell.set_capture_dir(path)
         self._sessions_page.set_capture_dir(path)
-
-    def keyPressEvent(self, event):
-        # Ctrl/⌘ + Shift + H: hide / show boxer names on screen, from anywhere.
-        mods = event.modifiers()
-        if event.key() == Qt.Key.Key_H and (mods & Qt.KeyboardModifier.ShiftModifier) and \
-                (mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)):
-            self._shell.set_names_hidden(not self._shell.names_hidden(), emit=True)
-            return
-        super().keyPressEvent(event)
+        self._welcome_page.set_capture_dir(path)
 
     def _open_session_in_review(self, session_root):
         self._review_page.load_session_folder(session_root)

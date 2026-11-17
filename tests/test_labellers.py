@@ -246,6 +246,9 @@ def test_review_screen():
 
 
 def test_moments_for_every_labeller():
+    """A marked moment belongs to the recording: its note is shared by every
+    labeller (and can be written in Review); a label can be put at the moment's
+    exact time by whoever is labelling."""
     import brain_battle.ui.review_label_screen as rl
     root = DEMO_ROOT
     ss._update_manifest(root, lambda m: m.update(moments=[{"t_session_seconds": 6.5}]))
@@ -253,20 +256,24 @@ def test_moments_for_every_labeller():
     tab = rl.ReviewLabelScreen()
     try:
         tab.load_session_folder(root); tab.wait_loaded()
-        check("a marked moment is waiting to be named", len(tab._moments) == 1)
-        tab._apply_moment_name(6.5, tab._vocab[0], "B")
-        check("naming it makes a normal label of mine and it stops asking me",
-              len(tab._moments) == 0 and tab._store.moment_named(6.5)
-              and any(abs(l["t_start"] - 6.5) < 1e-6 for l in tab._store.labels))
-        check("the mark itself stays in the recording", len(ss.read_moments(root)) == 1)
+        check("the marked moment is on the Moments lane without a note",
+              len(tab._strip.moments) == 1 and not tab._strip.moments[0]["note"])
+        check("…and the panel says a moment has no note yet",
+              "1 marked moment has no note yet" in tab._moments_warn.text(), tab._moments_warn.text())
+        tab._select(("moment", 0))
+        tab._label_at_moment(tab._vocab[0])
+        check("a label put at the moment is a normal label of mine, at its exact time",
+              any(abs(l["t_start"] - 6.5) < 1e-6 for l in tab._store.labels))
+        check("writing the observer's note saves it into the recording",
+              tab.set_moment_note(0, "Ref warned B")
+              and ss.read_moments(root)[0]["note"] == "Ref warned B")
         tab.set_labeller("Jonas R")
-        check("…so another labeller is still asked to name it", len(tab._moments) == 1)
+        check("…and every labeller sees the same note",
+              tab._strip.moments[0]["note"] == "Ref warned B")
     finally:
         tab.shutdown()
         _env.set_labeller()
 
-
-# ── 7. Sessions ──────────────────────────────────────────────────────────────
 
 def test_sessions_counts():
     info = ss.session_info(DEMO_ROOT)

@@ -17,11 +17,11 @@ Everything is light-mode only and styled from ``design_tokens``.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QSize, pyqtSignal, QRectF
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QRectF, QRect, QPoint
 from PyQt6.QtGui import QIcon, QPainter, QColor, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFrame, QHBoxLayout, QSizePolicy,
-    QButtonGroup,
+    QButtonGroup, QLayout,
 )
 
 import brain_battle.ui.design_tokens as dt
@@ -265,6 +265,60 @@ def boxer_chip(which: str, name: str) -> QLabel:
     return l
 
 
+def fighter_badge(which: str, colour_hex: str | None, size: int = 22) -> QLabel:
+    """Design F: the square A / B badge filled with the colour the fighter
+    wears (white letter). Falls back to the A/B accent when the colour is
+    unknown (an old recording)."""
+    bg = colour_hex or dt.boxer_colors(which)[0]
+    b = QLabel(which); b.setFixedSize(size, size)
+    b.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    b.setObjectName(f"fBadge{which}")
+    b.setStyleSheet(f"#fBadge{which} {{ background: {bg}; color: #FFFFFF; "
+                    f"border-radius: {max(4, size // 4)}px; font-family: {dt.FONT_UI}; "
+                    f"font-weight: 700; font-size: {max(10, size // 2)}px; }}")
+    return b
+
+
+def fighter_html(code: str, colour_hex: str | None, size: int = dt.SIZE_LG) -> str:
+    """Rich text for a fighter: a colour dot and the code in bold mono
+    ('● K7Q2'). An old recording's name is shown in the UI font instead."""
+    dot = colour_hex or dt.text_tertiary()
+    import brain_battle.data.fighters as fighters
+    mono = fighters.code_ok(code)
+    family = dt.FONT_MONO if mono else dt.FONT_UI
+    spacing = "letter-spacing:1px;" if mono else ""
+    return (f"<span style='color:{dot}'>&#9679;</span>&nbsp;"
+            f"<span style=\"font-family:{family};font-weight:700;{spacing}"
+            f"color:{dt.text_primary()};font-size:{size}px\">{code}</span>")
+
+
+def versus_html(a: str, ca, b: str, cb, size: int = dt.SIZE_LG) -> str:
+    """'● K7Q2 vs ● M3XA'."""
+    return (fighter_html(a, ca, size) + f"&nbsp;&nbsp;<span style='color:{dt.text_tertiary()};"
+            f"font-size:{dt.SIZE_MD}px'>vs</span>&nbsp;&nbsp;" + fighter_html(b, cb, size))
+
+
+STATUS_CHIP = {  # status key → (text, background, foreground)
+    "needs_labelling": ("Needs labels", dt._Palette.warning_bg, dt._Palette.warning),
+    "labelled":        ("Labelled", dt._Palette.success_bg, dt._Palette.success_text),
+    "exported":        ("Exported", dt._Palette.accent_ghost, dt._Palette.accent_hover),
+    "interrupted":     ("Interrupted", dt._Palette.error_bg, dt._Palette.error_text),
+    "unreadable":      ("Can't be opened", dt._Palette.card_bg_hover, dt._Palette.text_secondary),
+}
+
+
+def status_chip(status: str) -> QLabel:
+    text, bg, fg = STATUS_CHIP.get(status, (status, dt.card_bg_hover(), dt.text_secondary()))
+    l = QLabel(text)
+    l.setObjectName("statusChip")
+    l.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    l.setStyleSheet(f"#statusChip {{ background: {bg}; color: {fg}; border-radius: 11px; "
+                    f"padding: 3px 10px; font-family: {dt.FONT_UI}; font-size: {dt.SIZE_XS}px; "
+                    f"font-weight: 600; }}")
+    l.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    return l
+
+
 class Banner(Card):
     """A full-width message: what happened and what to do, with its actions on
     the right. ``tone``: 'warn' | 'bad' | 'info' | 'ok'."""
@@ -389,6 +443,66 @@ class Dot(QWidget):
             p.end()
 
 
+class FlowLayout(QLayout):
+    """Lays its widgets out left to right and wraps onto the next line —
+    for rows of chips (the label list, fighter colours)."""
+
+    def __init__(self, parent=None, spacing: int = 8):
+        super().__init__(parent)
+        self._items = []
+        self._sp = spacing
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item):          # noqa: N802
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, i):              # noqa: N802
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):              # noqa: N802
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):    # noqa: N802
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):      # noqa: N802
+        return True
+
+    def heightForWidth(self, w):      # noqa: N802
+        return self._do(QRect(0, 0, w, 0), True)
+
+    def setGeometry(self, rect):      # noqa: N802
+        super().setGeometry(rect)
+        self._do(rect, False)
+
+    def sizeHint(self):               # noqa: N802
+        return self.minimumSize()
+
+    def minimumSize(self):            # noqa: N802
+        size = QSize()
+        for it in self._items:
+            size = size.expandedTo(it.minimumSize())
+        return size
+
+    def _do(self, rect, test):
+        x, y, line = rect.x(), rect.y(), 0
+        for it in self._items:
+            hint = it.sizeHint()
+            nx = x + hint.width() + self._sp
+            if nx - self._sp > rect.right() and line > 0:
+                x, y = rect.x(), y + line + self._sp
+                nx = x + hint.width() + self._sp
+                line = 0
+            if not test:
+                it.setGeometry(QRect(QPoint(x, y), hint))
+            x = nx
+            line = max(line, hint.height())
+        return y + line - rect.y()
+
+
 def clear_layout(layout, keep_last: int = 0) -> None:
     """Remove (and delete) every widget in a layout, optionally keeping the last
     ``keep_last`` items (e.g. a trailing stretch)."""
@@ -404,4 +518,5 @@ def clear_layout(layout, keep_last: int = 0) -> None:
 __all__ = ["title", "heading", "body", "muted", "caption", "set_text_style", "Card", "hline",
            "primary_button", "secondary_button", "ghost_button", "danger_button",
            "icon_button", "help_button", "Segmented", "StatusLine", "pill", "boxer_badge",
-           "boxer_chip", "Banner", "TimerLabel", "Dot", "clear_layout", "MIN_TARGET"]
+           "boxer_chip", "FlowLayout", "fighter_badge", "fighter_html", "versus_html", "status_chip",
+           "STATUS_CHIP", "Banner", "TimerLabel", "Dot", "clear_layout", "MIN_TARGET"]

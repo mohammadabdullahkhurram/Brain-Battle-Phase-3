@@ -104,11 +104,11 @@ class EEGViewer(QWidget):
     markers. See the module docstring."""
 
     def __init__(self, channels=EEG_CHANNELS, live: bool = False,
-                 color: str = "#15171C", min_row_px: int = 13, parent=None):
+                 color: str | None = None, min_row_px: int = 13, parent=None):
         super().__init__(parent)
         self.channels = tuple(channels)
         self.live = live
-        self._color = color
+        self._color = color or dt.eeg_trace()       # navy, as in standard EEG viewers
         self._t = None                  # (N,) seconds, ascending
         self._y = None                  # (N, C)
         self._view = 0.0                # review: centre · live: right edge
