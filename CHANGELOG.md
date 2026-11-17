@@ -52,6 +52,11 @@ dev-log numbering, kept as history — they do not track the release version.
 - `pylsl` 1.18.1 → **1.18.7**: its liblsl 1.18 no longer leaks 3 open files for
   every stream closed (measured; ADR-0022 updated).
 
+**Still open:** on Windows, `test_shared_folder` (a replace refused while
+another process re-opens the file non-stop) and `test_smoke` (an error at
+shutdown after every check passed) each failed once on the first attempt and
+passed when re-run alone — see Cross-platform & CI, "Still open".
+
 **Tests made reliable (none skipped or loosened)**
 - `test_shared_folder` can no longer hang (the reader thread is always stopped,
   a stuck helper is killed, one failing part no longer stops the rest), and a

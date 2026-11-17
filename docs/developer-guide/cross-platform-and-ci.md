@@ -83,6 +83,17 @@ then fixed at the cause. No test was skipped or loosened to get there.
 `pylsl` is now 1.18.7 (liblsl 1.18), which no longer leaks descriptors —
 [ADR-0022](../decisions/adr-0022-lsl-outlets-open-once.md).
 
+### Still open: two first-attempt failures on Windows
+
+Runs `43997541652` and `44000265457` (2026-11-17) both ended green on macOS and
+Windows, 35 of 35. In the second, two Windows scripts failed while other
+scripts were running and passed when the runner re-ran them alone:
+
+| Script | What happened | What is known |
+|---|---|---|
+| `test_shared_folder` | "200 replacements succeed while another reader keeps opening the file": `PermissionError(13, 'Access is denied')` even after ~5 s of retries, and one of 160 locked read-change-write edits was lost | Windows refuses to replace a file while another program has it open, and Python opens files without delete-sharing. A reader that re-opens the file in a tight loop (much harder than real use: the app re-reads other labellers every 5 s) can keep the replace refused. The app shows such a failed save and retries it, but the root fix — reading shared files with delete-sharing on Windows — is not done yet |
+| `test_smoke` | All checks passed ("GREEN: 0 failure(s)"), yet the script exited with an error | The process failed *after* its last check, i.e. while Qt and Python were shutting down. The exit code is not in the log; needs a Windows machine (or a CI run that prints the code) to look into |
+
 ## Never tried on a real Windows machine
 
 Verified only by reading the code and by the Windows CI run, where there is
