@@ -87,6 +87,7 @@ _taps: list = []              # capture-clock (monotonic) instants of scheduled 
 # injected delay + jitter + however late the computer let the thread run.
 # The timing test compares the buzzer calibration with this ground truth.
 _delivered: dict = {}
+_stall_first_open: dict = {}     # stem → when the stalling camera was first opened
 
 
 def note_delivered(device: str, when: float, delay: float) -> None:
@@ -263,12 +264,16 @@ class SimCapture:
         return 0.0
 
     def _stalled(self) -> bool:
+        """The injected stall happens once per run: <after> seconds after this
+        camera was first opened, for <for> seconds — a reopened camera does
+        not stall again."""
         if not self._stall or self._stall[0] != self._stem:
             return False
-        since = time.monotonic() - self._made
+        first = _stall_first_open.setdefault(self._stem, self._made)
+        since = time.monotonic() - first
         return self._stall[1] <= since < self._stall[1] + self._stall[2]
 
-    def read(self):  # noqa: N802
+    def read(self, image=None):  # noqa: N802
         if not self._open:
             return False, None
         if self._stalled():
@@ -285,7 +290,7 @@ class SimCapture:
             self._n += int(late_by * self._fps)
         shown = self._t0 + self._n / self._fps
         ready = shown + self._delay + self._rng.uniform(-self._jit, self._jit)
-        frame = self._render(self._n)
+        frame = self._render(self._n, image)
         self._draw_tap(frame, shown)
         wait = ready - self._clock.monotonic()
         if wait > 0:
@@ -299,9 +304,14 @@ class SimCapture:
         self._open = False
 
     # ── frame rendering (cheap; a moving bar + burned-in clock + tap patch) ──
-    def _render(self, n):
+    def _render(self, n, out=None):
+        """Draw frame n — into ``out`` when given (like cv2's read(image))."""
         import cv2
-        img = self._bg.copy()
+        if out is not None and out.shape == self._bg.shape:
+            np.copyto(out, self._bg)
+            img = out
+        else:
+            img = self._bg.copy()
         t = n / self._fps
         span = max(1, self._w - 40)
         pos = (n * 6) % (2 * span)

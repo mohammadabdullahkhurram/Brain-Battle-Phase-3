@@ -168,7 +168,8 @@ class CameraSlot(QObject):
     # ── signal handlers ──
     def _on_frame(self, frame: np.ndarray) -> None:
         try:
-            rgb = np.ascontiguousarray(frame[:, :, ::-1])
+            import cv2
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)   # releases the interpreter lock
             h, w = rgb.shape[0], rgb.shape[1]
             img = QImage(rgb.data, w, h, 3 * w, QImage.Format.Format_RGB888).copy()
             self.last_image = img

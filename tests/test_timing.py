@@ -169,7 +169,7 @@ def test_simulated_devices_end_to_end():
                 sum(s.is_live for s in flow._cams) == 4
                 and all(b.connected for b in flow._bands.values())):
             pump(0.1)
-        pump(2.5)                                 # let the de-jitter fit settle
+        pump(8.0)          # the de-jitter line needs some seconds of packets (minutes in real use)
         check("simulated cameras run at 60 fps (Record cameras at 60 fps is on)",
               all(abs(s.actual_fps - 60) < 0.5 for s in flow._cams if s.is_live),
               str([s.actual_fps for s in flow._cams]))

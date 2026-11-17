@@ -87,10 +87,14 @@ REC_QUEUE_MAXSIZE = 60      # at least this many frames; really 2 s at the camer
 # Stall watchdog: a camera that has delivered no frame for this long is
 # reopened (the recording continues in the same file).
 STALL_SEC = 2.0
-# Frame-difference energy for the buzzer test: every frame, shrunk to this
-# size and turned grey, is compared with the previous one (cheap: ~2 k pixels).
-ENERGY_SIZE = (64, 36)
+# Frame-difference energy for the buzzer test: every frame, sampled on a grid
+# of about this size, is compared with the previous one (cheap: ~2 k pixels).
+ENERGY_SIZE = (64, 36)          # (kept for reference: the grid of the first version)
+ENERGY_STRIDE = 4
 ENERGY_KEEP_SEC = 40.0
+# Reusable frame buffers per camera (the encoder queue is usually a few frames
+# deep; beyond this many in flight, frames are simply allocated).
+POOL_MAX = 12
 
 
 def _ffmpeg_path() -> Optional[str]:
@@ -346,7 +350,8 @@ class FrameEncoder:
         if not frame.flags["C_CONTIGUOUS"]:
             frame = np.ascontiguousarray(frame)
         try:
-            proc.stdin.write(frame.tobytes())
+            # straight from the array's memory: no 1.5 MB copy per frame
+            proc.stdin.write(memoryview(frame).cast("B"))
         except (BrokenPipeError, OSError, ValueError):
             return False
         self._write_sidecar_row(t_monotonic)   # only AFTER a successful write
@@ -527,6 +532,13 @@ class USBCameraThread(QThread):
         self.fps_fallback = False
         self.queue_peak = 0                # deepest the encoder queue got this second
         self.queue_capacity = REC_QUEUE_MAXSIZE
+        # Reusable frame buffers: frames are read into a free buffer and the
+        # buffer comes back once ffmpeg has it — no 1.5 MB allocation per frame
+        # (four cameras at 60 fps would otherwise churn ~360 MB/s, and the
+        # operating system then stalls the whole program now and then).
+        self._pool: "queue.SimpleQueue" = queue.SimpleQueue()
+        self._pool_n = 0
+        self._pool_shape = None
 
     # ── Public API (thread-safe; uses flags the run-loop polls) ──────────
     def set_preview_width(self, w: int) -> None:
@@ -567,6 +579,25 @@ class USBCameraThread(QThread):
         return (not self._recording and self._writer_thread is None
                 and self._rec_req_path is None)
 
+    def _take_buffer(self, shape):
+        """A free frame buffer of ``shape`` (or None: read a new array)."""
+        if shape != self._pool_shape:
+            self._pool_shape = shape
+            self._pool = queue.SimpleQueue(); self._pool_n = 0
+        try:
+            return self._pool.get_nowait()
+        except queue.Empty:
+            pass
+        if self._pool_n < POOL_MAX:
+            self._pool_n += 1
+            return np.empty(shape, dtype=np.uint8)
+        return None
+
+    def _give_buffer(self, buf) -> None:
+        """Back to the pool (any thread)."""
+        if buf is not None and buf.shape == self._pool_shape:
+            self._pool.put(buf)
+
     def energy_since(self, t0: float) -> tuple[np.ndarray, np.ndarray]:
         """(frame times, frame-difference energy) for frames after ``t0``."""
         with self._energy_lock:
@@ -578,8 +609,11 @@ class USBCameraThread(QThread):
 
     def _note_energy(self, frame, now) -> None:
         try:
-            small = cv2.resize(frame, ENERGY_SIZE, interpolation=cv2.INTER_AREA)
-            g = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.int16)
+            # every 4th pixel in each direction, averaged over the colours: a
+            # fraction of the cost of resizing the whole frame, fine enough
+            # that ordinary motion does not alias into false "taps", and the
+            # energy still grows with how much of the picture changed
+            g = frame[::ENERGY_STRIDE, ::ENERGY_STRIDE].sum(axis=2, dtype=np.int16) // 3
         except Exception:
             return
         e = 0.0 if self._prev_small is None else float(np.mean(np.abs(g - self._prev_small)))
@@ -750,7 +784,15 @@ class USBCameraThread(QThread):
                     self._rec_stop_req = False
                     self._stop_recording_encoder()
 
-                ok, frame = cap.read()
+                buf = (self._take_buffer((first_frame_shape[0], first_frame_shape[1], 3))
+                       if first_frame_shape is not None else None)
+                if buf is not None:
+                    ok, frame = cap.read(buf)
+                    if frame is not buf:                 # the backend made its own array
+                        self._give_buffer(buf)
+                else:
+                    ok, frame = cap.read()
+                pooled = buf is not None and frame is buf
                 if not ok or frame is None:
                     # Transient read failure. Give the device a moment and
                     # try again. Failing for STALL_SEC = a stalled camera:
@@ -780,7 +822,10 @@ class USBCameraThread(QThread):
                 elif (frame.shape[0], frame.shape[1]) != first_frame_shape:
                     # a reopened camera that came back at another size: keep the
                     # recording's size so the same file continues
+                    if pooled:
+                        self._give_buffer(frame)
                     frame = cv2.resize(frame, (first_frame_shape[1], first_frame_shape[0]))
+                    pooled = False
 
                 total_frames += 1
                 now = _clock.monotonic()
@@ -806,12 +851,14 @@ class USBCameraThread(QThread):
                 # capture must keep its cadence even if ffmpeg stalls. A full
                 # queue means the encoder can't keep up — drop the frame, count
                 # it, and (rate-limited) log it. `frame` is a fresh array per
-                # cap.read() in OpenCV-Python, so enqueuing it by reference is
-                # safe even though the writer consumes it later — the same
-                # assumption the preview emit below already relies on.
+                # cap.read() (or a pool buffer nobody else holds), so enqueuing it
+                # by reference is safe; the writer gives a pool buffer back once
+                # ffmpeg has the bytes.
+                enqueued = False
                 if self._recording and self._rec_queue is not None:
                     try:
                         self._rec_queue.put_nowait((frame, now))
+                        enqueued = True
                         depth = self._rec_queue.qsize()
                         if now - last_queue_reset >= 1.0:
                             last_queue_reset = now
@@ -848,7 +895,11 @@ class USBCameraThread(QThread):
                         s = self._preview_w / float(frame.shape[1])
                         pv = cv2.resize(frame, (self._preview_w,
                                                 max(1, int(frame.shape[0] * s))))
+                    elif pooled:
+                        pv = frame.copy()        # the pool buffer will be reused
                     self.frame_ready.emit(pv)
+                if pooled and not enqueued:
+                    self._give_buffer(frame)
         finally:
             # Always stop recording (finalise ffmpeg + sidecar) and release the
             # device, even on exception — so no orphaned ffmpeg survives.
@@ -910,7 +961,9 @@ class USBCameraThread(QThread):
                 item = None
             if item is not None:
                 frame, t_mono = item
-                if not enc.write_frame(frame, t_mono):
+                ok_w = enc.write_frame(frame, t_mono)
+                self._give_buffer(frame)
+                if not ok_w:
                     died = True
                     break
             # Detect an encoder that exited on its own (crash / error) even

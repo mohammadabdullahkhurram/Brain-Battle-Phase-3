@@ -105,7 +105,11 @@ def main(argv=None) -> int:
     ap.add_argument("--fps", type=int, default=60, choices=(30, 60))
     ap.add_argument("--json", default="")
     ap.add_argument("--gc-debug", action="store_true", help="print every slow garbage collection")
+    ap.add_argument("--switch-ms", type=float, default=None,
+                    help="override the thread switch interval (experiments)")
     args = ap.parse_args(argv)
+    if args.switch_ms:
+        sys.setswitchinterval(args.switch_ms / 1000.0)
     if args.gc_debug:
         import gc
         _gc_t = {}

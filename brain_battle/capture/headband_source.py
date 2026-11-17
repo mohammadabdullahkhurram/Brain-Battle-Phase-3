@@ -205,7 +205,12 @@ class HeadbandSlot(QObject):
         if self.publisher is not None:
             self.publisher.push_sensor(kind, self.which, data, timestamps, self.device_name)
 
+    reconnections = 0          # times it came back after a drop (this run)
+
     def _on_connected(self):
+        if getattr(self, "_dropped", False):
+            self.reconnections += 1
+            self._dropped = False
         self._connected = True
         self._lost = False
         self.connection_changed.emit(True)
@@ -223,6 +228,7 @@ class HeadbandSlot(QObject):
                 pass
         self._connected = False
         self._lost = True
+        self._dropped = True        # kept until the band is back (start() clears _lost)
         self.connection_changed.emit(False)
         self.changed.emit()
 

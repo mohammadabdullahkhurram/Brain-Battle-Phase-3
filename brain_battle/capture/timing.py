@@ -165,7 +165,13 @@ class RateMonitor:
             return snap
         now = arr[-1][0] if now is None else now
         recent = [(t, n) for t, n in arr if t >= now - self.window]
-        snap.rate = float(sum(n for _t, n in recent)) / self.window if recent else 0.0
+        # frames / samples per second between the first and the last arrival
+        # of the window (a headband's 12-sample packets would otherwise make
+        # the count jump between 252 and 264 a second)
+        if len(recent) >= 2 and recent[-1][0] > recent[0][0]:
+            snap.rate = float(sum(n for _t, n in recent[1:])) / (recent[-1][0] - recent[0][0])
+        else:
+            snap.rate = float(sum(n for _t, n in recent)) / self.window if recent else 0.0
         ts = np.array([t for t, _n in arr if t >= now - max(self.window, 2.0)])
         if len(ts) >= 3:
             d = np.diff(ts)
@@ -196,6 +202,8 @@ class LinearClockFit:
     MIN_POINTS = 8          # before this, arrival-based times are used as they are
     KEEP = 2048             # packets used for the robust intercept (~90 s)
     REFRESH = 16            # recompute the intercept every this many packets
+    SETTLE = 200            # packets (~10 s) before re-estimates are slewed
+    MAX_STEP = 0.00025      # after that, the line moves at most 0.25 ms per re-estimate
 
     def __init__(self, nominal_rate: float):
         self.rate = float(nominal_rate)
@@ -205,6 +213,7 @@ class LinearClockFit:
         self._sx = self._sy = self._sxx = self._sxy = 0.0
         self._recent = collections.deque(maxlen=self.KEEP)    # (x, y) relative
         self._cache = None
+        self._applied = None
         self._since = 0
 
     def add(self, index: float, t_arrival: float) -> None:
@@ -249,7 +258,19 @@ class LinearClockFit:
             else:
                 b = self._slope()
             a = float(np.median(y - b * x))
-            self._cache = (self._t0 + a - b * self._i0, float(b))
+            new = (self._t0 + a - b * self._i0, float(b))
+            # Once settled (~10 s of packets), the line may only move a little
+            # at a time: a re-estimate must never make the sample times jump
+            # (that would look like missing or doubled samples).
+            if self._applied is not None and self._n > self.SETTLE:
+                pa, pb = self._applied
+                x_now = float(self._recent[-1][0]) + self._i0
+                t_old = pa + pb * x_now
+                t_new = new[0] + new[1] * x_now
+                step = max(-self.MAX_STEP, min(self.MAX_STEP, t_new - t_old))
+                new = (t_old + step - new[1] * x_now, new[1])
+            self._applied = new
+            self._cache = new
             self._since = 0
         return self._cache
 
@@ -272,6 +293,7 @@ class PacketTimer:
         self.monitor = RateMonitor(device, chunk / rate, unit="Hz", samples_per_arrival=chunk)
         self._next_index = 0
         self._prev_last_ts: Optional[float] = None
+        self._last_out: Optional[float] = None
         self.packets = 0
         self.missing_samples = 0
 
@@ -293,8 +315,17 @@ class PacketTimer:
         self.fit.add(idx[-1], arrival_unix)
         self.monitor.add(arrival_unix, n)
         if not self.fit.ready:
-            return arrival_unix - (n - 1 - np.arange(n)) / self.rate
-        return self.fit.times(idx)
+            out = arrival_unix - (n - 1 - np.arange(n)) / self.rate
+        else:
+            out = self.fit.times(idx)
+        # Times never go backwards: while the line is still settling (the first
+        # seconds after the headband connects) a sample may come out at or
+        # before the previous one; only those samples are nudged just past it
+        # (by 0.1 ms each), so nothing is carried into later samples.
+        if self._last_out is not None and out[0] <= self._last_out:
+            out = np.maximum(out, self._last_out + 1e-4 * np.arange(1, n + 1))
+        self._last_out = float(out[-1])
+        return out
 
 
 # ═══════════════════════════════════════════════════ 3. buzzer calibration

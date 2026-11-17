@@ -81,11 +81,10 @@ def pump(secs):
 
 
 def _short_plan(flow):
+    from brain_battle.capture.session_controller import SessionConfig
     flow.goto_setup()
-    su = flow._setup_step
-    su._st_rest.set_value(2); su._st_round.set_value(10)
-    su._st_break.set_value(2); su._st_rounds.set_value(1)
-    su._name_a.setText("K7Q2"); su._name_b.setText("M3XA"); su._recompute()
+    flow.set_plan(SessionConfig(num_rounds=1, round_sec=10, break_sec=2, baseline_sec=2))
+    flow.set_fighters("K7Q2", "M3XA")
 
 
 def _record_once(flow, during=None):

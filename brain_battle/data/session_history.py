@@ -156,7 +156,62 @@ def read_history(session_root: str | os.PathLike) -> list[dict]:
     return out
 
 
+
+def _mmss(t) -> str:
+    try:
+        t = max(0, int(round(float(t))))
+    except (TypeError, ValueError):
+        return ""
+    return f"{t // 60}:{t % 60:02d}"
+
+
+def describe(event: dict) -> tuple[str, str]:
+    """(who, what) in plain words for one history line — the History drawer
+    on Sessions and the Activity tab in Review & Label. ``who`` is
+    "Recording" for what the recording itself did."""
+    ev = (event or {}).get("event", "")
+    d = (event or {}).get("details") or {}
+    user = (event or {}).get("user") or "Someone"
+    t = d.get("t_session_seconds", d.get("t_start"))
+    at = f" at {_mmss(t)}" if t is not None else ""
+    rec = {
+        EVENT_RECORDING_STARTED: "started" + (f" · {d.get('rounds')} rounds" if d.get("rounds") else ""),
+        EVENT_RECORDING_FINISHED: "finished" + (" (stopped early)" if d.get("stopped_early") else ""),
+        EVENT_RECORDING_INTERRUPTED: "interrupted · saved up to where it stopped",
+        EVENT_RECORDING_RECOVERED: "recovered after an interruption",
+        EVENT_MOMENT_MARKED: f"moment marked{at}",
+        EVENT_CAMERA_STALLED: f"{d.get('camera', 'a camera')} stopped sending pictures{at}",
+        EVENT_CAMERA_RECOVERED: f"{d.get('camera', 'a camera')} reconnected{at}",
+        EVENT_HEADBAND_RECONNECTED: f"Boxer {d.get('boxer', '?')}'s headband reconnected{at}",
+        EVENT_TIMING_CALIBRATED: "timing checked with the buzzer test"
+        + (f" · largest difference {d['largest_difference_ms']:.0f} ms"
+           if isinstance(d.get("largest_difference_ms"), (int, float)) else ""),
+    }
+    if ev in rec:
+        return "Recording", rec[ev]
+    if ev == EVENT_LABELS_ADDED:
+        what = d.get("label") or "a label"
+        if d.get("type") == "note":
+            what = "a note"
+        who = d.get("who")
+        return user, f"added {what}" + (f" ({who})" if who else "") + at
+    if ev == EVENT_LABELS_REMOVED:
+        return user, f"removed {d.get('label') or 'a label'}{at}"
+    if ev == EVENT_MOMENT_NOTED:
+        return user, f"added a note to the moment{at}"
+    if ev == EVENT_EXPORT_CREATED:
+        return user, "exported it for analysis"
+    if ev == EVENT_OPENED_FOR_REVIEW:
+        return user, "opened it"
+    if ev == "interrupted_dismissed":
+        return user, "dismissed the interrupted notice"
+    if ev in (EVENT_LABELS_MIGRATED, EVENT_LABELS_CLAIMED):
+        return user, "took over earlier labels"
+    return user, ev.replace("_", " ")
+
+
 __all__ = [
+    "describe",
     "HISTORY_FILENAME", "history_path", "log_event", "read_history",
     "EVENT_RECORDING_STARTED", "EVENT_RECORDING_FINISHED",
     "EVENT_RECORDING_INTERRUPTED", "EVENT_RECORDING_RECOVERED",

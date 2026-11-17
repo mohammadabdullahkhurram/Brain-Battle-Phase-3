@@ -73,6 +73,7 @@ class TimingQualityWriter:
                 os.fsync(self._f.fileno())
             except OSError:
                 pass
+        return True
 
     def close(self) -> None:
         if self._f is not None:

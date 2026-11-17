@@ -68,7 +68,29 @@ def test_empty_log():
           contact_log.weak_periods(root, [], min_sec=0) == [])
 
 
+def test_write_failure_after_open_raises():
+    """A write that fails after the file opened must raise (so the recording
+    flow can tell the operator), and the writer must stop trying."""
+    root = tempfile.mkdtemp(prefix="bb_contact_fail_")
+    w = contact_log.ContactLogWriter(contact_log.path_for(root))
+    w.append(1.0, "A", "Signal good", {})
+
+    class _Gone:
+        def write(self, *_a): raise OSError(28, "No space left on device")
+        def flush(self): raise OSError(28, "No space left on device")
+        def close(self): pass
+    w._f = _Gone()
+    raised = False
+    try:
+        w.append(2.0, "A", "Signal good", {})
+    except OSError:
+        raised = True
+    check("a failed write raises OSError (shown on Recording / Saved)", raised)
+    check("the writer remembers it failed", w.failed)
+
+
 if __name__ == "__main__":
+    test_write_failure_after_open_raises()
     test_weak_periods()
     test_empty_log()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")

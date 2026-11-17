@@ -60,6 +60,7 @@ class ContactLogWriter:
         try:
             csv.writer(self._f).writerow(row)
             self._f.flush()
+            return True
         except (OSError, ValueError) as e:
             self.failed = True
             raise OSError(f"contact_quality.csv could not be written: {e}") from e
