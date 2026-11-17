@@ -34,9 +34,12 @@ FRAME_PERIOD = 1.0 / 30.0   # one "frame" of the session for ← / → stepping
 class PyAVCamera:
     """Open a camera MP4 + its sidecar; decode the frame for a session time."""
 
-    def __init__(self, mp4_path: str, name: str = ""):
+    def __init__(self, mp4_path: str, name: str = "", shift: float = 0.0):
         self.path = mp4_path
         self.name = name
+        # the buzzer test's correction for this camera (seconds), subtracted
+        # from every sidecar time so playback lines up with the other devices
+        self.shift = float(shift or 0.0)
         self.missing = not (mp4_path and os.path.isfile(mp4_path))
         self.times = np.zeros(0, dtype=float)   # t_session_seconds per frame
         self._container = None
@@ -72,7 +75,7 @@ class PyAVCamera:
                     ts.append(float(row["t_session_seconds"]))
                 except (KeyError, TypeError, ValueError):
                     pass
-        self.times = np.asarray(ts, dtype=float)
+        self.times = np.asarray(ts, dtype=float) - self.shift
 
     @property
     def n_frames(self) -> int:
@@ -335,10 +338,15 @@ except ImportError:   # pragma: no cover - PyQt6 always present in this app
     pass
 
 
-def open_session_cameras(camera_specs: list[tuple[str, str]]) -> MultiCamDecoder:
+def open_session_cameras(camera_specs: list[tuple], shifts: dict | None = None) -> MultiCamDecoder:
     """camera_specs: list of (mp4_path, display_name). Missing files become
-    tiles that report 'No video for this camera'."""
-    return MultiCamDecoder([PyAVCamera(p, n) for p, n in camera_specs])
+    tiles that report 'No video for this camera'. ``shifts`` maps a file's stem
+    ('SIDE_01') to the buzzer test's correction in seconds."""
+    shifts = shifts or {}
+
+    def stem(p):
+        return os.path.splitext(os.path.basename(p or ""))[0].replace("session_", "")
+    return MultiCamDecoder([PyAVCamera(p, n, shifts.get(stem(p), 0.0)) for p, n in camera_specs])
 
 
 __all__ = ["PyAVCamera", "MultiCamDecoder", "DecodeWorker", "PlayerController",

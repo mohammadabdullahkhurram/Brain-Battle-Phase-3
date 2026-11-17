@@ -41,6 +41,12 @@ description has ``boxer_a_code`` / ``boxer_b_code`` and ``boxer_a_colour`` /
 those are written as ``boxer_a_name`` / ``boxer_b_name`` / ``boxer_name`` so
 nothing is lost. (docs/decisions/adr-0023-fighter-codes-and-colours.md)
 
+**Timing corrections.** If the buzzer test was run, each device's correction
+(``timing_calibration`` in the manifest, ``capture/timing.py``) is subtracted
+from its timestamps here — EEG and movement by headband, frames by camera —
+and written into that stream's description as ``timing_correction_ms``. The
+raw CSVs and sidecars are never changed.
+
 The file is derived from the recording's crash-safe source files (EEG CSVs,
 camera sidecars, phase_markers.csv, the manifest, labels.json), not written
 live. That is deliberate: it can be rebuilt at any time — after a crash, after
@@ -67,6 +73,7 @@ from brain_battle.data.signals import (
     XDF_NAME, eeg_stream_name, sensor_stream_name, video_stream_name, label_stream_name)
 import brain_battle.data.labels_store as labels_store
 import brain_battle.data.fighters as fighters
+import brain_battle.capture.timing as timing
 from brain_battle.data.xdf_writer import XdfWriter, channels_xml, _xml
 
 log = logging.getLogger(__name__)
@@ -166,6 +173,7 @@ def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None)
     t0 = float(cc.get("t0_lsl") or 0.0)
     t0_unix = cc.get("t0_unix")
     side = {w: fighters.info(manifest, w) for w in ("A", "B")}
+    corr = timing.corrections(manifest)
     common = (_xml("recording", root.name) + _xml("session_start", repr(t0))
               + _xml("app_version", manifest.get("version", "")))
     legacy = not (side["A"]["code"] or side["B"]["code"]) and \
@@ -192,7 +200,10 @@ def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None)
             if got is None or len(got[0]) == 0:
                 return
             t, data = got
-            extra = _xml("boxer", who) + _xml("headband", side[who]["headband"] or "")
+            shift = corr.get(timing.band_device(who), 0.0)
+            t = t - shift
+            extra = (_xml("boxer", who) + _xml("headband", side[who]["headband"] or "")
+                     + _xml("timing_correction_ms", f"{shift * 1000:.2f}"))
             if legacy:
                 extra += _xml("boxer_name", side[who]["name"] or "")
             else:
@@ -238,13 +249,16 @@ def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None)
             if got is None or len(got[0]) == 0:
                 continue
             idx, t = got
+            shift = corr.get(timing.camera_device(stem), 0.0)
+            t = t - shift
             span = float(t[-1] - t[0])
             fps = (len(t) - 1) / span if span > 0 else 0.0
             sid = w.add_stream(
                 video_stream_name(stem), "VideoFrames", 1, 0, "int32",
                 source_id=f"brainbattle-video-{stem}",
                 desc=desc(_xml("video_file", os.path.relpath(mp4, root).replace(os.sep, "/"))
-                          + _xml("measured_fps", f"{fps:.4f}"),
+                          + _xml("measured_fps", f"{fps:.4f}")
+                          + _xml("timing_correction_ms", f"{shift * 1000:.2f}"),
                           channels_xml(["frame_index"], type_="FrameIndex")))
             for i in range(0, len(t), _CHUNK):
                 w.write_samples(sid, t0 + t[i:i + _CHUNK], idx[i:i + _CHUNK].reshape(-1, 1))

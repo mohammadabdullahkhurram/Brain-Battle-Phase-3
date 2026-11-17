@@ -20,7 +20,11 @@ Signals recorded per headband:
   PPG   3 optical pulse channels · 64 Hz             (optional, Settings)
 
 Every timestamp comes from the one capture clock (``capture/clock.py``), so
-EEG, video frames and markers share a time axis by construction.
+EEG, video frames and markers share a time axis by construction. Each
+Bluetooth packet's **arrival** is logged (``timing.PacketTimer``): the jitter
+and the missing packets feed the live timing check, and every EEG sample gets
+the time of a straight-line fit through (sample number, arrival) for all
+packets so far, so arrival jitter does not reach the files.
 
 ── UNVERIFIED on real hardware ───────────────────────────────────────────────
 The arithmetic that places samples on the session axis is unit-tested. What
@@ -43,6 +47,7 @@ import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal
 
 import brain_battle.capture.clock as clock
+import brain_battle.capture.timing as timing
 from brain_battle.data.signals import (
     SAMPLE_RATE, EEG_CHANNELS, SENSORS, SENSOR_DIR_NAME)
 
@@ -305,6 +310,8 @@ class _MuseDirectReader(QThread):
         self._eeg_writer: Optional[_CsvStreamWriter] = None
         self._sensor_writers: dict[str, _CsvStreamWriter] = {}
         self._last_first_unix: Optional[float] = None   # first recorded EEG sample
+        # packet arrivals → jitter / missing packets / the de-jittering line
+        self.packet_timer = timing.PacketTimer(name or address, SAMPLE_RATE, 12)
 
     # ── recording ─────────────────────────────────────────────────────────────
 
@@ -332,9 +339,10 @@ class _MuseDirectReader(QThread):
         self._record_path = path
         self._eeg_writer = w
         if origin_unix is not None:
-            log.warning("EEG recording started for %s. Reminder: how late Bluetooth "
-                        "delivers samples is UNVERIFIED on real hardware "
-                        "(see AGENTS.md, deferred work #0).", self.name or self.address)
+            log.info("EEG recording started for %s. How late Bluetooth delivers "
+                     "samples is measured by the buzzer test (timing_calibration); "
+                     "it has not been checked on a real band yet (AGENTS.md).",
+                     self.name or self.address)
 
     def stop_recording(self) -> Optional[str]:
         """Stop streaming, flush and close the files; return the EEG CSV path
@@ -352,15 +360,23 @@ class _MuseDirectReader(QThread):
 
     # ── Bluetooth callbacks (muselsl hands us channels-first arrays) ──────────
 
-    def _on_eeg(self, data, timestamps) -> None:
+    def _on_eeg(self, data, timestamps, arrival: Optional[float] = None) -> None:
         """One 12-sample EEG chunk: ``data`` (5, 12), ``timestamps`` (12,).
-        muselsl reuses its buffers, so copy before handing anything on."""
+        muselsl reuses its buffers, so copy before handing anything on.
+
+        ``arrival`` is when the packet reached the computer (capture clock,
+        Unix seconds); it is read here when not given. The samples are written
+        with the de-jittered times of ``packet_timer`` (the incoming
+        ``timestamps`` are only used to notice packets that never arrived).
+        Offline writers that already have exact sample times (the demo
+        generator, tests) pass ``arrival = timestamps[-1]``."""
+        arrival = clock.unix_now() if arrival is None else float(arrival)
         if not self._first_chunk_seen:
             self._first_chunk_seen = True
             self.connected.emit()
         try:
             data = np.array(data, dtype=np.float32, copy=True)
-            ts = np.array(timestamps, dtype=np.float64, copy=True)
+            ts = self.packet_timer.stamp(arrival, np.array(timestamps, dtype=np.float64))
         except Exception as e:
             log.warning("EEG chunk copy failed: %s", e)
             return

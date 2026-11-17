@@ -47,6 +47,9 @@ VIDEO_QUALITY = {
 }
 
 
+FPS60_BITRATE_FACTOR = 1.8
+
+
 def gb_per_hour(mbps: float) -> float:
     """Decimal GB/hour for one camera at this nominal bitrate (Settings
     copy) — Mbit/s -> GB/hour: mbps * 3600s / 8 bits-per-byte / 1000."""
@@ -111,9 +114,12 @@ class AppSettings:
     record_motion:    bool = True
     record_ppg:       bool = False
     # Publish live signals on the local network as Lab Streaming Layer streams
-    # so LabRecorder / an LSL viewer can see them. The app's own files do not
-    # depend on this.
-    lsl_streams:      bool = True
+    # so LabRecorder / an LSL viewer can see them. Off by default: the app
+    # shows everything live without it, and its own files do not depend on it.
+    lsl_streams:      bool = False
+    # Record the cameras at 60 fps (halves the camera timing error; a camera
+    # that cannot do 60 falls back to 30 and the app says so).
+    record_60fps:     bool = True
     # Who is labelling on this computer ("Your name", asked once). Each
     # labeller's labels are stored in their own file in the recording folder.
     labeller_name:    str = ""
@@ -153,12 +159,17 @@ class AppSettings:
         return out
 
     def video_dims(self) -> tuple[int, int, int]:
+        """(width, height, fps) the cameras are asked for: the quality preset's
+        size, at 60 fps when "Record cameras at 60 fps" is on."""
         q = VIDEO_QUALITY.get(self.video_quality, VIDEO_QUALITY["standard"])
-        return int(q["w"]), int(q["h"]), int(q["fps"])
+        fps = 60 if self.record_60fps else int(q["fps"])
+        return int(q["w"]), int(q["h"]), fps
 
     def video_mbps(self) -> float:
+        """Target H.264 bitrate per camera: the preset's, ×1.8 at 60 fps (twice
+        the frames; motion-heavy footage compresses a little better at 60)."""
         q = VIDEO_QUALITY.get(self.video_quality, VIDEO_QUALITY["standard"])
-        return float(q["mbps"])
+        return float(q["mbps"]) * (FPS60_BITRATE_FACTOR if self.record_60fps else 1.0)
 
     def known_headband_names(self) -> list:
         """Known device names for the Settings dropdowns: remembered scans
@@ -214,7 +225,7 @@ def load(path: Optional[str] = None) -> AppSettings:
         s.round_bell = data["round_bell"]
     if data.get("video_quality") in VIDEO_QUALITY:
         s.video_quality = data["video_quality"]
-    for key in ("record_motion", "record_ppg", "lsl_streams"):
+    for key in ("record_motion", "record_ppg", "lsl_streams", "record_60fps"):
         if isinstance(data.get(key), bool):
             setattr(s, key, data[key])
     if isinstance(data.get("labeller_name"), str):

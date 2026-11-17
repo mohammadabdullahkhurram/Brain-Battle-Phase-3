@@ -51,6 +51,7 @@ sys.path.insert(0, ROOT)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["BRAIN_BATTLE_SIMULATE"] = "1"
 os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = tempfile.mkdtemp(prefix="bb_fd_cap_")
+_env.set_setting("lsl_streams", True)     # the worst case: every live stream open
 
 from PyQt6.QtWidgets import QApplication   # noqa: E402
 

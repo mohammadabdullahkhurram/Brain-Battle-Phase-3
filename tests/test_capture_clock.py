@@ -143,7 +143,7 @@ def test_reader_writes_t_session_column():
         for c in range(2):
             data = np.random.randn(5, n).astype(np.float32)
             ts = origin + 0.4 + (np.arange(n) + c * n) / SR
-            r._on_eeg(data, ts.astype(np.float64))
+            r._on_eeg(data, ts.astype(np.float64), arrival=float(ts[-1]))
         written = r.stop_recording()        # drains + joins the writer thread
         df = pd.read_csv(written)
         check("reader CSV has t_session_seconds column",

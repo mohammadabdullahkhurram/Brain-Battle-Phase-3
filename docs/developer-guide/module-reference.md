@@ -19,7 +19,7 @@ remove, or rename a module, update this page in the same commit (see
 |---|---|
 | **Package top** | `app` · `version` · `paths` · (root shim `brain_battle_main`) |
 | **`ui/`** | `sidebar_shell` · `sessions_screen` · `record_flow` · `review_label_screen` · `eeg_viewer` · `settings_screen` · `docs_screen` · `design_tokens` · `widgets` · `fonts` |
-| **`capture/`** | `clock` · `usb_camera` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
+| **`capture/`** | `clock` · `usb_camera` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `timing` · `timing_log` · `buzzer_test` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
 | **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `fighters` · `safe_io` · `export_module` · `app_settings` |
 | **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` |
@@ -204,8 +204,11 @@ shown anywhere.
 ### `camera_source.py`
 `CameraSlot(QObject)` — one camera for the record flow. Wraps a real
 `usb_camera.USBCameraThread` (or its simulated stand-in) and tracks live/
-recording/dropped/encoder state, exposing preview frames and fps via signals.
-`make_slots(parent)` builds the four slots (two side, two POV). **Called by:**
+recording/dropped/encoder state, exposing preview frames and fps via signals,
+plus the live timing (`timing_snapshot`), the frame-difference energy for the
+buzzer test (`energy_since`), the 60 → 30 fps fallback note (`fps_note`), the
+stall watchdog's state (`stalled`, `stall_events`) and the encoder queue use
+(`queue_use`). `make_slots(parent)` builds the four slots (two side, two POV). **Called by:**
 `record_flow`. **Calls:** `usb_camera`, `simulation`. **Thread:** the wrapped
 `USBCameraThread` runs off the UI thread; the slot itself lives on the UI thread.
 
@@ -218,18 +221,28 @@ spawns one `ffmpeg` subprocess per camera, feeds it raw frames over stdin
 count exactly ([ADR-0004](../decisions/adr-0004-crash-safe-h264.md)).
 `preflight_recording()` blocks recording if ffmpeg is missing; `_resolve_encoder`/
 `_validate_encoder` pick a hardware H.264 encoder with a libx264 fallback.
+`_negotiate` asks for MJPG, the size, the frame rate and a 1-frame buffer, and
+falls back from 60 to 30 fps (signal `fps_note`). Every frame feeds a
+`timing.RateMonitor` and a small frame-difference energy log (buzzer test).
+**Stall watchdog:** no frame for `STALL_SEC` (2 s) → `stalled` is emitted at
+once and the camera is reopened (`_reopen`) while the encoder keeps running, so
+the recording continues in the same file (`recovered` with the gap; a read that
+hangs for 6 s has its device released). The encoder queue holds ~2 s of
+frames at the camera's rate; its peak use per second is `queue_peak`.
 **Called by:** `camera_source`, the demo generator. **Thread:** capture thread +
-one encoder-writer thread + the ffmpeg child. **Gotcha:** a full frame queue
-drops frames and increments a counter rather than ever blocking capture; a dead
-ffmpeg stops only that camera.
+watchdog thread + one encoder-writer thread + the ffmpeg child. **Gotcha:** a
+full frame queue drops frames and increments a counter rather than ever
+blocking capture; a dead ffmpeg stops only that camera.
 
 ### `headband_source.py`
 `HeadbandSlot(QObject)` — one boxer's headband for the record flow. Wraps
 `eeg_module._MuseDirectReader` (or `simulation.SimMuseReader`) and surfaces
 connection, battery, per-sensor contact quality, a rolling buffer for the live
 EEG display (`trace()`, all five inputs, capture-clock times), and reconnect/
-append. When the flow gives it an `LslPublisher` (`publisher`), every chunk is
-also pushed to the live LSL streams. **Called by:** `record_flow`. **Calls:**
+append. It also keeps the accelerometer (`acc_since`) and gives the live
+timing (`timing_snapshot`) and recent EEG (`eeg_since`) to the buzzer test.
+When the flow gives it an `LslPublisher` (`publisher`), every chunk is also
+pushed to the live LSL streams. **Called by:** `record_flow`. **Calls:**
 `eeg_module`, `contact_quality`, `simulation`, `app_settings`. **Thread:** the reader runs on its own QThread;
 the slot lives on the UI thread.
 
@@ -245,9 +258,12 @@ EEG goes to `continuous/Muse data/`, the sensors to `continuous/Muse sensors/`
 (`sensor_csv_path`). `_RingBuffer` is a pre-allocated NumPy ring buffer for live
 displays; `_MuseScanThread` scans for bands; `boxer_labels()` reads the A/B
 mapping from `app_settings`. **Thread:** reader + one CSV-writer thread per
-signal. **Gotcha:** the reader's time source is `clock.unix_now` (the one
-capture clock), not `time.time()`; how late Bluetooth delivers a sample is
-**Not yet verified on hardware** (logged at every recording start) — see
+signal. Every EEG packet's arrival is logged by its `packet_timer`
+(`timing.PacketTimer`): samples are written with the de-jittered times of the
+per-band line fit, not the raw arrival. **Gotcha:** the reader's time source is
+`clock.unix_now` (the one capture clock), not `time.time()`; offline callers of
+`_on_eeg` pass `arrival=`. How late Bluetooth delivers is measured by the
+buzzer test but **not yet verified on hardware** — see
 [timing & accuracy](../research-and-data/timing-and-accuracy.md). The movement
 and pulse sensors have never been received from a real band.
 
@@ -285,13 +301,44 @@ outlet to "clean up". **Called by:** `record_flow`, `headband_source`,
 `camera_source`.
 
 ### `session_controller.py`
-A pure-logic phase state machine (`IDLE→BASELINE→ROUND↔BREAK→DONE`), driven by a
-1 Hz QTimer, emitting `phase_changed`/`tick`/`beep_requested`. `SessionConfig`
-holds rounds/durations; `_build_timeline` expands it to `PhaseInfo` steps.
-Deliberately **Qt-optional / headless-testable**. **Called by:** `record_flow`,
-and reused by the demo generator. **Gotcha:** it owns timing logic only — it
-writes nothing to disk; `record_flow` turns its signals into `phase_markers.csv`
-rows.
+A pure-logic phase state machine (`IDLE→LEAD_IN→BASELINE→ROUND↔BREAK→DONE`),
+driven by a 1 Hz QTimer, emitting `phase_changed` / `tick` / `marker` (every
+system marker: `RECORDING_START`, `*_START` / `*_END`, `RECORDING_END`) /
+`bell_requested` (start and end of every round). `SessionConfig` holds
+rounds/durations; `_build_timeline` expands it to `PhaseInfo` steps, starting
+with the fixed 15 s lead-in (`LEAD_IN_SEC`); `planned_markers` lists the
+markers a full recording writes. Deliberately **Qt-optional /
+headless-testable**. **Called by:** `record_flow`, and reused by the demo
+generator. **Gotcha:** it owns timing logic only — it writes nothing to disk;
+`record_flow` turns its `marker` signal into `phase_markers.csv` rows. Tests
+shorten the lead-in through `LEAD_IN_SEC` (`tests/_env.py`).
+
+### `timing.py`
+How well the devices keep time, and the buzzer calibration
+([ADR-0024](../decisions/adr-0024-timing-check-and-buzzer-calibration.md)).
+`RateMonitor` (live rate / jitter / dropped per device), `LinearClockFit` +
+`PacketTimer` (per-band de-jittered EEG times from packet arrivals, missing
+packets counted), `detect_eeg_tap` (sub-sample tap onset, accelerometer check),
+`detect_camera_tap` (sub-frame onset from frame-difference energy on the
+camera's steady frame clock), `calibrate` (per-tap consensus → per-device
+corrections → the manifest's `timing_calibration`), `corrections` (what the
+XDF / export / Review subtract), `summary_text`. Pure logic + numpy, no Qt.
+**Called by:** `eeg_module`, `usb_camera`, `camera_source`, `headband_source`,
+`buzzer_test`, `record_flow`, `session_xdf`, `export_module`,
+`review_label_screen`.
+
+### `timing_log.py`
+`TimingQualityWriter` — `timing_quality.csv`, one row per device per second
+(rate, jitter, dropped, the applied correction, events such as a camera stall);
+`append` raises on a write error so `record_flow` can show it. `read_rows`
+reads it back. **Called by:** `record_flow`, the demo generator.
+
+### `buzzer_test.py`
+`BuzzerTest(QObject)` — "Run buzzer test": 5 beeps 1.5 s apart (a generated
+1 kHz WAV via `QSoundEffect`), then finds the taps in every live camera and
+headband and emits `timing.calibrate`'s result. Under simulation it tells the
+simulated devices when the taps happen. **Called by:** `record_flow`
+(`run_buzzer_test`). **Thread:** UI thread (timers); the analysis is short.
 
 ### `contact_quality.py`
 A documented per-sensor EEG contact-quality heuristic (`channel_status` →
@@ -302,7 +349,8 @@ maps channel codes to plain names. **Called by:** `headband_source`,
 
 ### `contact_log.py`
 `ContactLogWriter` appends a per-sensor contact-quality row into the recording
-folder during capture (append-only, line-buffered). `weak_periods` summarises
+folder during capture (append-only, line-buffered); a write that fails after
+the file opened raises, so `record_flow` shows it on Recording and Saved. `weak_periods` summarises
 weak spans; `describe_weak` turns one into a "worth checking" line, filtered to
 spans over 30 s. **Called by:** `record_flow` (during recording), the Saved
 screen, and Review. **Gotcha:** `_HEADER` is the CSV schema documented in
@@ -319,7 +367,7 @@ at stop).
 `RoundBell(QObject)` plays `assets/sounds/round_bell.wav` (a real boxing-bell
 recording — see [credits](../project/credits.md)) through `QSoundEffect`;
 `bundled_bell_path` resolves the WAV's path regardless of cwd. **Called by:**
-`record_flow` (round start) and `settings_screen` (Test sound). **Note:** this was
+`record_flow` (the start and end of every round) and `settings_screen` (Test sound). **Note:** this was
 once `sync_beep.py` / `SyncBeep`, named for an audio-xcorr sync engine that has
 since been removed (see
 [ADR-0002](../decisions/adr-0002-remove-audio-xcorr.md)); it was renamed once
@@ -649,6 +697,9 @@ throwaway settings file with a labeller name — neither is a standalone test.
 | `test_no_placeholders.py` | No placeholder UI copy; no placeholder screens; channel codes only inside the EEG viewer. |
 | `test_capture_clock.py` | Capture-clock reconciliation, co-registration, manifest bridge. |
 | `test_xdf.py` | The XDF writer and `recording.xdf` read back with pyxdf; the one capture clock vs. `pylsl.local_clock()`. |
+| `test_xdf_csv_parity.py` | Every `recording.xdf` stream also exists as its own CSV in the export, with the same samples and times (minus the buzzer-test correction). |
+| `test_timing.py` | Live timing monitors, de-jittered headband times, tap detection, and the buzzer calibration recovering known simulated delays within 2 ms. |
+| `test_moments.py` | Moment notes in the manifest and `moments.csv`, edited later; "Needs labels" until every moment has a note; the XDF Moments stream. |
 | `test_lsl_streams.py` | The live LSL outlets as a real LSL receiver sees them, incl. a simulated headband. |
 | `test_eeg_viewer.py` | The EEG viewer: window, honest µV scale, display filter, markers, the Review card's controls. |
 | `test_demo_session.py` | The demo generator end to end. |

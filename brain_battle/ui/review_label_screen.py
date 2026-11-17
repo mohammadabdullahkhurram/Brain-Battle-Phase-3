@@ -617,12 +617,19 @@ class _MediaLoadWorker(QThread):
         self._root = root; self._specs = specs; self._eeg_plan = eeg_plan
 
     def run(self):
-        decoder = open_session_cameras(self._specs)
+        # the buzzer test's per-device corrections (none if it was not run)
+        import brain_battle.capture.timing as timing
+        corr = timing.corrections(session_storage._read_manifest(self._root) or {})
+        decoder = open_session_cameras(self._specs, corr)
         dfs = {}
         for idx, path in self._eeg_plan.items():
             try:
                 # tolerant: an interrupted recording can end in a half-written row
-                dfs[idx] = session_storage.read_csv_tolerant(path).dropna()
+                df = session_storage.read_csv_tolerant(path).dropna()
+                shift = corr.get(timing.band_device("AB"[idx]), 0.0)
+                if shift and "t_session_seconds" in df.columns:
+                    df["t_session_seconds"] = df["t_session_seconds"] - shift
+                dfs[idx] = df
             except Exception:
                 dfs[idx] = None
         self.done.emit(decoder, dfs)

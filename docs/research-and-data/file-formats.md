@@ -35,6 +35,8 @@ by `session_storage.SessionLayout._write_manifest`. One JSON object:
 | `source_starts` | object | Per source, its measured first sample: `{first_unix, first_t_session}` |
 | `config` | object | The round plan: `{num_rounds, round_sec, break_sec, baseline_sec}` (seconds) |
 | `lead_in_sec` | int | Seconds recorded before the baseline (`15`; absent in older recordings) |
+| `timing_calibration` | object \| null | The buzzer test's result (below), or `null` if it was not run for this recording |
+| `camera_fps` | object | Per camera stem, `{requested, actual}` frames per second (`actual` 30 when a camera could not do 60) |
 | `phases` | array | One entry per baseline / round / break (see below) |
 
 Inside `boxers.A` / `boxers.B`: `code` (exactly 4 characters, `A`–`Z` and
@@ -271,9 +273,9 @@ above (it is a derived copy; see
 t_session_seconds`. Every stream's description carries the session start as
 `session_start` (inside a `brain_battle` element, next to `recording`,
 `app_version`, `boxer_a_code`, `boxer_b_code`, `boxer_a_colour`,
-`boxer_b_colour`, and — per stream — `boxer`, `boxer_code`, `boxer_colour` and
-`headband`; or `video_file` and `measured_fps`; or `labeller` on a label
-stream), so
+`boxer_b_colour`, and — per stream — `boxer`, `boxer_code`, `boxer_colour`,
+`headband` and `timing_correction_ms`; or `video_file`, `measured_fps` and
+`timing_correction_ms`; or `labeller` on a label stream), so
 
     t_session_seconds = timestamp − session_start
 
@@ -316,6 +318,52 @@ holds the same rows.
 |---|---|---|---|---|
 | `t_session_seconds` | float | seconds | When the moment was marked | `207.250` |
 | `note` | string | — | The observer's note (`""` = none yet) | `B dropped the guard` |
+
+### `timing_calibration`
+
+Written when a recording starts if **Run buzzer test** was done on Get ready
+(`capture/timing.calibrate`, [ADR-0024](../decisions/adr-0024-timing-check-and-buzzer-calibration.md)).
+The corrections are **applied** — subtracted from each device's times — when
+`recording.xdf`, `eeg_coregistered.csv` and Review & Label's alignment are
+built; raw CSVs and sidecars are never changed.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `method` | string | `"buzzer"` |
+| `measured_at` | string | When the test ran, ISO 8601 |
+| `beeps` | int | Number of beeps (`5`) |
+| `beep_times` | array | Each beep's instant on the capture clock (seconds) |
+| `reference` | string | `"median of devices"` — corrections are relative between devices |
+| `devices` | object | Per device (`SIDE_01`, `SIDE_02`, `POV_01`, `POV_02`, `EEG_A`, `EEG_B`), below |
+| `complete` | bool | Every device was corrected |
+| `largest_difference_ms` | number \| null | What is left after correction: the two least consistent devices' spreads added — compare with the 10 ms goal |
+
+Each entry in `devices`:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `correction_ms` | number \| null | Subtracted from this device's times (ms); `null` = too few taps found, not corrected |
+| `delay_ms` | number \| null | How much later than the fastest device it reports the same instant |
+| `offset_ms` | number \| null | Median (tap − beep), ms — includes the beep's sound delay and reaction time |
+| `taps_found` | int | Taps found (of 5) |
+| `spread_ms` | number \| null | How far its taps wander around the other devices' (median absolute deviation, ms) |
+| `per_tap_ms` | array | Each found tap's (tap − beep), ms |
+
+## `timing_quality.csv`
+
+Once a second while recording, one row per camera and headband — written by
+`timing_log.TimingQualityWriter`. Also one row per camera stall / reopening and
+for a camera that could only record at 30 fps.
+
+| Column | Type | Unit | Meaning | Example |
+|---|---|---|---|---|
+| `t_session_seconds` | float | seconds | When (session clock) | `12.000` |
+| `device` | string | — | `SIDE_01`, `SIDE_02`, `POV_01`, `POV_02`, `EEG_A`, `EEG_B` | `SIDE_01` |
+| `rate` | float | fps / Hz | Frames (cameras) or samples (headbands) delivered in the last second | `60.00` |
+| `jitter_ms` | float | ms | Spread (standard deviation) of the intervals between arrivals | `1.21` |
+| `dropped` | int | — | Frames dropped / headband samples missing in that second | `0` |
+| `offset_ms` | float | ms | The buzzer-test correction applied to this device (empty if not measured) | `4.10` |
+| `event` | string | — | `stalled`, `reopened after 2.5 s`, `30 fps (could not record at 60)`, `headband lost`, or empty | `` |
 
 ## `contact_quality.csv`
 
@@ -465,6 +513,10 @@ The `event` values (from `session_history`):
 | `opened_for_review` | The session is opened in Review & Label | — |
 | `moment_marked` | "Mark this moment" was pressed | the moment time |
 | `moment_noted` | A note was written or changed for a marked moment | the moment time and the `note` |
+| `camera_stalled` | A camera sent no pictures for 2 s while recording | the `camera` and when |
+| `camera_recovered` | That camera was reopened and recording continued in the same file | the `camera`, when, and the `gap_seconds` |
+| `headband_reconnected` | A headband that dropped came back during recording | the `boxer` and when |
+| `timing_calibrated` | The recording started with a buzzer-test calibration | `largest_difference_ms` |
 | `labels_added` | A label was placed | the label, `who`, `t_start`, and the `labeller` |
 | `labels_removed` | A label was deleted | the same |
 | `labels_migrated` | An old single `labels.json` was moved into a per-labeller file | `to_labeller` |
@@ -503,7 +555,10 @@ plus the derived CSVs and the XDF. Contents:
 | `sensors/` | The movement / pulse CSVs, unchanged (only if they were recorded) |
 | `videos/` | The camera `.mp4` files (unless "The 4 camera videos" was unticked) and their `.timestamps.csv` sidecars (always) |
 | `session_manifest.json` | A copy of the manifest |
-| `phase_markers.csv` | A copy of the markers |
+| `phase_markers.csv` | A copy of the system markers |
+| `moments.csv` | A copy of the marked moments and their notes |
+| `timing_quality.csv` | A copy of the timing report (rate, jitter, dropped, correction per device per second) |
+| `contact_quality.csv` | A copy of the sensor-contact log |
 | `history.jsonl` | A copy of the history log |
 | `README.txt` | A plain-text description of the bundle |
 | `combined_2x2.mp4` | *Optional* — a 2×2 montage of the four cameras (off by default) |

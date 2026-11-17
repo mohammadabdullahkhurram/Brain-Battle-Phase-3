@@ -27,7 +27,13 @@ _HEADER = ["t_session_seconds", "boxer", "summary", *CHANNELS]
 
 
 class ContactLogWriter:
-    """Append-only writer, line-buffered so a crash keeps everything flushed."""
+    """Append-only writer, line-buffered so a crash keeps everything flushed.
+
+    A write that fails AFTER the file opened (drive unplugged, disk full)
+    raises, so the recording flow can show it (``RecordFlow._essential``):
+    the Recording screen says so and the Saved screen says "saved, but with
+    problems". After a failure ``failed`` is True and further rows are not
+    attempted."""
 
     def __init__(self, path: str):
         self.path = path
@@ -44,15 +50,19 @@ class ContactLogWriter:
         """False when the file could not be made (nothing will be logged)."""
         return self._f is not None
 
+    failed = False
+
     def append(self, t_session: float, boxer: str, summary: str, statuses: dict) -> None:
         if self._f is None:
             return
+        row = [f"{float(t_session):.3f}", boxer, summary,
+               *(statuses.get(ch, "") for ch in CHANNELS)]
         try:
-            row = [f"{float(t_session):.3f}", boxer, summary,
-                   *(statuses.get(ch, "") for ch in CHANNELS)]
             csv.writer(self._f).writerow(row)
-        except (OSError, ValueError):
-            pass
+            self._f.flush()
+        except (OSError, ValueError) as e:
+            self.failed = True
+            raise OSError(f"contact_quality.csv could not be written: {e}") from e
 
     def close(self) -> None:
         if self._f is not None:

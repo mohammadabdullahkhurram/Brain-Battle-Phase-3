@@ -145,7 +145,7 @@ def _make_session(base):
         data = rng.normal(0, 15, (5, n)).astype(np.float32)
         ts = t0u + start + np.arange(n) / SR
         for i in range(0, n, 12):
-            r._on_eeg(data[:, i:i + 12], ts[i:i + 12])
+            r._on_eeg(data[:, i:i + 12], ts[i:i + 12], arrival=float(ts[min(i + 11, len(ts) - 1)]))
         acc = rng.normal(0, 0.1, (3, 60)).astype(np.float32)
         r._on_sensor("ACC", acc, t0u + start + np.arange(60) / 52)
         r.stop_recording()

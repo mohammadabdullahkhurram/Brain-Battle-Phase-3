@@ -13,7 +13,8 @@ analyst needs:
     eeg/                  the raw per-headband EEG CSVs
     sensors/              headband movement / pulse CSVs (if recorded)
     videos/               camera MP4s + their per-frame .timestamps.csv
-    session_manifest.json, phase_markers.csv, history.jsonl, README.txt
+    session_manifest.json, phase_markers.csv, moments.csv, timing_quality.csv,
+    contact_quality.csv, history.jsonl, README.txt
     combined_2x2.mp4      optional (off by default; slow to make)
 
 Fighters appear only as their codes and colours (ADR-0023), so there are no
@@ -549,11 +550,17 @@ class SessionExportWorker(QThread):
             for p in sorted(session_storage.sensor_files(root).values()):
                 files.append((p, f"sensors/{os.path.basename(p)}"))
 
-            # co-registered EEG
+            # co-registered EEG (with the buzzer test's corrections applied)
             self.progress.emit(25, "Putting both boxers' brain activity on one timeline…")
             try:
+                import brain_battle.capture.timing as timing
+                corr = timing.corrections(manifest)
                 dfs = [session_storage.read_csv_tolerant(p).dropna() if p else None
                        for p in eeg_paths]
+                for who, df in zip(("A", "B"), dfs):
+                    shift = corr.get(timing.band_device(who), 0.0)
+                    if df is not None and shift and "t_session_seconds" in df.columns:
+                        df["t_session_seconds"] = df["t_session_seconds"] - shift
                 coreg = build_coregistered_eeg(dfs, self.phase_markers)
                 if coreg is not None:
                     cp = os.path.join(tmp, "eeg_coregistered.csv")
@@ -613,9 +620,13 @@ class SessionExportWorker(QThread):
             mp = os.path.join(root, "session_manifest.json")
             if os.path.isfile(mp):
                 files.append((mp, "session_manifest.json"))
-            pm = os.path.join(root, "phase_markers.csv")
-            if os.path.isfile(pm):
-                files.append((pm, "phase_markers.csv"))
+            # every other recording CSV: the system markers, the marked moments
+            # (+ notes), the timing report and the sensor-contact log
+            for fn in ("phase_markers.csv", "moments.csv", "timing_quality.csv",
+                       "contact_quality.csv"):
+                fp = os.path.join(root, fn)
+                if os.path.isfile(fp):
+                    files.append((fp, fn))
             hp = os.path.join(root, "history.jsonl")
             if os.path.isfile(hp):
                 files.append((hp, "history.jsonl"))
@@ -659,6 +670,8 @@ class SessionExportWorker(QThread):
 
 def _export_readme(root, labels, manifest=None, agreements=None):
     import brain_battle.data.fighters as fighters
+    import brain_battle.capture.timing as timing
+    timing_summary = timing.summary_text((manifest or {}).get("timing_calibration"))
     created = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if isinstance(labels, int):              # older callers passed a count
         n_labels, per = labels, {}
@@ -707,14 +720,22 @@ def _export_readme(root, labels, manifest=None, agreements=None):
         "  sensors/              headband movement / pulse recordings (if any).",
         "  videos/               camera MP4s + their .timestamps.csv sidecars",
         "                        (one row per frame: frame time on the shared clock).",
-        "  session_manifest.json, phase_markers.csv, history.jsonl",
+        "  phase_markers.csv     the automatic system markers (recording start,",
+        "                        baseline, each round and break, recording end).",
+        "  moments.csv           moments marked while recording, with their notes.",
+        "  timing_quality.csv    once a second per device: rate, jitter, dropped",
+        "                        frames / packets, and the buzzer-test correction.",
+        "  contact_quality.csv   once a second per headband: sensor contact.",
+        "  session_manifest.json (codes, plan, clock, timing_calibration), history.jsonl",
         "  combined_2x2.mp4      the four cameras in one frame (only if requested).",
         "",
-        "*** UNVERIFIED between-brain EEG alignment ***",
-        "  Each band's position on the shared clock comes from the capture-time",
-        "  timestamps, whose source has not been confirmed against a real Muse",
-        "  band. Confirm against a known simultaneous event before trusting",
-        "  sub-second between-brain synchrony.",
+        "Timing:",
+        f"  {timing_summary}",
+        "  recording.xdf and eeg_coregistered.csv have the buzzer-test corrections",
+        "  applied (timing_correction_ms in each XDF stream); the raw CSVs and",
+        "  .timestamps.csv files are exactly as recorded.",
+        "  NOT YET CHECKED ON REAL HARDWARE: the corrections have only been",
+        "  verified with simulated devices.",
     ]
     return "\n".join(lines)
 

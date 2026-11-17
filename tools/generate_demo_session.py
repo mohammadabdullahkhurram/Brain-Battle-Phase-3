@@ -292,7 +292,7 @@ def _generate_eeg_band(muse_dir, device_name, boxer_letter, rng, t0_unix,
         data[3] = channels["TP10"][start:end]
         data[4] = aux[start:end]
         ts = t0_unix + start_offset + np.arange(start, end) / SR_EEG
-        reader._on_eeg(data, ts.astype(np.float64))
+        reader._on_eeg(data, ts.astype(np.float64), arrival=float(ts[-1]))
 
     # Movement sensors: gravity + a bounce that is 4x bigger during rounds.
     for kind in ("ACC", "GYRO"):
@@ -329,7 +329,8 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
                           boxer_a: str | None = "K7Q2", boxer_b: str | None = "M3XA",
                           colour_a: str = "Red", colour_b: str = "Blue",
                           legacy_names: tuple | None = None,
-                          moments=None, started_at=None) -> dict:
+                          moments=None, calibration: dict | None = None,
+                          started_at=None) -> dict:
     """Build one complete demo session folder. Returns a summary dict
     (session root, per-camera + per-band generation parameters, markers,
     total duration, interrupted flag) — used both by main()'s printed
@@ -340,7 +341,8 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     recordings made before fighter codes did (``{"name", "headband"}``), so
     the app's handling of old recordings can be checked. ``moments`` is a list
     of ``(t_session_seconds, note)`` "Mark this moment" presses (note may be
-    "")."""
+    ""). ``calibration`` is ``{device: correction_ms}`` — stored as the
+    manifest's ``timing_calibration`` as if the buzzer test had been run."""
     global _qapp_ref
     _qapp_ref = QApplication.instance() or QApplication(sys.argv)
 
@@ -390,6 +392,11 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     for t_sec, note in (moments or []):
         if t_sec <= total_duration:
             layout.add_moment(t_sec, note=note)                    # REAL writer
+    if calibration:
+        import brain_battle.capture.timing as _timing
+        beeps = [1.0 + 1.5 * i for i in range(_timing.N_BEEPS)]
+        events = {dev: [b + 0.2 + c / 1000.0 for b in beeps] for dev, c in calibration.items()}
+        layout.set_timing_calibration(_timing.calibrate(beeps, events))   # REAL format
 
     marker_times = sorted({round(m[0], 6) for m in markers})   # one flash per instant
     rng = np.random.default_rng(seed)
@@ -439,6 +446,21 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
         eeg_bands.append(info)
         if info["first_unix"] is not None:
             layout.record_source_start(f"EEG_{eeg_idx:02d}", info["first_unix"])  # REAL writer
+
+    # timing_quality.csv, once a second per device, with the REAL writer
+    import brain_battle.capture.timing as _timing
+    import brain_battle.capture.timing_log as _tlog
+    tw = _tlog.TimingQualityWriter(_tlog.path_for(layout.root))
+    import brain_battle.data.session_storage as _ss
+    corr = _timing.corrections(_ss._read_manifest(layout.root) or {})
+    devices = [(c["label"].replace(" ", "_"), c["capture_fps"], 1.0) for c in cameras] + \
+              [(f"EEG_{e['boxer']}", float(SR_EEG), 3.5) for e in eeg_bands]
+    for sec in range(1, int(total_duration) + 1):
+        for dev, rate, jit in devices:
+            off = corr.get(dev)
+            tw.append(float(sec), dev, rate, jit + float(rng.uniform(0, 0.4)), 0,
+                      None if off is None else off * 1000.0)
+    tw.close()
 
     # A crashed recording has no recording.xdf until the app finds it again and
     # rebuilds it, so the --interrupted fixture leaves it out too.

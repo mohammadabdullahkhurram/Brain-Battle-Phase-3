@@ -46,6 +46,9 @@ class HeadbandSlot(QObject):
         self._lost = False
         self._ts = _RingBuffer(_BUF, dtype=np.float64)
         self._chan = {c: _RingBuffer(_BUF, dtype=np.float32) for c in EEG_CHANNELS}
+        # accelerometer, kept for the buzzer test (a tap is a jolt too)
+        self._acc_ts = _RingBuffer(40 * 52, dtype=np.float64)
+        self._acc = [_RingBuffer(40 * 52, dtype=np.float32) for _ in range(3)]
         self._recording = False
         self._rec_path = None
         self._rec_origin = None
@@ -153,6 +156,30 @@ class HeadbandSlot(QObject):
             statuses[ch] = cq.channel_status(arr[-n:]) if n >= 2 else "flat"
         return cq.summarise(statuses), statuses
 
+    def timing_snapshot(self):
+        """Live sample rate / packet jitter / missing packets, or None."""
+        r = self._reader
+        if r is None or not hasattr(r, "packet_timer"):
+            return None
+        snap = r.packet_timer.monitor.snapshot()
+        snap.device = f"EEG_{self.which}"
+        return snap
+
+    def eeg_since(self, t0_unix: float):
+        """(unix times, samples N×5) of the live buffer after ``t0_unix``."""
+        ts = self._ts.to_array()
+        keep = ts >= t0_unix
+        data = np.column_stack([self._chan[c].to_array()[-len(ts):] for c in EEG_CHANNELS])
+        return ts[keep], data[keep]
+
+    def acc_since(self, t0_unix: float):
+        ts = self._acc_ts.to_array()
+        if len(ts) == 0:
+            return ts, np.zeros((0, 3))
+        keep = ts >= t0_unix
+        data = np.column_stack([b.to_array()[-len(ts):] for b in self._acc])
+        return ts[keep], data[keep]
+
     def trace(self):
         """(unix_timestamps, {channel: samples}) for the live display, or
         (None, None) before any sample has arrived."""
@@ -171,6 +198,10 @@ class HeadbandSlot(QObject):
         self.changed.emit()
 
     def _on_sensor(self, kind: str, data: np.ndarray, timestamps: np.ndarray) -> None:
+        if kind == "ACC" and data.ndim == 2 and data.shape[1] >= 3:
+            self._acc_ts.extend(timestamps)
+            for i in range(3):
+                self._acc[i].extend(data[:, i])
         if self.publisher is not None:
             self.publisher.push_sensor(kind, self.which, data, timestamps, self.device_name)
 

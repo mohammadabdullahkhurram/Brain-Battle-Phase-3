@@ -7,6 +7,44 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
+**Timing: under 10 ms between all devices after correction** ([ADR-0024](docs/decisions/adr-0024-timing-check-and-buzzer-calibration.md))
+- Replaces the AGENTS.md note "don't invest in tighter sync": the professor
+  needs < 10 ms.
+- Cameras: MJPG + 1-frame buffer as before, and **60 fps** when Settings ›
+  Advanced › "Record cameras at 60 fps" is on (default; 1.8× the bitrate); a
+  camera that cannot do 60 falls back to 30 and says so (`camera_fps` in the
+  manifest, a `timing_quality.csv` row).
+- Headbands: every Bluetooth packet's arrival is logged; EEG samples get the
+  times of a robust per-band line fit (arrival vs sample number; jitter and
+  late packets removed, missing packets counted). New `capture/timing.py`.
+- Live timing per device (rate, jitter, dropped frames / missing packets) for
+  the Test timing dialog and the Recording timing line
+  (`RecordFlow.timing_rows`, `timing_line`).
+- **Buzzer calibration** (`capture/buzzer_test.py`, `RecordFlow.run_buzzer_test`):
+  5 beeps 1.5 s apart; taps found in EEG (sub-sample, confirmed by the
+  accelerometer) and in each camera (frame-difference energy, sub-frame, on the
+  camera's steady frame clock); per-tap consensus cancels sound delay and
+  reaction time; per-device correction = median over the taps. Saved in the
+  manifest as `timing_calibration`; applied to `recording.xdf` (with
+  `timing_correction_ms` per stream), `eeg_coregistered.csv` and Review's
+  alignment. Raw files never change.
+- `timing_quality.csv` in every recording (new `capture/timing_log.py`): one
+  row per device per second (`t_session_seconds`, `device`, `rate`,
+  `jitter_ms`, `dropped`, `offset_ms`, `event`), in the export too. History
+  logs `timing_calibrated`.
+- Simulated devices now deliver late by a known delay + jitter, capture on a
+  steady clock with a 1-frame buffer like real cameras, and render taps
+  physically. `tests/test_timing.py` recovers the delays end to end within
+  2 ms (measured about 0.3–1.2 ms); synthetic data, 40 runs: 95 % within 2 ms.
+- LSL sharing is now **off by default** (the app shows everything live without
+  it); tests that check LSL switch it on.
+
+**Every stream in recording.xdf also as its own CSV**
+- `moments.csv` and `timing_quality.csv` are in every recording and export
+  (with `contact_quality.csv`); new `tests/test_xdf_csv_parity.py` matches
+  every XDF stream to its CSV in an export (samples, values, times minus the
+  correction) and fails on a stream without one.
+
 **Moment notes, the new label list, custom notes**
 - A marked moment is `{t, note}`: the manifest's `moments` gain `note`, and a
   new `moments.csv` (`t_session_seconds`, `note`) holds the same rows.

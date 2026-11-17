@@ -57,6 +57,14 @@ import brain_battle.capture.clock as _clock
 
 log = logging.getLogger(__name__)
 
+# Four capture threads each resize every frame (preview, buzzer-test energy).
+# OpenCV would split each small resize over every core and the threads would
+# then fight over them; one OpenCV worker per calling thread is much steadier.
+try:
+    cv2.setNumThreads(1)
+except Exception:
+    pass
+
 
 # ─── Recording encoder config ──────────────────────────────────────────────────
 #
@@ -75,7 +83,14 @@ REC_BUFSIZE_FACTOR = 2.0
 # Bounded hand-off queue (capture thread → encoder writer thread). ~2 s at
 # 30 fps: long enough to ride out a brief encoder hiccup, short enough that a
 # genuinely stalled encoder drops frames instead of ballooning memory.
-REC_QUEUE_MAXSIZE = 60
+REC_QUEUE_MAXSIZE = 60      # at least this many frames; really 2 s at the camera's rate
+# Stall watchdog: a camera that has delivered no frame for this long is
+# reopened (the recording continues in the same file).
+STALL_SEC = 2.0
+# Frame-difference energy for the buzzer test: every frame, shrunk to this
+# size and turned grey, is compared with the previous one (cheap: ~2 k pixels).
+ENERGY_SIZE = (64, 36)
+ENERGY_KEEP_SEC = 40.0
 
 
 def _ffmpeg_path() -> Optional[str]:
@@ -447,6 +462,9 @@ class USBCameraThread(QThread):
     state_changed = pyqtSignal(str)
     stats         = pyqtSignal(float, int)  # fps, total_frames
     record_error  = pyqtSignal(str)         # this camera's recording failed mid-session
+    stalled       = pyqtSignal(float)       # no frame for this many seconds (watchdog)
+    recovered     = pyqtSignal(float)       # reopened after a stall; gap in seconds
+    fps_note      = pyqtSignal(str)         # asked for 60 fps, the camera gives 30
 
     def __init__(self, device: CameraDevice,
                  width: int = 960, height: int = 540, fps: int = 30,
@@ -494,6 +512,21 @@ class USBCameraThread(QThread):
         # Optional callback(frame_index, t_monotonic) per recorded frame (see
         # FrameEncoder). Set before start_recording().
         self.frame_hook = None
+        # Live timing (rate / jitter / dropped) and, for the buzzer test, the
+        # frame-difference energy of every frame: (t_monotonic, energy).
+        import brain_battle.capture.timing as timing
+        self.monitor = timing.RateMonitor(device.name, 1.0 / max(1, fps), unit="fps")
+        self._energy_lock = threading.Lock()
+        self._energy: deque = deque(maxlen=int(ENERGY_KEEP_SEC * 120))
+        self._prev_small = None
+        # Stall watchdog + recovery bookkeeping (read from the UI thread).
+        self._last_frame_t: Optional[float] = None
+        self._cap = None
+        self.stall_events: list = []       # [(t_monotonic, "stalled"|"recovered", seconds)]
+        self.actual_fps: float = float(fps)
+        self.fps_fallback = False
+        self.queue_peak = 0                # deepest the encoder queue got this second
+        self.queue_capacity = REC_QUEUE_MAXSIZE
 
     # ── Public API (thread-safe; uses flags the run-loop polls) ──────────
     def set_preview_width(self, w: int) -> None:
@@ -534,6 +567,33 @@ class USBCameraThread(QThread):
         return (not self._recording and self._writer_thread is None
                 and self._rec_req_path is None)
 
+    def energy_since(self, t0: float) -> tuple[np.ndarray, np.ndarray]:
+        """(frame times, frame-difference energy) for frames after ``t0``."""
+        with self._energy_lock:
+            rows = [r for r in self._energy if r[0] >= t0]
+        if not rows:
+            return np.zeros(0), np.zeros(0)
+        a = np.asarray(rows, dtype=float)
+        return a[:, 0], a[:, 1]
+
+    def _note_energy(self, frame, now) -> None:
+        try:
+            small = cv2.resize(frame, ENERGY_SIZE, interpolation=cv2.INTER_AREA)
+            g = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.int16)
+        except Exception:
+            return
+        e = 0.0 if self._prev_small is None else float(np.mean(np.abs(g - self._prev_small)))
+        self._prev_small = g
+        with self._energy_lock:
+            self._energy.append((now, e))
+
+    @property
+    def seconds_since_frame(self) -> Optional[float]:
+        """For the watchdog: how long since the last frame (None before one)."""
+        if self._last_frame_t is None:
+            return None
+        return _clock.monotonic() - self._last_frame_t
+
     @property
     def dropped_frames(self) -> int:
         """Frames dropped this recording because the encoder couldn't keep up
@@ -553,6 +613,80 @@ class USBCameraThread(QThread):
             pass
         return cv2.VideoCapture(self._dev.index, self._dev.backend or _preferred_backend())
 
+    def _negotiate(self, cap) -> float:
+        """Ask the camera for MJPG, the size, the frame rate and a 1-frame
+        buffer; fall back to 30 fps (and say so) when 60 was asked for and
+        the camera cannot do it. Returns the frame rate the camera reports."""
+        try:
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        except Exception:
+            pass
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self._want_w)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._want_h)
+        cap.set(cv2.CAP_PROP_FPS,          self._want_fps)
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
+        actual = cap.get(cv2.CAP_PROP_FPS) or float(self._want_fps)
+        if self._want_fps >= 59 and actual < 50:
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            actual = cap.get(cv2.CAP_PROP_FPS) or 30.0
+            self.fps_fallback = True
+            log.warning("cam idx=%s cannot record at %s fps (reports %.1f) — using 30 fps",
+                        self._dev.index, self._want_fps, actual)
+            self.fps_note.emit(f"{self._dev.name} can only record at {actual:.0f} fps, "
+                               f"not {self._want_fps}.")
+        return float(actual)
+
+    def _reopen(self, cap):
+        """Watchdog recovery: release the stalled device and open it again,
+        retrying until it delivers or the thread is stopped. The recording
+        (encoder + sidecar) keeps running, so frames continue in the same
+        file."""
+        try:
+            cap.release()
+        except Exception:
+            pass
+        attempt = 0
+        while not self._stop_flag:
+            attempt += 1
+            new = self._open_capture()
+            if new is not None and new.isOpened():
+                self._negotiate(new)
+                self._cap = new
+                self._prev_small = None
+                return new
+            self.msleep(min(2000, 300 * attempt))
+        return None
+
+    def _watchdog(self) -> None:
+        """Runs beside the capture loop. No frame for STALL_SEC: say so at once
+        (the Recording screen shows it within 2 s). A read that fails is
+        reopened by the loop itself; only a read that has HUNG for 3 × STALL_SEC
+        has its device released from here, so it returns and the loop reopens
+        it (releasing during a read is a last resort — some drivers dislike
+        it)."""
+        flagged = forced = False
+        while not self._stop_flag:
+            time.sleep(0.25)
+            since = self.seconds_since_frame
+            if since is None:
+                continue
+            if since >= STALL_SEC and not flagged:
+                flagged = True
+                self.stalled.emit(float(since))
+            if since >= 3 * STALL_SEC and not forced and not getattr(self, "_in_reopen", False):
+                forced = True
+                cap = self._cap
+                if cap is not None:
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+            if since < STALL_SEC:
+                flagged = forced = False
+
     # ── Thread body ──
     def run(self) -> None:  # noqa: C901 — single run-loop, hard to split further
         self.state_changed.emit("opening")
@@ -560,42 +694,22 @@ class USBCameraThread(QThread):
         if not cap.isOpened():
             self.state_changed.emit(f"error: could not open camera {self._dev.index}")
             return
+        self._cap = cap
 
         # ── Camera format negotiation ──────────────────────────────────────
         # MUST set FOURCC=MJPG BEFORE resolution/fps. Without this, most USB
         # webcams default to raw YUYV (16-bit uncompressed). At 1280×720 YUYV
         # that's ~55 MB/sec per camera over USB — with 4 cameras on a USB 2.0
-        # bus (480 Mbps theoretical = 60 MB/sec total) you simply cannot fit,
-        # and the cameras drop to 5-15 fps. With MJPG (motion-JPEG), each
-        # camera consumes ~3-5 Mbps and 4 cameras fit comfortably even on
-        # USB 2.0. This is the single most important camera setting for
-        # achieving the target framerate across heterogeneous hardware.
-        #
-        # The set order is critical: FOURCC first, THEN resolution/fps.
-        # Setting them in the other order silently fails on macOS
-        # AVFoundation and many Windows DirectShow drivers — the camera
-        # negotiates a format with the first call and ignores later changes.
-        try:
-            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-            cap.set(cv2.CAP_PROP_FOURCC, fourcc)
-        except Exception:
-            pass  # Not every backend exposes FOURCC; carry on with default.
-
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self._want_w)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._want_h)
-        cap.set(cv2.CAP_PROP_FPS,          self._want_fps)
-
-        # Reduce the driver's internal frame buffer to 1 so we always pull
-        # the latest frame, not an old one queued by the OS. Saves latency
-        # and reduces memory pressure with 4 cameras. Not supported by
-        # every backend; the call silently fails where it doesn't apply.
-        try:
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except Exception:
-            pass
-
-        actual_fps = cap.get(cv2.CAP_PROP_FPS) or float(self._want_fps)
-        if abs(actual_fps - self._want_fps) > 0.5:
+        # bus you simply cannot fit, and the cameras drop to 5-15 fps. With
+        # MJPG each camera consumes ~3-5 Mbps. The set order is critical:
+        # FOURCC first, THEN resolution/fps (macOS AVFoundation and many
+        # DirectShow drivers ignore later changes). A 1-frame driver buffer
+        # (CAP_PROP_BUFFERSIZE) means we always pull the newest frame, which
+        # keeps the camera's delay short and constant. See _negotiate.
+        actual_fps = self._negotiate(cap)
+        self.actual_fps = actual_fps
+        self.monitor.nominal = 1.0 / max(1.0, actual_fps)
+        if abs(actual_fps - self._want_fps) > 0.5 and not self.fps_fallback:
             log.warning("cam idx=%s requested %s fps but reports %.2f fps — "
                         "may drift across long sessions vs other cameras",
                         self._dev.index, self._want_fps, actual_fps)
@@ -611,6 +725,10 @@ class USBCameraThread(QThread):
         # 257-byte MP4 files with header but no data. We capture the first
         # frame's shape and use that for all writer init from this point on.
         first_frame_shape: tuple[int, int] | None = None  # (h, w)
+        fail_since: Optional[float] = None
+        wd = threading.Thread(target=self._watchdog, name="cam-watchdog", daemon=True)
+        wd.start()
+        last_queue_reset = _clock.monotonic()
 
         try:
             while not self._stop_flag:
@@ -635,16 +753,48 @@ class USBCameraThread(QThread):
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     # Transient read failure. Give the device a moment and
-                    # try again; only bail if the stop flag is set.
+                    # try again. Failing for STALL_SEC = a stalled camera:
+                    # reopen it and carry on recording into the same file.
+                    t_fail = _clock.monotonic()
+                    fail_since = fail_since or t_fail
+                    stalled_for = t_fail - (self._last_frame_t or fail_since)
+                    if stalled_for >= STALL_SEC and not self._stop_flag:
+                        log.warning("cam idx=%s: no frame for %.1f s — reopening",
+                                    self._dev.index, stalled_for)
+                        self.stall_events.append((t_fail, "stalled", stalled_for))
+                        self.state_changed.emit("reconnecting")
+                        self._in_reopen = True
+                        new = self._reopen(cap)
+                        self._in_reopen = False
+                        if new is None:
+                            break
+                        cap = new
+                        fail_since = None
+                        continue
                     self.msleep(30)
                     continue
 
                 # Lock in first-frame shape on first successful read.
                 if first_frame_shape is None:
                     first_frame_shape = (frame.shape[0], frame.shape[1])
+                elif (frame.shape[0], frame.shape[1]) != first_frame_shape:
+                    # a reopened camera that came back at another size: keep the
+                    # recording's size so the same file continues
+                    frame = cv2.resize(frame, (first_frame_shape[1], first_frame_shape[0]))
 
                 total_frames += 1
                 now = _clock.monotonic()
+                if fail_since is not None or (self._last_frame_t is not None
+                                              and now - self._last_frame_t >= STALL_SEC):
+                    gap = now - (self._last_frame_t or now)
+                    if gap >= STALL_SEC:
+                        self.stall_events.append((now, "recovered", gap))
+                        self.recovered.emit(float(gap))
+                        self.state_changed.emit("live")
+                    fail_since = None
+                self._last_frame_t = now
+                self.monitor.add(now)
+                self._note_energy(frame, now)
                 stats_window.append(now)
                 if stats_window and stats_window[0] < now - 1.0:
                     stats_window = [t for t in stats_window if t > now - 1.0]
@@ -662,8 +812,15 @@ class USBCameraThread(QThread):
                 if self._recording and self._rec_queue is not None:
                     try:
                         self._rec_queue.put_nowait((frame, now))
+                        depth = self._rec_queue.qsize()
+                        if now - last_queue_reset >= 1.0:
+                            last_queue_reset = now
+                            self.queue_peak = depth
+                        else:
+                            self.queue_peak = max(self.queue_peak, depth)
                     except queue.Full:
                         self._dropped_frames += 1
+                        self.monitor.add_dropped(now)
                         if now - self._last_drop_log >= 1.0:
                             self._last_drop_log = now
                             log.warning("cam idx=%s: encoder queue full — dropping "
@@ -700,7 +857,11 @@ class USBCameraThread(QThread):
                     self._stop_recording_encoder()
             except Exception:
                 pass
-            cap.release()
+            self._stop_flag = True          # ends the watchdog
+            try:
+                cap.release()
+            except Exception:
+                pass
             self.state_changed.emit("stopped")
 
     # ── Crash-safe recording: encoder + writer thread ──
@@ -722,7 +883,9 @@ class USBCameraThread(QThread):
                 "failed to launch).")
             return
         self._encoder = enc
-        self._rec_queue = queue.Queue(maxsize=REC_QUEUE_MAXSIZE)
+        # ~2 s of frames at the camera's real rate (60 at 30 fps, 120 at 60 fps)
+        self.queue_capacity = max(REC_QUEUE_MAXSIZE, int(round(2 * fps)))
+        self._rec_queue = queue.Queue(maxsize=self.queue_capacity)
         self._rec_stop_event = threading.Event()
         self._dropped_frames = 0
         self._last_drop_log = 0.0

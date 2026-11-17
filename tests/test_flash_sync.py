@@ -61,16 +61,21 @@ def test_flash_within_one_frame():
                                   baseline_sec=60, seed=42,
                                   boxer_a="K7Q2", boxer_b="M3XA")
         root = r["root"]
-        check("generated a 12-min recording", abs(r["total_duration_sec"] - 720) < 1,
+        import brain_battle.capture.session_controller as _sc
+        check("generated a 12-min recording (plus the lead-in)",
+              abs(r["total_duration_sec"] - 720 - _sc.LEAD_IN_SEC) < 1,
               f"{r['total_duration_sec']:.0f}s")
         specs = _discover_cameras(root)
         cams = [pp.PyAVCamera(p, n) for p, n in specs]
         # Only markers after every camera has started recording carry a flash on
         # all four tiles — the baseline marker at t≈0 happens before the first
         # frame is captured, so there is legitimately no flash to see there.
+        # The markers at the very end (the last round's end, RECORDING_END)
+        # have no frame after them either — the recording stops there.
         started = max(c.first_t for c in cams)
+        ended = min(c.last_t for c in cams)
         markers = [m for m in read_phase_markers(root)
-                   if not m[2].upper().startswith("SESSION") and m[0] >= started]
+                   if m[0] >= started and m[0] < ended - 0.2]
         check("has phase markers to check", len(markers) >= 4, str(len(markers)))
 
         worst = 0.0

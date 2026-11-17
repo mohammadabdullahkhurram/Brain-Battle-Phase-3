@@ -53,6 +53,9 @@ class CameraSlot(QObject):
         self.rec_failed = False
         self.rec_error_msg = ""
         self.last_image: Optional[QImage] = None
+        self.fps_note = ""            # "can only record at 30 fps" (60 fps fallback)
+        self.stalled = False          # the watchdog found no frames for 2 s
+        self.stall_events: list = []  # [(t_monotonic, "stalled"/"recovered", s)]
 
     # ── lifecycle ──
     def assign(self, device: Optional[CameraDevice]) -> None:
@@ -75,6 +78,9 @@ class CameraSlot(QObject):
         t.state_changed.connect(self._on_state)
         t.stats.connect(self._on_stats)
         t.record_error.connect(self._on_rec_error)
+        t.stalled.connect(self._on_stalled)
+        t.recovered.connect(self._on_recovered)
+        t.fps_note.connect(self._on_fps_note)
         t.finished.connect(self._on_finished)
         self._thread = t
         t.start()
@@ -121,6 +127,35 @@ class CameraSlot(QObject):
         if self._thread is not None:
             self._thread.stop_recording()
 
+    # ── timing (live numbers + buzzer test) ──
+    def timing_snapshot(self):
+        """Live rate / jitter / dropped frames (timing.TimingSnapshot), or None."""
+        t = self._thread
+        if t is None:
+            return None
+        snap = t.monitor.snapshot()
+        snap.device = self.stem
+        return snap
+
+    def energy_since(self, t0_monotonic: float):
+        """(frame times, frame-difference energy) since ``t0`` — buzzer test."""
+        t = self._thread
+        if t is None:
+            import numpy as _np
+            return _np.zeros(0), _np.zeros(0)
+        return t.energy_since(t0_monotonic)
+
+    @property
+    def actual_fps(self) -> float:
+        t = self._thread
+        return float(t.actual_fps) if t is not None else 0.0
+
+    @property
+    def queue_use(self) -> tuple[int, int]:
+        """(deepest the encoder queue got in the last second, its size)."""
+        t = self._thread
+        return (int(t.queue_peak), int(t.queue_capacity)) if t is not None else (0, 0)
+
     # ── state ──
     @property
     def is_live(self) -> bool:
@@ -143,7 +178,9 @@ class CameraSlot(QObject):
 
     def _on_state(self, state: str) -> None:
         if state == "live":
-            self.state = "live"; self.state_detail = ""
+            self.state = "live"; self.state_detail = ""; self.stalled = False
+        elif state == "reconnecting":
+            self.stalled = True
         elif state == "opening":
             self.state = "opening"
         elif state.startswith("error"):
@@ -154,6 +191,22 @@ class CameraSlot(QObject):
         self.fps = fps
         if self._thread is not None and self._thread.is_recording and not self.rec_failed:
             self.dropped = self._thread.dropped_frames
+        self.changed.emit()
+
+    def _on_stalled(self, since: float) -> None:
+        import brain_battle.capture.clock as clock
+        self.stalled = True
+        self.stall_events.append((clock.monotonic(), "stalled", float(since)))
+        self.changed.emit()
+
+    def _on_recovered(self, gap: float) -> None:
+        import brain_battle.capture.clock as clock
+        self.stalled = False
+        self.stall_events.append((clock.monotonic(), "recovered", float(gap)))
+        self.changed.emit()
+
+    def _on_fps_note(self, text: str) -> None:
+        self.fps_note = text.replace(self.device.name if self.device else "", self.title, 1)
         self.changed.emit()
 
     def _on_rec_error(self, msg: str) -> None:

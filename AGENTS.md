@@ -29,13 +29,17 @@ the `brain_battle` package (`ui/` · `capture/` · `playback/` · `data/` ·
 - **Nobody has inspected raw Muse-S EEG from a real sparring round.** Signal
   usability — noise floor, motion artifact during actual boxing, whether the
   channels are even readable — is unknown. Don't assume the EEG is clean.
-- **The synchrony analysis method is undecided and has no owner yet.** This
-  matters directly for how much more sync-precision work is worth doing:
-  phase-based measures (PLV, coherence) need alignment accurate to a few ms;
-  power/envelope-based measures tolerate tens of ms (what the current
-  capture-clock design already targets). **Don't invest in tighter sync
-  precision until this is answered** — it would be optimizing a number nobody
-  has confirmed matters.
+- **Timing target: under 10 ms between all devices after correction** (the
+  professor's requirement; it replaces the earlier "don't invest in tighter
+  sync" note). Cameras record at 60 fps with MJPG and a 1-frame buffer,
+  headband timestamps are de-jittered per band, every recording has a
+  `timing_quality.csv`, and the **buzzer test** on Get ready measures each
+  device's delay and stores corrections (`timing_calibration`) that the XDF,
+  `eeg_coregistered.csv` and Review apply
+  ([ADR-0024](docs/decisions/adr-0024-timing-check-and-buzzer-calibration.md)).
+  Verified only with simulated devices (recovered within ~1 ms); the first real
+  session must confirm it. The synchrony analysis method itself is still
+  undecided.
 - Therefore: build and test everything against the generated demo session
   described in `docs/ROADMAP.md`, not against hardware that doesn't exist
   yet or data nobody has seen.

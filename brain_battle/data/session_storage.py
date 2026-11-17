@@ -167,6 +167,10 @@ class SessionLayout:
     stopped_t_session:    Optional[float] = None
     # Recording starts this long before the baseline (session_controller).
     lead_in_sec:          int = 0
+    # The buzzer test's result (capture/timing.calibrate), or None if not run.
+    timing_calibration:   Optional[dict] = None
+    # Cameras that could only record at 30 fps when 60 was asked for, etc.
+    camera_fps:           dict = field(default_factory=dict)
 
     # ---- folder resolution ---------------------------------------------------
 
@@ -220,6 +224,19 @@ class SessionLayout:
         self._write_manifest()
         write_moments_csv(self.root, self.moments)
         return entry
+
+    def set_timing_calibration(self, calibration: Optional[dict]) -> None:
+        """Store the buzzer test's per-device corrections (applied when the
+        XDF, eeg_coregistered.csv and Review's alignment are built; the raw
+        files are never changed)."""
+        self.timing_calibration = calibration
+        self._write_manifest()
+
+    def set_camera_fps(self, fps_by_stem: dict) -> None:
+        """The frame rate each camera was asked for and reports
+        ({stem: {"requested", "actual"}})."""
+        self.camera_fps = dict(fps_by_stem)
+        self._write_manifest()
 
     def mark_stopped_early(self, t_session_sec: float) -> None:
         """Flag that the operator stopped the recording early (cleanly). This is
@@ -286,6 +303,8 @@ class SessionLayout:
             "source_starts":  self.source_starts,
             "config":         asdict(self.config),
             "lead_in_sec":    self.lead_in_sec,
+            "timing_calibration": self.timing_calibration,
+            "camera_fps":     self.camera_fps,
             "phases":         [asdict(p) for p in self.phases],
         }
         # Atomic (temp file + swap): a reader on another computer, or a crash

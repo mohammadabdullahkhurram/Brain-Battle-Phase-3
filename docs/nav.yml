@@ -175,6 +175,9 @@ sections:
       - id: adr-0023
         title: ADR-0023 Fighter codes and colours
         file: decisions/adr-0023-fighter-codes-and-colours.md
+      - id: adr-0024
+        title: ADR-0024 Timing check and buzzer calibration
+        file: decisions/adr-0024-timing-check-and-buzzer-calibration.md
 
   - title: Project
     pages:

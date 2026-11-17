@@ -56,7 +56,7 @@ def main():
     while True:
         data = rng.standard_normal((5, CHUNK)).astype(np.float32)
         ts = origin + start_offset + (np.arange(CHUNK) + chunk_idx * CHUNK) / SR
-        reader._on_eeg(data, ts.astype(np.float64))
+        reader._on_eeg(data, ts.astype(np.float64), arrival=float(ts[-1]))
         total += CHUNK
         chunk_idx += 1
         # Record samples handed to the reader, always-valid on disk.

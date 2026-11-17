@@ -39,8 +39,13 @@ def test_defaults():
           (cfg.num_rounds, cfg.round_sec, cfg.break_sec, cfg.baseline_sec)
           == (3, 180, 60, 60), str(cfg))
     check("round bell defaults on", s.round_bell is True)
-    check("video quality defaults to standard 960x540 30",
-          s.video_dims() == (960, 540, 30), str(s.video_dims()))
+    check("video quality defaults to standard 960x540, at 60 fps (Record cameras at 60 fps on)",
+          s.video_dims() == (960, 540, 60) and s.record_60fps is True, str(s.video_dims()))
+    check("60 fps uses 1.8x the bitrate (5 → 9 Mbps)", abs(s.video_mbps() - 9.0) < 1e-9,
+          str(s.video_mbps()))
+    check("LSL sharing is OFF by default (the app shows everything live without it)",
+          s.lsl_streams is False)
+    check("head movement on, pulse off by default", s.record_motion is True and s.record_ppg is False)
     check("default headbands map A/B to the known Muse IDs",
           s.boxer_labels() == {"MuseS-7538": "BOXER A", "MuseS-7564": "BOXER B"},
           str(s.boxer_labels()))
@@ -56,12 +61,16 @@ def test_round_trip():
     s = app_settings.load()
     s.round_bell = False
     s.video_quality = "high"
+    s.record_60fps = False
+    s.lsl_streams = True
     s.headbands = {"A": "MuseS-9000", "B": "MuseS-9001"}
     s.session_defaults = {"num_rounds": 5, "round_sec": 120, "break_sec": 30, "baseline_sec": 10}
     s.save()
     s2 = app_settings.load()
     check("round bell persists", s2.round_bell is False)
-    check("video quality persists (high = 1280x720)", s2.video_dims() == (1280, 720, 30))
+    check("video quality persists (high = 1280x720), 60 fps off → 30",
+          s2.video_dims() == (1280, 720, 30) and abs(s2.video_mbps() - 8.0) < 1e-9)
+    check("LSL switch persists", s2.lsl_streams is True)
     check("headband remap persists into boxer_labels",
           s2.boxer_labels() == {"MuseS-9000": "BOXER A", "MuseS-9001": "BOXER B"},
           str(s2.boxer_labels()))

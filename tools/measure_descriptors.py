@@ -79,11 +79,9 @@ def main(argv=None) -> int:
     for n in range(1, args.recordings + 1):
         flow.start(); pump(2.5)
         snap(f"#{n} flow opened, devices connected")
-        flow.goto_setup()
-        su = flow._setup_step
-        su._st_rest.set_value(2); su._st_round.set_value(10)
-        su._st_break.set_value(2); su._st_rounds.set_value(1)
-        su._name_a.setText("Sam"); su._name_b.setText("Alex"); su._recompute()
+        from brain_battle.capture.session_controller import SessionConfig
+        flow.set_plan(SessionConfig(num_rounds=1, round_sec=10, break_sec=2, baseline_sec=2))
+        flow.set_fighters("K7Q2", "M3XA")
         flow.begin_recording()
         pump(6.0)
         snap(f"#{n} recording")

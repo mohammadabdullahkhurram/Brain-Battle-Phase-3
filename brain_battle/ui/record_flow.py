@@ -56,6 +56,8 @@ import brain_battle.data.safe_io as safe_io
 import brain_battle.capture.camera_source as camera_source
 import brain_battle.capture.clock as clock
 import brain_battle.capture.contact_log as contact_log
+import brain_battle.capture.timing as timing
+import brain_battle.capture.timing_log as timing_log
 import brain_battle.data.session_history as session_history
 import brain_battle.data.session_xdf as session_xdf
 from brain_battle.capture.lsl_outlets import LslPublisher
@@ -774,6 +776,16 @@ class SetupStep(ui.Card):
         """The colour each fighter wears (names from the shared colour list)."""
         return getattr(self, "_colours", None) or ("Red", "Blue")
 
+    def set_plan(self, cfg: SessionConfig):
+        self._st_rounds.set_value(cfg.num_rounds); self._st_round.set_value(cfg.round_sec)
+        self._st_break.set_value(cfg.break_sec); self._st_rest.set_value(cfg.baseline_sec)
+        self._recompute()
+
+    def set_fighters(self, code_a, code_b, colour_a="Red", colour_b="Blue"):
+        self._name_a.setText(code_a); self._name_b.setText(code_b)
+        self._colours = (colour_a, colour_b)
+        self._recompute()
+
     def bell(self):
         return self._bell.isChecked()
 
@@ -1228,6 +1240,11 @@ class RecordFlow(QWidget):
         self._moments = []
         self._live_markers = []
         self._contact_writer = None
+        self._timing_writer = None
+        self._calibration = None          # the buzzer test's result (this Get ready)
+        self._buzzer = None
+        self._seen_stalls = {}            # slot index → stall events already logged
+        self._seen_lost = {}              # boxer → headband drops already logged
         self._active_phase = None
         self._stopping_early = False
         self._cam_rec_paths = {}
@@ -1307,6 +1324,16 @@ class RecordFlow(QWidget):
         self._scan_and_assign()
         self._tick.start()
 
+    # ── programmatic set-up (Get ready's widgets, tools, tests) ──
+    def set_plan(self, cfg: SessionConfig) -> None:
+        """Rounds, round / break / baseline length for the next recording."""
+        self._setup_step.set_plan(cfg)
+
+    def set_fighters(self, code_a: str, code_b: str, colour_a: str = "Red",
+                     colour_b: str = "Blue") -> None:
+        """Both fighters' codes and colours for the next recording."""
+        self._setup_step.set_fighters(code_a, code_b, colour_a, colour_b)
+
     def goto_setup(self):
         """Show "Get ready" (devices + plan are one screen now; kept so callers
         that asked for the old second step still land in the right place)."""
@@ -1318,6 +1345,8 @@ class RecordFlow(QWidget):
         self._cancel.setVisible(idx != self.STEP_SAVED)
 
     def _reset_session_state(self):
+        self._calibration = None
+        self._seen_stalls = {}; self._seen_lost = {}
         self._layout = None; self._cfg = None
         self._moments = []; self._active_phase = None
         self._live_markers = []
@@ -1501,7 +1530,7 @@ class RecordFlow(QWidget):
     # What each essential file holds, in the words the operator sees.
     _WHAT = {"plan": "the recording's details", "times": "the round and break times",
              "moments": "a moment you marked", "history": "the recording's history",
-             "contact": "the sensor-contact notes"}
+             "contact": "the sensor-contact notes", "timing": "the timing report"}
 
     def _essential(self, what, fn, *args, **kwargs):
         """Run one write of the recording's own bookkeeping (manifest, markers,
@@ -1567,10 +1596,28 @@ class RecordFlow(QWidget):
                 path = str(muse_dir / _ILLEGAL.sub("-", fn))
                 band.start_recording(path, self._session_t0_unix)
                 self._band_rec_paths[which] = path
-        # contact-quality log
+        # contact-quality log + timing report (both once a second)
         self._contact_writer = contact_log.ContactLogWriter(contact_log.path_for(self._layout.root))
         if not self._contact_writer.is_open:
             self._note_write_problem("contact")
+        self._timing_writer = timing_log.TimingQualityWriter(timing_log.path_for(self._layout.root))
+        if not self._timing_writer.is_open:
+            self._note_write_problem("timing")
+        self._essential("plan", self._layout.set_timing_calibration, self._calibration)
+        if self._calibration:
+            self._essential("history", session_history.log_event, self._layout.root,
+                            session_history.EVENT_TIMING_CALIBRATED,
+                            {"largest_difference_ms": self._calibration.get("largest_difference_ms")})
+        want_fps = float(self._settings.video_dims()[2])
+        self._essential("plan", self._layout.set_camera_fps,
+                        {s.stem: {"requested": want_fps, "actual": round(s.actual_fps, 2)}
+                         for s in self._cams if s.is_live})
+        for s in self._cams:
+            if s.fps_note and self._timing_writer.is_open:
+                self._essential("timing", self._timing_writer.append, 0.0, s.stem, s.actual_fps,
+                                None, 0, None, "30 fps (could not record at 60)")
+        self._seen_stalls = {s.index: len(s.stall_events) for s in self._cams}
+        self._seen_lost = {w: b.lost for w, b in self._bands.items()}
         self._contact_timer.start()
 
     def _on_phase_changed(self, phase_id, label, duration, round_num):
@@ -1629,6 +1676,9 @@ class RecordFlow(QWidget):
         self._contact_timer.stop()
         if self._contact_writer is not None:
             self._contact_writer.close(); self._contact_writer = None
+        if self._timing_writer is not None:
+            self._log_timing()                 # the last second
+            self._timing_writer.close(); self._timing_writer = None
         # stop recordings (cameras + bands), record each band's first-sample time
         for slot in self._cams:
             slot.stop_recording()
@@ -1787,7 +1837,9 @@ class RecordFlow(QWidget):
         for s in self._cams:
             if s.device is None:
                 continue
-            if s.rec_failed:
+            if s.stalled:
+                problems.append(f"{s.title} stopped sending pictures — reconnecting")
+            elif s.rec_failed:
                 problems.append(f"{s.title} stopped recording")
             elif s.state == "error":
                 problems.append(f"{s.title} is not connected")
@@ -1814,13 +1866,137 @@ class RecordFlow(QWidget):
         return self.health_text().startswith("✓")
 
     def _log_contact(self):
-        if self._contact_writer is None or self._session_t0 is None:
+        """Once a second while recording: sensor contact and the timing report."""
+        if self._session_t0 is None:
             return
         t = clock.monotonic() - self._session_t0
+        w = self._contact_writer
+        if w is not None and w.is_open and not w.failed:
+            for which, b in self._bands.items():
+                if b.connected:
+                    summary, statuses = b.contact()
+                    if self._essential("contact", w.append, t, which, summary, statuses) is None \
+                            and w.failed:
+                        break
+        self._log_timing(t)
+
+    def _log_timing(self, t=None):
+        """One timing_quality.csv row per device; camera stalls / reopenings
+        and headband drops also as rows and in the history."""
+        w = self._timing_writer
+        if w is None or not w.is_open or self._session_t0 is None or self._layout is None:
+            return
+        t = (clock.monotonic() - self._session_t0) if t is None else t
+        corr = timing.corrections(self._calibration or {})
+        rows = []
+        for s in self._cams:
+            if s.device is None or s.index not in self._cam_rec_paths:
+                continue
+            snap = s.timing_snapshot()
+            off = corr.get(timing.camera_device(s.stem))
+            rows.append((t, s.stem, snap.rate if snap else 0.0, snap.jitter_ms if snap else None,
+                         snap.dropped if snap else 0, None if off is None else off * 1000, ""))
+            new = s.stall_events[self._seen_stalls.get(s.index, 0):]
+            self._seen_stalls[s.index] = len(s.stall_events)
+            for t_ev, kind, secs in new:
+                t_rel = t_ev - self._session_t0
+                if kind == "stalled":
+                    rows.append((t_rel, s.stem, 0.0, None, 0, None, "stalled"))
+                    self._essential("history", session_history.log_event, self._layout.root,
+                                    session_history.EVENT_CAMERA_STALLED,
+                                    {"camera": s.title, "t_session_seconds": round(t_rel, 3)})
+                else:
+                    rows.append((t_rel, s.stem, 0.0, None, 0, None,
+                                 f"reopened after {secs:.1f} s"))
+                    self._essential("history", session_history.log_event, self._layout.root,
+                                    session_history.EVENT_CAMERA_RECOVERED,
+                                    {"camera": s.title, "t_session_seconds": round(t_rel, 3),
+                                     "gap_seconds": round(secs, 2)})
         for which, b in self._bands.items():
-            if b.connected:
-                summary, statuses = b.contact()
-                self._contact_writer.append(t, which, summary, statuses)
+            if b.device is None or which not in self._band_rec_paths:
+                continue
+            was_lost = self._seen_lost.get(which, False)
+            if was_lost and b.connected and not b.lost:
+                self._essential("history", session_history.log_event, self._layout.root,
+                                session_history.EVENT_HEADBAND_RECONNECTED,
+                                {"boxer": which, "t_session_seconds": round(t, 3)})
+            self._seen_lost[which] = b.lost
+            snap = b.timing_snapshot()
+            off = corr.get(timing.band_device(which))
+            rows.append((t, timing.band_device(which), snap.rate if snap else 0.0,
+                         snap.jitter_ms if snap else None, snap.dropped if snap else 0,
+                         None if off is None else off * 1000,
+                         "headband lost" if b.lost else ""))
+        for r in rows:
+            if self._essential("timing", w.append, *r) is None:
+                break
+
+    # ── timing check (the dialog on Get ready / Recording) ──
+    def timing_rows(self) -> list:
+        """Live numbers per device for the "Test timing" dialog:
+        [{"device", "name", "rate", "delay_ms", "jitter_ms", "dropped",
+          "after_ms", "kind"}]."""
+        cal = (self._calibration or {}).get("devices") or {}
+        out = []
+        for s in self._cams:
+            if s.device is None:
+                continue
+            snap = s.timing_snapshot()
+            c = cal.get(timing.camera_device(s.stem)) or {}
+            out.append({"device": s.stem, "name": s.title, "kind": "camera",
+                        "rate": f"{snap.rate:.0f} fps" if snap else "—",
+                        "delay_ms": c.get("delay_ms"),
+                        "jitter_ms": snap.jitter_ms if snap else None,
+                        "dropped": f"{snap.dropped_total if snap else 0} frames",
+                        "after_ms": c.get("spread_ms")})
+        for which, b in self._bands.items():
+            if b.device is None:
+                continue
+            snap = b.timing_snapshot()
+            c = cal.get(timing.band_device(which)) or {}
+            code = self._names.get(which) or ""
+            out.append({"device": timing.band_device(which), "kind": "headband",
+                        "name": f"Headband {which}" + (f" · {code}" if code else ""),
+                        "rate": (f"{snap.rate:.0f} Hz · packet / {snap.packet_ms:.0f} ms"
+                                 if snap and snap.packet_ms else "—"),
+                        "delay_ms": c.get("delay_ms"),
+                        "jitter_ms": snap.jitter_ms if snap else None,
+                        "dropped": f"{snap.dropped_total if snap else 0} packets",
+                        "after_ms": c.get("spread_ms")})
+        return out
+
+    @property
+    def calibration(self):
+        return self._calibration
+
+    def run_buzzer_test(self, on_done=None, on_beep=None):
+        """Get ready → Test timing → Run buzzer test."""
+        from brain_battle.capture.buzzer_test import BuzzerTest
+        if self._buzzer is not None and self._buzzer.running:
+            return self._buzzer
+        bt = BuzzerTest(self._cams, self._bands, self)
+
+        def done(cal):
+            self._calibration = cal if cal.get("devices") else None
+            if on_done is not None:
+                on_done(cal)
+        bt.finished.connect(done)
+        if on_beep is not None:
+            bt.beeped.connect(on_beep)
+        self._buzzer = bt
+        bt.start()
+        return bt
+
+    def timing_line(self) -> str:
+        """The Recording screen's one-line timing summary."""
+        cal = self._calibration
+        if not cal:
+            return "Timing: not measured this session · details"
+        worst = cal.get("largest_difference_ms")
+        if worst is None:
+            return "Timing: buzzer test incomplete · details"
+        mark = "✓" if worst < timing.GOAL_MS else "!"
+        return f"Timing: largest difference {worst:.0f} ms after correction {mark} · details"
 
     # ── Saved-screen data (from REAL files) ──
     def _build_saved_info(self):
@@ -2000,6 +2176,10 @@ class RecordFlow(QWidget):
             try: self._contact_writer.close()
             except Exception: pass
             self._contact_writer = None
+        if self._timing_writer is not None:
+            try: self._timing_writer.close()
+            except Exception: pass
+            self._timing_writer = None
         try: self._keep_awake.stop()
         except Exception: pass
         self._remove_key_filter()

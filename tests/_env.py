@@ -46,6 +46,16 @@ import brain_battle.capture.session_controller as _session_controller  # noqa: E
 _session_controller.LEAD_IN_SEC = TEST_LEAD_IN_SEC
 
 
+def set_setting(key: str, value) -> None:
+    """Change one saved setting in the (temporary) settings file — e.g.
+    ``set_setting("lsl_streams", True)`` for a test that checks the live LSL
+    streams, which are off by default."""
+    import brain_battle.data.app_settings as app_settings
+    s = app_settings.load()
+    setattr(s, key, value)
+    s.save()
+
+
 def set_labeller(name: str = LABELLER) -> str:
     """Make ``name`` the saved "Your name" in the (temporary) settings file."""
     import brain_battle.data.app_settings as app_settings

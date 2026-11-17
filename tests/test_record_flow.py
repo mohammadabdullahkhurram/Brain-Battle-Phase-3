@@ -76,6 +76,9 @@ def _fresh_env(**extra):
     os.environ["BRAIN_BATTLE_SIMULATE"] = "1"
     os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = cap
     os.environ["BRAIN_BATTLE_CONFIG"] = os.path.join(tempfile.mkdtemp(), "settings.json")
+    # these tests also check the live LSL streams, which are off by default
+    with open(os.environ["BRAIN_BATTLE_CONFIG"], "w") as f:
+        json.dump({"labeller_name": _env.LABELLER, "lsl_streams": True}, f)
     for k in ("BRAIN_BATTLE_SIMULATE_MISSING_CAMERA", "BRAIN_BATTLE_SIMULATE_DROP_HEADBAND"):
         os.environ.pop(k, None)
     for k, v in extra.items():
