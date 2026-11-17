@@ -369,7 +369,7 @@ a contributor can't miss it. When you make a change, work through this checklist
 |---|---|---|
 | change the UI or any user-facing wording | the relevant [User guide](../user-guide/sessions.md) page | review (plus the placeholder/jargon gate on the code) |
 | change any recording/export file (a manifest key, CSV column, history event, zip entry) | [file-formats.md](../research-and-data/file-formats.md) — backtick the new name | `tests/test_research_docs.py` (fails if the code writes a field the page doesn't document) |
-| add, remove, or rename a module | the [module reference](../developer-guide/module-reference.md) and `AGENTS.md`'s module map | `tests/test_developer_docs.py` (every `.py` has an entry; no entry names a deleted file) |
+| add, remove, or rename a module | the [module reference](../developer-guide/module-reference.md) | `tests/test_developer_docs.py` (every `.py` has an entry; no entry names a deleted file) |
 | make a significant technical decision | a new [ADR](../decisions/index.md) + `nav.yml` | `tests/test_developer_docs.py` (every ADR is indexed and in `nav.yml`) |
 | change a diagram's `.mmd` source | re-render it (`python3 tools/render_diagrams.py`) | `tests/test_docs.py` (diagram freshness via the `.hash` sidecar) |
 | make any change at all | a `CHANGELOG.md` entry; bump `version.py` if it's a release change | `tests/test_developer_docs.py` (CHANGELOG top entry matches `version.py`) |
