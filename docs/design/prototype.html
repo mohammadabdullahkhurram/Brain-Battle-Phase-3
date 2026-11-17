@@ -1,0 +1,749 @@
+<title>Brain Battle Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one desktop-app shell (top bar + screen), single light look on purpose — the real app is light-only. */
+:root{
+  --bg:#F6F8FC; --surface:#FFFFFF; --line:#E3E8F0; --line2:#D9DFEA; --ink:#0F172A; --ink2:#344054; --muted:#556070;
+  --blue:#2155D6; --blue-d:#1A44AD; --blue-l:#EAF0FD; --trace:#1C2A8C; --frame:#30343C; --grid:#DCDFE5; --marker:#8A7300;
+  --a:#0E7C86; --a-l:#E6F4F5; --b:#C2410C; --b-l:#FDF4EE; --good:#1E7B3C; --good-l:#E5F3EA; --warn:#8A4200; --warn-l:#FDF0E3; --warn-b:#F2B57A;
+  --red:#D93025; --red-d:#B3261E; --red-l:#FCE4E2; --cam:#1D2433; --dot-good:#2E9E5B; --dot-warn:#E8890C;
+  --f-ui:Inter,system-ui,-apple-system,"Segoe UI",sans-serif; --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.5}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed}
+:focus-visible{outline:3px solid #8FB0F5;outline-offset:2px}
+a{color:var(--blue)}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.grow{flex-grow:1}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 16px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);font-weight:600;font-size:14px;text-decoration:none;white-space:nowrap}
+.btn:hover{border-color:#B9C3D6}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover{background:var(--blue-d)}
+.btn.primary:disabled{background:#C7D3EE;border-color:#C7D3EE}
+.btn.soft{background:var(--blue-l);border-color:var(--blue-l);color:var(--blue-d)}
+.btn.danger{border-color:var(--red);color:var(--red-d)}
+.btn.big{min-height:52px;padding:0 24px;font-size:16px;border-radius:12px}
+.btn.icon{width:42px;padding:0}
+.chip{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.st-need{background:var(--warn-l);color:var(--warn)} .st-labelled{background:var(--good-l);color:#1A6431} .st-exported{background:var(--blue-l);color:var(--blue-d)} .st-interrupted{background:var(--red-l);color:#9B1C14}
+.pill{min-height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);font-size:14px;font-weight:500}
+.pill.on{border-color:var(--blue);background:var(--blue-l);color:var(--blue-d);font-weight:600}
+.badge{width:22px;height:22px;border-radius:6px;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.bA{background:var(--a)} .bB{background:var(--b)}
+
+/* header */
+.hdr{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:10px 24px;min-height:66px;padding-block:10px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));background:var(--surface);border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;background:none;border:0;padding:0}
+.logo span{width:36px;height:36px;border-radius:10px;background:var(--blue-l);display:flex;align-items:center;justify-content:center}
+.navlink{padding:8px 14px;border-radius:8px;border:0;background:none;color:#475467;font-weight:500}
+.navlink.on{background:var(--blue-l);color:var(--blue-d);font-weight:600}
+.gear{width:42px;height:42px;border-radius:10px;border:0;background:none;color:#475467;display:flex;align-items:center;justify-content:center}
+.gear.on{background:var(--blue-l);color:var(--blue-d)}
+.page{width:100%;margin:0 auto;padding-block:32px 48px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px))}
+.wide{padding-block:18px 24px}
+h1{margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+h2{margin:0;font-size:17px;font-weight:700}
+
+/* cameras + eeg */
+.cams{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cam{position:relative;aspect-ratio:16/9;max-width:100%;border-radius:12px;background:var(--cam);overflow:hidden}
+.cam .lbl{position:absolute;left:10px;top:10px;padding:3px 9px;border-radius:7px;background:rgba(255,255,255,.94);font-size:12px;font-weight:600;color:var(--ink)}
+.cam .st{position:absolute;left:10px;bottom:10px;padding:3px 9px;border-radius:7px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;display:flex;gap:6px;align-items:center}
+.cam .tc{position:absolute;right:10px;bottom:10px;padding:2px 8px;border-radius:6px;background:rgba(0,0,0,.55);color:#B9F5C9;font-size:11px}
+.cam .scan{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 2px,transparent 2px 4px)}
+.cam.missing{background:var(--bg);border:2px dashed #E8A867}
+.cam.missing .lbl{background:none;color:var(--warn)}
+.live{width:6px;height:6px;border-radius:3px;background:#4ADE80}
+.eeg{display:flex}
+.eeg .labs{width:84px;flex:0 0 auto;display:flex;flex-direction:column}
+.eeg .labs span{display:flex;align-items:center;font-family:var(--f-mono);font-size:11px;color:var(--frame)}
+.eeg .labs span.bad{color:#B45309;font-weight:600}
+.eeg .plot{position:relative;flex-grow:1;min-width:0;border:1px solid var(--frame);background-color:#fff;background-image:repeating-linear-gradient(90deg,var(--grid) 0,var(--grid) 1px,transparent 1px,transparent 20%)}
+.eeg .plot.ten{background-image:repeating-linear-gradient(90deg,var(--grid) 0,var(--grid) 1px,transparent 1px,transparent 10%)}
+.eeg svg{display:block;width:100%}
+.eeg polyline{fill:none;stroke:var(--trace);stroke-width:1;vector-effect:non-scaling-stroke}
+.mk{position:absolute;top:0;bottom:0;border-left:1px dashed #A18B12}
+.mkt{position:absolute;bottom:2px;padding:0 3px;background:#fff;font-family:var(--f-mono);font-size:10px;color:var(--marker);white-space:nowrap}
+.axis{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.head{flex:0 0 auto}
+
+/* timeline */
+.tl{position:relative;display:grid;grid-template-columns:76px minmax(0,1fr);row-gap:4px;align-items:center;user-select:none}
+.lane{position:relative;height:26px;border-radius:6px;cursor:pointer;overflow:hidden}
+.phase{position:absolute;top:0;bottom:0;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;overflow:hidden;white-space:nowrap}
+.lchip{position:absolute;top:3px;bottom:3px;padding:0 7px;border-radius:6px;border:0;color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;white-space:nowrap;overflow:hidden}
+.lchip.sel{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ink)}
+.lchip.moment{background:#fff;color:var(--warn);border:1.5px dashed #D97706}
+.lchip.ghost{opacity:.45}
+.playhead{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--red);pointer-events:none}
+
+/* overlays */
+.overlay{position:fixed;inset:0;z-index:20;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+.dialog{width:100%;max-width:520px;max-height:100%;overflow:auto;background:var(--surface);border-radius:20px;padding:26px 28px;display:flex;flex-direction:column;gap:14px}
+.dialog.danger{border:2px solid var(--red)} .dialog.warn{border:2px solid var(--dot-warn)}
+.drawer-wrap{justify-content:flex-end;padding:0}
+.drawer{width:100%;max-width:460px;height:100%;background:var(--surface);padding:26px 28px;overflow:auto;display:flex;flex-direction:column;gap:14px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:30;background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;max-width:calc(100% - 32px)}
+.proto{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:15;display:flex;gap:6px;align-items:center;padding:6px 8px 6px 12px;border-radius:999px;background:#FFF7D6;border:1px solid #F0D27A;color:#5C4A00;font-size:12px;font-weight:600}
+.proto button{border:1px solid #E5C766;background:#fff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;color:#5C4A00}
+.proto button.on{background:#5C4A00;color:#fff;border-color:#5C4A00}
+input[type=text],input[type=search]{min-height:42px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:var(--surface)}
+.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.seg button{min-height:40px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);font-weight:500}
+.seg button.onA{border:2px solid var(--a);background:var(--a-l);color:#0A5C63;font-weight:700}
+.seg button.onB{border:2px solid var(--b);background:var(--b-l);color:#9A3412;font-weight:700}
+.seg button.onBoth{border:2px solid var(--ink2);background:#F1F3F7;font-weight:700}
+.lblbtn{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 10px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);text-align:left}
+.lblbtn:hover{border-color:var(--blue)}
+.key{width:20px;height:20px;border-radius:5px;background:#EEF1F6;font-family:var(--f-mono);font-size:11px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.tabs{display:flex;padding:3px;border-radius:10px;background:#EEF1F6}
+.tabs button{flex:1 1 0;min-height:32px;border-radius:8px;border:0;background:transparent;font-size:13px;color:#475467}
+.tabs button.on{background:#fff;font-weight:600;color:var(--ink)}
+.check{display:flex;gap:12px;padding:10px 12px;border-radius:12px}
+.check.bad{background:#FFF8F0;border:1px solid #F6D2AE}
+.ci{width:26px;height:26px;border-radius:13px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.ci.ok{background:var(--good-l);color:var(--good)} .ci.bad{background:var(--warn-l);color:var(--warn)}
+.docnav button{display:block;width:100%;text-align:left;padding:7px 12px;border-radius:8px;border:0;background:none;font-size:14px;color:var(--ink2)}
+.docnav button.on{background:var(--blue-l);color:var(--blue-d);font-weight:600}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div id="app"></div>
+<div id="overlay-root"></div>
+<div id="toast-root"></div>
+
+<style>
+.swatch{width:30px;height:30px;border-radius:15px;border:2px solid #fff;box-shadow:0 0 0 1px var(--line2);cursor:pointer;padding:0}
+.swatch.on{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--ink)}
+.code-in{font-family:var(--f-mono);font-weight:700;letter-spacing:.18em;text-transform:uppercase;font-size:18px;width:120px;text-align:center}
+.tick{position:absolute;top:2px;bottom:2px;width:2px;border-radius:1px;background:#8792A2;border:0;padding:0;cursor:pointer}
+.tick:hover,.tick.sel{background:var(--ink);width:3px}
+.lchip.note{background:#fff;color:var(--ink2);border:1.5px solid #9AA4B8;max-width:22%}
+textarea{width:100%;min-height:90px;padding:10px 12px;border-radius:10px;border:1px solid var(--line2);font:inherit;resize:vertical}
+.fdot{width:12px;height:12px;border-radius:6px;display:inline-block;flex:0 0 auto;box-shadow:0 0 0 1px rgba(0,0,0,.12)}
+</style>
+<script>
+(() => {
+/* ---------- data ---------- */
+const PRESETS = ['Punch thrown','Punch landed','Punch missed','Punch blocked','Punch dodged','Clinch','Knockdown','Referee break'];
+const LCOL = {'Punch thrown':'#2155D6','Punch landed':'#0F7A62','Punch missed':'#7A3FC4','Punch blocked':'#465063','Punch dodged':'#A8570A','Clinch':'#B5246B','Knockdown':'#B42318','Referee break':'#161A22'};
+const LEAD = 15;
+const plan = (rounds, round=180, brk=60, base=60) => { const p=[]; let t=0;
+  p.push({k:'Lead-in',s:t,e:t+=LEAD,lead:true}); p.push({k:'Baseline',s:t,e:t+=base,code:'BASELINE'});
+  for(let r=1;r<=rounds;r++){ p.push({k:'Round '+r,s:t,e:t+=round,round:r,code:'ROUND_'+r}); if(r<rounds) p.push({k:'Break',s:t,e:t+=brk,code:'BREAK_'+r}); }
+  return p; };
+const sysMarkers = (pl, end) => { const m=[{t:0,c:'RECORDING_START'}]; pl.forEach(p=>{ if(!p.code) return; if(p.s<end) m.push({t:p.s,c:p.code+'_START'}); if(p.e<=end) m.push({t:p.e,c:p.code+'_END'}); }); m.push({t:end,c:'RECORDING_END'}); return m; };
+const now = () => { const d=new Date(); return d.getDate()+' Nov 2026, '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+
+const S = {
+  screen:'welcome', folder:'shared', name:null, filter:'all', search:'', drawer:null, modal:null, toast:null, toastT:null,
+  labelList:[...PRESETS], adv:{move:true,pulse:false,lsl:false,fps60:true}, addingLabel:false, addingColour:false, docPage:'record', docSearch:'',
+  colours:[{n:'Red',c:'#D3241B'},{n:'Blue',c:'#1B45C4'},{n:'Black',c:'#111111'}],
+  sessions:[
+    {id:1,a:'K7Q2',b:'M3XA',ca:'Red',cb:'Blue',date:'Mon 16 Nov 2026',time:'14:05',rounds:3,plan:plan(3),moments:[{t:207,note:'B dropped guard after combination'},{t:373,note:''}],
+      labels:[{id:11,t:87,who:'A',k:'Punch landed',by:'Maya K'},{id:12,t:115,who:'B',k:'Punch dodged',by:'Maya K'},{id:13,t:140,who:'Both',k:'Clinch',dur:18,by:'Maya K'},{id:14,t:236,who:'A',type:'note',k:'Note',text:'A pressing forward, B backing to the ropes for most of this exchange',by:'Maya K'}],
+      history:[{w:'16 Nov 2026, 18:10',who:'Maya K',what:'added 4 labels'},{w:'16 Nov 2026, 14:18',who:'Recording',what:'finished · 12 min, 2 moments marked'},{w:'16 Nov 2026, 14:05',who:'Recording',what:'started · K7Q2 (red) vs M3XA (blue), 3 rounds'}], weak:'M3XA’s right-ear signal (TP10) looked poor for about 2 minutes in round 2.'},
+    {id:2,a:'R2DT',b:'B9LN',ca:'Red',cb:'Blue',date:'Sat 14 Nov 2026',time:'11:20',rounds:2,plan:plan(2),moments:[],
+      labels:[{id:21,t:95,who:'A',k:'Punch thrown',by:'Jonas R'},{id:22,t:125,who:'B',k:'Punch blocked',by:'Jonas R'},{id:23,t:165,who:'A',k:'Punch landed',by:'Jonas R'},{id:24,t:315,who:'B',k:'Punch missed',by:'Jonas R'}],
+      history:[{w:'14 Nov 2026, 13:30',who:'Jonas R',what:'added 12 labels'},{w:'14 Nov 2026, 11:29',who:'Recording',what:'finished · 8 min'},{w:'14 Nov 2026, 11:20',who:'Recording',what:'started · R2DT vs B9LN, 2 rounds'}]},
+    {id:3,a:'K7Q2',b:'J4WE',ca:'Black',cb:'Red',date:'Thu 12 Nov 2026',time:'16:40',rounds:3,plan:plan(3),moments:[],exported:true,
+      labels:[{id:31,t:105,who:'A',k:'Punch landed',by:'Maya K'},{id:32,t:155,who:'B',k:'Punch dodged',by:'Maya K'},{id:33,t:445,who:'A',k:'Knockdown',by:'Maya K'}],
+      history:[{w:'13 Nov 2026, 10:12',who:'Maya K',what:'exported it for analysis'},{w:'12 Nov 2026, 18:02',who:'Maya K',what:'added 58 labels'},{w:'12 Nov 2026, 16:40',who:'Recording',what:'started · K7Q2 vs J4WE, 3 rounds'}]},
+    {id:4,a:'M3XA',b:'Z8PC',ca:'Blue',cb:'Red',date:'Tue 10 Nov 2026',time:'10:15',rounds:3,plan:plan(3),moments:[],interrupted:387,labels:[],
+      history:[{w:'10 Nov 2026, 10:21',who:'Recording',what:'interrupted · saved up to 6:27'},{w:'10 Nov 2026, 10:15',who:'Recording',what:'started · M3XA vs Z8PC, 3 rounds'}]},
+    {id:5,a:'B9LN',b:'R2DT',ca:'Red',cb:'Blue',date:'Fri 6 Nov 2026',time:'15:30',rounds:3,plan:plan(3),moments:[],labels:[],
+      history:[{w:'6 Nov 2026, 15:43',who:'Recording',what:'finished · 12 min'},{w:'6 Nov 2026, 15:30',who:'Recording',what:'started · B9LN vs R2DT, 3 rounds'}]}
+  ],
+  gr:null, rec:null, rv:null, nextId:100, speed:10, timing:{cal:false,running:false}
+};
+const freshGR = () => ({a:'K7Q2',b:'',ca:'Red',cb:'Blue',rounds:3,round:180,brk:60,base:60,bell:true,camFound:false,searching:false,signalFixed:false,adjusting:false});
+
+/* ---------- helpers ---------- */
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = s => { s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+const fmt2 = s => { const m=Math.floor(s/60), r=s-m*60; return String(m).padStart(2,'0')+':'+r.toFixed(2).padStart(5,'0'); };
+const col = n => (S.colours.find(c=>c.n===n)||{c:'#556070'}).c;
+const tint = (n,p=12) => `color-mix(in srgb, ${col(n)} ${p}%, white)`;
+const codeOK = c => /^[A-Z0-9]{4}$/.test(c||'');
+const dur = s => s.interrupted || s.stoppedEarly || s.plan[s.plan.length-1].e;
+const statusOf = s => s.interrupted ? 'interrupted' : s.exported ? 'exported' : (s.labels.length===0 || s.moments.some(m=>!m.note)) ? 'need' : 'labelled';
+const STATUS = {need:'Needs labels',labelled:'Labelled',exported:'Exported',interrupted:'Interrupted'};
+const byId = id => S.sessions.find(s=>s.id===id);
+const meta = s => { const end=s.interrupted||s.stoppedEarly; if(end){ const p=s.plan.find(q=>q.s<=end&&q.e>end)||{k:'the end'}; return (s.interrupted?'Interrupted':'Stopped early')+(p.round?' in round '+p.round:' during '+p.k.toLowerCase())+' · '+fmt(end); } return s.rounds+' rounds · '+Math.round(dur(s)/60)+' min'; };
+const names = s => [...new Set(s.labels.map(l=>l.by))];
+const fighter = (s,side) => side==='A'?s.a:s.b;
+const fcol = (s,side) => side==='A'?s.ca:s.cb;
+const badge = (s,side,size=22) => `<span class="badge" style="width:${size}px;height:${size}px;background:${col(fcol(s,side))}">${side}</span>`;
+const fname = (s,side) => `<span style="display:inline-flex;align-items:center;gap:6px"><span class="fdot" style="background:${col(fcol(s,side))}"></span><span class="mono" style="font-weight:700;letter-spacing:.06em">${esc(fighter(s,side))}</span></span>`;
+const vs = s => `${fname(s,'A')} <span class="muted" style="font-weight:400;font-size:14px">vs</span> ${fname(s,'B')}`;
+
+/* ---------- brain signal drawing ---------- */
+const noise = (k,seed) => { const x=Math.sin(k*12.9898+seed*78.233)*43758.5453; return x-Math.floor(x); };
+function wave(seed, amp, bad, shift, n, secs){
+  const pts=[];
+  for(let i=0;i<n;i++){
+    const k=i+Math.floor(shift), t=k/(n/secs);
+    let v=Math.sin(2*Math.PI*10*t+seed)*.55+Math.sin(2*Math.PI*6.3*t+seed*2)*.3+Math.sin(2*Math.PI*21*t+seed*3)*.18+(noise(k,seed)-.5)*.6;
+    if(bad) v=v*0.4+Math.sin(t*1.7+seed)*1.6+(noise(k*3,seed)-.5)*1.4;
+    pts.push((i*1000/(n-1)).toFixed(1)+','+(50-v*amp).toFixed(1));
+  }
+  return pts.join(' ');
+}
+const CH=['TP9','AF7','AF8','TP10','AUX'];
+function eegHTML(id, badCh, h, opts={}){
+  const secs=opts.secs||5;
+  const labs=CH.map((c,i)=>`<span class="${i===badCh?'bad':''}" style="height:${h}px">${i===badCh?c+' ! poor':c+' [µV]'}</span>`).join('');
+  const lines=CH.map((c,i)=>`<svg viewBox="0 0 1000 100" preserveAspectRatio="none" style="height:${h}px" aria-hidden="true"><polyline data-eeg="${id}" data-ch="${i}" points=""></polyline></svg>`).join('');
+  const marks=(opts.marks||[]).filter(m=>m.x>=0&&m.x<=100).map(m=>`<span class="mk" style="left:${m.x}%"></span><span class="mkt" style="left:calc(${m.x}% + 3px);${m.y?'bottom:auto;top:2px':''}">${esc(m.t)}</span>`).join('');
+  const head=opts.playhead?`<span class="playhead" style="left:50%;top:0;bottom:0"></span>`:'';
+  const ax=opts.axis||['−5 s','−4','−3','−2','−1','now'];
+  return `<div class="eeg"><div class="labs">${labs}</div><div class="plot ${secs>5?'ten':''}">${lines}${marks}${head}</div></div><div class="axis" style="margin-left:84px">${ax.map(a=>`<span>${a}</span>`).join('')}</div>`;
+}
+const EEG = {};
+function drawEEG(){
+  document.querySelectorAll('polyline[data-eeg]').forEach(pl=>{
+    const cfg=EEG[pl.dataset.eeg]; if(!cfg) return; const ch=+pl.dataset.ch;
+    pl.setAttribute('points', wave(cfg.seed+ch*7, cfg.bad(ch)?24:((ch===0||ch===4)?30:20), cfg.bad(ch), cfg.shift, 260, cfg.secs));
+  });
+}
+function headSVG(size, dots){
+  const c = ok => ok ? 'var(--dot-good)' : 'var(--dot-warn)';
+  return `<svg class="head" width="${size}" height="${size*1.15}" viewBox="0 0 56 64" aria-hidden="true"><path d="M24 9 28 2l4 7" fill="none" stroke="#556070" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 31q-5 4 0 9M49 31q5 4 0 9" fill="none" stroke="#556070" stroke-width="1.8"/><ellipse cx="28" cy="36" rx="21" ry="25" fill="#fff" stroke="#556070" stroke-width="1.8"/><circle cx="17" cy="19" r="5" fill="${c(dots[0])}"/><circle cx="39" cy="19" r="5" fill="${c(dots[1])}"/><circle cx="10" cy="44" r="5" fill="${c(dots[2])}"/><circle cx="46" cy="44" r="5" fill="${c(dots[3])}"/></svg>`;
+}
+const ICON = {
+  gear:'<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  wave:'<svg width="24" height="16" viewBox="0 0 30 20" fill="none" stroke="#2155D6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 10h5l2-6 3 12 3-9 2 5 2-2h11"/></svg>',
+  hist:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>',
+  x:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  back:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>',
+  flag:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4h11l-1.5 4L16 12H5"/></svg>',
+  play:'<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
+  pause:'<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
+  folder:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#344054" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  note:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v12H8l-4 4z"/></svg>'
+};
+
+/* ---------- headers ---------- */
+function hdr(active, extra=''){
+  return `<header class="hdr">
+    <button class="logo" data-act="go" data-arg="sessions"><span>${ICON.wave}</span>Brain Battle</button>
+    <nav aria-label="Main"><button class="navlink ${active==='sessions'?'on':''}" data-act="go" data-arg="sessions">Sessions</button></nav>
+    <div class="grow"></div>${extra}
+    <button class="navlink ${active==='docs'?'on':''}" data-act="go" data-arg="docs">Documentation</button>
+    <button class="gear ${active==='settings'?'on':''}" data-act="go" data-arg="settings" aria-label="Settings" title="Settings">${ICON.gear}</button>
+  </header>`;
+}
+function flowHdr(step, parts={}){
+  const steps=['Get ready','Record','Saved'].map((s,i)=>{ const n=i+1; const done=n<step||step===3; const on=n===step;
+    return `<li style="${done?'color:var(--good);font-weight:600':on?'color:var(--blue-d);font-weight:700':''}">${done?'✓':n} ${s}</li>`; }).join('');
+  return `<header class="hdr">${parts.left||''}<strong style="font-size:17px">New recording</strong>${parts.mid||''}<div class="grow"></div>
+    <ol aria-label="Steps" style="list-style:none;margin:0;padding:0;display:flex;gap:14px;font-size:13px;color:var(--muted)">${steps}</ol>${parts.right||''}</header>`;
+}
+
+/* ---------- screens ---------- */
+const V = {};
+V.welcome = () => `<div class="page" style="min-height:100%;display:flex;align-items:center;justify-content:center">
+  <main class="card" style="width:100%;max-width:600px;padding:38px 40px;display:flex;flex-direction:column;gap:20px;border-radius:22px">
+    <span style="width:56px;height:56px;border-radius:16px;background:var(--blue-l);display:flex;align-items:center;justify-content:center">${ICON.wave}</span>
+    <div><h1>Where are your team’s recordings?</h1><p class="muted" style="margin:6px 0 0">Pick the shared folder your team uses. Everyone who picks the same folder sees the same recordings, labels, history, label list and fighter colours.</p></div>
+    <label class="card" style="display:flex;gap:14px;padding:16px 18px;cursor:pointer;${S.folder==='shared'?'border:2px solid var(--blue);background:#F5F8FE':''}">
+      <input type="radio" name="folder" ${S.folder==='shared'?'checked':''} data-act="folder" data-arg="shared" style="width:18px;height:18px;margin-top:3px;accent-color:var(--blue)">
+      <span style="display:flex;flex-direction:column;gap:6px;flex-grow:1;min-width:0"><strong>A shared team folder</strong><span class="small muted">A network drive, the lab server, or a synced OneDrive folder.</span>
+        <span class="row"><span class="mono small card" style="flex:1 1 220px;padding:9px 12px;border-radius:10px">Lab Server › Brain Battle Data</span><button class="btn" data-act="toast" data-arg="In the app this opens your computer’s folder picker.">Choose folder…</button></span>
+        <span class="small" style="color:var(--good)">✓ Found ${S.sessions.length} recordings and your team’s settings in this folder</span></span>
+    </label>
+    <label class="card" style="display:flex;gap:14px;padding:16px 18px;cursor:pointer;${S.folder==='local'?'border:2px solid var(--blue);background:#F5F8FE':''}">
+      <input type="radio" name="folder" ${S.folder==='local'?'checked':''} data-act="folder" data-arg="local" style="width:18px;height:18px;margin-top:3px;accent-color:var(--blue)">
+      <span><strong>Just this computer</strong><br><span class="small muted">Saves in Documents › Brain Battle Data. Nobody else sees these recordings. You can switch later.</span></span>
+    </label>
+    <details class="small"><summary style="cursor:pointer;font-weight:600;color:var(--blue)">Can’t see the shared drive?</summary><p style="margin:8px 0 0">Connect to it first: on a Mac use Finder › Go › Connect to Server; on Windows use This PC › Map network drive. Your university login is asked there, not here.</p></details>
+    <button class="btn primary big" data-act="go" data-arg="sessions">Continue</button>
+    <span class="small muted" style="text-align:center">You only see this once on this computer. Change it any time in Settings.</span>
+  </main></div>`;
+
+function rowAction(s){
+  const mine = S.name && s.labels.some(l=>l.by===S.name); const st=statusOf(s); const open=s.moments.filter(m=>!m.note).length;
+  if(st==='interrupted'||st==='exported') return {label:'Open',cls:'soft',prog: st==='interrupted'?'Saved up to '+fmt(s.interrupted):'By '+names(s).join(', ')};
+  if(mine && st==='need') return {label:'Continue labelling',cls:'primary',prog:'You: '+s.labels.filter(l=>l.by===S.name).length+' labels'+(open?', '+open+' moments without a note':'')};
+  if(!s.labels.length) return {label:'Start labelling',cls:'primary',prog:'Nobody has labelled it yet'};
+  if(S.name && !mine) return {label:'Add my labels',cls:'primary',prog:names(s).join(', ')+' labelled · not you yet'};
+  return {label: st==='need'?'Continue labelling':'Open', cls: st==='need'?'primary':'soft', prog:'By '+names(s).join(', ')+(open?' · '+open+' moments without a note':'')};
+}
+V.sessions = () => {
+  const counts={all:S.sessions.length}; S.sessions.forEach(s=>{const st=statusOf(s); counts[st]=(counts[st]||0)+1;});
+  const labelled=(counts.labelled||0)+(counts.exported||0);
+  const f=[['all','All'],['need','Needs labels'],['labelled','Labelled'],['exported','Exported'],['interrupted','Interrupted']];
+  const q=S.search.trim().toLowerCase();
+  const rows=S.sessions.filter(s=>(S.filter==='all'||statusOf(s)===S.filter)&&(!q||(s.a+' '+s.b+' '+s.date).toLowerCase().includes(q)));
+  return hdr('sessions')+`<main class="page" style="max-width:1140px;display:flex;flex-direction:column;gap:22px">
+    <section class="row" style="gap:16px;align-items:stretch">
+      <button data-act="newrec" style="flex:2 1 360px;display:flex;align-items:center;gap:20px;padding:24px 28px;border-radius:18px;border:0;background:var(--blue);color:#fff;text-align:left">
+        <span style="width:52px;height:52px;border-radius:26px;background:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="#D93025"/></svg></span>
+        <span><strong style="font-size:22px">New recording</strong><br><span style="color:#D6E2FB;font-size:14px">Connect the headbands and cameras, give each fighter a code and colour, then follow the checklist.</span></span></button>
+      <div class="card" style="flex:1 1 170px;padding:18px 22px;display:flex;flex-direction:column;justify-content:center"><span class="small muted">Recordings</span><span style="font-size:36px;font-weight:700;line-height:1.1">${S.sessions.length}</span></div>
+      <div class="card" style="flex:1 1 170px;padding:18px 22px;display:flex;flex-direction:column;justify-content:center"><span class="small muted">Labelled</span><span style="font-size:36px;font-weight:700;line-height:1.1">${labelled} <span style="font-size:18px;font-weight:500" class="muted">of ${S.sessions.length}</span></span></div>
+    </section>
+    <div class="row"><h1 style="font-size:24px">Sessions</h1>
+      <div class="row" style="gap:8px">${f.map(([k,l])=>`<button class="pill ${S.filter===k?'on':''}" data-act="filter" data-arg="${k}">${l} ${counts[k]||0}</button>`).join('')}</div>
+      <div class="grow"></div><input type="search" id="search" placeholder="Search a fighter code or date" aria-label="Search sessions" value="${esc(S.search)}" data-input="search" style="min-width:220px;flex:0 1 260px">
+    </div>
+    <section style="display:flex;flex-direction:column;gap:8px">
+      ${rows.length?rows.map(s=>{const a=rowAction(s), st=statusOf(s); return `<div class="card row" style="padding:12px 14px 12px 20px;border-radius:14px">
+        <button data-act="open" data-arg="${s.id}" style="flex:1 1 240px;min-width:0;text-align:left;border:0;background:none;padding:0">
+          <span style="display:flex;align-items:center;gap:8px;font-size:16px">${vs(s)}</span>
+          <span class="mono small muted">${s.date} · ${meta(s)}</span></button>
+        <span class="small muted" style="flex:0 1 230px">${esc(a.prog)}</span>
+        <span style="width:104px;display:flex;justify-content:flex-end"><span class="chip st-${st}">${STATUS[st]}</span></span>
+        <button class="btn icon" data-act="history" data-arg="${s.id}" aria-label="History" title="History">${ICON.hist}</button>
+        <button class="btn ${a.cls}" data-act="open" data-arg="${s.id}">${a.label}</button></div>`;}).join('')
+      :`<div class="card muted" style="padding:28px;text-align:center">No sessions match. <button class="btn" data-act="clearfilter">Show all</button></div>`}
+    </section>
+    <p class="small muted" style="margin:0">Saved in <strong style="color:var(--ink)">${S.folder==='shared'?'Lab Server › Brain Battle Data':'Documents › Brain Battle Data'}</strong> · 73.9 GB free · fighters are stored only as codes</p>
+  </main>`;
+};
+
+/* get ready */
+function grChecks(){ const g=S.gr; const codes=codeOK(g.a)&&codeOK(g.b)&&g.a!==g.b, cols=g.ca!==g.cb; return [
+  {ok:true,t:'Headband A connected',n:'MuseS-7538'},
+  {ok:true,t:'Headband B connected',n:'MuseS-7564'},
+  {ok:g.signalFixed,t:'Good signal on all sensors',n:g.signalFixed?'All 8 sensors look good':'Boxer B: right-ear signal (TP10) looks poor'},
+  {ok:g.camFound,t:'4 cameras connected',n:g.camFound?'All 4 at '+(S.adv.fps60?60:30)+' fps':'Boxer B view not found — check the USB cable'},
+  {ok:codes&&cols,t:'Fighter codes and colours',n:!codeOK(g.a)?'Boxer A needs a 4-character code':!codeOK(g.b)?'Boxer B needs a 4-character code':g.a===g.b?'The two codes must be different':!cols?'Pick a different colour for each fighter':g.a+' ('+g.ca.toLowerCase()+') vs '+g.b+' ('+g.cb.toLowerCase()+')'},
+  {ok:S.timing.cal,soft:true,t:'Timing checked',n:S.timing.cal?'Buzzer test done · under 10 ms after correction':'Recommended: press Test timing and run the buzzer test'},
+  {ok:true,t:'Enough space',n:'Needs about '+(g.rounds*0.6*(S.adv.fps60?1.8:1)+0.1).toFixed(1)+' GB · 73.9 GB free'}]; }
+V.getready = () => {
+  const g=S.gr, checks=grChecks(), bad=checks.filter(c=>!c.ok&&!c.soft).length;
+  const total=plan(g.rounds,g.round,g.brk,g.base).slice(-1)[0].e;
+  const cams=['Side camera 1','Side camera 2','Boxer A view','Boxer B view'];
+  const step=(k,l,v)=>`<div class="row" style="gap:8px"><span class="small" style="font-weight:600;color:var(--ink2)">${l}</span><button class="btn icon" style="width:34px;min-height:36px" data-act="step" data-arg="${k}:-1" aria-label="Less ${l}">−</button><span class="mono" style="min-width:42px;text-align:center;font-weight:600">${v}</span><button class="btn icon" style="width:34px;min-height:36px" data-act="step" data-arg="${k}:1" aria-label="More ${l}">+</button></div>`;
+  const card=(side)=>{ const isB=side==='B', poor=isB&&!g.signalFixed, code=isB?g.b:g.a, cn=isB?g.cb:g.ca, bad=code&&!codeOK(code);
+    return `<div class="card" style="flex:1 1 330px;min-width:0;padding:14px 16px;display:flex;flex-direction:column;gap:10px;${poor?'border:1.5px solid var(--warn-b)':''}">
+    <div class="row" style="gap:12px;align-items:flex-end">
+      <span class="badge" style="width:30px;height:30px;font-size:14px;background:${col(cn)};margin-bottom:6px">${side}</span>
+      <label style="display:flex;flex-direction:column;gap:2px"><span class="small muted" style="font-weight:600">Boxer ${side} code</span>
+        <input type="text" id="code${side}" class="code-in" maxlength="4" value="${esc(code)}" placeholder="····" data-input="code${side}" style="${bad?'border-color:var(--red)':''}" autocomplete="off" spellcheck="false"></label>
+      <button class="btn" style="min-height:36px;margin-bottom:3px" data-act="gencode" data-arg="${side}">New code</button>
+      <div style="display:flex;flex-direction:column;gap:4px"><span class="small muted" style="font-weight:600">Colour</span><div class="row" style="gap:6px">${S.colours.map(c=>`<button class="swatch ${cn===c.n?'on':''}" style="background:${c.c}" data-act="pickcol" data-arg="${side}:${esc(c.n)}" aria-label="${esc(c.n)}" title="${esc(c.n)}"></button>`).join('')}</div></div>
+    </div>
+    ${bad?`<span class="small" style="color:var(--red-d)">Use exactly 4 capital letters or digits, like K7Q2.</span>`:''}
+    <div class="row" style="flex-wrap:nowrap;gap:14px">${headSVG(56,[true,true,true,!poor])}
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0"><span class="mono small muted">${isB?'MuseS-7564 · battery 75%':'MuseS-7538 · battery 81%'}</span>
+      ${poor?`<span class="small" style="color:var(--warn)">The right-ear signal (TP10) looks poor. Often the band isn’t flat behind the ear or hair is in the way. Adjust it, then press the button.</span><button class="btn" style="align-self:flex-start" data-act="adjusted" ${g.adjusting?'disabled':''}>${g.adjusting?'Checking the signal…':'I’ve adjusted it'}</button>`
+      :`<span class="small" style="color:var(--good);font-weight:600">✓ Signal looks good on all 4 sensors</span>`}</div></div>
+    ${eegHTML('gr'+side, poor?3:-1, 17)}</div>`; };
+  return flowHdr(1,{left:`<button class="navlink" data-act="go" data-arg="sessions" style="display:flex;gap:6px;align-items:center">${ICON.x}Cancel</button>`})+
+  `<main class="page wide row" style="align-items:stretch;gap:22px">
+    <aside class="card" style="flex:1 1 290px;max-width:340px;padding:22px;display:flex;flex-direction:column;gap:12px">
+      <div><h1 style="font-size:22px">Get ready</h1><span class="muted small">Work down the list. Start unlocks when everything is green.</span></div>
+      <ol style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">${checks.map(c=>`<li class="check ${c.ok?'':'bad'}"><span class="ci ${c.ok?'ok':'bad'}">${c.ok?'✓':'!'}</span><div><strong style="font-weight:600">${c.t}</strong><br><span class="small" style="color:${c.ok?'var(--muted)':'var(--warn)'}">${esc(c.n)}</span></div></li>`).join('')}</ol>
+      <div class="grow"></div>
+      <button class="btn" data-act="timing">⏱ Test timing</button>
+      <button class="btn primary big" data-act="start" ${bad?'disabled':''}><span style="width:10px;height:10px;border-radius:5px;background:#fff"></span>Start recording</button>
+      <span class="small" style="text-align:center;color:${bad?'var(--warn)':'var(--good)'}">${bad?'Fix '+bad+' thing'+(bad>1?'s':'')+' above to start':'Recording starts 15 s before the baseline'}</span>
+    </aside>
+    <div style="flex:999 1 620px;min-width:0;display:flex;flex-direction:column;gap:14px">
+      <section class="card" style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+        <div class="row"><h2>Cameras</h2><span style="color:${g.camFound?'var(--good)':'var(--warn)'};font-weight:500">${g.camFound?'4 of 4 connected':'3 of 4 connected'}</span><div class="grow"></div><button class="btn" data-act="search" ${g.searching?'disabled':''}>${g.searching?'Searching…':'Search again'}</button></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">${cams.map((c,i)=>{const miss=i===3&&!g.camFound; return `<div class="cam ${miss?'missing':''}" style="aspect-ratio:16/10">${miss?'':'<span class="scan"></span>'}<span class="lbl">${c}</span><span class="st" style="${miss?'background:none;color:var(--warn);font-weight:600':''}">${miss?'Not found':'<span class="live"></span>'+(S.adv.fps60?60:30)+' fps'}</span></div>`;}).join('')}</div>
+      </section>
+      <section class="row" style="gap:14px;align-items:stretch">${card('A')}${card('B')}
+        <button class="btn" style="flex:1 1 100%;border-style:dashed;color:var(--blue-d)" data-act="swap">⇄ Swap the headbands between Boxer A and Boxer B</button></section>
+      <section class="card row" style="padding:12px 16px;gap:12px 22px">${step('rounds','Rounds',g.rounds)}${step('round','Round',fmt(g.round))}${step('brk','Break',fmt(g.brk))}${step('base','Baseline',fmt(g.base))}
+        <label class="row small" style="gap:8px;font-weight:600;color:var(--ink2)"><input type="checkbox" ${g.bell?'checked':''} data-act="bell" style="width:18px;height:18px;accent-color:var(--blue)">Ring the bell at the start and end of each round</label>
+        <span class="small muted">0:15 lead-in + ${fmt(total-LEAD)} = ${fmt(total)} in total · remembered for next time</span></section>
+    </div></main>`;
+};
+
+/* recording */
+function recPhase(){ const r=S.rec; return r.plan.find(p=>r.t>=p.s&&r.t<p.e)||r.plan[r.plan.length-1]; }
+V.recording = () => {
+  const r=S.rec, g=S.gr, ph=recPhase(), left=ph.e-r.t, total=r.plan.slice(-1)[0].e;
+  const roundsDone=r.plan.filter(p=>p.round&&p.e<=r.t).length;
+  const next=r.plan[r.plan.indexOf(ph)+1];
+  const sess={a:g.a,b:g.b,ca:g.ca,cb:g.cb};
+  const sm=sysMarkers(r.plan,total).filter(m=>m.t<=r.t&&r.t-m.t<5&&m.c!=='RECORDING_END').map(m=>({x:100-(r.t-m.t)*20,t:m.c,y:1}));
+  const boxer=(side)=>{ const isB=side==='B', poor=isB&&r.poor; return `<div class="card" style="padding:14px 16px 10px;display:flex;flex-direction:column;gap:8px;${poor?'border:1.5px solid var(--warn-b)':''}">
+    <div class="row" style="flex-wrap:nowrap;gap:12px">${headSVG(38,[true,true,true,!poor])}${badge(sess,side,24)}
+      <div style="min-width:0">${fname(sess,side)}<br><span class="small" style="color:${poor?'#B45309':'var(--good)'};font-weight:${poor?500:400}">${poor?'Right-ear signal (TP10) looks poor — check the band in the next break':'Signal looks good on all 4 sensors'}</span></div>
+      <div class="grow"></div><span class="small muted">Battery ${isB?'71':'77'}%</span></div>
+    ${eegHTML('rec'+side, poor?3:-1, 38, {marks: sm.concat(r.moments.filter(m=>r.t-m.t<5).map(m=>({x:100-(r.t-m.t)*20,t:'MOMENT'})))})}</div>`; };
+  return flowHdr(2,{left:`<button class="navlink" data-act="quitrec" style="display:flex;gap:6px;align-items:center">${ICON.x}Cancel</button>
+      <span class="mono small" style="display:flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;background:var(--red-l);color:var(--red-d);font-weight:600"><span style="width:8px;height:8px;border-radius:4px;background:var(--red)"></span>REC ${fmt(r.t)}</span>`,
+      mid:`<span class="small" style="display:flex;gap:8px;align-items:center">${vs(sess)} <span style="color:var(--good)">· everything is recording</span></span>`,
+      right:`<button class="btn danger" data-act="stoprec"><span style="width:10px;height:10px;border-radius:2px;background:var(--red)"></span>Stop recording</button>`})+
+  `<main class="page wide row" style="align-items:stretch;gap:24px">
+    <section style="flex:999 1 620px;min-width:0;display:flex;flex-direction:column;gap:12px">
+      <div class="cams">${['Side camera 1','Side camera 2','Boxer A view ('+esc(g.a)+')','Boxer B view ('+esc(g.b)+')'].map(c=>`<div class="cam"><span class="scan"></span><span class="lbl">${c}</span><span class="st"><span class="live"></span>Recording</span><span class="tc mono">${fmt2(r.t)}</span></div>`).join('')}</div>
+      <div class="card row" style="flex-grow:1;padding:20px 26px;gap:16px 32px;align-content:center">
+        <div class="row" style="align-items:baseline;gap:10px"><span class="mono" style="font-size:56px;font-weight:600;line-height:1;letter-spacing:-.02em">${fmt(left)}</span><span class="muted" style="font-size:17px">${ph.lead?'until the baseline starts':'left in '+ph.k.toLowerCase()}</span></div>
+        <div style="flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:6px">
+          <div class="row" style="justify-content:space-between;font-size:15px"><strong style="color:var(--blue-d)">${ph.round?'Round '+ph.round+' of '+r.rounds:ph.lead?'Lead-in (recording already running)':ph.k}</strong><span class="muted">${roundsDone} of ${r.rounds} rounds done${next?' · next: '+next.k.toLowerCase():' · last part'}</span></div>
+          <div style="position:relative;display:flex;gap:3px;height:34px">${r.plan.map(p=>{const w=(p.e-p.s)/total*100, done=p.e<=r.t, on=p===ph; return `<span style="flex:0 0 calc(${w}% - 3px);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;overflow:hidden;white-space:nowrap;background:${done?'var(--blue)':on?'#8FAAEC':'#E3E8F0'};color:${done?'#fff':on?'var(--ink)':'#475467'}">${p.lead?'':p.round?(done?'R'+p.round+' ✓':'R'+p.round):p.k}</span>`;}).join('')}
+            <span class="playhead" style="left:${r.t/total*100}%"></span></div>
+        </div>
+      </div>
+      <div class="row"><button class="btn primary" style="min-height:52px;font-size:16px" data-act="mark">${ICON.flag}Mark this moment <span class="key" style="background:#4372E0;color:#fff">M</span></button>
+        <span class="muted">${r.moments.length?r.moments.length+' moment'+(r.moments.length>1?'s':'')+' marked · '+r.moments.filter(m=>m.note).length+' with notes.':'Press M when something happens. You can add a note straight away or later.'}</span></div>
+    </section>
+    <section style="flex:1 1 440px;min-width:0;display:flex;flex-direction:column;gap:14px">${boxer('A')}${boxer('B')}
+      <button class="btn" style="justify-content:flex-start;${S.timing.cal?'color:var(--good)':'color:var(--warn)'}" data-act="timing">⏱ Timing: ${S.timing.cal?'largest offset '+(4+Math.floor(r.t)%3)+' ms after correction ✓':'not measured this session'} · details</button>
+      <span class="mono small muted">Scale 100 µV · 256 Hz · display filter 1–45 Hz · grey labels are automatic markers</span></section>
+  </main>`;
+};
+
+/* saved */
+V.saved = () => { const s=byId(S.lastSaved); const end=dur(s); const sm=sysMarkers(s.plan,end); const noted=s.moments.filter(m=>m.note).length; const items=[
+  ['ok','4 camera videos','Side camera 1, Side camera 2, Boxer A view, Boxer B view. No frames lost.'],
+  ['ok','2 brain recordings',esc(s.a)+'’s and '+esc(s.b)+'’s headbands, for the whole session.'+(S.adv.move?' Head movement too.':'')],
+  ['ok',sm.length+' automatic markers','Recording start (15 s before the baseline), baseline start and end, the start and end of every round and break, and recording end.'],
+  ['ok',s.moments.length+' moment'+(s.moments.length===1?'':'s')+' you marked',s.moments.length?noted+' with a note'+(s.moments.length-noted?', '+(s.moments.length-noted)+' still to describe in Review.':'.'):'None this time.']];
+  items.push(S.timing.cal?['ok','Timing report','Buzzer-test corrections applied. Largest difference between devices: 6 ms. Logged every second in timing_quality.csv.']:['warn','Timing not measured','No buzzer test this session, so device delays are not corrected. Frame rates and dropped packets are still logged in timing_quality.csv.']);
+  if(s.weak) items.push(['warn','Worth checking',s.weak]);
+  return flowHdr(3)+`<main class="page" style="max-width:800px;display:flex;flex-direction:column;gap:22px;padding-top:48px">
+    <div class="row" style="flex-wrap:nowrap;gap:18px"><span style="width:64px;height:64px;border-radius:32px;flex:0 0 auto;background:var(--good-l);color:var(--good);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700">✓</span>
+      <div><h1>${s.stoppedEarly?'Recording saved (stopped early)':'Recording saved'}</h1><span class="muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${vs(s)} · ${s.date}, ${s.time} · ${meta(s)}</span></div></div>
+    <section class="card" style="overflow:hidden">${items.map(([k,t,d])=>`<div class="row" style="flex-wrap:nowrap;align-items:flex-start;padding:14px 22px;border-bottom:1px solid #EEF1F6"><span class="ci ${k==='ok'?'ok':'bad'}" style="width:28px;height:28px">${k==='ok'?'✓':'!'}</span><div><strong style="font-weight:600">${t}</strong><br><span class="small muted">${d}</span></div></div>`).join('')}
+      <div class="row" style="padding:14px 22px;background:#F9FAFC">${ICON.folder}<span class="grow small">Saved in <strong>Brain Battle Data › 2026-11-17 ${s.time.replace(':','-')} ${esc(s.a)} vs ${esc(s.b)}</strong></span><button class="btn" data-act="toast" data-arg="In the app this opens the folder in Finder or Explorer.">Open folder</button></div></section>
+    <div class="row"><button class="btn primary big" data-act="open" data-arg="${s.id}">Start labelling →</button><button class="btn big" data-act="go" data-arg="sessions">Back to sessions</button><button class="btn big" data-act="newrec">Record another</button></div>
+  </main>`; };
+
+/* review */
+function rvSession(){ return byId(S.rv.id); }
+V.review = () => {
+  const s=rvSession(), rv=S.rv, D=dur(s), mineName=S.name;
+  const lanes=[['A','A · '+s.a,col(s.ca),tint(s.ca,10)],['B','B · '+s.b,col(s.cb),tint(s.cb,10)],['Both','Both','#344054','#F4F5F8']];
+  const x=t=>t/D*100;
+  const vis=l=> rv.compare ? true : (mineName? l.by===mineName : true);
+  const labels=s.labels.filter(l=>l.type!=='note'&&vis(l)), notes=s.labels.filter(l=>l.type==='note'&&vis(l));
+  const chip=l=>`<button class="lchip ${rv.sel===l.id?'sel':''} ${rv.compare&&l.by!==mineName?'ghost':''}" data-act="selchip" data-arg="${l.id}" style="left:${x(l.t)}%;${l.dur?'width:'+Math.max(x(l.dur),3)+'%;':''}background:${LCOL[l.k]||'#465063'}" title="${esc(l.k)} at ${fmt(l.t)} · ${esc(l.by)}">${esc(l.k)}</button>`;
+  const nchip=l=>`<button class="lchip note ${rv.sel===l.id?'sel':''} ${rv.compare&&l.by!==mineName?'ghost':''}" data-act="selchip" data-arg="${l.id}" style="left:${x(l.t)}%" title="${esc(l.text)} · ${esc(l.by)}">${ICON.note}&nbsp;${esc(l.text.slice(0,26))}${l.text.length>26?'…':''}</button>`;
+  const selL=s.labels.find(l=>l.id===rv.sel), selM=rv.selMoment!=null?s.moments[rv.selMoment]:null;
+  const sm=sysMarkers(s.plan,D);
+  const winStart=rv.t-5, axis=[0,2,4,6,8,10].map(o=>fmt(Math.max(0,winStart+o)));
+  const eegMarks=s.labels.filter(l=>Math.abs(l.t-rv.t)<5&&vis(l)).map(l=>({x:(l.t-winStart)*10,t:(l.type==='note'?'Note':l.k)+' · '+l.who}))
+     .concat(sm.filter(m=>Math.abs(m.t-rv.t)<5).map(m=>({x:(m.t-winStart)*10,t:m.c,y:1})))
+     .concat(s.moments.filter(m=>Math.abs(m.t-rv.t)<5).map(m=>({x:(m.t-winStart)*10,t:'MOMENT'})));
+  const others=names(s).filter(n=>n!==mineName);
+  const agree=(()=>{ if(!others.length||!mineName) return null; const mine=s.labels.filter(l=>l.by===mineName&&l.type!=='note'), theirs=s.labels.filter(l=>l.by===others[0]&&l.type!=='note'); if(!mine.length||!theirs.length) return 'Add labels to compare with '+others[0]+'.'; let m=0; mine.forEach(a=>{ if(theirs.some(b=>b.k===a.k&&b.who===a.who&&Math.abs(b.t-a.t)<=0.5)) m++; }); const n=Math.max(mine.length,theirs.length); return 'You and '+others[0]+' agree on '+m+' of '+n+' labels ('+Math.round(m/n*100)+'%) within half a second.'; })();
+  const weakNow = side => side==='B'&&s.weak&&rv.t>435&&rv.t<555;
+  const panel = rv.tab==='activity'
+    ? `<div style="display:flex;flex-direction:column;overflow:auto;max-height:330px">${s.history.map(h=>`<div class="row small" style="flex-wrap:nowrap;align-items:flex-start;padding:7px 0;border-bottom:1px solid #EEF1F6"><span class="mono muted" style="width:120px;flex:0 0 auto;font-size:11px;padding-top:2px">${h.w}</span><span><strong style="font-weight:600">${esc(h.who)}</strong> ${esc(h.what)}</span></div>`).join('')}</div>`
+    : rv.noting
+    ? `<strong>Custom note at ${fmt(rv.t)}</strong><span class="small muted">Describe what is happening. Custom notes stay with this session only; they are not added to the label list.</span>
+       <div class="seg" role="group" aria-label="About">${['A','B','Both'].map(w=>`<button style="${rv.who===w?(w==='Both'?'border:2px solid var(--ink2);background:#F1F3F7;font-weight:700':'border:2px solid '+col(fcol(s,w))+';background:'+tint(fcol(s,w))+';font-weight:700'):''}" data-act="who" data-arg="${w}">${w==='Both'?'Both':w+' · '+esc(fighter(s,w))}</button>`).join('')}</div>
+       <textarea id="notetext" placeholder="e.g. A keeps pressing forward, B backs onto the ropes and covers up" data-input="notetext">${esc(rv.noteText||'')}</textarea>
+       <div class="row" style="justify-content:flex-end"><button class="btn" data-act="cancelnote">Cancel</button><button class="btn primary" data-act="savenote" ${(rv.noteText||'').trim()?'':'disabled'}>Add note</button></div>`
+    : selM
+    ? `<div class="row" style="justify-content:space-between"><strong>Moment at ${fmt(selM.t)}</strong><button class="btn" style="min-height:32px" data-act="deselect">Done</button></div>
+       <label class="small" for="momentnote" style="font-weight:600;color:var(--ink2)">Observer’s note</label>
+       <textarea id="momentnote" placeholder="What did you see at this moment?" data-input="momentnote">${esc(selM.note||'')}</textarea>
+       <span class="small muted">You can also pick a label below to put a label at this exact moment.</span>
+       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">${S.labelList.map((k,i)=>`<button class="lblbtn" data-act="label" data-arg="${esc(k)}"><span class="key">${i+1<10?i+1:''}</span>${esc(k)}</button>`).join('')}</div>`
+    : `<div class="row" style="justify-content:space-between"><strong>Add a label at ${fmt(rv.t)}</strong><span class="small muted">${mineName?'as '+esc(mineName)+' · <button data-act="notyou" style="border:0;background:none;padding:0;color:var(--blue);font-weight:600">Not you?</button>':'you’ll be asked your name'}</span></div>
+       <span class="small" style="font-weight:600;color:var(--ink2)">1 · Who?</span>
+       <div class="seg" role="group" aria-label="Who?">${['A','B','Both'].map(w=>`<button style="${rv.who===w?(w==='Both'?'border:2px solid var(--ink2);background:#F1F3F7;font-weight:700':'border:2px solid '+col(fcol(s,w))+';background:'+tint(fcol(s,w))+';font-weight:700'):''}" data-act="who" data-arg="${w}">${w==='Both'?'Both':w+' · '+esc(fighter(s,w))}</button>`).join('')}</div>
+       <span class="small" style="font-weight:600;color:var(--ink2)">2 · What happened?</span>
+       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px">${S.labelList.map((k,i)=>`<button class="lblbtn" data-act="label" data-arg="${esc(k)}"><span class="key">${i+1<10?i+1:''}</span>${esc(k)}</button>`).join('')}</div>
+       <button class="btn" style="border-style:dashed;color:var(--blue-d)" data-act="newnote">${ICON.note} Custom note…</button>
+       ${selL?`<div class="row small" style="padding:8px 10px;border-radius:10px;background:#F1F3F7"><span class="grow" style="min-width:0">Selected: <strong>${esc(selL.type==='note'?'“'+selL.text+'”':selL.k)}</strong> (${selL.who}) at ${fmt(selL.t)} · ${esc(selL.by)}</span>${!mineName||selL.by===mineName?`<button class="btn" style="min-height:32px" data-act="dellabel">Delete</button>`:''}</div>`:
+         s.moments.some(m=>!m.note)?`<div class="small" style="padding:8px 10px;border-radius:10px;background:var(--warn-l);color:var(--warn);font-weight:500">${s.moments.filter(m=>!m.note).length} marked moment(s) have no note yet — click them on the timeline</div>`:''}
+       <div class="row small muted" style="justify-content:space-between"><span>Space play · 1–8 label · N note</span><button class="btn" style="min-height:32px" data-act="undo" ${rv.undo.length?'':'disabled'}>Undo</button></div>`;
+  return `<header class="hdr"><button class="navlink" data-act="leaverv" style="display:flex;gap:6px;align-items:center">${ICON.back}Sessions</button>
+      <div><strong style="font-size:16px;display:flex;gap:8px;align-items:center">${vs(s)}</strong><span class="mono small muted">${s.date} ${s.time} · ${meta(s)}</span></div>
+      <div class="grow"></div>
+      ${others.length?`<div class="tabs" style="flex:0 0 auto"><button class="${rv.compare?'':'on'}" data-act="compare" data-arg="0" style="padding:0 12px">My labels</button><button class="${rv.compare?'on':''}" data-act="compare" data-arg="1" style="padding:0 12px">Compare</button></div>`:''}
+      <span class="small" style="color:${rv.saving?'var(--muted)':'var(--good)'}">${rv.saving?'Saving…':'✓ All labels saved'}</span>
+      <button class="btn primary" data-act="export">Export for analysis</button></header>
+  <main class="page wide" style="display:flex;flex-direction:column;gap:12px">
+    ${rv.compare&&agree?`<div class="card small" style="padding:10px 16px;background:var(--blue-l);border-color:var(--blue-l);color:var(--blue-d)">${esc(agree)} Faded chips are ${esc(others[0])}’s.</div>`:''}
+    <div class="row" style="align-items:stretch;gap:18px">
+      <section class="cams" style="flex:999 1 600px;min-width:0;gap:8px">${['Side camera 1','Side camera 2','Boxer A view','Boxer B view'].map(c=>`<div class="cam" style="aspect-ratio:16/7"><span class="scan"></span><span class="lbl">${esc(c)}</span><span class="tc mono">${fmt2(rv.t)}</span></div>`).join('')}</section>
+      <aside class="card" style="flex:1 1 330px;min-width:0;padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+        <div class="tabs"><button class="${rv.tab==='label'?'on':''}" data-act="rvtab" data-arg="label">Label</button><button class="${rv.tab==='activity'?'on':''}" data-act="rvtab" data-arg="activity">Activity</button></div>${panel}
+      </aside>
+    </div>
+    <section class="card" style="padding:8px 16px 6px;display:flex;flex-wrap:wrap;gap:6px 20px">
+      ${['A','B'].map(side=>`<div style="flex:1 1 480px;min-width:0;display:flex;flex-direction:column;gap:4px"><div class="row small" style="gap:8px">${badge(s,side,20)}${fname(s,side)}${weakNow(side)?'<span style="color:#B45309">Right-ear signal poor here</span>':'<span style="color:var(--good)">Signal good</span>'}</div>
+        ${eegHTML('rv'+side, weakNow(side)?3:-1, 19, {secs:10, marks:eegMarks, playhead:true, axis})}</div>`).join('')}
+    </section>
+    <section class="card" style="padding:8px 16px 10px;display:flex;flex-direction:column;gap:5px">
+      <div class="row" style="gap:10px 14px"><button class="btn primary icon" style="border-radius:21px" data-act="play" aria-label="${rv.playing?'Pause':'Play'}">${rv.playing?ICON.pause:ICON.play}</button>
+        <span class="mono" style="font-size:16px;font-weight:600">${fmt2(rv.t)}</span><span class="muted">of ${fmt(D)} · ${(s.plan.find(p=>rv.t>=p.s&&rv.t<p.e)||{k:'End'}).k}</span><div class="grow"></div>
+        ${rv.selSys!=null?`<span class="small mono" style="padding:3px 8px;border-radius:6px;background:#F1F3F7">${sm[rv.selSys].c} · ${fmt2(sm[rv.selSys].t)}</span>`:''}
+        ${[0.25,0.5,1,2].map(v=>`<button class="pill mono ${rv.speed===v?'on':''}" style="min-height:32px;font-size:12px" data-act="speed" data-arg="${v}">${v}×</button>`).join('')}</div>
+      <div class="tl">
+        <span class="small muted">Rounds</span><div class="lane" data-seek="1" style="height:20px">${s.plan.filter(p=>p.s<D).map(p=>`<span class="phase" style="left:${x(p.s)}%;width:calc(${x(Math.min(p.e,D)-p.s)}% - 2px);background:${p.round?'#DCE6FB':p.lead?'#F6F7FA':'#EEF1F6'};color:${p.round?'var(--blue-d)':'var(--muted)'}">${p.lead?'':p.k}</span>`).join('')}</div>
+        <span class="small muted">System</span><div class="lane" data-seek="1" style="height:16px;background:#FAFBFC">${sm.map((m,i)=>`<button class="tick ${rv.selSys===i?'sel':''}" data-act="selsys" data-arg="${i}" style="left:calc(${x(m.t)}% - 1px)" title="${m.c} · ${fmt2(m.t)}" aria-label="${m.c}"></button>`).join('')}</div>
+        ${lanes.map(([w,l,c,bg])=>`<span class="small mono" style="font-weight:700;color:${c}">${esc(l)}</span><div class="lane" data-seek="1" style="height:23px;background:${bg}">${labels.filter(lb=>lb.who===w).map(chip).join('')}</div>`).join('')}
+        <span class="small" style="font-weight:600;color:var(--ink2)">Notes</span><div class="lane" data-seek="1" style="height:23px;background:#F6F7FA">${notes.map(nchip).join('')}</div>
+        <span class="small" style="font-weight:600;color:var(--warn)">Moments</span><div class="lane" data-seek="1" style="height:23px;background:#FFFAF3">${s.moments.map((m,i)=>`<button class="lchip moment ${rv.selMoment===i?'sel':''}" data-act="selmoment" data-arg="${i}" style="left:${x(m.t)}%;max-width:24%" title="${esc(m.note||'No note yet')}">⚑ ${fmt(m.t)} · ${m.note?esc(m.note.slice(0,22))+(m.note.length>22?'…':''):'add a note'}</button>`).join('')}</div>
+        <span class="playhead" style="left:calc(76px + (100% - 76px) * ${rv.t/D})"></span>
+      </div>
+      <div class="axis" style="margin-left:76px">${[0,.25,.5,.75,1].map(f=>`<span>${fmt(D*f)}</span>`).join('')}</div>
+    </section>
+  </main>`;
+};
+
+/* docs */
+const DOCS = {
+  record:{g:'User guide',t:'How to record a session',b:`<p>A recording captures both fighters’ brain activity and all four cameras at the same time.</p><ol><li><strong>Put a headband on each fighter.</strong> The sensors behind the ears matter most; they should sit flat on the skin.</li><li><strong>Press New recording.</strong> The app finds the cameras and headbands by itself.</li><li><strong>Give each fighter a code and a colour.</strong> Codes are 4 capital letters or digits (for example K7Q2). No names are stored anywhere.</li><li><strong>Work down the checklist,</strong> then press Start. Recording begins 15 seconds before the baseline.</li><li><strong>Press M</strong> when something happens. Type a note straight away, or choose “Add note later”.</li></ol><p class="note"><strong>Good to know</strong> The start and end of the recording, the baseline, every round and every break are marked automatically.</p>`},
+  label:{g:'User guide',t:'Labelling a recording',b:`<ol><li>Open a session and press Start labelling.</li><li>Pick who, then what happened (Punch thrown, Punch landed, Punch missed, Punch blocked, Punch dodged…). Keys 1–8 work too.</li><li>For anything the presets don’t cover, press <strong>Custom note</strong> and describe it in your own words. Custom notes stay with that session only.</li><li>Click a marked moment to read or add the observer’s note.</li></ol><p>Every label saves the moment you add it, under your name.</p>`},
+  codes:{g:'User guide',t:'Fighter codes and data protection',b:`<p>Fighters are identified only by a <strong>4-character code</strong> (capital letters and digits) and a <strong>colour</strong> chosen before the match. The app never asks for or stores names. Keep the list that links codes to people outside the app, as your data-protection plan requires.</p><p>Black, red and blue are ready to use. Add more colours in Settings.</p>`},
+  compare:{g:'User guide',t:'Comparing labellers',b:`<p>When someone else has labelled the same session, press <strong>Compare</strong>. Their labels appear faded next to yours, with how often you agree within half a second.</p>`},
+  export:{g:'User guide',t:'Exporting for analysis',b:`<p>Press <strong>Export for analysis</strong>. You get one zip with <code>recording.xdf</code> and every stream inside it also as a separate CSV file, plus the videos. You can export a session as often as you like.</p>`},
+  data:{g:'Research and data',t:'What is in a recording',b:`<p>Each session holds the four videos with exact frame times, both fighters’ brain recordings (TP9, AF7, AF8, TP10 at 256 Hz) and head movement, the automatic markers, observer moments and notes, everyone’s labels, the history, and one <code>recording.xdf</code> that puts it all on a single clock.</p>`},
+  timing:{g:'Research and data',t:'Timing and accuracy',b:`<p>Every frame and every brain sample is stamped on arrival by one clock on the recording computer. Each device delivers its data a little late (cameras over USB, headbands over Bluetooth). Press <strong>Test timing</strong> on Get ready and run the buzzer test: both boxers tap their headband at the beep, the app finds the tap in every camera and headband, and subtracts each device’s delay. The goal is under 10 ms between all devices; recording at 60 fps helps. Live timing is shown during recording and saved in <code>timing_quality.csv</code>.</p><p><strong>Notes</strong> are labels too: saved under your name with who, when and your text, on their own Notes row. They are just not added to the shared label list.</p>`},
+  dev:{g:'For developers',t:'Developer guide',b:`<p>The app is a PyQt6 program in the <code>brain_battle</code> package: <code>ui/</code>, <code>capture/</code>, <code>playback/</code>, <code>data/</code>, <code>support/</code>. Start with AGENTS.md, then the module reference and the design decisions.</p>`}
+};
+V.docs = () => { const q=S.docSearch.trim().toLowerCase(); const groups={};
+  Object.entries(DOCS).forEach(([k,d])=>{ if(q && !(d.t+' '+d.b).toLowerCase().includes(q)) return; (groups[d.g]=groups[d.g]||[]).push([k,d]); });
+  const d=DOCS[S.docPage];
+  return hdr('docs',`<input type="search" id="docsearch" placeholder="Search documentation" aria-label="Search documentation" value="${esc(S.docSearch)}" data-input="docsearch" style="flex:0 1 280px">`)+
+  `<main class="page row" style="max-width:1180px;align-items:flex-start;gap:28px">
+    <nav class="docnav" aria-label="Documentation" style="flex:1 1 230px;max-width:270px;display:flex;flex-direction:column;gap:12px">${Object.keys(groups).length?Object.entries(groups).map(([g,items])=>`<div><div class="small muted" style="font-weight:700;letter-spacing:.04em;padding:0 12px 4px;text-transform:uppercase;font-size:11px">${g}</div>${items.map(([k,dd])=>`<button class="${S.docPage===k?'on':''}" data-act="doc" data-arg="${k}">${dd.t}</button>`).join('')}</div>`).join(''):'<span class="small muted">Nothing matches.</span>'}
+      <span class="small muted" style="padding:0 12px">The full documentation (all six sections) stays in the app; this prototype shows a sample.</span></nav>
+    <article class="card" style="flex:999 1 520px;min-width:0;max-width:760px;padding:30px 38px;line-height:1.65"><span class="small muted">${d.g}</span><h1 style="margin:4px 0 12px">${d.t}</h1>${d.b.replace('<p class="note">','<p style="padding:12px 14px;border-radius:12px;background:var(--blue-l);color:#1A3A8F">')}</article>
+  </main>`; };
+
+/* settings */
+V.settings = () => hdr('settings',`<span class="small" style="color:var(--good)">Changes save automatically</span>`)+
+  `<main class="page" style="max-width:820px;display:flex;flex-direction:column;gap:16px">
+    <h1>Settings</h1>
+    <section class="card" style="padding:20px 24px;display:flex;flex-direction:column;gap:14px"><h2>This computer</h2>
+      <div class="row"><label for="setname" style="width:170px;font-weight:500;color:var(--ink2)">Your name</label><input type="text" id="setname" value="${esc(S.name||'')}" placeholder="Asked the first time you label" data-input="setname" style="flex:1 1 240px"></div>
+      <span class="small muted" style="margin-top:-8px;padding-left:184px">Only labellers have names. Fighters are always codes.</span>
+      <div class="row"><span style="width:170px;font-weight:500;color:var(--ink2)">Recordings folder</span><span class="small" style="flex:1 1 240px;padding:10px 12px;border-radius:10px;background:var(--bg)">${S.folder==='shared'?'Lab Server › Brain Battle Data':'Documents › Brain Battle Data'} · 73.9 GB free</span><button class="btn" data-act="go" data-arg="welcome">Change</button></div>
+    </section>
+    <section class="card" style="padding:20px 24px;display:flex;flex-direction:column;gap:12px"><h2>Label list <span class="chip st-exported" style="margin-left:6px">Shared with the team</span></h2>
+      <div class="row" style="gap:8px">${S.labelList.map((k,i)=>`<span class="row" style="gap:6px;padding:4px 6px 4px 12px;border-radius:999px;border:1px solid var(--line2);font-size:14px"><span class="mono small muted">${i+1}</span>${esc(k)}<button aria-label="Remove ${esc(k)}" data-act="rmlabel" data-arg="${i}" style="border:0;background:none;color:var(--muted);padding:2px 4px;display:flex">${ICON.x}</button></span>`).join('')}
+        ${S.addingLabel?`<input type="text" id="newlabel" placeholder="New label, then Enter" data-input="newlabel" style="min-height:34px;width:200px">`:`<button class="btn" style="min-height:34px;border-style:dashed;color:var(--blue-d)" data-act="addlabel">+ Add</button>`}</div>
+      <span class="small muted">Labels everyone uses again and again. One-off descriptions go in a Custom note while labelling, so they don’t clutter this list.</span></section>
+    <section class="card" style="padding:20px 24px;display:flex;flex-direction:column;gap:12px"><h2>Fighter colours <span class="chip st-exported" style="margin-left:6px">Shared with the team</span></h2>
+      <div class="row" style="gap:8px">${S.colours.map((c,i)=>`<span class="row" style="gap:8px;padding:4px 6px 4px 6px;border-radius:999px;border:1px solid var(--line2);font-size:14px"><span class="fdot" style="width:20px;height:20px;border-radius:10px;background:${c.c}"></span>${esc(c.n)}${i>2?`<button aria-label="Remove ${esc(c.n)}" data-act="rmcol" data-arg="${i}" style="border:0;background:none;color:var(--muted);padding:2px 4px;display:flex">${ICON.x}</button>`:'<span style="width:6px"></span>'}</span>`).join('')}
+        ${S.addingColour?`<span class="row" style="gap:6px"><input type="color" id="newcolc" value="#0F7A62" aria-label="Colour" style="width:40px;height:34px;padding:0;border:1px solid var(--line2);border-radius:8px"><input type="text" id="newcoln" placeholder="Name, e.g. Green" style="min-height:34px;width:150px"><button class="btn primary" style="min-height:34px" data-act="savecol">Add</button></span>`:`<button class="btn" style="min-height:34px;border-style:dashed;color:var(--blue-d)" data-act="addcol">+ Add colour</button>`}</div>
+      <span class="small muted">Black, red and blue are always there. The colour each fighter wears is picked on the Get ready screen.</span></section>
+    <details class="card" style="padding:18px 24px"><summary style="cursor:pointer;font-size:17px;font-weight:700">Advanced</summary>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:14px">
+        ${[['move','Record head movement','From the headbands’ motion sensors. Helps spot hits and noisy moments.'],['pulse','Record pulse','Heart rate from the forehead light sensor. Not yet tested with two headbands.'],['fps60','Record cameras at 60 fps','Halves the timing error from the cameras (about ±8 ms instead of ±17 ms). Uses nearly twice the disk space, and the cameras must support it.'],['lsl','Send live signals to other programs (LSL)','Only needed to watch in BrainVision or record with LabRecorder at the same time. The app shows everything live without it.']].map(([k,t,d])=>`<label class="row small" style="flex-wrap:nowrap;align-items:flex-start;gap:12px"><input type="checkbox" ${S.adv[k]?'checked':''} data-act="adv" data-arg="${k}" style="width:18px;height:18px;margin-top:2px;accent-color:var(--blue)"><span><strong style="font-weight:600">${t}</strong><br><span class="muted">${d}</span></span></label>`).join('')}
+      </div></details>
+  </main>`;
+
+/* ---------- overlays ---------- */
+function overlayHTML(){
+  if(S.drawer){ const s=byId(S.drawer); const ppl=names(s);
+    return `<div class="overlay drawer-wrap" data-act="closedrawer" data-self="1"><aside class="drawer" role="dialog" aria-label="History">
+      <div class="row" style="flex-wrap:nowrap;align-items:flex-start"><div class="grow"><span class="small muted" style="font-weight:700;letter-spacing:.04em">HISTORY</span><h1 style="font-size:22px;display:flex;gap:8px;align-items:center">${vs(s)}</h1><span class="mono small muted">${s.date} · ${meta(s)}</span></div><button class="btn icon" data-act="closedrawer" aria-label="Close">${ICON.x}</button></div>
+      ${ppl.length?`<div class="row" style="gap:8px">${ppl.map(p=>`<span class="chip" style="background:var(--bg);border:1px solid var(--line);font-weight:500"><strong style="font-weight:600">${esc(p)}</strong>&nbsp;· ${s.labels.filter(l=>l.by===p).length} labels</span>`).join('')}</div>`:''}
+      <ol style="list-style:none;margin:0;padding:0">${s.history.map(h=>`<li class="row" style="flex-wrap:nowrap;align-items:flex-start;padding:12px 0;border-bottom:1px solid #EEF1F6"><span style="width:10px;height:10px;border-radius:5px;margin-top:7px;flex:0 0 auto;background:${h.who==='Recording'?'var(--good)':h.what.startsWith('exported')?'var(--blue)':'var(--a)'}"></span><div><span><strong>${esc(h.who)}</strong> ${esc(h.what)}</span><br><span class="mono small muted">${h.w}</span></div></li>`).join('')}</ol>
+      <span class="small muted">Saved with the recording, so everyone who opens it sees the same history.</span></aside></div>`; }
+  const m=S.modal; if(!m) return '';
+  const wrap=(cls,inner,dim=true)=>`<div class="overlay" style="${dim?'':'background:rgba(15,23,42,.18)'}"><div class="dialog ${cls}" role="dialog" aria-modal="true">${inner}</div></div>`;
+  if(m.type==='timing'){ const fps=S.adv.fps60?60:30, cal=S.timing.cal, run=S.timing.running, rnd=()=>Math.random(), g=S.gr||freshGR();
+    const rows=[['Side camera 1',52],['Side camera 2',49],['Boxer A view',63],['Boxer B view',57]].map(([n,d])=>({n,rate:fps+' fps',raw:d+Math.round(rnd()*4),jit:'±'+Math.round(1000/fps/2)+' ms',drop:'0 frames',res:cal?(fps===60?4:11)+Math.round(rnd()*3):null}))
+      .concat([['Headband A · '+g.a,31],['Headband B · '+(g.b||'—'),36]].map(([n,d])=>({n,rate:'256 Hz · packet / 47 ms',raw:d+Math.round(rnd()*5),jit:'±'+(3+Math.round(rnd()*2))+' ms',drop:'0 packets',res:cal?2+Math.round(rnd()*3):null})));
+    const worst=cal?Math.max(...rows.map(x=>x.res)):null, cc=v=>v==null?'var(--muted)':v<10?'var(--good)':'var(--warn)', td='padding:6px 8px;border-bottom:1px solid #EEF1F6';
+    return `<div class="overlay" style="${S.screen==='recording'?'background:rgba(15,23,42,.18)':''}"><div class="dialog" role="dialog" aria-modal="true" style="width:min(780px,calc(100vw - 32px));max-width:none">
+      <div class="row" style="justify-content:space-between"><h2 style="font-size:20px">⏱ Timing check</h2>${S.screen==='recording'?'<span class="small" style="color:var(--red-d);font-weight:600">● still recording</span>':'<span class="small muted">live</span>'}</div>
+      <p class="small muted" style="margin:0">Live numbers for every device. <strong>Delay</strong> is how late a device delivers what happened. The buzzer test measures it so the app can subtract it. Goal: under 10 ms between all devices after correction.</p>
+      <div style="overflow-x:auto"><table class="small" style="width:100%;border-collapse:collapse;min-width:600px"><thead><tr style="text-align:left;color:var(--muted)">${['Device','Rate','Delay (raw)','Jitter','Dropped','After correction'].map(h=>`<th style="${td};font-weight:600">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(x=>`<tr><td style="${td};font-weight:600">${esc(x.n)}</td><td class="mono" style="${td}">${x.rate}</td><td class="mono" style="${td}">${cal?x.raw+' ms':'—'}</td><td class="mono" style="${td}">${x.jit}</td><td class="mono" style="${td}">${x.drop}</td><td class="mono" style="${td};font-weight:700;color:${cc(x.res)}">${x.res==null?'not measured':x.res+' ms'}</td></tr>`).join('')}</tbody></table></div>
+      <div class="small" style="padding:10px 12px;border-radius:12px;background:${cal?(worst<10?'var(--good-l)':'var(--warn-l)'):'var(--bg)'};color:${cal?(worst<10?'#1A6431':'var(--warn)'):'var(--ink2)'}">${cal?(worst<10?'✓ Largest difference between devices after correction: '+worst+' ms. Under the 10 ms goal.':'Largest difference after correction: '+worst+' ms, over the 10 ms goal. Record the cameras at 60 fps (Settings › Advanced).'):(run?'Beep… beep… both boxers tap their headband at every beep, in view of the cameras…':'Not measured yet. Press <strong>Run buzzer test</strong>: at each of the 5 beeps, both boxers tap their headband once, in view of the cameras. Rate, jitter and dropped are live already.')}</div>
+      <div class="row" style="justify-content:flex-end">${S.screen==='getready'?`<button class="btn" data-act="buzzer" ${run?'disabled':''}>${run?'Listening for the taps…':cal?'Run buzzer test again':'Run buzzer test'}</button>`:''}<button class="btn primary" data-act="closemodal">Done</button></div>
+      <span class="small muted">Logged every second during recording and included in the export as <span class="mono">timing_quality.csv</span>, so we can see where to improve.</span></div></div>`; }
+  if(m.type==='name') return wrap('',`<h2 style="font-size:20px">Who is labelling?</h2><p class="small muted" style="margin:0">Your labels are saved under your name, so several people can label the same session. We only ask once on this computer.</p>
+    <input type="text" id="namein" placeholder="e.g. Maya K" value="${esc(m.val||'')}" data-input="namein" style="font-size:16px">
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-act="closemodal">Cancel</button><button class="btn primary" data-act="savename" ${(m.val||'').trim()?'':'disabled'}>${m.pending?'Save and add the label':'Save'}</button></div>`);
+  if(m.type==='moment') return wrap('',`<div class="row" style="justify-content:space-between"><h2 style="font-size:20px">⚑ Moment marked at ${fmt(m.t)}</h2><span class="small" style="color:var(--red-d);font-weight:600">● still recording</span></div>
+    <label class="small" for="mnote" style="font-weight:600;color:var(--ink2)">What did you see? (optional)</label>
+    <textarea id="mnote" placeholder="e.g. B dropped the guard after a combination" data-input="mnote">${esc(m.val||'')}</textarea>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-act="notelater">Add note later</button><button class="btn primary" data-act="savemnote" ${(m.val||'').trim()?'':'disabled'}>Save note</button></div>
+    <span class="small muted">Enter saves · Esc means later. The recording keeps going while this is open.</span>`, false);
+  if(m.type==='leave') return wrap('',`<h2 style="font-size:20px">✓ Your labels are saved</h2><p class="small" style="margin:0;color:var(--ink2)">Every label is saved the moment you add it — ${m.n} new this time.${m.moments?' '+m.moments+' marked moment'+(m.moments>1?'s':'')+' still have no note; you can add them next time.':''}</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-act="closemodal">Keep labelling</button><button class="btn primary" data-act="leavenow">Close</button></div>`);
+  if(m.type==='quit') return wrap('danger',`<h2 style="font-size:20px;color:var(--red-d)">A recording is still running</h2><p class="small" style="margin:0;color:var(--ink2)">If you leave now, the recording stops. Everything recorded up to now is kept, and the session is marked as interrupted.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn primary" data-act="closemodal">Keep recording</button><button class="btn danger" data-act="quitnow">Stop and leave</button></div>`);
+  if(m.type==='stop') return wrap('warn',`<h2 style="font-size:20px">Stop the recording now?</h2><p class="small" style="margin:0;color:var(--ink2)">${m.msg} What has been recorded so far is saved and can be labelled.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn primary" data-act="closemodal">Keep recording</button><button class="btn" data-act="stopnow">Stop now</button></div>`);
+  if(m.type==='export'){ const s=rvSession(); return wrap('',`<div><h2 style="font-size:22px">Export for analysis</h2><span class="small muted mono">${s.date.replace(/^\w+ /,'')} · ${esc(s.a)} vs ${esc(s.b)}.zip</span></div>
+    <div style="display:flex;flex-direction:column;gap:6px"><strong class="small">Always included</strong>${['recording.xdf: everything on one clock, for EEGLAB, MNE or Python','The same data as separate CSV files: both brain recordings, head movement, automatic markers, moments and notes, everyone’s labels, and every camera’s frame times','A timing report (timing_quality.csv): frame rates, delays, jitter, dropped frames and packets, and the buzzer-test corrections for every device','How much the labellers agree, the session details and the history'].map(t=>`<span class="small"><span style="color:var(--good);font-weight:700">✓</span> ${esc(t)}</span>`).join('')}</div>
+    <div style="display:flex;flex-direction:column;gap:6px"><strong class="small">Videos</strong><label class="row small" style="gap:10px"><input type="checkbox" ${m.videos?'checked':''} data-act="exopt" data-arg="videos" style="width:18px;height:18px;accent-color:var(--blue)">The 4 camera videos</label><label class="row small" style="gap:10px"><input type="checkbox" ${m.combined?'checked':''} data-act="exopt" data-arg="combined" style="width:18px;height:18px;accent-color:var(--blue)">Also one combined video with all 4 cameras</label></div>
+    <div class="small" style="padding:10px 12px;border-radius:12px;background:var(--good-l);color:#1A6431">Fighters appear only as their codes (${esc(s.a)}, ${esc(s.b)}) and colours. No names are stored, so there is nothing to hide.</div>
+    <div class="row small" style="padding:10px 12px;border-radius:12px;background:var(--bg)">${ICON.folder}<span class="grow">Save to <strong>Documents › Brain Battle Exports</strong></span><button class="btn" style="min-height:34px" data-act="toast" data-arg="In the app this opens a folder picker.">Change</button></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-act="closemodal">Cancel</button><button class="btn primary" data-act="doexport">Export</button></div>`); }
+  return '';
+}
+
+/* ---------- render ---------- */
+const app=document.getElementById('app'), ovr=document.getElementById('overlay-root'), tst=document.getElementById('toast-root');
+function syncEEG(){
+  Object.keys(EEG).forEach(k=>delete EEG[k]);
+  if(S.screen==='getready'){ EEG.grA={seed:3,shift:0,secs:5,bad:()=>false}; EEG.grB={seed:41,shift:0,secs:5,bad:ch=>ch===3&&!S.gr.signalFixed}; }
+  if(S.screen==='recording'){ EEG.recA={seed:7,shift:S.rec.t*52,secs:5,bad:()=>false}; EEG.recB={seed:31,shift:S.rec.t*52,secs:5,bad:ch=>ch===3&&S.rec.poor}; }
+  if(S.screen==='review'){ const s=rvSession(), sh=S.rv.t*26; const weak=s.weak&&S.rv.t>435&&S.rv.t<555; EEG.rvA={seed:5+s.id,shift:sh,secs:10,bad:()=>false}; EEG.rvB={seed:29+s.id,shift:sh,secs:10,bad:ch=>ch===3&&weak}; }
+}
+function render(){
+  const fid=document.activeElement&&document.activeElement.id, sel=fid&&document.activeElement.selectionStart;
+  app.innerHTML=V[S.screen](); ovr.innerHTML=overlayHTML();
+  tst.innerHTML=S.toast?`<div class="toast" role="status">${esc(S.toast)}</div>`:'';
+  syncEEG(); drawEEG();
+  if(fid){ const el=document.getElementById(fid); if(el){ el.focus(); try{ if(sel!=null) el.setSelectionRange(sel,sel);}catch(e){} } }
+  else { const auto=(S.modal&&S.modal.type==='name'&&'namein')||(S.modal&&S.modal.type==='moment'&&'mnote')||(S.addingLabel&&'newlabel')||(S.rv&&S.rv.noting&&S.screen==='review'&&'notetext'); if(auto){ const el=document.getElementById(auto); if(el) el.focus(); } }
+  renderProto();
+}
+function toast(t){ S.toast=t; clearTimeout(S.toastT); S.toastT=setTimeout(()=>{S.toast=null; tst.innerHTML='';},2800); tst.innerHTML=`<div class="toast" role="status">${esc(t)}</div>`; }
+const protoEl=document.createElement('div'); protoEl.className='proto'; document.body.appendChild(protoEl);
+function renderProto(){
+  protoEl.innerHTML=`Prototype${S.screen==='recording'?` · speed <button class="${S.speed===1?'on':''}" data-act="pspeed" data-arg="1">1×</button><button class="${S.speed===10?'on':''}" data-act="pspeed" data-arg="10">10×</button><button class="${S.speed===40?'on':''}" data-act="pspeed" data-arg="40">40×</button>`:''} <button data-act="restart">Restart</button>`;
+}
+
+/* ---------- audio ---------- */
+let actx=null;
+function bell(){ if(!S.gr||!S.gr.bell) return; try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)(); const t=actx.currentTime;
+  [880,1320].forEach((f,i)=>{ const o=actx.createOscillator(), g=actx.createGain(); o.frequency.value=f; o.type='sine'; g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(.25/(i+1),t+.01); g.gain.exponentialRampToValueAtTime(.0001,t+1.6); o.connect(g).connect(actx.destination); o.start(t); o.stop(t+1.7); }); }catch(e){} }
+
+/* ---------- loops ---------- */
+let last=performance.now();
+function tick(ts){
+  const dt=Math.min(.2,(ts-last)/1000); last=ts;
+  if(S.screen==='getready'){ EEG.grA&&(EEG.grA.shift+=dt*52); EEG.grB&&(EEG.grB.shift+=dt*52); drawEEG(); }
+  if(S.modal&&S.modal.type==='timing'){ S.tmF=(S.tmF||0)+1; if(S.tmF%30===0) ovr.innerHTML=overlayHTML(); }
+  const recRuns = S.screen==='recording'&&S.rec&&(!S.modal||S.modal.type==='moment'||S.modal.type==='timing');
+  if(recRuns){
+    const r=S.rec, before=recPhase(), prevSec=Math.floor(r.t);
+    r.t+=dt*S.speed; const total=r.plan.slice(-1)[0].e;
+    if(!r.poorDone && r.t>total*0.45){ r.poor=true; r.poorStart=r.t; r.poorDone=true; }
+    if(r.poor && r.t-r.poorStart>120){ r.poor=false; r.poorEnd=r.t; }
+    const ph=recPhase(); if(ph!==before && (ph.round || before.round)) bell();
+    if(r.t>=total){ if(before.round) bell(); if(S.modal&&S.modal.type==='moment') A.notelater(); finishRec(false); return requestAnimationFrame(tick); }
+    EEG.recA.shift=r.t*52; EEG.recB.shift=r.t*52;
+    if((Math.floor(r.t)!==prevSec || ph!==before) && !S.modal) render(); else if(S.modal){ const rec=document.querySelector('.mono.small[style*="REC"]'); drawEEG(); } else drawEEG();
+  }
+  if(S.screen==='review'&&S.rv&&S.rv.playing){
+    const D=dur(rvSession()); S.rv.t=Math.min(D,S.rv.t+dt*S.rv.speed); if(S.rv.t>=D) S.rv.playing=false;
+    S.rv.frame=(S.rv.frame||0)+1; if(S.rv.frame%3===0) render(); else { EEG.rvA&&(EEG.rvA.shift=S.rv.t*26); EEG.rvB&&(EEG.rvB.shift=S.rv.t*26); drawEEG(); }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---------- actions ---------- */
+function go(screen){ if(S.rv) S.rv.playing=false; S.screen=screen; S.drawer=null; S.modal=null; window.scrollTo(0,0); render(); }
+function openReview(id){ const s=byId(id); S.rv={id,t:Math.max(0,Math.min(dur(s)-0.5,s.labels.length?s.labels[s.labels.length-1].t+8:s.plan[2].s+5)),playing:false,speed:1,who:'A',tab:'label',compare:false,sel:null,selMoment:null,selSys:null,saving:false,undo:[],added:0,noting:false,noteText:''}; go('review'); }
+function hist(s,what){ s.history.unshift({w:now(),who:S.name||'Someone',what}); }
+function saved(){ const rv=S.rv; rv.saving=true; render(); setTimeout(()=>{ if(S.rv){S.rv.saving=false; if(S.screen==='review') render();} },650); }
+function addLabel(k, byPass){
+  const s=rvSession(), rv=S.rv;
+  if(!S.name && !byPass){ S.modal={type:'name',pending:{k},val:''}; render(); return; }
+  let t=rv.t; if(rv.selMoment!=null){ t=s.moments[rv.selMoment].t; }
+  const l={id:++S.nextId,t,who:rv.who,k,by:S.name}; if(k==='Clinch') l.dur=12;
+  s.labels.push(l); s.labels.sort((a,b)=>a.t-b.t); rv.undo.push(l.id); rv.added++; rv.sel=l.id; rv.selMoment=null;
+  hist(s,'added '+k+' ('+(rv.who==='Both'?'both':fighter(s,rv.who))+') at '+fmt(t)); saved();
+}
+function addNote(byPass){
+  const s=rvSession(), rv=S.rv, text=(rv.noteText||'').trim(); if(!text) return;
+  if(!S.name && !byPass){ S.modal={type:'name',pending:{note:true},val:''}; render(); return; }
+  const l={id:++S.nextId,t:rv.t,who:rv.who,type:'note',k:'Note',text,by:S.name};
+  s.labels.push(l); s.labels.sort((a,b)=>a.t-b.t); rv.undo.push(l.id); rv.added++; rv.sel=l.id; rv.noting=false; rv.noteText='';
+  hist(s,'added a note at '+fmt(l.t)+': “'+text.slice(0,40)+(text.length>40?'…':'')+'”'); saved();
+}
+function finishRec(early, quit){
+  const r=S.rec, g=S.gr; const id=++S.nextId; const d=new Date();
+  const s={id,a:g.a,b:g.b,ca:g.ca,cb:g.cb,date:'Tue 17 Nov 2026',time:String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'),rounds:g.rounds,plan:r.plan,moments:r.moments.map(m=>({t:m.t,note:m.note||''})),labels:[],
+    history:[{w:now(),who:'Recording',what:(quit?'interrupted · saved up to '+fmt(r.t):early?'stopped early at '+fmt(r.t):'finished · '+Math.round(r.plan.slice(-1)[0].e/60)+' min')+(r.moments.length?', '+r.moments.length+' moments marked':'')},{w:now(),who:'Recording',what:'started · '+g.a+' ('+g.ca.toLowerCase()+') vs '+g.b+' ('+g.cb.toLowerCase()+'), '+g.rounds+' rounds'}]};
+  if(quit) s.interrupted=Math.max(1,Math.round(r.t)); else if(early) s.stoppedEarly=Math.max(1,Math.round(r.t));
+  if(r.poorDone){ const mins=Math.max(1,Math.round(((r.poorEnd||r.t)-r.poorStart)/60)); s.weak=g.b+'’s right-ear signal (TP10) looked poor for about '+mins+' minute'+(mins>1?'s':'')+' in the middle of the session.'; }
+  S.sessions.unshift(s); S.lastSaved=id; S.rec=null; go('saved');
+}
+const randCode = () => { const ch='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c=''; for(let i=0;i<4;i++) c+=ch[Math.floor(Math.random()*ch.length)]; return c; };
+const A = {
+  go:a=>go(a), toast:a=>toast(a), folder:a=>{S.folder=a; render();},
+  filter:a=>{S.filter=a; render();}, clearfilter:()=>{S.filter='all';S.search='';render();},
+  history:a=>{S.drawer=+a; render();}, closedrawer:()=>{S.drawer=null; render();},
+  newrec:()=>{S.gr=freshGR(); S.timing={cal:false,running:false}; go('getready');},
+  timing:()=>{S.modal={type:'timing'}; render();},
+  buzzer:()=>{S.timing.running=true; render(); try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)(); const o=actx.createOscillator(), gn=actx.createGain(); o.frequency.value=1000; gn.gain.value=.2; o.connect(gn).connect(actx.destination); o.start(); o.stop(actx.currentTime+.25);}catch(e){} setTimeout(()=>{ S.timing.running=false; S.timing.cal=true; render(); toast('Taps found in all 4 cameras and both headbands · corrections saved'); },2500);}, open:a=>openReview(+a),
+  search:()=>{S.gr.searching=true; render(); setTimeout(()=>{S.gr.searching=false;S.gr.camFound=true; render(); toast('Boxer B view found');},900);},
+  adjusted:()=>{S.gr.adjusting=true; render(); setTimeout(()=>{S.gr.adjusting=false;S.gr.signalFixed=true; render();},1100);},
+  swap:()=>{toast('Headbands swapped: MuseS-7538 is now on Boxer B, MuseS-7564 on Boxer A');},
+  gencode:a=>{S.gr[a==='A'?'a':'b']=randCode(); render();},
+  pickcol:a=>{const [side,n]=a.split(':'); S.gr[side==='A'?'ca':'cb']=n; render();},
+  step:a=>{const [k,dir]=a.split(':'); const g=S.gr; const lim={rounds:[1,12,1],round:[30,600,30],brk:[0,300,15],base:[0,300,15]}[k]; g[k]=Math.min(lim[1],Math.max(lim[0],g[k]+lim[2]*(+dir))); render();},
+  bell:()=>{S.gr.bell=!S.gr.bell; render();},
+  start:()=>{const g=S.gr; S.rec={t:0,plan:plan(g.rounds,g.round,g.brk,g.base),rounds:g.rounds,moments:[],poor:false}; go('recording');},
+  mark:()=>{const r=S.rec; if(S.modal) return; r.moments.push({t:r.t,note:''}); S.modal={type:'moment',t:r.t,idx:r.moments.length-1,val:''}; render();},
+  savemnote:()=>{const m=S.modal; const v=(m.val||'').trim(); if(!v) return; S.rec.moments[m.idx].note=v; S.modal=null; render(); toast('Note saved for the moment at '+fmt(m.t));},
+  notelater:()=>{const m=S.modal; S.modal=null; render(); toast('Moment at '+fmt(m.t)+' saved — add the note in Review');},
+  stoprec:()=>{const r=S.rec, total=r.plan.slice(-1)[0].e, ph=recPhase(); S.modal={type:'stop',msg:(ph.round?'Round '+ph.round+' of '+r.rounds:ph.k)+' isn’t finished ('+fmt(total-r.t)+' of the session left).'}; render();},
+  stopnow:()=>{S.modal=null; finishRec(true,false);}, quitrec:()=>{S.modal={type:'quit'}; render();},
+  quitnow:()=>{S.modal=null; finishRec(true,true); go('sessions'); toast('Recording stopped. Saved up to here and marked Interrupted.');},
+  closemodal:()=>{S.modal=null; render();},
+  who:a=>{S.rv.who=a; render();}, label:a=>addLabel(a), rvtab:a=>{S.rv.tab=a; render();},
+  newnote:()=>{S.rv.noting=true; S.rv.sel=null; render();}, cancelnote:()=>{S.rv.noting=false; S.rv.noteText=''; render();}, savenote:()=>addNote(),
+  deselect:()=>{S.rv.selMoment=null; S.rv.sel=null; render();},
+  selchip:a=>{const rv=S.rv, l=rvSession().labels.find(x=>x.id===+a); rv.sel=+a; rv.selMoment=null; rv.noting=false; rv.t=l.t; render();},
+  selmoment:a=>{const rv=S.rv; rv.selMoment=+a; rv.sel=null; rv.noting=false; rv.tab='label'; rv.t=rvSession().moments[+a].t; render();},
+  selsys:a=>{const s=rvSession(), sm=sysMarkers(s.plan,dur(s)); S.rv.selSys=+a; S.rv.t=sm[+a].t; render();},
+  dellabel:()=>{const s=rvSession(), rv=S.rv, i=s.labels.findIndex(l=>l.id===rv.sel); if(i<0) return; const l=s.labels[i]; s.labels.splice(i,1); hist(s,'removed '+(l.type==='note'?'a note':l.k)+' at '+fmt(l.t)); rv.sel=null; render(); toast('Deleted');},
+  undo:()=>{const s=rvSession(), rv=S.rv, id=rv.undo.pop(); const i=s.labels.findIndex(l=>l.id===id); if(i>=0){ const l=s.labels[i]; s.labels.splice(i,1); hist(s,'removed '+(l.type==='note'?'a note':l.k)+' at '+fmt(l.t)); rv.added--; } rv.sel=null; render();},
+  play:()=>{S.rv.playing=!S.rv.playing; render();}, speed:a=>{S.rv.speed=+a; render();},
+  compare:a=>{S.rv.compare=a==='1'; render();},
+  notyou:()=>{S.modal={type:'name',val:''}; render();},
+  savename:()=>{const v=(S.modal.val||'').trim(); if(!v) return; const p=S.modal.pending; S.name=v; S.modal=null; if(p&&p.k) addLabel(p.k,true); else if(p&&p.note) addNote(true); else { render(); toast('Labelling as '+v);} },
+  export:()=>{S.modal={type:'export',videos:true,combined:false}; S.rv.playing=false; render();},
+  exopt:a=>{const m=S.modal; if(a==='videos') m.videos=!m.videos; if(a==='combined') m.combined=!m.combined; render();},
+  doexport:()=>{const s=rvSession(); s.exported=true; hist(s,'exported it for analysis'); S.modal=null; render(); toast('Exported to Documents › Brain Battle Exports');},
+  leaverv:()=>{const rv=S.rv; if(rv.added>0){ S.modal={type:'leave',n:rv.added,moments:rvSession().moments.filter(m=>!m.note).length}; render(); } else go('sessions');},
+  leavenow:()=>go('sessions'), doc:a=>{S.docPage=a; render();},
+  rmlabel:a=>{const k=S.labelList[+a]; S.labelList.splice(+a,1); render(); toast('“'+k+'” removed from the shared label list');},
+  addlabel:()=>{S.addingLabel=true; render();},
+  addcol:()=>{S.addingColour=true; render();},
+  savecol:()=>{const n=(document.getElementById('newcoln').value||'').trim(), c=document.getElementById('newcolc').value; if(!n){ toast('Give the colour a name'); return; } if(S.colours.some(x=>x.n.toLowerCase()===n.toLowerCase())){ toast('That colour name already exists'); return; } S.colours.push({n:n[0].toUpperCase()+n.slice(1),c}); S.addingColour=false; render(); toast(n+' added to fighter colours');},
+  rmcol:a=>{const c=S.colours[+a]; S.colours.splice(+a,1); render(); toast(c.n+' removed');},
+  adv:a=>{S.adv[a]=!S.adv[a]; render();},
+  pspeed:a=>{S.speed=+a; renderProto();}, restart:()=>{ location.reload(); }
+};
+document.addEventListener('click',e=>{
+  const seek=e.target.closest('[data-seek]'); const el=e.target.closest('[data-act]');
+  if(el && el.dataset.self && e.target!==el) { if(!el.contains(e.target)||e.target.closest('.drawer')) return; }
+  if(el){ const f=A[el.dataset.act]; if(f){ if(el.tagName!=='INPUT') e.preventDefault(); f(el.dataset.arg); } return; }
+  if(seek && S.screen==='review'){ const r=seek.getBoundingClientRect(); const D=dur(rvSession()); S.rv.t=Math.max(0,Math.min(D,(e.clientX-r.left)/r.width*D)); S.rv.sel=null; S.rv.selMoment=null; S.rv.selSys=null; render(); }
+});
+document.addEventListener('input',e=>{
+  const k=e.target.dataset.input; if(!k) return; const v=e.target.value;
+  if(k==='search'){S.search=v; render();} else if(k==='docsearch'){S.docSearch=v; render();}
+  else if(k==='codeA'||k==='codeB'){ const c=v.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4); S.gr[k==='codeA'?'a':'b']=c; render(); }
+  else if(k==='namein'){S.modal.val=v; const b=document.querySelector('[data-act=savename]'); if(b) b.disabled=!v.trim();}
+  else if(k==='mnote'){S.modal.val=v; const b=document.querySelector('[data-act=savemnote]'); if(b) b.disabled=!v.trim();}
+  else if(k==='notetext'){S.rv.noteText=v; const b=document.querySelector('[data-act=savenote]'); if(b) b.disabled=!v.trim();}
+  else if(k==='momentnote'){ const s=rvSession(), m=s.moments[S.rv.selMoment]; if(m){ const had=!!m.note; m.note=v; if(!had&&v.trim()) hist(s,'added a note to the moment at '+fmt(m.t)); clearTimeout(S.mnT); S.mnT=setTimeout(()=>{ if(S.screen==='review'){ saved(); } },700);} }
+  else if(k==='setname'){S.name=v.trim()||null;}
+});
+document.addEventListener('keydown',e=>{
+  const ae=document.activeElement, typing=/INPUT|TEXTAREA|SELECT/.test(ae.tagName);
+  if(e.key==='Enter' && ae.id==='newlabel'){ const v=ae.value.trim(); if(v){ S.labelList.push(v); toast('“'+v+'” added to the shared label list'); } S.addingLabel=false; render(); return; }
+  if(e.key==='Enter' && ae.id==='namein'){ A.savename(); return; }
+  if(e.key==='Enter' && !e.shiftKey && ae.id==='mnote'){ e.preventDefault(); if((S.modal.val||'').trim()) A.savemnote(); else A.notelater(); return; }
+  if(e.key==='Escape'){ if(S.modal&&S.modal.type==='moment'){A.notelater();} else if(S.modal&&S.modal.type!=='quit'){S.modal=null;render();} else if(S.drawer){S.drawer=null;render();} if(S.addingLabel){S.addingLabel=false;render();} if(S.rv&&S.rv.noting){A.cancelnote();} return; }
+  if(typing||S.modal) return;
+  if(S.screen==='recording' && (e.key==='m'||e.key==='M')){ e.preventDefault(); A.mark(); }
+  if(S.screen==='review'){
+    if(e.key===' '){ e.preventDefault(); A.play(); }
+    if(e.key==='n'||e.key==='N'){ e.preventDefault(); A.newnote(); return; }
+    const n=parseInt(e.key,10); if(n>=1&&n<=S.labelList.length&&n<=9) addLabel(S.labelList[n-1]);
+    if(e.key==='ArrowRight'){ S.rv.t=Math.min(dur(rvSession()),S.rv.t+(e.shiftKey?1:1/30)); render(); }
+    if(e.key==='ArrowLeft'){ S.rv.t=Math.max(0,S.rv.t-(e.shiftKey?1:1/30)); render(); }
+  }
+});
+render();
+})();
+</script>
