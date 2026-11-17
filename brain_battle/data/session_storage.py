@@ -32,6 +32,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
+import brain_battle.capture.clock as _clock
 from brain_battle.capture.session_controller import SessionConfig, Phase
 from brain_battle.data.signals import EEG_DIR_NAME, SENSOR_DIR_NAME, SENSORS
 from brain_battle.version import __version__
@@ -113,7 +114,7 @@ class PhaseRecord:
     folder:           str             # relative path inside session root, "" for breaks
     planned_duration: int             # seconds (as configured)
     start_unix:       float           # wall-clock seconds since epoch
-    start_monotonic:  float           # time.monotonic() snapshot
+    start_monotonic:  float           # capture-clock (clock.monotonic()) snapshot
     end_unix:         Optional[float] = None
     end_monotonic:    Optional[float] = None
 
@@ -238,7 +239,7 @@ class SessionLayout:
         for rec in reversed(self.phases):
             if rec.phase == phase.value and rec.round_num == round_num and rec.end_unix is None:
                 rec.end_unix      = time.time()
-                rec.end_monotonic = time.monotonic()
+                rec.end_monotonic = _clock.monotonic()
                 break
         self._write_manifest()
 

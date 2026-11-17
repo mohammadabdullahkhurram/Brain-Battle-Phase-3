@@ -61,9 +61,17 @@ def _spawn(code, *args):
 
 
 def _wait(procs):
+    """Wait for every helper process; one that is stuck after two minutes is
+    killed and reported, so this script can never hang on a child."""
     errs = []
     for p in procs:
-        _out, err = p.communicate(timeout=120)
+        try:
+            _out, err = p.communicate(timeout=120)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            _out, err = p.communicate()
+            errs.append("still running after 120 s — killed")
+            continue
         if p.returncode != 0:
             errs.append(err.decode("utf-8", "replace")[-400:])
     return errs
@@ -82,10 +90,20 @@ def test_atomic_write():
             if not (isinstance(got, dict) and len(got.get("pad", "")) == 20000):
                 bad.append(got if got == "MISSING" else "partial")
 
-    th = threading.Thread(target=reader); th.start()
-    for i in range(200):
-        safe_io.atomic_write_json(path, {"n": i, "pad": "x" * 20000})
-    stop.set(); th.join()
+    # The reader must stop even if a write raises (a write that Windows keeps
+    # refusing): before, an exception here left this thread spinning for ever
+    # and the script never exited.
+    th = threading.Thread(target=reader, daemon=True); th.start()
+    write_error = None
+    try:
+        for i in range(200):
+            safe_io.atomic_write_json(path, {"n": i, "pad": "x" * 20000})
+    except OSError as e:
+        write_error = e
+    finally:
+        stop.set(); th.join(timeout=10)
+    check("200 replacements succeed while another reader keeps opening the file",
+          write_error is None, repr(write_error))
     check("a reader never sees a missing or half-written file while it is being replaced",
           bad == [], f"{len(bad)} bad reads")
     check("no temporary files are left behind", os.listdir(d) == ["data.json"], str(os.listdir(d)))
@@ -196,6 +214,36 @@ def test_concurrent_labellers():
           and all(e["details"]["labeller"] == e["user"] for e in events))
     check("no temporary or lock files left in the recording",
           not [f for dp, _d, fs in os.walk(root) for f in fs if ".tmp" in f or f.endswith(".lock")])
+
+
+_APPENDER = r"""
+import json, sys
+import brain_battle.data.safe_io as safe_io
+path, who, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
+for i in range(n):
+    safe_io.append_line(path, json.dumps({"who": who, "i": i, "pad": who * 3000}))
+"""
+
+
+def test_concurrent_appends():
+    """append_line from several processes at full speed, with long lines: each
+    line must land whole (on Windows, Python's own append mode does not
+    guarantee this — safe_io uses append-only access there)."""
+    path = os.path.join(tempfile.mkdtemp(prefix="bb_append_"), "log.jsonl")
+    who, n = "abcdef", 150
+    errs = _wait([_spawn(_APPENDER, path, w, n) for w in who])
+    raw = open(path, "rb").read().split(b"\n")
+    lines = [l for l in raw if l]
+    good = 0
+    for l in lines:
+        try:
+            obj = json.loads(l)
+            good += obj["pad"] == obj["who"] * 3000
+        except ValueError:
+            pass
+    check(f"{len(who)} processes x {n} long lines appended at once: every line whole, none lost",
+          not errs and len(lines) == len(who) * n == good and raw[-1] == b"",
+          f"{good} whole of {len(lines)} lines, want {len(who) * n} {errs[:1]}")
 
 
 _XDF = r"""
@@ -351,14 +399,16 @@ if __name__ == "__main__":
     DEMO_ROOT = generate_demo_session(out=tempfile.mkdtemp(prefix="bb_shared_"), rounds=1,
                                       round_sec=6, break_sec=2, baseline_sec=2, seed=3,
                                       boxer_a="Ivy", boxer_b="Zoe")["root"]
-    test_atomic_write()
-    test_lock_and_update()
-    test_concurrent_labellers()
-    test_concurrent_xdf()
-    test_folder_missing()
-    test_review_keeps_unsaved_labels()
-    test_cannot_record_into_missing_folder()
-    test_scan_cache()
+    for test in (test_atomic_write, test_lock_and_update, test_concurrent_appends,
+                 test_concurrent_labellers,
+                 test_concurrent_xdf, test_folder_missing, test_review_keeps_unsaved_labels,
+                 test_cannot_record_into_missing_folder, test_scan_cache):
+        try:
+            test()
+        except Exception as e:          # report it and go on; never stop half-way
+            import traceback
+            traceback.print_exc()
+            check(f"{test.__name__} ran to the end", False, repr(e))
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

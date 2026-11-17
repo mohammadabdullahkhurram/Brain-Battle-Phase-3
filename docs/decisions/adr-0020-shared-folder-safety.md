@@ -23,7 +23,7 @@ purposes, and no file is ever seen half-written.**
 | File | How it is kept safe |
 |---|---|
 | A labeller's labels | Their own file ([ADR-0019](adr-0019-one-labels-file-per-labeller.md)); written atomically; merged on save |
-| `history.jsonl` | Only ever appended to, one whole line per write |
+| `history.jsonl` | Only ever appended to, one whole line per write — a single append-only write the system places at the end (on Windows through an append-only handle, since Python's own append mode there is not atomic; fixed 2026-11-17) |
 | `session_manifest.json` | Written atomically; later edits (dismiss, interrupted) go through a lock |
 | `label_list.json` (the team's label list) | Written atomically under a lock |
 | `recording.xdf` | Derived; built under a temporary name unique to the writer, then swapped in |

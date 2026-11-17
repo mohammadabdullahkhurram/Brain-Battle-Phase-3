@@ -47,7 +47,7 @@ Inside `boxers.A` / `boxers.B`: `name` (string or `null`) and `headband`
 | `folder` | string | Relative subfolder — `"continuous"` for every phase today |
 | `planned_duration` | int | Configured length, seconds |
 | `start_unix` | number | Phase start, Unix seconds |
-| `start_monotonic` | number | Phase start on the monotonic clock |
+| `start_monotonic` | number | Phase start on the capture clock (the computer's high-resolution monotonic clock) |
 | `end_unix` | number \| null | Phase end, Unix seconds (`null` until it closes) |
 | `end_monotonic` | number \| null | Phase end on the monotonic clock |
 
@@ -148,7 +148,7 @@ is what places a video frame on the session clock.
 |---|---|---|---|---|
 | `frame_index` | int | — | 0-based frame number in this video | `0` |
 | `t_session_seconds` | float | seconds | Time since session start | `0.071412` |
-| `t_monotonic` | float | seconds | The capture's monotonic-clock reading | `1352413.022679` |
+| `t_monotonic` | float | seconds | The capture clock's reading (the computer's high-resolution monotonic clock; its zero is arbitrary) | `1352413.022679` |
 | `t_unix` | float | seconds | The same frame as a Unix timestamp | `1794241571.032568` |
 
 ```csv

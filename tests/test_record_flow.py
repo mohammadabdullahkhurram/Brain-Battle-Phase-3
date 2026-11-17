@@ -108,15 +108,25 @@ def test_end_to_end():
               sum(s.is_live for s in flow._cams) == 4
               and sum(b.connected for b in flow._bands.values()) == 2)
         # live LSL streams are on the network from the Connect step onwards
+        # Only THIS script's streams count (their source id carries its own
+        # tag — tests/_env.py), and we keep looking until all have appeared
+        # rather than trusting one short network scan.
         import pylsl
-        live = {i.name(): i for i in pylsl.resolve_streams(wait_time=1.5)
-                if i.name().startswith("BrainBattle_")}
+        from brain_battle.capture.lsl_outlets import source_id
+        want = {"BrainBattle_EEG_A", "BrainBattle_EEG_B", "BrainBattle_Markers"}
+        live, deadline = {}, time.time() + 10
+        while time.time() < deadline:
+            live = {i.name(): i for i in pylsl.resolve_streams(wait_time=1.0)
+                    if i.name().startswith("BrainBattle_") and i.source_id() == source_id(i.name())}
+            if want <= set(live) and sum(n.startswith("BrainBattle_Video_") for n in live) == 4:
+                break
+            pump(0.2)
         check("LSL: both EEG streams, the markers and 4 camera streams are published",
-              {"BrainBattle_EEG_A", "BrainBattle_EEG_B", "BrainBattle_Markers"} <= set(live)
-              and sum(n.startswith("BrainBattle_Video_") for n in live) == 4, str(sorted(live)))
-        marker_inlet = pylsl.StreamInlet(live["BrainBattle_Markers"]) if "BrainBattle_Markers" in live else None
-        if marker_inlet:
-            marker_inlet.open_stream(timeout=3)
+              want <= set(live) and sum(n.startswith("BrainBattle_Video_") for n in live) == 4,
+              str(sorted(live)))
+        marker_inlet = _env.lsl_inlet("BrainBattle_Markers",
+                                      outlet=flow._lsl._outlets.get("BrainBattle_Markers"))
+        check("LSL: the marker stream can be subscribed to", marker_inlet is not None)
         _setup_short(flow)
         flow.begin_recording()
         check("sleep prevention requested while recording", flow._keep_awake.is_active())

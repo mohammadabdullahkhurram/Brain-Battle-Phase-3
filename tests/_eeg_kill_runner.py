@@ -4,7 +4,10 @@ Subprocess runner for tests/test_eeg_streaming.py — NOT a test itself.
 Streams synthetic 12-sample EEG chunks through the REAL _MuseDirectReader
 write path (start_recording → _on_eeg → writer thread) at ~256 Hz, writing
 the cumulative count of samples HANDED TO the reader into a sidecar
-"sent.log" (overwrite + fsync each chunk, so it's always valid on disk).
+"sent.log" — one line per chunk, appended + fsync'd, so a kill at any moment
+leaves at least every earlier count whole on disk (the parent reads the last
+complete line). It used to truncate and rewrite the file, and a kill between
+the two left it empty: "sent=0".
 
 The parent test launches this, lets it stream for a bit, then SIGKILLs it —
 simulating a hard crash mid-recording — and checks the EEG CSV is still
@@ -42,7 +45,7 @@ def main():
     reader = _MuseDirectReader(address="kill-test", name="synthetic")
     reader.start_recording(csv_path, origin_unix=origin)
 
-    sent_log = open(sent_log_path, "w", encoding="utf-8")
+    sent_log = open(sent_log_path, "a", encoding="utf-8")
     total = 0
     start_offset = 0.4
     rng = np.random.default_rng(0)
@@ -57,9 +60,7 @@ def main():
         total += CHUNK
         chunk_idx += 1
         # Record samples handed to the reader, always-valid on disk.
-        sent_log.seek(0)
-        sent_log.truncate()
-        sent_log.write(str(total))
+        sent_log.write(f"{total}\n")
         sent_log.flush()
         os.fsync(sent_log.fileno())
         next_t += period

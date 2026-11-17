@@ -226,7 +226,8 @@ seeks match the generator's own start delays exactly).
 ## Tests (`tests/` — plain scripts, `python3 tests/<name>.py`, nonzero exit on failure)
 
 Every script imports `tests/_env.py` first (a throwaway settings file with a
-labeller name, so a run never touches real settings). The whole suite also runs
+labeller name, so a run never touches real settings; and its own LSL tag, so a
+script only ever subscribes to its own streams — use `_env.lsl_inlet`). The whole suite also runs
 on macOS and Windows in GitHub Actions (`.github/workflows/tests.yml`).
 
 All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC. Run them all
@@ -273,7 +274,8 @@ as failed).
   anywhere in the source), Finder vs. Explorer (and no hard-coded "Finder"),
   shortcut wording, settings/recordings paths, Windows-safe names, encoder
   candidates + libx264 fallback, keep-awake never raising, the CI workflow.
-- `test_shared_folder.py` — atomic writes, the folder lock, five processes
+- `test_shared_folder.py` — atomic writes, the folder lock, six processes
+  appending long lines to one log at once, five processes
   labelling one recording at once, concurrent XDF builds, a folder that
   disappears (Sessions banner, Review keeps unsaved labels and retries, no
   recording into it), the scan cache.
@@ -367,7 +369,8 @@ bell, extra signals + LSL sharing, and the shared label list — all autosaving.
 **3.1.0-dev (the November 2026 improvement pass —
 `docs/reviews/2026-11-fable-review.md`) added the standard EEG workflow:**
 - **One capture clock** (`capture/clock.py`, ADR-0017): everything is stamped
-  from `time.monotonic()`; Unix and LSL time are fixed offsets from it.
+  from the high-resolution monotonic clock (`clock.monotonic()` =
+  `time.perf_counter()`); Unix and LSL time are fixed offsets from it.
 - **Live LSL streams** (`capture/lsl_outlets.py`, ADR-0015): EEG / movement /
   pulse per boxer, markers, and a frame-time stream per camera — visible to
   LabRecorder and LSL viewers while the New recording screens are open.
@@ -400,9 +403,15 @@ the app raises its own open-file limit at start-up
 history write is shown on the Recording screen and the Saved screen says
 "Recording saved, but with problems"; JetBrains Mono is bundled for code in
 the Documentation screen. Measure with `python3 tools/measure_descriptors.py`.
-**Windows CI is still not green** (`test_shared_folder` never finishes,
-`test_xdf` fails one clock check) — the open list is in
-`docs/developer-guide/cross-platform-and-ci.md`.
+
+**3.1.0-dev, tidy-up and CI (2026-11-17, no new tag):** GitHub Actions is
+green on macOS and Windows. Fixed at the cause: the capture clock is now the
+high-resolution `time.perf_counter()` (`time.monotonic()` ticks every 15.6 ms
+on Windows with Python ≤ 3.12); `history.jsonl` appends are atomic on Windows;
+`test_shared_folder` can no longer hang; LSL tests only see their own streams
+(`BRAIN_BATTLE_LSL_TAG`, `tests/_env.lsl_inlet`); pylsl 1.18.7 (liblsl 1.18,
+no descriptor leak). Details: `docs/developer-guide/cross-platform-and-ci.md`.
+New branch and tag rules (above) and a README for testers.
 
 Hardware is broken, so the whole flow is built + tested against **simulated**
 devices driven through the real capture paths (`capture/simulation.py`,
@@ -467,7 +476,7 @@ shim.
 | `capture/usb_camera.py` | `USBCameraThread` (cv2, or a simulated capture) + `FrameEncoder` — crash-safe fragmented H.264 per-camera ffmpeg subprocess + row-per-frame sidecar; no audio; preview downscale |
 | `capture/camera_source.py` | `CameraSlot` — one camera for the flow (wraps `USBCameraThread`: preview, fps, recording/dropped/encoder state) |
 | `capture/headband_source.py` | `HeadbandSlot` — one boxer's headband (wraps `_MuseDirectReader`: connection, battery, per-sensor contact, live EEG buffer, reconnect/append, pushes to the LSL publisher) |
-| `capture/clock.py` | The one capture clock: `time.monotonic()` plus fixed offsets to Unix and LSL time; `session_origin()` |
+| `capture/clock.py` | The one capture clock: `clock.monotonic()` (the high-resolution `time.perf_counter()`) plus fixed offsets to Unix and LSL time; `session_origin()` |
 | `capture/eeg_module.py` | Muse-S Bluetooth scan/connect/stream (`_MuseDirectReader`: EEG, movement + pulse sensors, battery), crash-safe `_CsvStreamWriter`, `_RingBuffer` |
 | `capture/lsl_outlets.py` | `LslPublisher` — live LSL outlets (EEG/sensors per boxer, markers, per-camera frame times); fail-soft; outlets opened once per run and reused (ADR-0022) |
 | `capture/session_controller.py` | Pure-logic phase state machine (headless-testable), 1 Hz QTimer |
@@ -574,9 +583,11 @@ remaining seam — the optional combined 2×2 export video — is tracked in
 - Repo-relative paths (assets, docs, the default recordings folder) are all
   resolved through `brain_battle/paths.py` — don't re-derive them from a
   module's own `__file__`.
-- **One clock.** Stamp anything new with `time.monotonic()` and convert through
-  `capture/clock.py`; never call `time.time()` for a timestamp that will be
-  compared with another source.
+- **One clock.** Stamp anything new with `clock.monotonic()` (from
+  `capture/clock.py`) and convert through that module; never `time.monotonic()`
+  (on Windows with Python ≤ 3.12 it ticks only every 15.6 ms and has a
+  different zero) and never `time.time()` for a timestamp that will be compared
+  with another source. `tests/test_capture_clock.py` checks the stamping sites.
 - **`recording.xdf` is derived, never a source.** The CSVs, sidecars, markers,
   manifest and `labels.json` are the originals; the XDF is rebuilt from them.
   Don't read it back inside the app, and don't add data that exists only there.

@@ -21,7 +21,9 @@ Nothing outside these places should ask which system it is running on.
 | Camera backend | `capture/usb_camera._preferred_backend` | AVFoundation · DirectShow |
 | Video encoder | `data/export_module._detect_hw_encoder` | VideoToolbox on macOS; NVIDIA, AMD, then Intel on Windows; each must pass a real test encode, otherwise `libx264` |
 | Keeping the computer awake | `capture/keep_awake` | `caffeinate` · `SetThreadExecutionState`; failures are swallowed |
-| Replacing a file that is open elsewhere | `data/safe_io.replace_with_retry` | Windows refuses; retried briefly |
+| Replacing a file that is open elsewhere | `data/safe_io.replace_with_retry`, `read_json` | Windows refuses while another program has it open; retried with short waits for up to ~5 s |
+| Appending a line to a shared log (`history.jsonl`) | `data/safe_io.append_line` | One `O_APPEND` write on macOS; on Windows an append-only handle (`FILE_APPEND_DATA`), because Python's append mode there only emulates appending and two writers can overwrite each other |
+| The capture clock | `capture/clock.monotonic` | `time.perf_counter()` on both. `time.monotonic()` would tick only every 15.6 ms on Windows with Python ≤ 3.12 |
 | Legal file and folder names | `session_storage.sanitize_name`, `labels_store.labeller_slug` | Windows' forbidden characters and reserved names are avoided on every system |
 | Bluetooth | muselsl with the `bleak` backend | One code path; bleak talks to CoreBluetooth or WinRT |
 | Fonts and the bell sound | bundled in `assets/`, loaded through Qt | Same files on both |
@@ -62,25 +64,22 @@ Things to know:
 - Every test script imports `tests/_env.py` first, which points the app at a
   throwaway settings file — a test run never touches a real user's settings.
 
-## Still failing on Windows in the automatic test run (open)
+## Fixed on 2026-11-17: CI green on both systems
 
-State on 2026-11-16, from the run on commit `be4202f` (cancelled by hand after
-the Windows job stalled). **macOS passes everything except the one item marked
-"both"; Windows has never had a fully green run.** Nothing below has been
-reproduced on a real Windows computer.
+Read from the Windows and macOS logs of the runs on `be4202f` and `339f941`,
+then fixed at the cause. No test was skipped or loosened to get there.
 
-| Script | What happens | Status |
-|---|---|---|
-| `test_shared_folder` | Never finishes on Windows. The runner now stops it after 15 minutes and does not try it a second time, so the run ends with a log instead of being cancelled at 45 minutes. Which step waits (the folder lock, the five-process test, or the vanished-folder test) is **not known yet** — read `test-logs/test_shared_folder.log` from the run's artifact | **Open** |
-| `test_xdf` | "our LSL time matches `pylsl.local_clock()`": the fixed offset between the capture clock and the LSL clock measured 3.4 ms on the Windows runner (limit 1 ms). Either the two clocks really differ in resolution on Windows, or the one-off measurement in `capture/clock.py` is too coarse there. It matters for comparing a LabRecorder file with `recording.xdf`, not for `recording.xdf` itself | **Open** |
-| `test_descriptors` (both) | Failed on macOS and Windows because `psutil` was not installed on the runners. Declared as a dependency in the following commit; **not yet confirmed by a run** | Fix pushed, unconfirmed |
-| `test_lsl_streams` | Failed once while other scripts were running and passed alone | Watch |
+| Script | What happened | Cause | Fix |
+|---|---|---|---|
+| `test_xdf` (Windows) | "our LSL time matches `pylsl.local_clock()`" measured 3.3–3.6 ms (limit 1 ms) | **A real bug.** The capture clock was `time.monotonic()`, which on Windows with Python ≤ 3.12 (CI uses 3.12) ticks every ~15.6 ms. Every frame, marker and phase time on Windows was rounded to 15.6 ms, and the one-off offset to the LSL clock was off by up to a tick | The capture clock is now `time.perf_counter()` (QueryPerformanceCounter on Windows, the same clock as before on macOS), and every stamp goes through `clock.monotonic()` ([ADR-0017](../decisions/adr-0017-one-capture-clock.md)). The strict 1 ms limit stays, on CI too |
+| `test_xdf` (both, under load) | the drift part of the same check failed once at 713–867 µs while other scripts ran | The test read the two clocks one after the other; a thread switch between the reads counted as drift | It reads them as the tightest of 200 bracketed reads, as `capture/clock.py` does. Passes with ten CPU-hogging processes running |
+| `test_shared_folder` (Windows) | Stalled until the 15-minute stop in one run; "the shared history has every line, none torn" failed (83 events / 106 lines) in the next | **Two causes.** (1) Hang: when Windows refused one of 200 file replacements for longer than the retries lasted, the exception skipped the line that stops the test's reader thread, which then spun for ever. (2) Torn lines — **a real bug**: Python's append mode on Windows moves to the end and then writes, so two processes appending to `history.jsonl` at once overwrote each other | (1) The reader is always stopped (`try/finally`, daemon thread), a stuck helper process is killed, an error in one part is reported and the rest still runs; replacements and reads are retried with short waits for ~5 s instead of 6 tries. (2) `safe_io.append_line` writes each line as one append-only write (`FILE_APPEND_DATA` on Windows, `O_APPEND` elsewhere); a new test has 6 processes append 150 long lines each at full speed |
+| `test_lsl_streams`, `test_record_flow` (both) | Occasionally could not find or subscribe to a stream ("open_stream timeout") | Every process published the same stream names *and* the same LSL source id, so a test could subscribe to another script's (or a running app's) stream; and it waited with fixed sleeps | Each test script sets its own `BRAIN_BATTLE_LSL_TAG`, which `lsl_outlets.source_id` adds to every stream's source id; `tests/_env.py`'s `lsl_resolve` / `lsl_inlet` find a stream by name **and** source id, retry until a deadline, and wait for the outlet to see the subscriber. Three copies of `test_lsl_streams` now pass side by side. The stream names (and `recording.xdf`) are unchanged |
+| `test_eeg_streaming` (both, under load) | "subprocess actually streamed samples: sent=0" | The helper rewrote its sample count by truncating the file and writing again; a kill between the two left it empty | One appended line per chunk; the test reads the last complete line |
+| `test_descriptors` (both) | `psutil` missing; later a one-off +4 threads in one snapshot on Windows | `psutil` was not installed on the runners; Windows' own thread pool starts and retires worker threads | `psutil` is in `requirements.txt` (the CI log prints its version). A leak grows every visit, so the check now asks that the typical later visit is back at the first visit's count and no single visit is far above it |
 
-Fixed by 3.1.0-dev.3 and confirmed passing on Windows in that run:
-`test_layout_fit`, `test_sessions`, `test_docs` (the screens now load the
-bundled fonts themselves; code blocks wrap; diagram sources are LF),
-`test_history_log`, `test_eeg_streaming` (no `SIGKILL` on Windows),
-`test_research_docs` (back-slashed path), `test_record_flow`.
+`pylsl` is now 1.18.7 (liblsl 1.18), which no longer leaks descriptors —
+[ADR-0022](../decisions/adr-0022-lsl-outlets-open-once.md).
 
 ## Never tried on a real Windows machine
 

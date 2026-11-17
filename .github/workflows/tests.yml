@@ -53,6 +53,7 @@ jobs:
         run: |
           python --version
           ffmpeg -version
+          python -c "import psutil, pylsl; print('psutil', psutil.__version__, '| pylsl', pylsl.__version__, '| liblsl', pylsl.library_version())"
 
       - name: Run every test script
         run: python tools/run_tests.py --jobs 2

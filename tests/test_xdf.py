@@ -100,9 +100,20 @@ def test_clock():
     a = clock.unix_now(); time.sleep(0.05); b = clock.unix_now()
     check("clock: unix_now advances with the monotonic clock", 0.04 < b - a < 0.2)
     check("clock: LSL is available", clock.lsl_available())
-    d0 = pylsl.local_clock() - clock.mono_to_lsl(time.monotonic())
+    def lsl_minus_ours():
+        # pylsl.local_clock() minus our LSL time, read as one instant: of many
+        # bracketed reads keep the tightest, so a thread switch between the two
+        # reads (a busy computer, a shared CI machine) does not count as an
+        # offset or as drift. The tolerance below stays strict.
+        best = None
+        for _ in range(200):
+            a = clock.monotonic(); lsl = pylsl.local_clock(); b = clock.monotonic()
+            if best is None or b - a < best[0]:
+                best = (b - a, lsl - clock.mono_to_lsl((a + b) / 2))
+        return best[1]
+    d0 = lsl_minus_ours()
     time.sleep(1.0)
-    d1 = pylsl.local_clock() - clock.mono_to_lsl(time.monotonic())
+    d1 = lsl_minus_ours()
     check("clock: our LSL time matches pylsl.local_clock() (< 1 ms, no drift over 1 s)",
           abs(d0) < 1e-3 and abs(d1 - d0) < 2e-4, f"offset {d0 * 1e3:.3f} ms, drift {abs(d1 - d0) * 1e6:.0f} us")
 

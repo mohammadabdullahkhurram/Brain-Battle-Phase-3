@@ -98,5 +98,30 @@ After (same measurement, under a real 256 limit):
   convenience feature.
 - **Fewer streams** (one stream for all four cameras). Changes the published
   layout that `recording.xdf` mirrors ([ADR-0015](adr-0015-lsl-and-xdf.md)).
-- **Wait for a fixed liblsl.** Not checked against newer builds; the app should
-  not depend on it either way.
+- **Wait for a fixed liblsl.** Since checked — see "Update" below. Even with
+  the fix, the app should not depend on it.
+
+## Update 2026-11-17: a newer liblsl no longer leaks
+
+Measured in isolation (only `pylsl`, IPv4-only config as the app uses it, ten
+outlets created and destroyed one after another, macOS):
+
+| pylsl | bundled liblsl | descriptors per outlet | left open per destroyed outlet |
+|---|---|---|---|
+| 1.18.1 (was pinned) | 1.17.4 | 13 | **3** |
+| 1.18.7 | 1.18.0 (b7) | 13 | **0** |
+
+**The app now pins `pylsl==1.18.7`** (`requirements.txt`; `pyproject.toml` asks
+for `>=1.18.7`), and the full test suite passes with it on macOS and Windows.
+The decision above stays: the outlets are still opened once and reused. With
+the new library that no longer *prevents* a leak, but it is still cheaper
+(nothing to rebuild each visit), it keeps the streams' description stable for
+LabRecorder, and the app does not depend on the library behaving. What changed
+in practice: replacing a stream because a different headband is on a boxer no
+longer costs 3 descriptors. The recording numbers themselves are unchanged
+(peak 183–184, the same on every visit).
+
+Caveats: the bundled liblsl is a pre-release build of 1.18 (`v1.18.0.b7`, as
+shipped inside the official pylsl 1.18.7 wheels), and the leak was measured on
+macOS only — on Windows the suite passes but the per-outlet count was not
+measured in isolation (Windows has no descriptor table to list).

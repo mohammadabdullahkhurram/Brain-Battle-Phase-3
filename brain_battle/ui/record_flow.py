@@ -1551,7 +1551,7 @@ class RecordFlow(QWidget):
         self._recording_step.set_phase(phase_id, label, round_num, total_rounds, duration)
         self._recording_step.set_time(duration, duration, self._elapsed_session())
         if self._layout is not None and self._session_t0 is not None:
-            t = time.monotonic() - self._session_t0
+            t = clock.monotonic() - self._session_t0
             norm = label.upper().replace(" ", "_")
             marker = f"{norm}_START" if phase_id != "done" else norm
             self._essential("times", self._layout.append_marker, t, phase_id, marker, round_num)
@@ -1563,7 +1563,7 @@ class RecordFlow(QWidget):
             self._essential("plan", self._layout.add_phase, PhaseRecord(
                 phase=phase.value, label=label, round_num=round_num, folder="continuous",
                 planned_duration=duration, start_unix=time.time(),
-                start_monotonic=time.monotonic()))
+                start_monotonic=clock.monotonic()))
             if self._active_phase is not None:
                 pp, pr = self._active_phase
                 self._essential("plan", self._layout.close_phase, pp, pr)
@@ -1575,7 +1575,7 @@ class RecordFlow(QWidget):
     def _elapsed_session(self):
         if self._session_t0 is None:
             return 0.0
-        return time.monotonic() - self._session_t0
+        return clock.monotonic() - self._session_t0
 
     def _on_session_finished(self):
         self._finish(stopped_early=self._stopping_early)
@@ -1588,7 +1588,7 @@ class RecordFlow(QWidget):
 
     def _finish(self, stopped_early=False, goto_saved=True):
         if self._layout is not None and self._session_t0 is not None:
-            t = time.monotonic() - self._session_t0
+            t = clock.monotonic() - self._session_t0
             self._essential("times", self._layout.append_marker, t, "done", "SESSION_END", 0)
             self._publish_marker("SESSION_END", t)
             if stopped_early:
@@ -1708,7 +1708,7 @@ class RecordFlow(QWidget):
     def mark_moment(self):
         if not self._controller.is_running or self._layout is None:
             return
-        t = time.monotonic() - self._session_t0
+        t = clock.monotonic() - self._session_t0
         entry = self._essential("moments", self._layout.add_moment, t)
         self._publish_marker(session_xdf.MOMENT_MARKER, t)
         if entry is None:                    # not saved: don't count it as marked
@@ -1786,7 +1786,7 @@ class RecordFlow(QWidget):
     def _log_contact(self):
         if self._contact_writer is None or self._session_t0 is None:
             return
-        t = time.monotonic() - self._session_t0
+        t = clock.monotonic() - self._session_t0
         for which, b in self._bands.items():
             if b.connected:
                 summary, statuses = b.contact()

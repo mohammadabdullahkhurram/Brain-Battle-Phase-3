@@ -24,7 +24,14 @@ third independently-read clock.
 
 ## Decision
 
-**There is one clock: `time.monotonic()`.** `capture/clock.py` measures, once
+**There is one clock: the computer's high-resolution monotonic clock, read as
+`clock.monotonic()`.** (Amended 2026-11-17: it was `time.monotonic()`, but on
+Windows with Python 3.12 or older that clock ticks only every ~15.6 ms, which
+quantised every frame and marker time and put the measured offset to the LSL
+clock several ms out — the Windows CI run measured 3.4 ms. It is now
+`time.perf_counter()`: the same clock as `time.monotonic()` on macOS and Linux,
+QueryPerformanceCounter on Windows — the clock liblsl itself uses there.)
+`capture/clock.py` measures, once
 per run of the app, the offset from it to the wall clock and to the LSL clock,
 and from then on:
 
@@ -52,7 +59,13 @@ converting between them is exact; there is no second clock to drift against.
   project's standing rule no effort goes into tighter precision until the
   analysis method says it matters.
 - `tests/test_xdf.py` checks that the app's LSL time matches `pylsl.local_clock()`
-  to well under a millisecond and does not drift.
+  to well under a millisecond and does not drift; it reads both clocks as the
+  tightest of many bracketed reads, so a busy computer does not fail it (the
+  limit itself stays strict on every machine, CI included).
+- **Every stamp must come from `clock.monotonic()`**, never `time.monotonic()`
+  directly: on Windows the two do not share a zero. `tests/test_capture_clock.py`
+  checks the clock's resolution and the stamping sites (camera frames, markers,
+  moments, phase times).
 
 ## Links
 

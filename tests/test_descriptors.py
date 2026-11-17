@@ -192,8 +192,14 @@ def test_recordings_in_a_row():
         if HAVE_LIMIT:
             check(f"descriptors {what} are the same on every visit (±{TOLERANCE})",
                   worst <= TOLERANCE, str([r[key]["fds"] for r in runs]))
-        worst_t = max(r[key]["threads"] - first[key]["threads"] for r in runs[1:])
-        check(f"threads {what} do not grow from visit to visit", worst_t <= 3,
+        # A leak grows on EVERY visit (before 3.1.0-dev.3: +4 a visit). The
+        # operating system also starts and retires worker threads of its own
+        # (Windows' thread pool), which can show as a one-off +4 in a single
+        # snapshot. So: the typical later visit (the median) must be back at
+        # the first visit's count, and no single visit may be far above it.
+        later = sorted(r[key]["threads"] - first[key]["threads"] for r in runs[1:])
+        check(f"threads {what} do not grow from visit to visit",
+              later[len(later) // 2] <= 3 and later[-1] <= TOLERANCE,
               str([r[key]["threads"] for r in runs]))
     check("no helper program is left running after a recording",
           all(r["saved"]["children"] == 0 and r["left"]["children"] == 0 for r in runs),

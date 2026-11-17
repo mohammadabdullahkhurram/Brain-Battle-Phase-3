@@ -254,7 +254,9 @@ and pulse sensors have never been received from a real band.
 ### `clock.py`
 `brain_battle/capture/clock.py` — the one capture clock
 ([ADR-0017](../decisions/adr-0017-one-capture-clock.md)). Everything is stamped
-from `time.monotonic()`; this module measures once per process the constant
+from `clock.monotonic()` — the high-resolution monotonic clock
+(`time.perf_counter()`; `time.monotonic()` is only 15.6 ms-fine on Windows with
+Python ≤ 3.12); this module measures once per process the constant
 offsets to Unix time and to the LSL clock and converts between them
 (`unix_now`, `mono_to_unix`, `mono_to_lsl`, `unix_to_lsl`). `session_origin()`
 returns a recording's start on all three scales — exactly what the manifest

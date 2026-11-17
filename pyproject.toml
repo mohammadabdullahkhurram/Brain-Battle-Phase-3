@@ -24,7 +24,7 @@ dependencies = [
     "PyQt6>=6.10",
     "opencv-python>=4.11",
     # Lab Streaming Layer: live outlets (pylsl) + reading recording.xdf back (pyxdf).
-    "pylsl>=1.18",
+    "pylsl>=1.18.7",       # bundles liblsl 1.18: no descriptor leak (ADR-0022)
     "pyxdf>=1.17",
     "muselsl>=2.3",
     "scipy>=1.15",

@@ -2,8 +2,18 @@
 clock.py — the one capture clock
 ────────────────────────────────
 Everything Brain Battle records is stamped from ONE clock: the computer's
-monotonic clock (``time.monotonic()``), which never jumps when the wall clock
-is corrected (NTP, daylight saving, a user changing the time mid-session).
+high-resolution monotonic clock, read through ``clock.monotonic()``. It never
+jumps when the wall clock is corrected (NTP, daylight saving, a user changing
+the time mid-session).
+
+Which OS clock that is: ``time.perf_counter()``. On macOS and Linux it is the
+same clock as ``time.monotonic()``. On Windows it is QueryPerformanceCounter,
+with sub-microsecond resolution — whereas ``time.monotonic()`` on Windows with
+Python 3.12 or older ticks only every ~15.6 ms (GetTickCount64), which would
+quantise every frame and marker time to 15.6 ms and made the measured offset
+to the LSL clock (QueryPerformanceCounter as well) off by several ms. So code
+that stamps anything must call ``clock.monotonic()``, never
+``time.monotonic()`` directly — on Windows the two do not even share a zero.
 
 Two other time scales are needed by the files we write, and both are exposed
 here as fixed offsets from that one clock, measured once per process:
@@ -43,15 +53,20 @@ _unix0: Optional[float] = None     # … and the wall clock at that same instant
 _lsl_minus_mono: Optional[float] = None
 _lsl_ok: Optional[bool] = None
 
+# The clock itself (see the module docstring for why not time.monotonic).
+_now = time.perf_counter
+
 
 def _bracket(read_other) -> tuple[float, float]:
     """(monotonic, other) read at the same instant, as tightly as the OS
-    allows: take a few bracketed reads and keep the tightest one."""
+    allows: take several bracketed reads and keep the tightest one, so a
+    thread switch in the middle of one read (a busy computer) does not end up
+    in the offset."""
     best = None
-    for _ in range(5):
-        a = time.monotonic()
+    for _ in range(25):
+        a = _now()
         other = read_other()
-        b = time.monotonic()
+        b = _now()
         if best is None or (b - a) < best[0]:
             best = (b - a, (a + b) / 2.0, other)
     return best[1], best[2]
@@ -68,8 +83,9 @@ def _anchor() -> tuple[float, float]:
 
 
 def monotonic() -> float:
-    """The capture clock itself."""
-    return time.monotonic()
+    """The capture clock itself. Use this — not ``time.monotonic()`` — for any
+    timestamp that ends up in a recording."""
+    return _now()
 
 
 def mono_to_unix(t_monotonic: float) -> float:
@@ -85,7 +101,7 @@ def unix_to_mono(t_unix: float) -> float:
 def unix_now() -> float:
     """Unix-style time derived from the monotonic clock (never steps). This is
     the ``time_func`` handed to the headband reader."""
-    return mono_to_unix(time.monotonic())
+    return mono_to_unix(_now())
 
 
 def _lsl_offset() -> float:
@@ -120,7 +136,7 @@ def unix_to_lsl(t_unix: float) -> float:
 def session_origin() -> dict:
     """Capture a recording's time origin NOW, on all three scales. This dict is
     what the manifest stores as ``capture_clock``."""
-    t0 = time.monotonic()
+    t0 = _now()
     return {"t0_monotonic": t0, "t0_unix": mono_to_unix(t0), "t0_lsl": mono_to_lsl(t0)}
 
 

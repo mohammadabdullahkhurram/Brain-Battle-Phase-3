@@ -34,10 +34,17 @@ operating system's open-file limit ("Too many open files") after a few
 recordings. So the outlets live in a module-level store: ``close()`` only hands
 them back, and the next publisher picks the same ones up. A closed publisher's
 streams stay listed on the network, silent, until the app quits.
+
+**Source id.** Each stream's LSL ``source_id`` is ``brainbattle-<name>`` (the
+same id ``recording.xdf`` uses). For development only, the environment variable
+``BRAIN_BATTLE_LSL_TAG`` adds ``-<tag>`` to it: the test scripts set a tag of
+their own, so a script finds exactly *its* streams even while another script —
+or the app itself — publishes streams with the same names on the same computer.
 """
 from __future__ import annotations
 
 import logging
+import os
 import threading
 
 import numpy as np
@@ -53,6 +60,12 @@ log = logging.getLogger(__name__)
 # Never emptied while the app runs — see the module docstring.
 _OPEN: dict = {}
 _OPEN_LOCK = threading.Lock()
+
+
+def source_id(name: str) -> str:
+    """The LSL source_id this process gives the stream called ``name``."""
+    tag = os.environ.get("BRAIN_BATTLE_LSL_TAG", "").strip()
+    return f"brainbattle-{name}-{tag}" if tag else f"brainbattle-{name}"
 
 
 def open_outlet_count() -> int:
@@ -104,7 +117,7 @@ class LslPublisher:
             lsl = self._pylsl
             try:
                 info = lsl.StreamInfo(name, type_, len(channels), rate, fmt,
-                                      f"brainbattle-{name}")
+                                      source_id(name))
                 desc = info.desc()
                 desc.append_child_value("manufacturer", "Brain Battle")
                 for k, v in (extra or {}).items():
@@ -191,4 +204,4 @@ class LslPublisher:
             self._pylsl = None
 
 
-__all__ = ["LslPublisher", "open_outlet_count"]
+__all__ = ["LslPublisher", "open_outlet_count", "source_id"]

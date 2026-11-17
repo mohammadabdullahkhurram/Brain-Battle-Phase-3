@@ -75,11 +75,14 @@ def test_sigkill_midrecording_leaves_valid_csv():
         sent_now = 0
 
         def _read_sent():
+            """The last COMPLETE count line (a kill can cut the newest one)."""
             try:
                 with open(sent_log, encoding="utf-8") as f:
-                    return int(f.read().strip() or "0")
-            except (OSError, ValueError):
+                    text = f.read()
+            except OSError:
                 return 0
+            done = text.split("\n")[:-1]          # drop the unfinished tail
+            return int(done[-1]) if done else 0
 
         while sent_now < TARGET and time.monotonic() < safety:
             time.sleep(0.1)
@@ -93,8 +96,7 @@ def test_sigkill_midrecording_leaves_valid_csv():
               f"returncode={proc.returncode}")
         check("EEG CSV exists after kill", os.path.exists(csv_path))
 
-        with open(sent_log, encoding="utf-8") as f:
-            samples_sent = int(f.read().strip() or "0")
+        samples_sent = _read_sent()
         check("subprocess actually streamed samples", samples_sent > SR,
               f"sent={samples_sent}")
 

@@ -276,7 +276,7 @@ try:
                 return
             if self._t >= self.duration:
                 self._t = 0.0
-            self._wall0 = time.monotonic()
+            self._wall0 = time.perf_counter()
             self._t0 = self._t
             self._playing = True
             self._timer.start()
@@ -295,13 +295,13 @@ try:
         def set_speed(self, speed: float):
             self._speed = float(speed)
             if self._playing:           # re-anchor so the change is seamless
-                self._wall0 = time.monotonic()
+                self._wall0 = time.perf_counter()
                 self._t0 = self._t
 
         def seek(self, t: float):
             self._set_t(max(0.0, min(float(t), self.duration)))
             if self._playing:
-                self._wall0 = time.monotonic()
+                self._wall0 = time.perf_counter()
                 self._t0 = self._t
 
         def step(self, n_frames: int):
@@ -312,7 +312,7 @@ try:
         def _tick(self):
             if not self._playing:
                 return
-            elapsed = time.monotonic() - self._wall0
+            elapsed = time.perf_counter() - self._wall0
             t = self._t0 + self._speed * elapsed
             if t >= self.duration:
                 t = self.duration

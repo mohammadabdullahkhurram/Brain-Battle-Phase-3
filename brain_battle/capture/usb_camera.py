@@ -53,6 +53,8 @@ import cv2
 import numpy as np
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 
+import brain_battle.capture.clock as _clock
+
 log = logging.getLogger(__name__)
 
 
@@ -603,7 +605,7 @@ class USBCameraThread(QThread):
         self.state_changed.emit("live")
         total_frames = 0
         stats_window: list[float] = []
-        last_stats_emit = time.monotonic()
+        last_stats_emit = _clock.monotonic()
         last_preview_emit = 0.0  # forces first frame to emit immediately
         # The first frame is the source of truth for VideoWriter dimensions.
         # cap.get() values can be 0/NaN on macOS AVFoundation before warmup,
@@ -644,7 +646,7 @@ class USBCameraThread(QThread):
                     first_frame_shape = (frame.shape[0], frame.shape[1])
 
                 total_frames += 1
-                now = time.monotonic()
+                now = _clock.monotonic()
                 stats_window.append(now)
                 if stats_window and stats_window[0] < now - 1.0:
                     stats_window = [t for t in stats_window if t > now - 1.0]

@@ -82,6 +82,14 @@ at a throwaway settings file holding a labeller name. A test run therefore
 never reads or changes a real user's settings, and Review & Label has someone
 to save labels under.
 
+It also gives the script its own LSL tag (`BRAIN_BATTLE_LSL_TAG`), which the
+app adds to the source id of every stream it publishes. A test that subscribes
+to a live stream must use `_env.lsl_inlet(name, outlet=…)` (or
+`_env.lsl_resolve`): they find the stream by name **and** that source id — so
+never another script's or a running app's stream of the same name — retry
+until a deadline instead of one fixed timeout, and wait until the outlet has
+seen the subscriber before anything is pushed.
+
 The whole suite also runs on **macOS and Windows** for every push, through
 GitHub Actions — see [Cross-platform & CI](cross-platform-and-ci.md).
 

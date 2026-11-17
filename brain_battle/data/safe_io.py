@@ -33,8 +33,22 @@ from pathlib import Path
 
 from brain_battle.support.platform_utils import computer_name, is_windows, is_mac
 
-_RETRIES = 6            # attempts for a swap / read that the OS briefly refuses
-_RETRY_WAIT = 0.05      # seconds, doubled each attempt (≈1.5 s in total)
+# A swap or read the OS briefly refuses (Windows: another program has the file
+# open) is retried with short, growing waits for up to about five seconds. Many
+# short tries matter more than long ones: a reader holds the file only for a
+# moment, so the next try usually succeeds.
+_RETRY_BUDGET = 5.0     # seconds in total
+_RETRY_WAIT = 0.01      # first wait; grows by half each try, capped below
+_RETRY_WAIT_MAX = 0.2
+
+
+def _waits():
+    """The successive waits between tries, adding up to ~_RETRY_BUDGET."""
+    wait, spent = _RETRY_WAIT, 0.0
+    while spent < _RETRY_BUDGET:
+        yield wait
+        spent += wait
+        wait = min(wait * 1.5, _RETRY_WAIT_MAX)
 
 
 def _tmp_name(path: Path) -> Path:
@@ -66,17 +80,15 @@ def atomic_write_bytes(path, data: bytes) -> None:
 
 
 def replace_with_retry(src, dst) -> None:
-    """``os.replace`` that waits out a brief 'file in use' refusal."""
-    wait = _RETRY_WAIT
-    for attempt in range(_RETRIES):
+    """``os.replace`` that waits out a brief 'file in use' refusal (Windows
+    refuses to replace a file another program has open)."""
+    for wait in _waits():
         try:
             os.replace(src, dst)
             return
         except PermissionError:
-            if attempt == _RETRIES - 1:
-                raise
             time.sleep(wait)
-            wait *= 2
+    os.replace(src, dst)        # last try: let its error reach the caller
 
 
 def atomic_write_text(path, text: str) -> None:
@@ -89,35 +101,98 @@ def atomic_write_json(path, obj) -> None:
 
 def read_json(path, default=None):
     """The parsed JSON file, or ``default`` if it is missing, unreadable or not
-    valid JSON. Retries briefly, since another computer may be swapping it."""
-    wait = _RETRY_WAIT
-    for attempt in range(3):
+    valid JSON. Retries briefly, since another computer may be swapping it
+    (on Windows the file is refused for a moment while it is replaced)."""
+    bad_json = 0
+    for wait in _waits():
         try:
             with open(path, encoding="utf-8") as f:
                 return json.load(f)
         except FileNotFoundError:
             return default
-        except (OSError, ValueError):
-            if attempt == 2:
+        except ValueError:
+            bad_json += 1               # half-written by a program that doesn't swap
+            if bad_json >= 3:
                 return default
-            time.sleep(wait)
-            wait *= 2
+        except PermissionError:
+            pass                        # being replaced right now: try again
+        except OSError:
+            return default
+        time.sleep(wait)
     return default
 
 
 def append_line(path, line: str) -> None:
     """Append one complete line in a single write and flush it to the disk.
     Appending never rewrites earlier lines, so several computers can add to the
-    same log without damaging each other's entries."""
+    same log without damaging each other's entries.
+
+    The line goes to the operating system as ONE write to the end of the file.
+    On macOS / Linux that is what ``O_APPEND`` does. On Windows, Python's append
+    mode only *emulates* it (move to the end, then write), so two programs
+    appending at the same moment can write over each other; there the file is
+    opened with append-only access instead, which Windows guarantees lands at
+    the end. The file is created if needed, but never its folder."""
     if not line.endswith("\n"):
         line += "\n"
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(line)
-        f.flush()
+    data = line.encode("utf-8")
+    if is_windows():
+        _append_bytes_windows(str(path), data)
+        return
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o666)
+    try:
+        view = memoryview(data)
+        while view:                     # a local disk writes it all at once
+            view = view[os.write(fd, view):]
         try:
-            os.fsync(f.fileno())
+            os.fsync(fd)
         except OSError:
-            pass
+            pass                        # some network filesystems refuse fsync
+    finally:
+        os.close(fd)
+
+
+def _append_bytes_windows(path: str, data: bytes) -> None:
+    """Windows: one write with FILE_APPEND_DATA access only, so the system puts
+    it at the end of the file even with other writers (WriteFile ignores the
+    position for such a handle). Raises OSError like ``open`` would."""
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+                                wintypes.HANDLE]
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.WriteFile.argtypes = [wintypes.HANDLE, wintypes.LPCVOID, wintypes.DWORD,
+                              ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID]
+    k32.WriteFile.restype = wintypes.BOOL
+    k32.FlushFileBuffers.argtypes = [wintypes.HANDLE]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    FILE_APPEND_DATA, SYNCHRONIZE = 0x0004, 0x00100000
+    SHARE_ALL = 0x1 | 0x2 | 0x4             # read | write | delete
+    OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL = 4, 0x80
+    invalid = wintypes.HANDLE(-1).value
+    handle = None
+    for wait in _waits():                   # a sharing refusal is brief
+        handle = k32.CreateFileW(path, FILE_APPEND_DATA | SYNCHRONIZE, SHARE_ALL, None,
+                                 OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, None)
+        if handle not in (None, invalid):
+            break
+        err = ctypes.get_last_error()
+        if err not in (32, 33):             # ERROR_SHARING_VIOLATION / LOCK_VIOLATION
+            raise ctypes.WinError(err)
+        time.sleep(wait)
+    else:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        written = wintypes.DWORD(0)
+        if not k32.WriteFile(handle, data, len(data), ctypes.byref(written), None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if written.value != len(data):
+            raise OSError(f"short write to {path}: {written.value} of {len(data)} bytes")
+        k32.FlushFileBuffers(handle)        # best effort, like fsync
+    finally:
+        k32.CloseHandle(handle)
 
 
 class FolderLock:

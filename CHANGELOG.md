@@ -23,6 +23,44 @@ dev-log numbering, kept as history — they do not track the release version.
   `v3.1.0-dev.2`), so nothing is lost. References to them now name the
   version tag.
 
+**Fixed (GitHub Actions now green on macOS and Windows)** — causes and fixes in
+[Cross-platform & CI](docs/developer-guide/cross-platform-and-ci.md#fixed-on-2026-11-17-ci-green-on-both-systems)
+- **Windows timestamps were rounded to 15.6 ms.** The capture clock was
+  `time.monotonic()`, which on Windows with Python 3.12 or older ticks only
+  every ~15.6 ms; every camera frame, marker, moment and phase time recorded on
+  Windows was that coarse, and the measured offset to the LSL clock was off by
+  ~3.4 ms. The capture clock is now `time.perf_counter()` (unchanged on macOS),
+  read everywhere through `clock.monotonic()` (ADR-0017 amended). Playback
+  pacing uses it too.
+- **Two programs adding to `history.jsonl` at once could overwrite each
+  other's lines on Windows** (Python's append mode there is not atomic).
+  `safe_io.append_line` now makes one append-only write the system places at
+  the end of the file (ADR-0020).
+- Replacing / reading a shared file that another program has open is retried
+  with short waits for up to ~5 s (was 6 tries), as Windows briefly refuses.
+- `pylsl` 1.18.1 → **1.18.7**: its liblsl 1.18 no longer leaks 3 open files for
+  every stream closed (measured; ADR-0022 updated).
+
+**Tests made reliable (none skipped or loosened)**
+- `test_shared_folder` can no longer hang (the reader thread is always stopped,
+  a stuck helper is killed, one failing part no longer stops the rest), and a
+  new check has 6 processes append 150 long lines each to one log.
+- LSL tests only see their own streams: each script sets
+  `BRAIN_BATTLE_LSL_TAG`, added to every stream's source id
+  (`lsl_outlets.source_id`); `tests/_env.lsl_resolve` / `lsl_inlet` match name
+  and source id, retry to a deadline and wait for the subscription
+  (`test_lsl_streams`, `test_record_flow`). Stream names and `recording.xdf`
+  are unchanged.
+- `test_xdf`'s clock check reads both clocks as the tightest of many bracketed
+  reads; the 1 ms limit stays strict. `test_capture_clock` checks the clock's
+  resolution and that frames / markers / moments / phases use it.
+- `test_eeg_streaming`'s helper appends its sample count instead of rewriting
+  it (a kill mid-rewrite read as "sent=0").
+- `test_descriptors`' thread check tells a leak (growth every visit) from a
+  one-off operating-system worker thread.
+- The CI log prints the psutil / pylsl / liblsl versions.
+- Documentation screenshots re-taken (bundled fonts, wrapped code blocks).
+
 **Cleanup**
 - Removed code nothing used: `session_storage._labels_count`,
   `MultiCamDecoder.indices_for_t`, `design_tokens.qss_canvas_ambient`,

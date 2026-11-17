@@ -35,9 +35,10 @@ there. The list is in
 [Cross-platform & CI](cross-platform-and-ci.md#never-tried-on-a-real-windows-machine).
 These are listed, not fixed, because they need a real machine.
 
-**The automatic test run is not green on Windows.** `test_shared_folder` never
-finishes there and `test_xdf` fails one clock check; both are open. The table is
-in [Cross-platform & CI](cross-platform-and-ci.md#still-failing-on-windows-in-the-automatic-test-run-open).
+**The automatic test run is green on macOS and Windows** since 2026-11-17. The
+causes that were fixed (a coarse clock on Windows, non-atomic appends on
+Windows, a test that could hang, LSL tests picking up each other's streams) are
+listed in [Cross-platform & CI](cross-platform-and-ci.md#fixed-on-2026-11-17-ci-green-on-both-systems).
 
 ## Open files ("Too many open files") — fixed in 3.1.0-dev.3, with a cost
 
@@ -47,10 +48,12 @@ failed to write its manifest and markers — and still showed a clean Saved
 screen. The cause, the measurements and the fix are in
 [ADR-0022](../decisions/adr-0022-lsl-outlets-open-once.md). What is left:
 
-- **The LSL library still leaks.** liblsl keeps 3 descriptors for every outlet
-  it destroys. The app works around it by never destroying one; an outlet is
-  replaced only when a *different headband* is put on the same boxer within one
-  run of the app (3 descriptors each time). Not checked against a newer liblsl.
+- **The LSL library leak is fixed upstream.** liblsl 1.17.4 (pylsl 1.18.1)
+  kept 3 descriptors for every outlet it destroyed; liblsl 1.18 (pylsl 1.18.7,
+  pinned since 2026-11-17) keeps none — measured, see
+  [ADR-0022's update](../decisions/adr-0022-lsl-outlets-open-once.md#update-2026-11-17-a-newer-liblsl-no-longer-leaks).
+  The app still opens each outlet once and reuses it. The bundled liblsl is a
+  pre-release build (`1.18.0.b7`), measured on macOS only.
 - **About 143 descriptors stay held** for the rest of the run once New
   recording has been opened (11 streams × 13), and the streams stay listed on
   the network, silent, until the app quits.

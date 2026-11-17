@@ -220,7 +220,38 @@ def test_coregistered_preserves_between_brain_skew():
                             - back["t_session_seconds"][int(np.nanargmax(back["TP9_01"]))]) - 0.35) < 2.0 / SR)
 
 
+def test_capture_clock_is_high_resolution():
+    """On Windows with Python <= 3.12 time.monotonic() ticks every ~15.6 ms, so
+    the capture clock must be the high-resolution one, and everything that
+    stamps a recording must read it through clock.monotonic()."""
+    import re
+    import time
+    import brain_battle.capture.clock as clock
+    info = time.get_clock_info("perf_counter")
+    check("the capture clock is the high-resolution, monotonic OS clock",
+          clock._now is time.perf_counter and info.monotonic and info.resolution < 1e-4,
+          f"{info.implementation} resolution {info.resolution}")
+    a = clock.monotonic()
+    steps = []
+    for _ in range(2000):
+        b = clock.monotonic()
+        if b != a:
+            steps.append(b - a); a = b
+    check("…and actually advances in sub-millisecond steps here",
+          steps and min(steps) < 1e-3, f"smallest step {min(steps) * 1e3:.4f} ms" if steps else "never advanced")
+    # The files that stamp frames, markers, moments and phases.
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    stamps = {"brain_battle/capture/usb_camera.py": r"now = time\.monotonic\(\)",
+              "brain_battle/ui/record_flow.py": r"time\.monotonic\(\) - self\._session_t0|start_monotonic=time\.monotonic",
+              "brain_battle/data/session_storage.py": r"end_monotonic = time\.monotonic"}
+    bad = [f for f, pat in stamps.items()
+           if re.search(pat, open(os.path.join(root, f), encoding="utf-8").read())]
+    check("frames, markers, moments and phase times are stamped with clock.monotonic()",
+          not bad, str(bad))
+
+
 if __name__ == "__main__":
+    test_capture_clock_is_high_resolution()
     test_single_band_offset_recovered()
     test_two_bands_relative_skew_preserved()
     test_marker_and_eeg_coregister()
