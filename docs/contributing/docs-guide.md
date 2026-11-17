@@ -47,15 +47,15 @@ docs/
   contributing/
     docs-guide.md            # this page
   archive/                   # superseded / historical documents (not nav pages,
-                             #   except history.md): PLAYBACK_PROPOSAL.md,
-                             #   ARCHITECTURE_AND_EVALUATION.md, history.md
+                             #   except history.md): playback-proposal.md,
+                             #   architecture-and-evaluation.md, history.md
   DESIGN.md                  # existing — UI source of truth, stays at docs/ root
   ROADMAP.md                 # existing — build plan, stays at docs/ root
 ```
 
 `DESIGN.md` and `ROADMAP.md` are **current** documents and stay at the `docs/`
-root. The superseded planning reports (`PLAYBACK_PROPOSAL.md`,
-`ARCHITECTURE_AND_EVALUATION.md`) and the long-form `history.md` were moved into
+root. The superseded planning reports (`playback-proposal.md`,
+`architecture-and-evaluation.md`) and the long-form `history.md` were moved into
 `docs/archive/`; the sections below link to them from the relevant pages instead
 of duplicating their content.
 

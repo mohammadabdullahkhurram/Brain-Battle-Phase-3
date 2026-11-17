@@ -1,13 +1,13 @@
 # November 2026 review and improvement pass (3.1.0-dev)
 
-**What this page covers:** what changed on `develop` between the snapshot tag
-`pre-fable-2026-11-13` and the tag `v3.1.0-dev.1`, why, what was removed, the
+**What this page covers:** what changed on `develop` between the tag
+`v3.0.0-beta.2` and the tag `v3.1.0-dev.1`, why, what was removed, the
 test results, what still needs real hardware, and the decisions waiting for the
 owner. Written by Claude (Anthropic's Fable 5.2 model) working on its own from
 an open-ended brief; nothing here has been reviewed by a person yet.
 
 - **Branch:** `develop` only. `main` was not touched.
-- **To go back:** `git switch -c restore-pre-fable pre-fable-2026-11-13`.
+- **To go back:** `git switch -c restore-pre-fable v3.0.0-beta.2`.
 - **Version:** `3.1.0-dev` (`brain_battle/version.py`).
 
 ## In one paragraph

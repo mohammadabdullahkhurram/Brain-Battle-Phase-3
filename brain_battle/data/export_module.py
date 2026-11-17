@@ -46,7 +46,6 @@ log = logging.getLogger(__name__)
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QProgressBar, QFileDialog,
-    QWidget,
 )
 
 

@@ -40,7 +40,6 @@ import math
 import os
 import re
 import sys
-import time
 from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,7 +52,7 @@ import cv2
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from brain_battle.capture.session_controller import SessionConfig, Phase, _build_timeline  # noqa: E402
+from brain_battle.capture.session_controller import SessionConfig, _build_timeline  # noqa: E402
 from brain_battle.data.session_storage import create_session, PhaseRecord  # noqa: E402
 from brain_battle.capture.usb_camera import FrameEncoder, preflight_recording  # noqa: E402
 
@@ -181,7 +180,6 @@ def _render_camera_worker(task: dict) -> dict:
     real camera whose reported fps differs from its true rate produces.
     """
     label = task["label"]
-    idx = task["idx"]
     start_offset = task["start_offset"]
     capture_fps = task["capture_fps"]
     t0_monotonic = task["t0_monotonic"]
@@ -451,7 +449,6 @@ def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
     boxer names. Deterministic for a given seed. Dated across recent days so
     the list has variety."""
     import datetime as _dt
-    import json as _json
     import brain_battle.data.session_storage as _ss
     import brain_battle.data.session_history as _sh
 

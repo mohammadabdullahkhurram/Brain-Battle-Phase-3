@@ -114,7 +114,7 @@ whoever picks up the item, not a contract.
 > and DESIGN.md disagree, ask; don't guess. The items below are the build
 > breakdown; DESIGN.md is what they must look and read like. Playback approach
 > for the merged Review & Label screen: **Option C (PyAV, app-driven decode)**,
-> recommended in `docs/archive/PLAYBACK_PROPOSAL.md` — the only option correct on the
+> recommended in `docs/archive/playback-proposal.md` — the only option correct on the
 > drifting camera, and it collapses today's two playback stacks into one.
 
 **All of Phase 3 is built and tested against the generated demo session +
@@ -138,7 +138,7 @@ reads slightly differently than DESIGN.md's mockup text, and why.
 
 - ~~**Merge Review and Labelling into one "Review & Label" screen**~~ **DONE.**
   `review_label_screen.py` + `pyav_player.py` — one PyAV-driven screen on a single
-  `t_session_seconds` playhead (Option C from `docs/archive/PLAYBACK_PROPOSAL.md`); the
+  `t_session_seconds` playhead (Option C from `docs/archive/playback-proposal.md`); the
   old `SyncReviewTab`/`LabellingTab`/`vlc_module`/audio-xcorr (`sync_engine`'s
   dead half) are gone.
 
@@ -336,7 +336,7 @@ LabRecorder → XDF → EEGLAB / Python.
 ## Phase 3.2 — Redesign, labellers, Mac + Windows, shared folder — **DONE on `develop` (2026-11-13), awaiting owner review**
 
 A second owner-approved pass (write-up: `docs/reviews/2026-11-redesign.md`;
-snapshot before it: tag `pre-redesign-2026-11-13`; result: tag
+snapshot before it: tag `v3.1.0-dev.1`; result: tag
 `v3.1.0-dev.2`). Owner decisions that shaped it: the built-in `recording.xdf`
 is the primary route (LabRecorder stays an optional extra); AUX stays shown;
 movement sensors and live sharing stay on by default; boxer names stay in the

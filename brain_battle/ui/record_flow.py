@@ -370,9 +370,6 @@ class HeadbandView(QFrame):
         v.addWidget(self._trace, 1)
         self.refresh()
 
-    def contact_texts(self) -> list[str]:
-        return self._contact.texts()
-
     def _set_status(self, text, colour, weight=500):
         self._status.setText(text)
         self._status.setStyleSheet(dt.css_text(dt.SIZE_XS, weight, colour))
@@ -1291,9 +1288,6 @@ class RecordFlow(QWidget):
         self._set_step(self.STEP_READY)
         self._scan_and_assign()
         self._tick.start()
-
-    def goto_connect(self):
-        self._set_step(self.STEP_READY)
 
     def goto_setup(self):
         """Show "Get ready" (devices + plan are one screen now; kept so callers

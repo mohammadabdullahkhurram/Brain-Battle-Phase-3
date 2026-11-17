@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import csv
 import os
-import time
 from typing import Optional
 
 from brain_battle.capture.contact_quality import CHANNELS, SENSOR_NAME

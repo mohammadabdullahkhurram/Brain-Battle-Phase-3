@@ -276,10 +276,6 @@ def qss_app() -> str:
     """
 
 
-def qss_canvas_ambient() -> str:
-    return f"QWidget#canvas {{ background: {_p().canvas}; }}"
-
-
 def qss_card(name: str = "card", radius: int = RADIUS_LG, bg: str | None = None,
              border_color: str | None = None) -> str:
     p = _p()

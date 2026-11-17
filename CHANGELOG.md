@@ -5,9 +5,43 @@
 reviewed `3.0.0-beta.2`. The "Phase 2.N" headings further down are historical
 dev-log numbering, kept as history — they do not track the release version.
 
+## 3.1.0-dev · Tidy-up, both CI systems green, a README for testers (no new tag)
+
+**Branches and tags (new rules, in `AGENTS.md` and
+[Developer setup & workflow](docs/developer-guide/setup-and-workflow.md))**
+- Three branches: `develop` (the only one anyone works on) → `staging` (for
+  the owner and a teammate to test; receives merges from `develop` only) →
+  `main` (approved versions; receives merges from `staging` only). Bugs found
+  in testing are fixed on `develop`.
+- New tags only when a version moves: `v3.1.0-rc.N` to `staging`, `v3.1.0` to
+  `main`. No more snapshot (`pre-…`) or `-dev.N` tags; version and milestone
+  tags are never deleted. Every new tag is listed at the top of "Main
+  checkpoints" in `README.md`.
+- Removed the snapshot tags `pre-fable-2026-11-13`, `pre-redesign-2026-11-13`
+  and `pre-fdfix-2026-11-16` (locally and on GitHub): each sat on exactly the
+  same commit as a version tag (`v3.0.0-beta.2`, `v3.1.0-dev.1`,
+  `v3.1.0-dev.2`), so nothing is lost. References to them now name the
+  version tag.
+
+**Cleanup**
+- Removed code nothing used: `session_storage._labels_count`,
+  `MultiCamDecoder.indices_for_t`, `design_tokens.qss_canvas_ambient`,
+  `HeadbandView.contact_texts`, `RecordFlow.goto_connect`,
+  `ReviewLabelScreen._placed_row`, and unused imports in `app.py` and nine
+  other modules / tools.
+- Renamed the two archived reports to the docs' kebab-case naming:
+  `docs/archive/architecture-and-evaluation.md` and
+  `docs/archive/playback-proposal.md` (links updated).
+- `AGENTS.md` now points at the history where it really is,
+  `docs/archive/history.md`.
+- Deleted local leftovers that were never in git: `__pycache__/` folders,
+  `.DS_Store` files, a stale `brain_battle.egg-info/`, the old `screens/`
+  output folder and `.brain_battle_prefs.json` (from the removed theme
+  switch).
+
 ## 3.1.0-dev · "Too many open files" fixed (tag `v3.1.0-dev.3`)
 
-Snapshot before it: `pre-fdfix-2026-11-16`. Decision and measurements:
+Snapshot before it: `pre-fdfix-2026-11-16` (removed in 2026-11-17's cleanup; same commit as `v3.1.0-dev.2`). Decision and measurements:
 [ADR-0022](docs/decisions/adr-0022-lsl-outlets-open-once.md).
 
 **Fixed**
@@ -80,7 +114,7 @@ Snapshot before it: `pre-fdfix-2026-11-16`. Decision and measurements:
 
 A second owner-approved pass on `develop` (full write-up with before/after
 pictures: `docs/reviews/2026-11-redesign.md`; snapshot before it:
-`pre-redesign-2026-11-13`). Recordings made with earlier versions still open;
+`pre-redesign-2026-11-13`, since removed; same commit as `v3.1.0-dev.1`). Recordings made with earlier versions still open;
 their labels are migrated automatically.
 
 **Redesigned** ([ADR-0018](docs/decisions/adr-0018-november-2026-redesign.md),

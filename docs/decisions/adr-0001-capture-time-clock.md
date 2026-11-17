@@ -30,7 +30,7 @@ breaks the moment a camera's true capture rate drifts from its declared rate.
    acquisition, and align by the recorded timestamps.
 
 The full survey is in
-[ARCHITECTURE_AND_EVALUATION.md](../project/planning-documents.md) (Intent A/B,
+[architecture-and-evaluation.md](../project/planning-documents.md) (Intent A/B,
 items I1–I4).
 
 ## Decision

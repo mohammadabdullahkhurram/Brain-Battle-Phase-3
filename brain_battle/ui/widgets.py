@@ -20,7 +20,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QRectF
 from PyQt6.QtGui import QIcon, QPainter, QColor, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
-    QWidget, QLabel, QPushButton, QFrame, QHBoxLayout, QVBoxLayout, QSizePolicy,
+    QWidget, QLabel, QPushButton, QFrame, QHBoxLayout, QSizePolicy,
     QButtonGroup,
 )
 

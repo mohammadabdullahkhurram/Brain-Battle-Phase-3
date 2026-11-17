@@ -15,7 +15,7 @@ every screen, more than one labeller per recording, hiding boxer names, Mac and
 Windows support, and a recordings folder shared between computers
 ([write-up](../reviews/2026-11-redesign.md)).
 `main` is the reviewed `3.0.0-beta.2`; `develop` awaits the owner's review
-before it is merged. The hardware is broken, so everything is built and tested
+before it moves to `staging` for testing and then to `main`. The hardware is broken, so everything is built and tested
 against a generated demo session and simulated devices.
 
 ## What's complete
@@ -87,6 +87,9 @@ Brain Battle is developed under an explicit agreement that governs every change:
   pass/fail** — not just "I ran the tests".
 - **`DESIGN.md` is the source of truth for all UI work.** If code and DESIGN.md
   disagree, ask; don't guess.
+- **Work only on `develop`.** `staging` receives merges from `develop` for the
+  owner and a teammate to test; `main` receives merges from `staging` once
+  approved. Bugs found in testing are fixed on `develop` ([branch policy](../developer-guide/setup-and-workflow.md)).
 - **Documentation is part of every change** — a change isn't done until its docs
   are updated (see [docs-guide.md](../contributing/docs-guide.md#documentation-is-part-of-every-change-owner-rule)).
 

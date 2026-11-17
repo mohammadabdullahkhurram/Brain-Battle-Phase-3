@@ -9,26 +9,15 @@ from brain_battle.support.log_setup import init_logging
 init_logging()
 log = logging.getLogger(__name__)
 
-from pathlib import Path
 import sys
-import datetime as _dt
-
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QTabWidget,
-    QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QPushButton, QFrame, QSizePolicy, QFileDialog,
-    QListWidget, QListWidgetItem, QScrollArea,
-    QSplitter, QSlider, QComboBox, QLineEdit,
-    QGroupBox, QProgressBar, QStatusBar, QToolBar,
-    QSpacerItem, QMessageBox, QStackedWidget
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QMessageBox
 )
-from PyQt6.QtCore import Qt, QTimer, QSize, QThread, pyqtSignal
-from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QPixmap, QPainter
+from PyQt6.QtCore import Qt, QTimer
 
 from brain_battle.ui.record_flow import RecordFlow
 from brain_battle.version import __version__
-import brain_battle.data.session_history as session_history
 from brain_battle.ui.fonts import register_fonts
 
 

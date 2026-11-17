@@ -31,11 +31,10 @@ import os
 import shutil
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QFrame, QSizePolicy, QLineEdit, QCheckBox, QScrollArea, QComboBox,
-    QButtonGroup, QRadioButton, QColorDialog, QFileDialog, QMessageBox,
+    QFrame, QLineEdit, QCheckBox, QScrollArea, QComboBox,
+    QButtonGroup, QRadioButton, QColorDialog, QFileDialog,
 )
 
 import brain_battle.ui.design_tokens as dt

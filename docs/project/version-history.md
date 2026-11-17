@@ -65,7 +65,7 @@ still open unchanged, and can be given an XDF with
 `python3 -m brain_battle.data.session_xdf "<recording folder>"`.
 
 **3.1.0-dev, second pass** (tag `v3.1.0-dev.2`; snapshot before it:
-`pre-redesign-2026-11-13`) redesigned every screen
+`v3.1.0-dev.1`) redesigned every screen
 ([ADR-0018](../decisions/adr-0018-november-2026-redesign.md)), let more than
 one person label a recording
 ([ADR-0019](../decisions/adr-0019-one-labels-file-per-labeller.md)), made a

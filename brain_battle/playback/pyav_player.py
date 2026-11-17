@@ -1,7 +1,7 @@
 """
 pyav_player.py
 ──────────────
-App-driven multi-camera playback (DESIGN §6 / docs/archive/PLAYBACK_PROPOSAL.md Option
+App-driven multi-camera playback (DESIGN §6 / docs/archive/playback-proposal.md Option
 C). ONE playhead `t` on the `t_session_seconds` axis drives every camera: each
 tile shows the frame whose sidecar `t_session_seconds` is the latest ≤ t. There
 is no per-player clock and no A/V sync — our videos have no audio — so video,
@@ -162,9 +162,6 @@ class MultiCamDecoder:
     @property
     def duration(self) -> float:
         return max((c.last_t for c in self.cameras if c.n_frames), default=0.0)
-
-    def indices_for_t(self, t: float) -> list:
-        return [c.index_for_t(t) for c in self.cameras]
 
     def decode_all(self, t: float) -> dict:
         """{camera_index: rgb ndarray} for the frame-at-t of each camera."""

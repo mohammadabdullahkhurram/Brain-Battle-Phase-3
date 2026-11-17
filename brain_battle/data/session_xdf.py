@@ -47,7 +47,6 @@ Qt-free. Command line:
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sys

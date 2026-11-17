@@ -19,7 +19,7 @@ longer ones). This is exactly the desync the owner saw eyes-on-glass.
 
 ## Options considered
 
-(Measured in [PLAYBACK_PROPOSAL.md](../project/planning-documents.md).)
+(Measured in [playback-proposal.md](../project/planning-documents.md).)
 
 1. **A — python-vlc (vmem→QPainter)** — plays at nominal fps (wrong on the drift
    camera) and **requires the user to install VLC**.
@@ -57,6 +57,6 @@ two playback stacks into one.
 ## Links
 
 - Commits `c75e7a8` (adopt Option C), `0c777d1` (PyAV single-clock player).
-- [PLAYBACK_PROPOSAL.md](../project/planning-documents.md),
+- [playback-proposal.md](../project/planning-documents.md),
   [playback-clock flow](../developer-guide/key-flows.md#the-playback-clock),
   [ADR-0001](adr-0001-capture-time-clock.md).

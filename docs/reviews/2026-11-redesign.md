@@ -1,7 +1,7 @@
 # November 2026 redesign pass (3.1.0-dev, second pass)
 
-**What this page covers:** what changed on `develop` between the snapshot tag
-`pre-redesign-2026-11-13` and the tag `v3.1.0-dev.2` — the redesign (with
+**What this page covers:** what changed on `develop` between the tag
+`v3.1.0-dev.1` and the tag `v3.1.0-dev.2` — the redesign (with
 before/after pictures), several labellers per recording, hiding boxer names,
 Mac and Windows, shared-folder safety — plus the commits, the test results,
 what still needs real hardware or a real Windows machine, and the decisions
@@ -10,7 +10,7 @@ on its own from the owner's brief; nothing here has been reviewed by a person
 yet.
 
 - **Branch:** `develop` only. `main` was not touched.
-- **To go back:** `git switch -c restore-pre-redesign pre-redesign-2026-11-13`.
+- **To go back:** `git switch -c restore-pre-redesign v3.1.0-dev.1`.
 - **Version:** `3.1.0-dev` (unchanged); tag `v3.1.0-dev.2`.
 - **To look at it:** `BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle`, with a
   demo library: `python3 tools/generate_demo_session.py --out <empty folder>
@@ -34,7 +34,7 @@ on a real Windows computer, a real network drive, or real hardware.
 
 The reasoning is in [ADR-0018](../decisions/adr-0018-november-2026-redesign.md);
 `docs/DESIGN.md` was rewritten to match. Pictures are 1280×800, from simulated
-devices; "before" is rendered from `pre-redesign-2026-11-13`.
+devices; "before" is rendered from `v3.1.0-dev.1`.
 
 ### The frame (visible in every picture below)
 

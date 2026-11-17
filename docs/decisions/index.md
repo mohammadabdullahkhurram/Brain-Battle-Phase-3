@@ -48,5 +48,5 @@ file is missing from this index or from `nav.yml`.
 | [ADR-0022](adr-0022-lsl-outlets-open-once.md) | LSL streams are opened once per run and reused | 2026-11-16 | Accepted |
 
 The sources behind these decisions are the planning documents
-([DESIGN.md, ROADMAP.md, PLAYBACK_PROPOSAL.md, ARCHITECTURE_AND_EVALUATION.md,
+([DESIGN.md, ROADMAP.md, playback-proposal.md, architecture-and-evaluation.md,
 history.md](../project/planning-documents.md)) and the git history.

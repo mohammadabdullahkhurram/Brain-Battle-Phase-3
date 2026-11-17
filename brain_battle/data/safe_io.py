@@ -30,7 +30,6 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from brain_battle.support.platform_utils import computer_name, is_windows, is_mac
 

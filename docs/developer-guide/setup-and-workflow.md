@@ -53,19 +53,22 @@ PowerShell). Every push to `develop` or `main` runs the whole test suite on
 macOS and Windows through GitHub Actions — see
 [Cross-platform & CI](cross-platform-and-ci.md).
 
-## Branch policy: `main` and `develop`
+## Branch policy: `develop`, `staging` and `main`
 
-- **`main` is the stable, reviewed version.** It only ever advances when the
-  owner has reviewed and approved the work, and each such merge is marked with a
-  version tag (e.g. `v3.0.0-beta.2`).
-- **`develop` is the staging area.** All new work happens on `develop` first.
+- **`develop` is the only branch anyone works on.** New work and bug fixes are
+  all made and committed on `develop`.
+- **`staging` is for the owner and a teammate to test.** It only ever receives
+  merges from `develop`.
+- **`main` holds approved versions only.** It only ever receives merges from
+  `staging`, once the owner has approved what was tested there.
+- **A bug found while testing is fixed on `develop`,** and a new version is
+  then merged from `develop` to `staging`.
 - **The flow:** work on `develop` → run the full `tests/` suite → commit per
-  logical change → the owner reviews → on approval, merge `develop` into `main`
-  (a merge commit) and tag the release. After such a release `main` and
-  `develop` point at the same commit.
+  logical change → merge `develop` into `staging` and tag a release candidate →
+  the owner and teammate test → on approval, merge `staging` into `main` and tag
+  the release.
 
-Don't push to `main` without that owner approval. If you're starting fresh work,
-do it on `develop`.
+Don't push to `staging` or `main` unless the owner asks for it.
 
 ## Commits
 
@@ -122,16 +125,21 @@ The decisions that came out of this process are written up as
 
 Git tags are how we find our way back to any earlier version of the project.
 
-- **Every merge into `main` gets a version tag** — `vX.Y.Z` or `vX.Y.Z-beta.N`
-  (e.g. `v3.0.0-beta.2`), matching `brain_battle/version.py`.
-- **A snapshot tag is created on `develop` before any large or autonomous
-  change** — `pre-<task>-<date>` (e.g. `pre-fable-2026-11-13`), so there is
-  always a known-good point to return to.
-- **`milestone/<name>` tags mark finished roadmap phases** (e.g.
-  `milestone/phase-2-data-safety`, `milestone/phase-3-redesign`).
+- **A new tag is made only when a version moves to another branch:** to
+  `staging` → `vX.Y.Z-rc.N` (`v3.1.0-rc.1`, `v3.1.0-rc.2`, …); to `main` →
+  `vX.Y.Z` (e.g. `v3.1.0`), matching `brain_battle/version.py`.
+- **No more snapshot (`pre-…`) or `-dev.N` tags.** The older ones that remain
+  are history (the `pre-…` snapshots that sat on the same commit as a version
+  tag were removed on 2026-11-17).
+- **`milestone/<name>` tags** mark finished roadmap phases (e.g.
+  `milestone/phase-3-redesign`). Version and milestone tags are never deleted,
+  and no tag is ever moved.
+- **Every new tag is listed at the top of "Main checkpoints" in `README.md`**
+  with its date, short commit and what it contains; tags that stop mattering
+  move to "Older tags".
 
 Tags are annotated (`git tag -a <name> <commit> -m "..."`) and pushed with
-`git push origin --tags`. Never move or delete an existing tag.
+`git push origin <name>`.
 
 **Look at an old version** (read-only; don't commit here):
 

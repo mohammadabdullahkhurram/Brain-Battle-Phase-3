@@ -129,7 +129,7 @@ class SessionLayout:
     # captured at the same instant, is what maps the monotonic domain
     # (phase markers, camera frame sidecars — all t_session_seconds) to the
     # Unix domain (EEG CSV timestamps). t_session = unix_ts - capture_t0_unix.
-    # Fixes the "three assumed zeros" of ARCHITECTURE_AND_EVALUATION.md §1.6/§2.4.
+    # Fixes the "three assumed zeros" of architecture-and-evaluation.md §1.6/§2.4.
     capture_t0_monotonic: Optional[float] = None
     capture_t0_unix:      Optional[float] = None
     capture_t0_lsl:       Optional[float] = None   # same instant on the LSL clock
@@ -586,10 +586,6 @@ def _labeller_counts(root: Path) -> dict:
         return labels_store.labeller_counts(root)
     except Exception:
         return {}
-
-
-def _labels_count(root: Path) -> int:
-    return sum(_labeller_counts(root).values())
 
 
 def _history_has_export(root: Path) -> bool:

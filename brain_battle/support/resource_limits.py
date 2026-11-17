@@ -22,7 +22,6 @@ from __future__ import annotations
 import logging
 import os
 import stat
-import sys
 import threading
 
 log = logging.getLogger(__name__)

@@ -1445,9 +1445,6 @@ class ReviewLabelScreen(QWidget):
             self._placed_layout.insertWidget(self._placed_layout.count() - 1,
                                              self._label_row(lab, deletable=True))
 
-    def _placed_row(self, lab):
-        return self._moment_row(lab) if lab.get("moment") else self._label_row(lab, True)
-
     def _label_row(self, lab, deletable=False, tag=None):
         """time · who · colour · name [· tag] [· delete]. Click to jump there."""
         row = QFrame(); row.setObjectName("row")

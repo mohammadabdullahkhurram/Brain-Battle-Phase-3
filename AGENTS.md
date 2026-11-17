@@ -4,7 +4,7 @@
 > file for AI coding agents (read automatically by OpenAI Codex, and by Claude
 > Code via a one-line `CLAUDE.md` that imports it). It is the **single source**
 > of these instructions — do not duplicate its content elsewhere. It describes
-> the **present** state of the project; `docs/project/history.md` keeps the
+> the **present** state of the project; `docs/archive/history.md` keeps the
 > long-form narrative.
 
 PyQt6 desktop app for neuroscience boxing capture: 4 USB cameras + 2 Muse-S EEG
@@ -52,28 +52,37 @@ the `brain_battle` package (`ui/` · `capture/` · `playback/` · `data/` ·
 
 ### Branch policy
 
-- **`main` is the stable, reviewed version.** It only ever advances when the
-  owner has reviewed and approved the work, and each such merge is marked with
-  a version tag (e.g. `v3.0.0-beta.2`).
-- **`develop` is the staging area.** All new work happens on `develop` first.
+- **`develop` is the only branch anyone works on.** Every change — new work and
+  bug fixes alike — is made and committed on `develop`.
+- **`staging` is for the owner and a teammate to test.** It only ever receives
+  merges from `develop`; nobody commits on it directly.
+- **`main` holds approved versions only.** It only ever receives merges from
+  `staging`, after the owner has approved what was tested there.
+- **Bugs found while testing are fixed on `develop`,** and then a new version
+  is merged from `develop` to `staging` (with a new `rc` tag, below).
 - The flow: work on `develop` → run the full suite → commit per logical change
-  → the owner reviews → on approval, merge `develop` into `main` (a merge
-  commit) and tag the release. Don't push to `main` without that approval.
+  → merge `develop` into `staging` and tag it → the owner and teammate test →
+  on approval, merge `staging` into `main` and tag it. Never push to `staging`
+  or `main` without the owner asking for it.
 
 ### Versions & tags
 
 Git tags are how we find our way back to any earlier version of the project.
 
-- **Every merge into `main` gets a version tag** — `vX.Y.Z` or `vX.Y.Z-beta.N`
-  (e.g. `v3.0.0-beta.2`), matching `brain_battle/version.py`.
-- **A snapshot tag is created on `develop` before any large or autonomous
-  change** — `pre-<task>-<date>` (e.g. `pre-fable-2026-11-13`), so there is
-  always a known-good point to return to.
-- **`milestone/<name>` tags mark finished roadmap phases** (e.g.
-  `milestone/phase-2-data-safety`, `milestone/phase-3-redesign`).
+- **New tags are made only when a version moves to another branch:**
+  - to `staging` → a release candidate, `vX.Y.Z-rc.N` (`v3.1.0-rc.1`,
+    `v3.1.0-rc.2`, …);
+  - to `main` → the release itself, `vX.Y.Z` (e.g. `v3.1.0`).
+- **No more snapshot (`pre-…`) tags and no more `-dev.N` tags.** The existing
+  ones stay as history.
+- **Never delete a version tag (`v…`) or a milestone tag (`milestone/…`)**, and
+  never move any tag.
+- **Every new tag goes at the top of "Main checkpoints" in `README.md`**, with
+  its date, short commit hash and a 2–3 sentence description. A tag that is no
+  longer relevant moves down to "Older tags".
 
 Tags are annotated (`git tag -a <name> <commit> -m "..."`) and pushed with
-`git push origin --tags`. Never move or delete an existing tag.
+`git push origin <name>`.
 
 **Look at an old version** (read-only; don't commit here):
 
@@ -373,8 +382,7 @@ bell, extra signals + LSL sharing, and the shared label list — all autosaving.
   removed.
 
 **3.1.0-dev, second pass (the November 2026 redesign —
-`docs/reviews/2026-11-redesign.md`, tag `v3.1.0-dev.2`, snapshot
-`pre-redesign-2026-11-13`):**
+`docs/reviews/2026-11-redesign.md`, tag `v3.1.0-dev.2`):**
 - **Every screen redesigned** (ADR-0018; `docs/DESIGN.md` rewritten;
   `ui/widgets.py` is the shared component set). New recording is three screens:
   Get ready → Recording → Saved.
@@ -385,8 +393,7 @@ bell, extra signals + LSL sharing, and the shared label list — all autosaving.
 - **Mac + Windows** (`support/platform_utils.py`, CI on both) and **a shared
   recordings folder** (ADR-0020, `data/safe_io.py`).
 
-**3.1.0-dev, open-files fix (tag `v3.1.0-dev.3`, snapshot
-`pre-fdfix-2026-11-16`):** recordings in a row no longer run out of open files.
+**3.1.0-dev, open-files fix (tag `v3.1.0-dev.3`):** recordings in a row no longer run out of open files.
 The LSL outlets are opened once per run and reused, over IPv4 only (ADR-0022);
 the app raises its own open-file limit at start-up
 (`support/resource_limits.py`) as a safety net; a failed manifest / marker /
@@ -420,7 +427,8 @@ playback, undo/redo and an editable list of placed labels all ship in
 
 **What's next:** the owner reviews `develop` (start with
 `docs/reviews/2026-11-redesign.md` — it lists the decisions waiting for
-them; the earlier pass is `docs/reviews/2026-11-fable-review.md`) and, if happy, merges it to `main` with a version tag. The most valuable
+them; the earlier pass is `docs/reviews/2026-11-fable-review.md`) and, if happy, it is merged to `staging` (tag `v3.1.0-rc.1`) for the owner and a
+teammate to test, then from `staging` to `main` (tag `v3.1.0`). The most valuable
 next step is not code: **one real recording** with the buzzer/tap check. After
 that, the rest of **Phase 5** in `docs/ROADMAP.md` (per-round clip export, a
 whole-recording EEG quality summary, a drift-proof combined video, a
@@ -431,7 +439,7 @@ explicit go-ahead.** Nothing starts on its own initiative.
 For the long-form history behind the current architecture — the unified
 capture-time clock build, the package reorganisation, the prior functional-fixes
 / cleanup phase, and the v1.x→v2.x recording-model migration — see
-**`docs/project/history.md`** (archived narrative under `docs/archive/`).
+**`docs/archive/history.md`** (archived narrative under `docs/archive/`).
 
 ## Module map
 
