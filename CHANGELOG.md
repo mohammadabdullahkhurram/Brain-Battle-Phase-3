@@ -7,6 +7,17 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Tidy-up, both CI systems green, a README for testers (no new tag)
 
+**README rewritten for testers**
+- `README.md` is now short and written for a non-technical teammate: what
+  Brain Battle is; numbered steps to run it on Mac and on Windows (Python 3.12,
+  ffmpeg, git or ZIP, the `staging` branch, `pip install -e .`, demo mode with
+  `BRAIN_BATTLE_SIMULATE=1` — including PowerShell's `$env:` form — demo
+  recordings, updating); the four most likely problems; a clear "tested only
+  in simulation" note; how to report a problem (including where the log is);
+  and every remaining tag, newest first, with its date, commit and what it is
+  for ("Main checkpoints", then "Older tags").
+- The Installation page says which branch testers use and how to update.
+
 **Branches and tags (new rules, in `AGENTS.md` and
 [Developer setup & workflow](docs/developer-guide/setup-and-workflow.md))**
 - Three branches: `develop` (the only one anyone works on) → `staging` (for

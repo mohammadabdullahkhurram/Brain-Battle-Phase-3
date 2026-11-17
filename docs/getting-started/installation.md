@@ -16,8 +16,25 @@ the project folder.
 | The packages in `requirements.txt` | The window toolkit, camera and Bluetooth support, and others |
 | `ffmpeg` | Recording each camera to video, and exporting |
 
+Python **3.12** is the version the automatic tests run on (3.13 also works).
+
 Cameras and headbands are **not** needed to install or explore the app — see
 [First run](first-run.md) for how to try it without any hardware.
+
+## Getting the code
+
+Testers use the **`staging`** branch — the version currently being tested
+(`develop` is where work happens; `main` holds approved versions). Either clone
+it with git:
+
+```bash
+git clone --branch staging https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3.git
+```
+
+or, on the GitHub page, switch the branch menu to `staging` and use
+**Code → Download ZIP**. To update later, run `git pull` in the folder and
+install again (`pip install -e .`). The project's `README.md` has the same
+steps, numbered, for Mac and Windows, including demo mode.
 
 ## Mac
 
