@@ -132,7 +132,7 @@ def _make_session(base):
     for t, pid, lab, rn in ((0.0, "baseline", "BASELINE_START", 0), (4.0, "round", "ROUND_1_START", 1),
                             (14.0, "done", "SESSION_END", 0)):
         layout.append_marker(t, pid, lab, rn)
-    layout.add_moment(6.5)
+    layout.add_moment(6.5, note="B covered up")
     muse = layout.continuous_dir() / "Muse data"
     truth = {}
     # File-name order would give 2222 → A; the manifest says 1111 is A.
@@ -178,10 +178,11 @@ def test_session_xdf():
           and not os.path.exists(path + ".tmp"))
     by = _load(path, dejitter_timestamps=False)
     t0 = origin["t0_lsl"]
-    check("XDF: EEG per boxer, movement, markers, labels and the camera's frames",
+    check("XDF: EEG per boxer, movement, markers, moments, labels and the camera's frames",
           set(by) == {"BrainBattle_EEG_A", "BrainBattle_EEG_B", "BrainBattle_ACC_A",
                       "BrainBattle_ACC_B", "BrainBattle_GYRO_A", "BrainBattle_GYRO_B",
-                      "BrainBattle_Markers", "BrainBattle_Labels_t", "BrainBattle_Video_SIDE_01"}
+                      "BrainBattle_Markers", "BrainBattle_Moments", "BrainBattle_Labels_t",
+                      "BrainBattle_Video_SIDE_01"}
           - ({"BrainBattle_GYRO_A", "BrainBattle_GYRO_B"} - set(by)), str(sorted(by)))
     for who in ("A", "B"):
         s = by[f"BrainBattle_EEG_{who}"]
@@ -195,9 +196,13 @@ def test_session_xdf():
               bb["boxer"][0] == who and float(bb["session_start"][0]) == t0
               and bb["headband"][0].endswith("1111" if who == "A" else "2222"))
     mk = by["BrainBattle_Markers"]
-    check("XDF: phase markers + the marked moment, in time order",
-          [r[0] for r in mk["time_series"]] == ["BASELINE_START", "ROUND_1_START", "MOMENT", "SESSION_END"]
-          and np.allclose(mk["time_stamps"] - t0, [0.0, 4.0, 6.5, 14.0], atol=1e-6))
+    check("XDF: the system markers, in time order (an old SESSION_END recording)",
+          [r[0] for r in mk["time_series"]] == ["BASELINE_START", "ROUND_1_START", "SESSION_END"]
+          and np.allclose(mk["time_stamps"] - t0, [0.0, 4.0, 14.0], atol=1e-6))
+    mo = by["BrainBattle_Moments"]
+    check("XDF: the marked moment and its note in BrainBattle_Moments",
+          [r[0] for r in mo["time_series"]] == ["B covered up"]
+          and np.allclose(mo["time_stamps"] - t0, [6.5], atol=1e-6))
     lb = by["BrainBattle_Labels_t"]       # one label stream per labeller ("t" placed these)
     check("XDF: the label stream names its labeller",
           lb["info"]["desc"][0]["brain_battle"][0]["labeller"][0] == "t")

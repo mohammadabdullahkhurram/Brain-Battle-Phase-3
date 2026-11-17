@@ -201,13 +201,24 @@ class SessionLayout:
             w.writerow([f"{t_session_sec:.3f}", phase_id, label,
                        round_num, f"{time.time():.3f}"])
 
-    def add_moment(self, t_session_sec: float) -> dict:
-        """Record a 'Mark this moment' at a session time. Stored in the manifest
-        (and surfaced in Review & Label as an unnamed label). Returns the entry."""
+    def add_moment(self, t_session_sec: float, note: str = "") -> dict:
+        """Record a 'Mark this moment' at a session time, with the observer's
+        note (often empty at first — "Add note later"). Stored in the manifest
+        and in moments.csv. Returns the entry."""
         entry = {"t_session_seconds": round(float(t_session_sec), 3),
-                 "unix_time": round(time.time(), 3)}
+                 "unix_time": round(time.time(), 3), "note": clean_note(note)}
         self.moments.append(entry)
         self._write_manifest()
+        write_moments_csv(self.root, self.moments)
+        return entry
+
+    def set_moment_note(self, index: int, note: str) -> dict:
+        """Give the index-th moment of THIS recording its note (the Moment popup
+        while still recording)."""
+        entry = self.moments[index]
+        entry["note"] = clean_note(note)
+        self._write_manifest()
+        write_moments_csv(self.root, self.moments)
         return entry
 
     def mark_stopped_early(self, t_session_sec: float) -> None:
@@ -416,9 +427,19 @@ def dismiss_interrupted(session_root) -> bool:
     return _update_manifest(session_root, lambda m: m.update(interrupted_dismissed=True))
 
 
+MOMENTS_CSV = "moments.csv"
+_NOTE_MAX = 2000
+
+
+def clean_note(note) -> str:
+    """A note as stored: one paragraph of plain text, spaces tidied, capped."""
+    return " ".join(str(note or "").split())[:_NOTE_MAX]
+
+
 def read_moments(session_root) -> list:
-    """The 'Mark this moment' entries recorded during capture (each a dict with
-    t_session_seconds), newest-last. [] if none / unreadable."""
+    """The 'Mark this moment' entries recorded during capture, oldest first:
+    each ``{"t_session_seconds", "note"}`` (``note`` is "" until someone writes
+    one). [] if none / unreadable."""
     m = _read_manifest(Path(session_root))
     if not m:
         return []
@@ -426,10 +447,54 @@ def read_moments(session_root) -> list:
     for e in (m.get("moments") or []):
         if isinstance(e, dict) and "t_session_seconds" in e:
             try:
-                out.append({"t_session_seconds": float(e["t_session_seconds"])})
+                out.append({"t_session_seconds": float(e["t_session_seconds"]),
+                            "note": clean_note(e.get("note"))})
             except (TypeError, ValueError):
                 continue
+    out.sort(key=lambda e: e["t_session_seconds"])
     return out
+
+
+def write_moments_csv(session_root, moments) -> None:
+    """moments.csv — the moments as their own file (t_session_seconds, note),
+    rewritten whole (atomically) whenever a moment or its note changes. The
+    manifest stays the source of truth; this is the same data as a CSV, and
+    what recording.xdf's BrainBattle_Moments stream holds."""
+    import csv as _csv
+    import io
+    import brain_battle.data.safe_io as safe_io
+    buf = io.StringIO()
+    w = _csv.writer(buf, lineterminator="\n")
+    w.writerow(["t_session_seconds", "note"])
+    for e in sorted(moments or [], key=lambda e: float(e.get("t_session_seconds", 0))):
+        w.writerow([f"{float(e['t_session_seconds']):.3f}", clean_note(e.get("note"))])
+    safe_io.atomic_write_text(Path(session_root) / MOMENTS_CSV, buf.getvalue())
+
+
+def set_moment_note(session_root, t_session_seconds: float, note: str) -> bool:
+    """Write (or change) the note of the moment at ``t_session_seconds`` —
+    Review & Label. The manifest is edited under the folder lock (another
+    computer may be doing the same), then moments.csv is rewritten. Returns
+    True if a moment at that time was found and saved."""
+    found = {"ok": False}
+    target = round(float(t_session_seconds), 3)
+
+    def change(m):
+        for e in (m.get("moments") or []):
+            if isinstance(e, dict) and abs(float(e.get("t_session_seconds", -1)) - target) < 0.0015:
+                e["note"] = clean_note(note)
+                found["ok"] = True
+                return True
+        return False
+
+    if not _update_manifest(session_root, change) or not found["ok"]:
+        return False
+    write_moments_csv(session_root, (_read_manifest(Path(session_root)) or {}).get("moments") or [])
+    return True
+
+
+def moments_without_note(session_root) -> int:
+    return sum(1 for e in read_moments(session_root) if not e["note"])
 
 
 # ─── Finding a recording's files ────────────────────────────────────────────────
@@ -698,6 +763,8 @@ class SessionInfo:
     labellers:     dict = field(default_factory=dict)
     colour_a:      Optional[str] = None     # "#RRGGBB" each fighter wears
     colour_b:      Optional[str] = None
+    moments:       int = 0                  # moments marked while recording
+    moments_open:  int = 0                  # … of which still without a note
 
     def labels_by(self, name: str) -> int:
         """How many labels this labeller has placed here (names compared the
@@ -729,13 +796,16 @@ def session_info(root) -> SessionInfo:
     dismissed = m.get("interrupted_dismissed") is True
     labellers = _labeller_counts(root)
     labels = sum(labellers.values())
+    open_moments = sum(1 for e in (m.get("moments") or [])
+                       if isinstance(e, dict) and not clean_note(e.get("note")))
     if interrupted:
         status = STATUS_INTERRUPTED
     elif _history_has_export(root):
         status = STATUS_EXPORTED
-    elif labels >= 1:
+    elif labels >= 1 and open_moments == 0:
         status = STATUS_LABELLED
     else:
+        # nobody has labelled it yet, or a marked moment still has no note
         status = STATUS_NEEDS_LABELLING
     if interrupted:
         stopped = _last_marker_tsession(root)
@@ -750,6 +820,7 @@ def session_info(root) -> SessionInfo:
                        float(m.get("started_unix") or 0.0), a, b, rounds,
                        planned, stopped, status, labels, interrupted, dismissed, True,
                        demo=m.get("demo") is True, labellers=labellers,
+                       moments=len(m.get("moments") or []), moments_open=open_moments,
                        colour_a=fa["colour_hex"], colour_b=fb["colour_hex"])
 
 
@@ -907,7 +978,8 @@ __all__ = [
     "create_session", "sanitize_name",
     "is_interrupted_session", "scan_interrupted_sessions", "flag_new_interrupted",
     "mark_session_interrupted", "dismiss_interrupted",
-    "read_moments",
+    "read_moments", "write_moments_csv", "set_moment_note", "moments_without_note",
+    "clean_note", "MOMENTS_CSV",
     "read_phase_markers", "is_phase_start", "phase_spans", "read_csv_tolerant", "camera_frame_rates", "friendly_phase", "short_phase", "eeg_files", "sensor_files", "camera_files",
     "session_info", "session_info_cached", "list_sessions", "folder_size_bytes",
     "session_total_seconds", "estimate_session_bytes", "disk_space_verdict",

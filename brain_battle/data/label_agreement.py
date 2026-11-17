@@ -103,7 +103,10 @@ def compare(labels_a, labels_b, name_a: str = "A", name_b: str = "B",
 
 
 def pairwise(by_labeller: dict, tolerance: float = DEFAULT_TOLERANCE) -> list[Agreement]:
-    """Agreement for every pair of labellers (``{name: [labels]}``)."""
+    """Agreement for every pair of labellers (``{name: [labels]}``). Custom
+    notes (``type: "note"``) are free text and are left out."""
+    by_labeller = {k: [l for l in v if (l or {}).get("type") != "note"]
+                   for k, v in by_labeller.items()}
     names = list(by_labeller)
     return [compare(by_labeller[a], by_labeller[b], a, b, tolerance)
             for i, a in enumerate(names) for b in names[i + 1:]]

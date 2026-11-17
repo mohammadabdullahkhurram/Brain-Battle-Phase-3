@@ -3,7 +3,9 @@ label_vocab.py
 ──────────────
 The shared label list for the whole team, stored as `label_list.json` in the
 recordings folder (so a shared folder shares one vocabulary, per DESIGN §7).
-Seeded from the DESIGN.md default palette on first use.
+Seeded from the DESIGN.md default list on first use (never overwritten
+afterwards). One-off descriptions are not label-list entries: they are custom
+notes (labels_store, ``type: "note"``) and stay with their recording.
 
 Each entry: {"key": 1-9, "name": str, "color": "#RRGGBB", "kind": "point" |
 "duration"}. "point" = a Moment; "duration" = Lasts a while (press to start,
@@ -22,17 +24,19 @@ FILENAME = "label_list.json"
 POINT = "point"
 DURATION = "duration"
 
-# DESIGN §"Label palette defaults" — keys 1–8, Clinch + Referee stop "last a
-# while" (duration), the rest are Moments (point).
+# DESIGN "Label list defaults" (the professor's list) — keys 1–8. Clinch and
+# Referee break "last a while" (duration); the rest are single moments (point).
+# Only used to seed a recordings folder that has no label_list.json yet: an
+# existing team list is never overwritten.
 DEFAULT_LABELS: list[dict] = [
-    {"key": 1, "name": "Jab",         "color": "#3D4FD6", "kind": POINT},
-    {"key": 2, "name": "Cross",       "color": "#7C3AED", "kind": POINT},
-    {"key": 3, "name": "Hook",        "color": "#0F766E", "kind": POINT},
-    {"key": 4, "name": "Uppercut",    "color": "#B45309", "kind": POINT},
-    {"key": 5, "name": "Block",       "color": "#4B5563", "kind": POINT},
-    {"key": 6, "name": "Clinch",      "color": "#BE185D", "kind": DURATION},
-    {"key": 7, "name": "Knockdown",   "color": "#B91C1C", "kind": POINT},
-    {"key": 8, "name": "Referee stop","color": "#15171C", "kind": DURATION},
+    {"key": 1, "name": "Punch thrown",  "color": "#2155D6", "kind": POINT},
+    {"key": 2, "name": "Punch landed",  "color": "#0F7A62", "kind": POINT},
+    {"key": 3, "name": "Punch missed",  "color": "#7A3FC4", "kind": POINT},
+    {"key": 4, "name": "Punch blocked", "color": "#465063", "kind": POINT},
+    {"key": 5, "name": "Punch dodged",  "color": "#A8570A", "kind": POINT},
+    {"key": 6, "name": "Clinch",        "color": "#B5246B", "kind": DURATION},
+    {"key": 7, "name": "Knockdown",     "color": "#B42318", "kind": POINT},
+    {"key": 8, "name": "Referee break", "color": "#161A22", "kind": DURATION},
 ]
 
 # UI words for the two kinds (DESIGN vocabulary — never show "point"/"duration").
@@ -43,8 +47,8 @@ KIND_LABEL = {POINT: "Moment", DURATION: "Lasts a while"}
 # named accents, so a new label never collides with an in-use colour until the
 # palette itself is exhausted).
 PALETTE: list[str] = [
-    "#3D4FD6", "#7C3AED", "#0F766E", "#B45309", "#4B5563", "#BE185D",
-    "#B91C1C", "#15171C", "#0E7490", "#C2410C", "#15803D", "#2B3AA8",
+    "#2155D6", "#0F7A62", "#7A3FC4", "#465063", "#A8570A", "#B5246B",
+    "#B42318", "#161A22", "#0E7490", "#C2410C", "#15803D", "#2B3AA8",
 ]
 
 

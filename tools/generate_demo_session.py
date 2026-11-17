@@ -329,7 +329,7 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
                           boxer_a: str | None = "K7Q2", boxer_b: str | None = "M3XA",
                           colour_a: str = "Red", colour_b: str = "Blue",
                           legacy_names: tuple | None = None,
-                          started_at=None) -> dict:
+                          moments=None, started_at=None) -> dict:
     """Build one complete demo session folder. Returns a summary dict
     (session root, per-camera + per-band generation parameters, markers,
     total duration, interrupted flag) — used both by main()'s printed
@@ -338,7 +338,9 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     ``boxer_a`` / ``boxer_b`` are fighter codes (``None`` leaves them out);
     ``legacy_names=("Sam", "Alex")`` instead writes the manifest the way
     recordings made before fighter codes did (``{"name", "headband"}``), so
-    the app's handling of old recordings can be checked."""
+    the app's handling of old recordings can be checked. ``moments`` is a list
+    of ``(t_session_seconds, note)`` "Mark this moment" presses (note may be
+    "")."""
     global _qapp_ref
     _qapp_ref = QApplication.instance() or QApplication(sys.argv)
 
@@ -385,6 +387,9 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
 
     for (t_sec, phase_id, label, round_num) in markers:
         layout.append_marker(t_sec, phase_id, label, round_num)   # REAL writer
+    for t_sec, note in (moments or []):
+        if t_sec <= total_duration:
+            layout.add_moment(t_sec, note=note)                    # REAL writer
 
     marker_times = sorted({round(m[0], 6) for m in markers})   # one flash per instant
     rng = np.random.default_rng(seed)
@@ -487,6 +492,8 @@ def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
 
     # 2) needs labelling (clean, no labels)
     r = generate_demo_session(out=base, seed=seed + 1, boxer_a="B9LN", boxer_b="R2DT",
+                              moments=[(8.0, "B dropped the guard after a combination"),
+                                       (12.0, "")],
                               started_at=when(3, 9, 30), **short)
     _sh.log_event(r["root"], _sh.EVENT_RECORDING_FINISHED)
     r["status"] = "needs labelling"; results.append(r)

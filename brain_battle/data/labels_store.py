@@ -13,11 +13,15 @@ file inside the recording folder:
     {"schema_version": 3, "time_axis": "t_session_seconds",
      "labeller": "Maya K",
      "labels": [ {id, label, who, kind, t_start, t_end, color,
-                  created_by, created_at}, ... ],
+                  created_by, created_at, type, text}, ... ],
      "named_moments": [12.4, ...]}
 
   who   : "A" | "B" | "Both"
   kind  : "point" (a Moment, t_end is null) | "duration" (Lasts a while)
+  type  : "label" (from the shared label list) | "note" (a custom note: the
+          labeller's own words in ``text``; ``label`` is "Note"; never added
+          to the label list, ignored by labeller agreement). Labels saved
+          before custom notes existed have no ``type`` and are labels.
   times : numbers on the t_session_seconds axis (the one capture clock)
   named_moments : the "Mark this moment" marks this labeller has already named
 
@@ -57,6 +61,14 @@ EARLIER_LABELS = "Earlier labels"  # labeller name for legacy labels with no aut
 POINT = "point"
 DURATION = "duration"
 WHO_VALUES = ("A", "B", "Both")
+TYPE_LABEL = "label"
+TYPE_NOTE = "note"
+NOTE_LABEL = "Note"
+NOTE_COLOR = "#344054"
+
+
+def is_note(label: dict) -> bool:
+    return (label or {}).get("type") == TYPE_NOTE
 
 
 def _now_iso() -> str:
@@ -66,7 +78,7 @@ def _now_iso() -> str:
 def new_label(label: str, who: str, kind: str, t_start: float,
               t_end: float | None = None, color: str = "#3D4FD6",
               created_by: str = "", created_at: str | None = None,
-              id: str | None = None) -> dict:
+              id: str | None = None, type: str = TYPE_LABEL, text: str = "") -> dict:
     if who not in WHO_VALUES:
         who = "Both"
     if kind not in (POINT, DURATION):
@@ -83,7 +95,15 @@ def new_label(label: str, who: str, kind: str, t_start: float,
         "color": str(color or "#3D4FD6"),
         "created_by": created_by or "",
         "created_at": created_at or _now_iso(),
+        "type": TYPE_NOTE if type == TYPE_NOTE else TYPE_LABEL,
+        "text": " ".join(str(text or "").split())[:2000] if type == TYPE_NOTE else "",
     }
+
+
+def new_note(text: str, who: str, t_start: float, created_by: str = "", **kw) -> dict:
+    """A custom note: who (A / B / Both), when, the labeller's own words."""
+    return new_label(NOTE_LABEL, who, POINT, t_start, color=NOTE_COLOR,
+                     created_by=created_by, type=TYPE_NOTE, text=text, **kw)
 
 
 def migrate_v1_to_v2(v1: dict, created_by: str = "migrated") -> list[dict]:
@@ -493,7 +513,7 @@ def events_timeline(labels, phase_markers) -> list[dict]:
             "t_end": "" if lab.get("t_end") is None else round(float(lab["t_end"]), 3),
             "source": "label",
             "who": lab.get("who", ""),
-            "label": lab.get("label", ""),
+            "label": (f"Note: {lab.get('text', '')}" if is_note(lab) else lab.get("label", "")),
             "labeller": lab.get("labeller", ""),
         })
     rows.sort(key=lambda r: (r["t_start"], 0 if r["source"] == "phase" else 1))
@@ -503,7 +523,8 @@ def events_timeline(labels, phase_markers) -> list[dict]:
 __all__ = ["LabelsStore", "load", "new_label", "migrate_v1_to_v2",
            "events_timeline", "SCHEMA_VERSION", "LEGACY_SCHEMA_VERSION", "TIME_AXIS",
            "JSON_NAME", "LABELS_DIR", "LEGACY_BACKUP", "EARLIER_LABELS",
-           "POINT", "DURATION", "WHO_VALUES",
+           "POINT", "DURATION", "WHO_VALUES", "TYPE_LABEL", "TYPE_NOTE", "NOTE_LABEL",
+           "is_note", "new_note",
            "labeller_slug", "labels_dir", "labeller_path", "migrate_legacy", "read_all",
            "all_labels", "labeller_counts", "same_labeller", "open_for_labeller",
            "legacy_sets", "claim_legacy"]

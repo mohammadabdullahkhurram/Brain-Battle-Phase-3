@@ -224,7 +224,8 @@ def test_xdf_streams_documented():
     _assert_all_documented(text, types, "XDF stream type")
     _assert_all_documented(text, labels - {"marker"}, "XDF channel label")
     _assert_all_documented(text, keys, "XDF description key")
-    _assert_all_documented(text, ["MOMENT", "Jab/A", "Clinch/Both/start"], "XDF marker text")
+    _assert_all_documented(text, ["MOMENT", "Punch landed/A", "Clinch/Both/start",
+                                  "Note/A: A keeps pressing forward"], "XDF marker text")
 
 
 def test_contact_log_documented():

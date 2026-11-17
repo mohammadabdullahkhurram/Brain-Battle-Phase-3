@@ -50,6 +50,7 @@ EVENT_RECORDING_INTERRUPTED = "recording_interrupted"
 EVENT_RECORDING_RECOVERED   = "recording_recovered"
 EVENT_OPENED_FOR_REVIEW     = "opened_for_review"
 EVENT_MOMENT_MARKED         = "moment_marked"
+EVENT_MOMENT_NOTED          = "moment_noted"
 EVENT_LABELS_ADDED          = "labels_added"
 EVENT_LABELS_REMOVED        = "labels_removed"
 EVENT_LABELS_MIGRATED       = "labels_migrated"
@@ -155,7 +156,7 @@ __all__ = [
     "HISTORY_FILENAME", "history_path", "log_event", "read_history",
     "EVENT_RECORDING_STARTED", "EVENT_RECORDING_FINISHED",
     "EVENT_RECORDING_INTERRUPTED", "EVENT_RECORDING_RECOVERED",
-    "EVENT_OPENED_FOR_REVIEW", "EVENT_MOMENT_MARKED",
+    "EVENT_OPENED_FOR_REVIEW", "EVENT_MOMENT_MARKED", "EVENT_MOMENT_NOTED",
     "EVENT_LABELS_ADDED", "EVENT_LABELS_REMOVED",
     "EVENT_LABELS_MIGRATED", "EVENT_LABELS_EXPORTED", "EVENT_EXPORT_CREATED",
     "EVENT_LABELS_CLAIMED", "current_user",

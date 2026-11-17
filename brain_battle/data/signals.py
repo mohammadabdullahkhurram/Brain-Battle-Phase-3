@@ -29,6 +29,7 @@ EEG_DIR_NAME = "Muse data"        # continuous/<this>/session_<band>.csv
 SENSOR_DIR_NAME = "Muse sensors"  # continuous/<this>/session_<band>_<KIND>.csv
 
 MARKER_STREAM = "BrainBattle_Markers"
+MOMENTS_STREAM = "BrainBattle_Moments"
 LABEL_STREAM = "BrainBattle_Labels"
 XDF_NAME = "recording.xdf"
 
@@ -53,5 +54,5 @@ def video_stream_name(stem: str) -> str:
 
 
 __all__ = ["SAMPLE_RATE", "EEG_CHANNELS", "EEG_UNIT", "CHANNEL_PLACES", "SENSORS",
-           "EEG_DIR_NAME", "SENSOR_DIR_NAME", "MARKER_STREAM", "LABEL_STREAM",
+           "EEG_DIR_NAME", "SENSOR_DIR_NAME", "MARKER_STREAM", "MOMENTS_STREAM", "LABEL_STREAM",
            "XDF_NAME", "label_stream_name", "eeg_stream_name", "sensor_stream_name", "video_stream_name"]

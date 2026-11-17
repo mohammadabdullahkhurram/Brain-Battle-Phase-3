@@ -7,6 +7,27 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
+**Moment notes, the new label list, custom notes**
+- A marked moment is `{t, note}`: the manifest's `moments` gain `note`, and a
+  new `moments.csv` (`t_session_seconds`, `note`) holds the same rows.
+  `session_storage.set_moment_note` edits a note later (Review) under the
+  folder lock; history logs `moment_noted`. A moment without a note keeps the
+  recording in **Needs labels** even if it has labels.
+- `recording.xdf`: `BrainBattle_Markers` now holds only the system markers
+  (the rows of `phase_markers.csv`); moments and their notes are in the new
+  `BrainBattle_Moments` stream (the rows of `moments.csv`). Live LSL still
+  shows `MOMENT` on the markers stream.
+- Default label list (seeded only into a folder that has none — an existing
+  team list is never replaced): Punch thrown, Punch landed, Punch missed,
+  Punch blocked, Punch dodged, Clinch, Knockdown, Referee break (keys 1–8;
+  Clinch and Referee break last a while).
+- Custom notes: a label with `type: "note"`, `label: "Note"` and the
+  labeller's `text` (`labels_store.new_note`). Never added to the label list;
+  ignored by labeller agreement; `labels.csv` gains `type` and `text` columns;
+  in the XDF label stream as `Note/<who>: <text>`.
+- New test `test_moments.py`; `test_label_vocab` covers notes and the kept
+  team list.
+
 **Recording starts 15 s before the baseline; automatic system markers; the bell at both ends of a round**
 - A fixed 15-second lead-in (`LEAD_IN_SEC`) comes before the baseline; the
   manifest records it as `lead_in_sec` and `phases` gains a `lead_in` entry.

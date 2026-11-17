@@ -9,10 +9,15 @@ Streams written (names shared with the live LSL outlets, see data/signals.py):
 
     BrainBattle_EEG_A / _B        EEG          5 ch · 256 Hz · microvolts
     BrainBattle_ACC|GYRO|PPG_A/_B headband movement / pulse sensors (if recorded)
-    BrainBattle_Markers           Markers      BASELINE_START, ROUND_1_START, …,
-                                               SESSION_END, and MOMENT
+    BrainBattle_Markers           Markers      the system markers of phase_markers.csv:
+                                               RECORDING_START, BASELINE_START, …,
+                                               ROUND_n_END, …, RECORDING_END
+    BrainBattle_Moments           Markers      one sample per marked moment; the
+                                               value is its note ("" if none) —
+                                               the same rows as moments.csv
     BrainBattle_Labels_<labeller> Markers      the labels placed in Review & Label
-                                               ("Jab/A", "Clinch/Both/start", …),
+                                               ("Punch landed/A", "Clinch/Both/start",
+                                               custom notes as "Note/A: <text>"),
                                                one stream per labeller; the
                                                labeller's name is in the stream
                                                description (<labeller>)
@@ -27,7 +32,7 @@ repeated in every stream's description as ``session_start``). So
 
     t_session_seconds = xdf_timestamp − session_start
 
-and the first marker, ``BASELINE_START``, follows within a fraction of a second.
+and the first marker, ``RECORDING_START``, follows within a fraction of a second.
 
 Fighters appear only as their 4-character codes and colours: every stream's
 description has ``boxer_a_code`` / ``boxer_b_code`` and ``boxer_a_colour`` /
@@ -58,7 +63,7 @@ import numpy as np
 
 import brain_battle.data.session_storage as session_storage
 from brain_battle.data.signals import (
-    EEG_CHANNELS, EEG_UNIT, SAMPLE_RATE, SENSORS, MARKER_STREAM,
+    EEG_CHANNELS, EEG_UNIT, SAMPLE_RATE, SENSORS, MARKER_STREAM, MOMENTS_STREAM,
     XDF_NAME, eeg_stream_name, sensor_stream_name, video_stream_name, label_stream_name)
 import brain_battle.data.labels_store as labels_store
 import brain_battle.data.fighters as fighters
@@ -128,14 +133,17 @@ def _labels_by_labeller(labels) -> dict:
 def label_events(labels) -> list[tuple]:
     """Placed labels as time-sorted ``(t_session, text)`` marker events. A
     moment label is ``"<label>/<who>"``; a label that lasts a while becomes two
-    events, ``"<label>/<who>/start"`` and ``"<label>/<who>/end"``."""
+    events, ``"<label>/<who>/start"`` and ``"<label>/<who>/end"``; a custom
+    note is ``"Note/<who>: <text>"``."""
     out = []
     for lab in labels or []:
         try:
             name, who, t0 = str(lab["label"]), str(lab.get("who") or "Both"), float(lab["t_start"])
         except (KeyError, TypeError, ValueError):
             continue
-        if lab.get("t_end") is None:
+        if labels_store.is_note(lab):
+            out.append((t0, f"{labels_store.NOTE_LABEL}/{who}: {lab.get('text', '')}"))
+        elif lab.get("t_end") is None:
             out.append((t0, f"{name}/{who}"))
         else:
             out.append((t0, f"{name}/{who}/start"))
@@ -216,9 +224,9 @@ def build_session_xdf(session_root, labels=None, out_path: Optional[str] = None)
             n_streams += 1
 
         events = [(t, label) for t, _pid, label in session_storage.read_phase_markers(root)]
-        events += [(m["t_session_seconds"], MOMENT_MARKER)
-                   for m in session_storage.read_moments(root)]
-        markers(MARKER_STREAM, sorted(events, key=lambda e: e[0]))
+        markers(MARKER_STREAM, events)          # already in time order, file order kept
+        markers(MOMENTS_STREAM, [(m["t_session_seconds"], m["note"])
+                                 for m in session_storage.read_moments(root)])
         if labels is None:
             labels = labels_store.all_labels(root)
         for who, labs in sorted(_labels_by_labeller(labels).items()):

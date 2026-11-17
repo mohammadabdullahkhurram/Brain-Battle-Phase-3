@@ -417,8 +417,8 @@ def build_coregistered_eeg(eeg_dfs, phase_markers, sr: int = 256):
 #   session_manifest.json, phase_markers.csv, history.jsonl, README.txt
 #   combined_2x2.mp4      — optional (off by default; slow)
 
-_LABELS_V2_COLUMNS = ["id", "labeller", "label", "who", "kind", "t_start", "t_end",
-                      "color", "created_by", "created_at"]
+_LABELS_V2_COLUMNS = ["id", "labeller", "type", "label", "who", "kind", "t_start", "t_end",
+                      "text", "color", "created_by", "created_at"]
 _EVENTS_COLUMNS = ["t_start", "t_end", "source", "who", "label", "labeller"]
 _AGREEMENT_COLUMNS = ["labeller_a", "labeller_b", "tolerance_seconds", "same_event",
                       "only_a", "only_b", "percent_agreement", "mean_time_difference_seconds"]
@@ -429,7 +429,9 @@ def _write_labels_csv_v2(labels, path):
         w = csv.DictWriter(f, fieldnames=_LABELS_V2_COLUMNS)
         w.writeheader()
         for lab in labels:
-            w.writerow({k: ("" if lab.get(k) is None else lab.get(k)) for k in _LABELS_V2_COLUMNS})
+            row = {k: ("" if lab.get(k) is None else lab.get(k)) for k in _LABELS_V2_COLUMNS}
+            row["type"] = lab.get("type") or "label"
+            w.writerow(row)
 
 
 def _write_events_csv(labels, phase_markers, path):

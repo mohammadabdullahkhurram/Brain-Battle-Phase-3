@@ -73,9 +73,9 @@ def test_bundle_contents():
     with zipfile.ZipFile(zip_path) as zf:
         txt = zf.read("labels.csv").decode("utf-8")
     hdr = next(csv.reader(io.StringIO(txt)))
-    check("labels.csv has v2 columns",
-          hdr == ["id", "labeller", "label", "who", "kind", "t_start", "t_end", "color",
-                  "created_by", "created_at"], str(hdr))
+    check("labels.csv columns (with type + text for custom notes)",
+          hdr == ["id", "labeller", "type", "label", "who", "kind", "t_start", "t_end",
+                  "text", "color", "created_by", "created_at"], str(hdr))
 
     # export_created history event
     events = [e.get("event") for e in session_history.read_history(DEMO_ROOT)]

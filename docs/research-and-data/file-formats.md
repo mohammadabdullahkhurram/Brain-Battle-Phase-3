@@ -28,7 +28,7 @@ by `session_storage.SessionLayout._write_manifest`. One JSON object:
 | `started_unix` | number | Same instant as a Unix timestamp (seconds) |
 | `boxers` | object | `A` and `B`, each `{code, colour, colour_hex, headband}` — the fighter's 4-character code and the colour they wear (never a name) |
 | `demo` | bool | `true` only for generated demo data (shows the Demo badge) |
-| `moments` | array | "Mark this moment" presses — each `{t_session_seconds, unix_time}` |
+| `moments` | array | "Mark this moment" presses — each `{t_session_seconds, unix_time, note}`; `note` is the observer's text (`""` until someone writes one — while recording or later in Review). The same rows are in [`moments.csv`](#momentscsv) |
 | `stopped_early` | bool | `true` if the operator pressed Stop and save before the plan finished |
 | `stopped_t_session` | number \| null | Where it was stopped (session seconds), else `null` |
 | `capture_clock` | object | The shared clock origin, one instant on three time scales: `{t0_monotonic, t0_unix, t0_lsl}` (`t0_lsl` is `null` in recordings made before version 3.1) |
@@ -73,7 +73,8 @@ Example (trimmed):
           "headband": "MuseS-7564"}
   },
   "demo": false,
-  "moments": [{"t_session_seconds": 95.1, "unix_time": 1794241666.1}],
+  "moments": [{"t_session_seconds": 95.1, "unix_time": 1794241666.1,
+               "note": "B dropped the guard after a combination"}],
   "stopped_early": false,
   "stopped_t_session": null,
   "capture_clock": {
@@ -261,7 +262,8 @@ above (it is a derived copy; see
 | `BrainBattle_ACC_A` / `_B` | `ACC` | `X`, `Y`, `Z` | 52 Hz | Accelerometer (g), if recorded |
 | `BrainBattle_GYRO_A` / `_B` | `GYRO` | `X`, `Y`, `Z` | 52 Hz | Gyroscope (degrees per second), if recorded |
 | `BrainBattle_PPG_A` / `_B` | `PPG` | `PPG1`, `PPG2`, `PPG3` | 64 Hz | Pulse sensor, if recorded |
-| `BrainBattle_Markers` | `Markers` | one string | irregular | Every system marker from `phase_markers.csv` (`RECORDING_START`, `BASELINE_START` … `ROUND_n_END` … `RECORDING_END`) and `MOMENT` for each "Mark this moment" |
+| `BrainBattle_Markers` | `Markers` | one string | irregular | Every system marker from `phase_markers.csv` (`RECORDING_START`, `BASELINE_START` … `ROUND_n_END` … `RECORDING_END`) — the same rows as that file |
+| `BrainBattle_Moments` | `Markers` | one string | irregular | One sample per "Mark this moment", the value being its note (`""` if none) — the same rows as `moments.csv` |
 | `BrainBattle_Labels_<labeller>` | `Markers` | one string | irregular | One stream **per labeller** with the labels that person placed (present once they have placed any) — see below. `<labeller>` is the labeller's name in file-name form, e.g. `BrainBattle_Labels_maya-k` |
 | `BrainBattle_Video_SIDE_01`, `BrainBattle_Video_SIDE_02`, `BrainBattle_Video_POV_01`, `BrainBattle_Video_POV_02` | `VideoFrames` | `frame_index` (int32) | irregular | One sample per recorded video frame: the value is the frame's number in that camera's MP4, the timestamp is when it was captured |
 
@@ -281,8 +283,10 @@ before version 3.1 have no `t0_lsl`; their XDF timestamps are simply
 `t_session_seconds`.
 
 **Label events** are written as text: `<label>/<who>` for a moment label (for
-example `Jab/A`), and two events — `<label>/<who>/start` and
-`<label>/<who>/end` — for a label that lasts a while (`Clinch/Both/start`).
+example `Punch landed/A`, or `Jab/A` in a team that kept an older label list),
+two events — `<label>/<who>/start` and `<label>/<who>/end` — for a label that
+lasts a while (`Clinch/Both/start`), and `Note/<who>: <text>` for a custom note
+(`Note/A: A keeps pressing forward`).
 Each labeller has their own stream, and the stream's description gives their
 name as typed (`labeller`), so two people's labels are never mixed.
 
@@ -295,8 +299,23 @@ streams). A recording made before fighter codes has its names instead
 The same stream names are published **live** over LSL from the first time New
 recording is opened until the app is closed (`lsl_outlets.LslPublisher`; they
 carry data only while devices are connected), so a file LabRecorder makes from
-them matches this one; the live set has no label streams (labels are placed
-later).
+them matches this one, with two differences: the live set has no label streams
+(labels are placed later), and a marked moment appears live as the text
+`MOMENT` on `BrainBattle_Markers` (its note is typed afterwards), whereas
+`recording.xdf` keeps moments, with their notes, in `BrainBattle_Moments`.
+
+## `moments.csv`
+
+The "Mark this moment" presses and their notes as their own file, in the
+recording folder — written by `session_storage.write_moments_csv` (rewritten
+whole, atomically, whenever a moment or its note changes). The manifest's
+`moments` holds the same data; `recording.xdf`'s `BrainBattle_Moments` stream
+holds the same rows.
+
+| Column | Type | Unit | Meaning | Example |
+|---|---|---|---|---|
+| `t_session_seconds` | float | seconds | When the moment was marked | `207.250` |
+| `note` | string | — | The observer's note (`""` = none yet) | `B dropped the guard` |
 
 ## `contact_quality.csv`
 
@@ -341,7 +360,7 @@ Each entry in `labels` (from `labels_store.new_label`):
 | Field | Type | Unit | Meaning | Example |
 |---|---|---|---|---|
 | `id` | string | — | Unique id (hex) | `"a1b2c3…"` |
-| `label` | string | — | The label text | `"Jab"` |
+| `label` | string | — | The label text (from the shared label list); `"Note"` for a custom note | `"Punch landed"` |
 | `who` | string | — | `A`, `B`, or `Both` | `"A"` |
 | `kind` | string | — | `point` (a moment) or `duration` (lasts a while) | `"point"` |
 | `t_start` | float | seconds | When it starts (session clock) | `95.100` |
@@ -349,6 +368,13 @@ Each entry in `labels` (from `labels_store.new_label`):
 | `color` | string | — | `#RRGGBB` swatch | `"#3D4FD6"` |
 | `created_by` | string | — | Who placed it (the labeller's name) | `"Maya K"` |
 | `created_at` | string | — | When it was placed, ISO 8601 | `"2026-11-09T18:02:11"` |
+| `type` | string | — | `label`, or `note` for a **custom note** (absent on labels saved before notes existed = `label`) | `"label"` |
+| `text` | string | — | A custom note's own words (`""` for a label) | `""` |
+
+A **custom note** ("Custom note…", key N, in Review & Label) is a label with
+`type: "note"`, `label: "Note"`, a `who`, a time and the labeller's `text`. It
+belongs to that recording only — it is never added to the label list — and
+labeller agreement ignores it.
 
 ```json
 {"schema_version": 3, "time_axis": "t_session_seconds",
@@ -385,9 +411,15 @@ per session), written by `label_vocab`. An array of entries; each:
 | `kind` | string | `point` or `duration` |
 
 ```json
-[{"key": 1, "name": "Jab", "color": "#3D4FD6", "kind": "point"},
- {"key": 6, "name": "Clinch", "color": "#BE185D", "kind": "duration"}]
+[{"key": 1, "name": "Punch thrown", "color": "#2155D6", "kind": "point"},
+ {"key": 6, "name": "Clinch", "color": "#B5246B", "kind": "duration"}]
 ```
+
+A recordings folder without the file is seeded with the default list: Punch
+thrown, Punch landed, Punch missed, Punch blocked, Punch dodged, Clinch,
+Knockdown, Referee break (keys 1–8; Clinch and Referee break last a while).
+**An existing team list is never replaced** by the defaults. Custom notes are
+not entries in this list.
 
 ## `fighter_colours.json`
 
@@ -432,6 +464,7 @@ The `event` values (from `session_history`):
 | `recording_recovered` | An interrupted recording was detected/recovered | — |
 | `opened_for_review` | The session is opened in Review & Label | — |
 | `moment_marked` | "Mark this moment" was pressed | the moment time |
+| `moment_noted` | A note was written or changed for a marked moment | the moment time and the `note` |
 | `labels_added` | A label was placed | the label, `who`, `t_start`, and the `labeller` |
 | `labels_removed` | A label was deleted | the same |
 | `labels_migrated` | An old single `labels.json` was moved into a per-labeller file | `to_labeller` |
@@ -478,11 +511,13 @@ plus the derived CSVs and the XDF. Contents:
 ### `labels.csv`
 
 Every labeller's labels flattened to one CSV (`export_module._LABELS_V2_COLUMNS`).
-Columns: `id`, `labeller`, `label`, `who`, `kind`, `t_start`, `t_end`, `color`,
-`created_by`, `created_at`. `labeller` is whose label it is (the name of the
-file it came from); the rest have the same meanings as in a
+Columns: `id`, `labeller`, `type`, `label`, `who`, `kind`, `t_start`, `t_end`,
+`text`, `color`, `created_by`, `created_at`. `labeller` is whose label it is
+(the name of the file it came from); `type` is `label` or `note`, and `text`
+holds a custom note's words; the rest have the same meanings as in a
 [labels file](#labelslabellerjson). A `null` `t_end` is written as an empty
-cell. To work with one person's labels, filter on `labeller`.
+cell. To work with one person's labels, filter on `labeller`; to leave custom
+notes out, keep `type == "label"`.
 
 ### `events.csv`
 
