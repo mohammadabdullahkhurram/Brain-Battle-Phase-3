@@ -125,20 +125,34 @@ def test_outlets_are_opened_once():
     n0 = lsl_outlets.open_outlet_count()
     check("the outlets of a closed publisher stay open for the next one", n0 == 4, str(n0))
     ts = np.array([clock.unix_now()])
-    before = rl.count_open_descriptors()["fds"]
-    held = None
-    for _ in range(5):
+
+    def cycle():
         pub = LslPublisher()
         pub.open_markers(); pub.open_video("SIDE_01")
         pub.push_eeg("A", np.zeros((1, 5), np.float32), ts, device="MuseS-7538")
         pub.push_sensor("ACC", "A", np.zeros((1, 3), np.float32), ts)
-        same = held is None or held is pub._outlets["BrainBattle_EEG_A"]
-        held = pub._outlets["BrainBattle_EEG_A"]
+        outlet = pub._outlets["BrainBattle_EEG_A"]
         pub.close()
+        return outlet
+
+    cycle()                     # warm-up: anything opened lazily on first use
+    rounds = 5
+    before = rl.count_open_descriptors()["fds"]
+    held = [cycle() for _ in range(rounds)]
     after = rl.count_open_descriptors()["fds"]
     check("five more publishers reuse the same four outlets",
-          lsl_outlets.open_outlet_count() == n0 and same)
-    check("…and use no more open files", after <= before, f"{before} -> {after}")
+          lsl_outlets.open_outlet_count() == n0 and all(o is held[0] for o in held))
+    if sys.platform == "win32":
+        # Windows has no descriptor table: this is the process's kernel HANDLE
+        # count, which also holds thread / event handles the runtime opens and
+        # closes on its own (CI once showed 318 -> 319). A leak in the outlets
+        # would add at least one handle per publisher (liblsl 1.17 kept 3 per
+        # destroyed outlet), so fewer than `rounds` new handles proves none.
+        check("…and use no more open handles (fewer than one per publisher)",
+              after - before < rounds, f"{before} -> {after}")
+    else:
+        check("…and use no more open files", after <= before, f"{before} -> {after}")
+    del held
     pub = LslPublisher()
     pub.open_markers()
     mk = _inlet("BrainBattle_Markers", pub)

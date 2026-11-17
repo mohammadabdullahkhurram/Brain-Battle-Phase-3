@@ -186,9 +186,15 @@ def test_end_to_end():
               and sum(n.startswith("BrainBattle_Video_") for n in by) == 4, str(sorted(by)))
         t0_lsl = man["capture_clock"]["t0_lsl"]
         mk = by["BrainBattle_Markers"]
-        check("XDF markers: first is BASELINE_START, right after the session start",
-              mk["time_series"][0][0] == "BASELINE_START" and 0 <= mk["time_stamps"][0] - t0_lsl < 1.5,
-              f"{mk['time_stamps'][0] - t0_lsl:.4f}")
+        # The XDF marker must sit exactly where phase_markers.csv says the
+        # baseline began (same clock, converted to LSL time) — not merely
+        # "soon after the start": how long the start-up work takes depends on
+        # how busy the computer is (1.85 s once on a loaded Windows CI runner).
+        base_t = ss_markers(root)[0][0]
+        check("XDF markers: first is BASELINE_START, at its phase_markers.csv time (within 5 ms)",
+              mk["time_series"][0][0] == "BASELINE_START"
+              and abs((mk["time_stamps"][0] - t0_lsl) - base_t) < 0.005 and 0 <= base_t < 10,
+              f"xdf {mk['time_stamps'][0] - t0_lsl:.4f} s, csv {base_t:.4f} s")
         side = glob.glob(root + "/continuous/Side Cams/session_SIDE_01.timestamps.csv")[0]
         n_rows = sum(1 for _ in open(side)) - 1
         vid = by["BrainBattle_Video_SIDE_01"]

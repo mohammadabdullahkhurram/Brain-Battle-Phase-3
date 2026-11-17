@@ -58,6 +58,12 @@ dev-log numbering, kept as history — they do not track the release version.
   it (a kill mid-rewrite read as "sent=0").
 - `test_descriptors`' thread check tells a leak (growth every visit) from a
   one-off operating-system worker thread.
+- `test_lsl_streams` warms up before counting; on Windows (a kernel handle
+  count, not descriptors) it asks for fewer new handles than publishers — a
+  leak adds at least one per publisher. macOS keeps the exact check.
+- `test_record_flow`'s XDF marker check is exact: the marker must equal its
+  `phase_markers.csv` time within 5 ms, instead of "within 1.5 s of the start"
+  (a busy Windows runner took 1.85 s to get the recording started).
 - The CI log prints the psutil / pylsl / liblsl versions.
 - Documentation screenshots re-taken (bundled fonts, wrapped code blocks).
 
