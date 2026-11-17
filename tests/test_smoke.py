@@ -203,14 +203,16 @@ def part3_pure_logic(win):
     tl = _build_timeline(SessionConfig(num_rounds=3, round_sec=180,
                                        break_sec=60, baseline_sec=60))
     got = [(p.phase, p.round_num) for p in tl]
-    want = [(Phase.BASELINE, 0), (Phase.ROUND, 1), (Phase.BREAK, 1),
+    want = [(Phase.LEAD_IN, 0), (Phase.BASELINE, 0), (Phase.ROUND, 1), (Phase.BREAK, 1),
             (Phase.ROUND, 2), (Phase.BREAK, 2), (Phase.ROUND, 3)]
-    check("timeline: baseline -> rounds with breaks between, none after last",
+    check("timeline: 15 s lead-in -> baseline -> rounds with breaks between, none after last",
           got == want, str([p.label for p in tl]))
+    import brain_battle.capture.session_controller as _sc
+    check("the real lead-in is 15 s (tests shorten it)", _sc.LEAD_IN_DEFAULT == 15)
 
     tl0 = _build_timeline(SessionConfig(num_rounds=1, baseline_sec=0))
     check("timeline: no baseline / single round edge case",
-          [(p.phase, p.round_num) for p in tl0] == [(Phase.ROUND, 1)],
+          [(p.phase, p.round_num) for p in tl0] == [(Phase.LEAD_IN, 0), (Phase.ROUND, 1)],
           str([p.label for p in tl0]))
 
     bad = SessionConfig(num_rounds=0)

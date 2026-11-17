@@ -189,6 +189,7 @@ _KNOWN_PHRASES = {
     "adr-0020": "seen half-written",
     "adr-0021": "pseudonymised, not anonymous",
     "adr-0022": "opened once per run of the app and reused",
+    "adr-0023": "Each fighter gets a 4-character code",
     # Project (D3)
     "goals": "Community Impact Project",
     "status": "working agreement",

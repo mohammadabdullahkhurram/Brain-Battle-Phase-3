@@ -34,6 +34,7 @@ by `session_storage.SessionLayout._write_manifest`. One JSON object:
 | `capture_clock` | object | The shared clock origin, one instant on three time scales: `{t0_monotonic, t0_unix, t0_lsl}` (`t0_lsl` is `null` in recordings made before version 3.1) |
 | `source_starts` | object | Per source, its measured first sample: `{first_unix, first_t_session}` |
 | `config` | object | The round plan: `{num_rounds, round_sec, break_sec, baseline_sec}` (seconds) |
+| `lead_in_sec` | int | Seconds recorded before the baseline (`15`; absent in older recordings) |
 | `phases` | array | One entry per baseline / round / break (see below) |
 
 Inside `boxers.A` / `boxers.B`: `code` (exactly 4 characters, `A`–`Z` and
@@ -97,30 +98,51 @@ Example (trimmed):
 
 ## `phase_markers.csv`
 
-The instant each phase begins, on the shared session clock — written by
-`session_storage.SessionLayout.append_marker`. One header row, then one row per
-transition.
+The **automatic system markers**, on the shared session clock — written by
+`session_storage.SessionLayout.append_marker` the moment the
+`session_controller.SessionController` emits them. One header row, then one
+row per marker.
 
 | Column | Type | Unit | Meaning | Example |
 |---|---|---|---|---|
 | `t_session_seconds` | float | seconds | Time since session start | `20.000` |
-| `phase_id` | string | — | `baseline` / `round` / `break` / `done` | `round` |
+| `phase_id` | string | — | `lead_in` / `baseline` / `round` / `break` / `done` | `round` |
 | `label` | string | — | The marker name (see below) | `ROUND_1_START` |
-| `round_num` | int | — | Round number (`0` for baseline / end) | `1` |
+| `round_num` | int | — | Round number (`0` for the lead-in, baseline and end) | `1` |
 | `unix_time` | float | seconds | Wall-clock time the row was written | `1794241570.962` |
 
-The `label` values are: `BASELINE_START`; `ROUND_1_START`, `ROUND_2_START`, …
-(`ROUND_n_START`); `BREAK_1_START`, `BREAK_2_START`, … (`BREAK_n_START`); and
-`SESSION_END` at the very end. Example:
+Recording starts with a fixed **15-second lead-in** before the baseline. The
+`label` values, in order:
+
+- `RECORDING_START` — time 0, the start of the lead-in;
+- `BASELINE_START`, `BASELINE_END`;
+- `ROUND_1_START`, `ROUND_1_END`, `ROUND_2_START`, `ROUND_2_END`, …
+  (`ROUND_n_START`, `ROUND_n_END`);
+- `BREAK_1_START`, `BREAK_1_END`, … (`BREAK_n_START`, `BREAK_n_END`);
+- `RECORDING_END` — always the last row of a finished recording.
+
+A phase's `_END` and the next phase's `_START` share one instant. A phase cut
+short by **Stop recording** gets no `_END` row (it did not end); a recording
+that crashed has no `RECORDING_END` (it shows as *Interrupted*). Recordings
+made before the lead-in existed start at `BASELINE_START`, have no `_END` rows
+and end with **`SESSION_END`**; they are still read everywhere. Example:
 
 ```csv
 t_session_seconds,phase_id,label,round_num,unix_time
-0.000,baseline,BASELINE_START,0,1794241570.962
-20.000,round,ROUND_1_START,1,1794241570.962
-80.000,break,BREAK_1_START,1,1794241570.962
-100.000,round,ROUND_2_START,2,1794241570.962
-160.000,done,SESSION_END,0,1794241570.962
+0.000,lead_in,RECORDING_START,0,1794241570.962
+15.000,baseline,BASELINE_START,0,1794241585.962
+75.000,baseline,BASELINE_END,0,1794241645.962
+75.000,round,ROUND_1_START,1,1794241645.962
+255.000,round,ROUND_1_END,1,1794241825.962
+255.000,break,BREAK_1_START,1,1794241825.962
+315.000,break,BREAK_1_END,1,1794241885.962
+315.000,round,ROUND_2_START,2,1794241885.962
+495.000,round,ROUND_2_END,2,1794242065.962
+495.000,done,RECORDING_END,0,1794242065.962
 ```
+
+The round bell (if switched on) rings at every `ROUND_n_START` and
+`ROUND_n_END`.
 
 ## Camera videos
 
@@ -239,7 +261,7 @@ above (it is a derived copy; see
 | `BrainBattle_ACC_A` / `_B` | `ACC` | `X`, `Y`, `Z` | 52 Hz | Accelerometer (g), if recorded |
 | `BrainBattle_GYRO_A` / `_B` | `GYRO` | `X`, `Y`, `Z` | 52 Hz | Gyroscope (degrees per second), if recorded |
 | `BrainBattle_PPG_A` / `_B` | `PPG` | `PPG1`, `PPG2`, `PPG3` | 64 Hz | Pulse sensor, if recorded |
-| `BrainBattle_Markers` | `Markers` | one string | irregular | The `phase_markers.csv` labels (`BASELINE_START` … `SESSION_END`) and `MOMENT` for each un-named "Mark this moment" |
+| `BrainBattle_Markers` | `Markers` | one string | irregular | Every system marker from `phase_markers.csv` (`RECORDING_START`, `BASELINE_START` … `ROUND_n_END` … `RECORDING_END`) and `MOMENT` for each "Mark this moment" |
 | `BrainBattle_Labels_<labeller>` | `Markers` | one string | irregular | One stream **per labeller** with the labels that person placed (present once they have placed any) — see below. `<labeller>` is the labeller's name in file-name form, e.g. `BrainBattle_Labels_maya-k` |
 | `BrainBattle_Video_SIDE_01`, `BrainBattle_Video_SIDE_02`, `BrainBattle_Video_POV_01`, `BrainBattle_Video_POV_02` | `VideoFrames` | `frame_index` (int32) | irregular | One sample per recorded video frame: the value is the frame's number in that camera's MP4, the timestamp is when it was captured |
 
@@ -253,7 +275,7 @@ stream), so
 
     t_session_seconds = timestamp − session_start
 
-and the first marker, `BASELINE_START`, comes a few hundredths of a second
+and the first marker, `RECORDING_START`, comes a few hundredths of a second
 after session time 0 (the moment the devices were told to start). Recordings made
 before version 3.1 have no `t0_lsl`; their XDF timestamps are simply
 `t_session_seconds`.
@@ -509,8 +531,8 @@ share one clock and one set of rows.
 | `TP9_01`, `AF7_01`, `AF8_01`, `TP10_01`, `AUX_01` | float | µV | Boxer A's channels (the `_01` band) |
 | `TP9_02`, `AF7_02`, `AF8_02`, `TP10_02`, `AUX_02` | float | µV | Boxer B's channels (the `_02` band) |
 | `phase_id` | string | — | The active phase at that row (forward-filled) |
-| `phase_label` | string | — | The active phase's label |
-| `marker` | string | — | Non-empty only on the exact row of a phase boundary |
+| `phase_label` | string | — | The active phase's START marker (`RECORDING_START` during the lead-in) |
+| `marker` | string | — | Non-empty only on the exact row of a system marker; two markers on one row are joined with `;` (`ROUND_1_END;BREAK_1_START`) |
 
 Each band's channels are `NaN` outside that band's own recorded range (an
 honest "no sample here"). `_01` is Boxer A's headband and `_02` is Boxer B's,

@@ -7,6 +7,25 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
+**Recording starts 15 s before the baseline; automatic system markers; the bell at both ends of a round**
+- A fixed 15-second lead-in (`LEAD_IN_SEC`) comes before the baseline; the
+  manifest records it as `lead_in_sec` and `phases` gains a `lead_in` entry.
+- `phase_markers.csv` and the XDF Markers stream now carry every system
+  marker: `RECORDING_START`, `BASELINE_START`/`_END`, `ROUND_n_START`/`_END`,
+  `BREAK_n_START`/`_END`, `RECORDING_END`. A phase cut short by Stop gets no
+  `_END`. Recordings that end with the older `SESSION_END` are still read
+  (clean finish, Sessions status, crash detection).
+- The controller emits the markers itself (`SessionController.marker`,
+  `session_controller.planned_markers`), so the demo generator writes exactly
+  what a live recording writes.
+- The round bell rings at the start **and the end** of every round, including
+  the last; never for the lead-in, the baseline or a break, and not when a
+  round is stopped early. `test_round_bell` updated.
+- `eeg_coregistered.csv`: `phase_label` follows phase starts only; two markers
+  on one row are joined with `;`.
+- Tests shorten the lead-in to 2 s (`tests/_env.py`) so simulated recordings
+  stay quick; the 15 s default is still checked.
+
 **Fighter codes and colours replace names** ([ADR-0023](docs/decisions/adr-0023-fighter-codes-and-colours.md), supersedes ADR-0021)
 - Each fighter is a 4-character code (A–Z, 0–9, the two different; "New code"
   makes one) and a colour. Red `#D3241B`, Blue `#1B45C4` and Black `#111111`

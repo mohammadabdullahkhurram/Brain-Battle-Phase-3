@@ -41,14 +41,15 @@ out of the UI (see [design system](../developer-guide/design-system.md#vocabular
 | **TP9, AF7, AF8, TP10, AUX** | The headband's inputs by their standard electrode names: left ear, left forehead, right forehead, right ear, and a spare input that normally carries nothing. |
 | **`t_session_seconds`** | Seconds since the capture origin — the one axis video, EEG, markers, and labels all live on. |
 | **Sidecar** | A camera's `<stem>.timestamps.csv` with one row per encoded frame (`frame_index`, `t_session_seconds`, `t_monotonic`, `t_unix`). |
-| **Phase markers** | Rows in `phase_markers.csv` marking `BASELINE_START`, `ROUND_n_START`, `BREAK_n_START`, `SESSION_END`. |
+| **System markers** (phase markers) | Rows in `phase_markers.csv` written automatically: `RECORDING_START`, `BASELINE_START`/`_END`, `ROUND_n_START`/`_END`, `BREAK_n_START`/`_END`, `RECORDING_END` (older recordings: `SESSION_END`). Grey in the EEG viewer and on Review's System row. |
+| **Lead-in** | The fixed 15 s of recording before the baseline (`session_controller.LEAD_IN_SEC`). |
 | **Manifest** | `session_manifest.json` — boxers, config, `capture_clock`, `source_starts`, `demo`, moments, stopped-early. |
 | **Co-registered EEG** | Both bands resampled onto one uniform 256 Hz `t_session_seconds` grid (`eeg_coregistered.csv`). |
 | **Drift camera** | A camera whose true capture rate differs from its declared container rate (the demo's 30-vs-29.5 fps camera) — the case that drove [ADR-0005](../decisions/adr-0005-pyav-playback.md). |
 | **Seek coalescing** | The decode worker keeping only the latest requested playhead, so scrubbing costs a couple of decodes, not one per move. |
 | **Point / duration label** | A label kind: an instant (`point`, `t_end` null) or a span (`duration`, start + end) — [ADR-0006](../decisions/adr-0006-labels-v2.md). |
 | **who (A / B / Both)** | The boxer a label belongs to. |
-| **Interrupted session** | A recording with phases but no `SESSION_END` — kept, flagged, and surfaced once. |
+| **Interrupted session** | A recording with phases but no `RECORDING_END` (or older `SESSION_END`) — kept, flagged, and surfaced once. |
 | **Moment** | A timestamp marked during recording (M key), surfaced in Review as an unnamed label to name. |
 | **Capture clock origin** | See *capture-time clock*. |
 | **Analysis bundle** | The export zip (labels.csv, events.csv, co-registered EEG, raw media + sidecars, manifest, history, README). |

@@ -33,7 +33,8 @@ from pathlib import Path
 from typing import Optional
 
 import brain_battle.capture.clock as _clock
-from brain_battle.capture.session_controller import SessionConfig, Phase
+from brain_battle.capture.session_controller import (
+    SessionConfig, Phase, END_MARKERS, MARKER_RECORDING_START, total_seconds as _plan_total)
 from brain_battle.data.signals import EEG_DIR_NAME, SENSOR_DIR_NAME, SENSORS
 from brain_battle.version import __version__
 
@@ -164,6 +165,8 @@ class SessionLayout:
     # "Stopped at 9:41 of 12:00".
     stopped_early:        bool = False
     stopped_t_session:    Optional[float] = None
+    # Recording starts this long before the baseline (session_controller).
+    lead_in_sec:          int = 0
 
     # ---- folder resolution ---------------------------------------------------
 
@@ -209,7 +212,7 @@ class SessionLayout:
 
     def mark_stopped_early(self, t_session_sec: float) -> None:
         """Flag that the operator stopped the recording early (cleanly). This is
-        NOT an interruption — a SESSION_END marker is still written."""
+        NOT an interruption — a RECORDING_END marker is still written."""
         self.stopped_early = True
         self.stopped_t_session = round(float(t_session_sec), 3)
         self._write_manifest()
@@ -271,6 +274,7 @@ class SessionLayout:
             },
             "source_starts":  self.source_starts,
             "config":         asdict(self.config),
+            "lead_in_sec":    self.lead_in_sec,
             "phases":         [asdict(p) for p in self.phases],
         }
         # Atomic (temp file + swap): a reader on another computer, or a crash
@@ -302,8 +306,10 @@ def create_session(base_dir: str | os.PathLike,
     root = _unique_dir(Path(base_dir), base_name)
     root.mkdir(parents=True, exist_ok=False)  # fail loud on a genuine race
 
+    import brain_battle.capture.session_controller as _sc
     layout = SessionLayout(root=root, started_at=started_at, config=config,
-                           boxers={"A": a, "B": b}, demo=bool(demo))
+                           boxers={"A": a, "B": b}, demo=bool(demo),
+                           lead_in_sec=_sc.LEAD_IN_SEC)
 
     # Continuous recording folder — one MP4 per camera + one CSV per Muse-S
     # for the entire session, from baseline through final round end.
@@ -335,20 +341,23 @@ def _update_manifest(session_root, change) -> bool:
 
 
 def _has_session_end(session_root: Path) -> bool:
-    """True if phase_markers.csv contains a SESSION_END row — the explicit
-    'this recording finished cleanly' marker written by _on_session_finished."""
+    """True if phase_markers.csv contains a RECORDING_END row — the explicit
+    'this recording finished cleanly' marker (SESSION_END in recordings made
+    before the lead-in existed)."""
     p = session_root / "phase_markers.csv"
     if not p.is_file():
         return False
     try:
-        return "SESSION_END" in p.read_text(encoding="utf-8")
+        text = p.read_text(encoding="utf-8")
     except OSError:
         return False
+    return any(m in text for m in END_MARKERS)
 
 
 def is_interrupted_session(session_root: str | os.PathLike) -> bool:
     """A session that recorded at least one phase but never finalised: no
-    SESSION_END marker was written. (A clean finish always writes one.)
+    RECORDING_END (or older SESSION_END) marker was written. (A clean finish
+    always writes one.)
     Sessions already flagged `interrupted: true` in the manifest return
     False here so the recovery prompt doesn't nag about them again."""
     root = Path(session_root)
@@ -396,7 +405,7 @@ def scan_interrupted_sessions(base_dir: str | os.PathLike) -> list["SessionLayou
 
 def mark_session_interrupted(session_root: str | os.PathLike) -> bool:
     """Flag a session's manifest `interrupted: true` so it is reported once.
-    Does NOT fabricate a SESSION_END marker — the recording genuinely never
+    Does NOT fabricate a RECORDING_END marker — the recording genuinely never
     finished. Returns True on success."""
     return _update_manifest(session_root, lambda m: m.update(interrupted=True))
 
@@ -483,17 +492,46 @@ def camera_frame_rates(session_root) -> list[tuple]:
 
 # Marker tokens → the words the UI uses.
 
+def is_phase_start(label: str) -> bool:
+    """True for a marker that begins a stretch of the recording
+    (RECORDING_START = the lead-in, BASELINE_START, ROUND_n_START,
+    BREAK_n_START, and the older markers without a suffix) — False for the
+    _END markers and RECORDING_END / SESSION_END."""
+    u = (label or "").upper()
+    if u in END_MARKERS or u.endswith("_END"):
+        return False
+    return True
+
+
+def phase_spans(markers, end_t: Optional[float] = None) -> list[tuple]:
+    """``[(t_start, t_end, label), …]`` — the stretches of a recording from its
+    system markers: the lead-in, the baseline, each round and break. ``label``
+    is the START marker (``RECORDING_START`` for the lead-in). A stretch ends
+    where the next one starts, or at its own _END / the recording's end."""
+    starts = [(float(m[0]), m[2]) for m in markers if is_phase_start(m[2])]
+    ends = [float(m[0]) for m in markers if not is_phase_start(m[2])]
+    last = max([end_t or 0.0] + [float(m[0]) for m in markers]) if markers else (end_t or 0.0)
+    out = []
+    for i, (t0, lab) in enumerate(starts):
+        nxt = starts[i + 1][0] if i + 1 < len(starts) else last
+        own_end = next((e for e in ends if t0 < e <= nxt + 1e-9), None)
+        out.append((t0, own_end if own_end is not None else nxt, lab))
+    return out
+
+
 def friendly_phase(label: str) -> str:
     """Marker token → full DESIGN vocabulary name."""
     u = (label or "").upper()
+    if u.startswith("RECORDING_START") or u.startswith("LEAD"):
+        return "Lead-in"
     if u.startswith("BASELINE"):
-        return "Rest before round 1"
+        return "Baseline"
     if u.startswith("ROUND"):
         m = re.search(r"(\d+)", u)
         return f"Round {m.group(1)}" if m else "Round"
     if u.startswith("BREAK"):
         return "Break"
-    if u.startswith("SESSION_END") or u == "DONE":
+    if u in END_MARKERS or u == "DONE":
         return "Finished"
     return label or ""
 
@@ -501,13 +539,15 @@ def friendly_phase(label: str) -> str:
 def short_phase(label: str) -> str:
     """Shortest sensible form for a narrow timeline band."""
     u = (label or "").upper()
+    if u.startswith("RECORDING_START") or u.startswith("LEAD"):
+        return "Lead-in"
     if u.startswith("BASELINE"):
-        return "Rest"
+        return "Baseline"
     if u.startswith("ROUND"):
         return friendly_phase(label)       # "Round N" is already short
     if u.startswith("BREAK"):
         return "Break"
-    if u.startswith("SESSION_END") or u == "DONE":
+    if u in END_MARKERS or u == "DONE":
         return "End"
     return friendly_phase(label)
 
@@ -683,7 +723,8 @@ def session_info(root) -> SessionInfo:
     rounds = int(cfg.get("num_rounds") or 0)
     planned = int((cfg.get("baseline_sec", 0) or 0)
                   + rounds * (cfg.get("round_sec", 0) or 0)
-                  + max(0, rounds - 1) * (cfg.get("break_sec", 0) or 0))
+                  + max(0, rounds - 1) * (cfg.get("break_sec", 0) or 0)
+                  + (int(m.get("lead_in_sec") or 0)))
     interrupted = m.get("interrupted") is True
     dismissed = m.get("interrupted_dismissed") is True
     labellers = _labeller_counts(root)
@@ -758,7 +799,7 @@ def list_sessions(base_dir) -> list[SessionInfo]:
 
 
 def flag_new_interrupted(base_dir) -> int:
-    """Flag any not-yet-flagged interrupted sessions (crashed, no SESSION_END)
+    """Flag any not-yet-flagged interrupted sessions (crashed, no RECORDING_END)
     so their status + the banner are correct. Logs one recording_interrupted
     history event each. Returns how many were flagged."""
     n = 0
@@ -824,11 +865,9 @@ def video_bytes_per_sec_for_mbps(mbps: float) -> int:
 
 
 def session_total_seconds(config: SessionConfig) -> int:
-    """Planned wall-clock length of a session: baseline + rounds + the breaks
-    between them (no break after the last round)."""
-    return (config.baseline_sec
-            + config.num_rounds * config.round_sec
-            + max(0, config.num_rounds - 1) * config.break_sec)
+    """Planned wall-clock length of a recording: the 15 s lead-in + baseline +
+    rounds + the breaks between them (no break after the last round)."""
+    return _plan_total(config)
 
 
 def estimate_session_bytes(config: SessionConfig, n_cameras: int, n_eeg: int,
@@ -869,7 +908,7 @@ __all__ = [
     "is_interrupted_session", "scan_interrupted_sessions", "flag_new_interrupted",
     "mark_session_interrupted", "dismiss_interrupted",
     "read_moments",
-    "read_phase_markers", "read_csv_tolerant", "camera_frame_rates", "friendly_phase", "short_phase", "eeg_files", "sensor_files", "camera_files",
+    "read_phase_markers", "is_phase_start", "phase_spans", "read_csv_tolerant", "camera_frame_rates", "friendly_phase", "short_phase", "eeg_files", "sensor_files", "camera_files",
     "session_info", "session_info_cached", "list_sessions", "folder_size_bytes",
     "session_total_seconds", "estimate_session_bytes", "disk_space_verdict",
     "human_bytes", "VIDEO_BYTES_PER_SEC", "EEG_BYTES_PER_SEC",

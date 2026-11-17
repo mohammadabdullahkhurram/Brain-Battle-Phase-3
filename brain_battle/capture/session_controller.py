@@ -4,24 +4,37 @@ session_controller.py
 State machine that drives the automated Brain Battle capture loop.
 
 Flow:
-    IDLE → BASELINE (60 s) → ROUND 1 → BREAK 1 → ROUND 2 → BREAK 2 → … → DONE
+    IDLE → LEAD-IN (15 s) → BASELINE → ROUND 1 → BREAK 1 → ROUND 2 → … → DONE
+
+Recording starts with a fixed 15-second **lead-in** before the baseline, so
+every device is running and settled before the first thing that matters
+happens. The lead-in is not configurable (``LEAD_IN_SEC``).
 
 The controller is pure logic: it holds session config, advances phases on a
-single QTimer tick (1 Hz), and emits signals that the UI (circular timer,
-folder writer, EEG recorder, beeper) subscribes to. It does not touch the
-filesystem or the audio system directly — that keeps it trivially testable.
+single QTimer tick (1 Hz), and emits signals that the UI (timer, folder writer,
+EEG recorder, round bell) subscribes to. It does not touch the filesystem or
+the audio system directly — that keeps it trivially testable.
 
 Signals
     phase_changed(phase_id:str, phase_label:str, duration_sec:int, round_num:int)
-        Fired on every transition. round_num is 0 for BASELINE and N for ROUND N / BREAK N.
+        Fired on every transition. round_num is 0 for LEAD-IN / BASELINE and N
+        for ROUND N / BREAK N.
+    marker(text:str, phase_id:str, round_num:int)
+        One **system marker** — the automatic markers written to
+        phase_markers.csv and the XDF Markers stream, in order:
+        RECORDING_START, BASELINE_START, BASELINE_END, ROUND_1_START,
+        ROUND_1_END, BREAK_1_START, BREAK_1_END, …, ROUND_N_END,
+        RECORDING_END. A phase that is cut short by Stop gets no _END marker
+        (it did not end); RECORDING_END is always the last marker.
     tick(remaining_sec:int, elapsed_sec:int, total_sec:int)
         Fired every second inside any active phase.
-    beep_requested()
-        Fired at BASELINE start and at every ROUND start (NOT on breaks).
+    bell_requested()
+        Fired at the START and at the END of every round (including the last).
+        Never for the lead-in, the baseline or a break.
     session_started()
-        Once when the whole session begins.
+        Once when the whole session begins (before RECORDING_START).
     session_finished()
-        Once when the last round's recording wraps up.
+        Once when the recording wraps up (after RECORDING_END).
 """
 
 from __future__ import annotations
@@ -63,11 +76,23 @@ except ImportError:  # pragma: no cover - fallback for headless unit tests
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
 
-BASELINE_DURATION_SEC = 60  # Fixed one-minute baseline per spec.
+BASELINE_DURATION_SEC = 60  # Default one-minute baseline.
+LEAD_IN_DEFAULT = 15        # Recording starts this long before the baseline.
+# Read at the moment a timeline is built. Only the test suite changes it
+# (tests/_env.py shortens it so simulated recordings stay quick).
+LEAD_IN_SEC = LEAD_IN_DEFAULT
+
+MARKER_RECORDING_START = "RECORDING_START"
+MARKER_RECORDING_END = "RECORDING_END"
+# Recordings made before the lead-in existed ended with this marker instead of
+# RECORDING_END; it is still read everywhere.
+MARKER_SESSION_END_LEGACY = "SESSION_END"
+END_MARKERS = (MARKER_RECORDING_END, MARKER_SESSION_END_LEGACY)
 
 
 class Phase(str, Enum):
     IDLE     = "idle"
+    LEAD_IN  = "lead_in"
     BASELINE = "baseline"
     ROUND    = "round"
     BREAK    = "break"
@@ -96,14 +121,27 @@ class SessionConfig:
 @dataclass
 class PhaseInfo:
     phase:      Phase
-    label:      str         # human-readable: "BASELINE", "ROUND 1", "BREAK 2"…
+    label:      str         # human-readable: "LEAD-IN", "BASELINE", "ROUND 1", "BREAK 2"…
     duration:   int         # seconds
-    round_num:  int         # 0 for baseline, N for round/break N
+    round_num:  int         # 0 for lead-in / baseline, N for round/break N
+
+    @property
+    def token(self) -> str:
+        """Marker stem: 'BASELINE', 'ROUND_1', 'BREAK_2' ('' for the lead-in,
+        which has no START/END markers of its own — RECORDING_START is its
+        start)."""
+        if self.phase == Phase.LEAD_IN:
+            return ""
+        return self.label.upper().replace(" ", "_")
 
 
-def _build_timeline(cfg: SessionConfig) -> list[PhaseInfo]:
-    """Build the ordered list of phases for a session."""
+def _build_timeline(cfg: SessionConfig, lead_in: bool = True) -> list[PhaseInfo]:
+    """The ordered phases of a session: the 15 s lead-in, the baseline (if
+    any), then rounds with breaks between them (none after the last round)."""
     timeline: list[PhaseInfo] = []
+    lead = globals()["LEAD_IN_SEC"]
+    if lead_in and lead > 0:
+        timeline.append(PhaseInfo(Phase.LEAD_IN, "LEAD-IN", lead, 0))
     if cfg.baseline_sec > 0:
         timeline.append(PhaseInfo(Phase.BASELINE, "BASELINE", cfg.baseline_sec, 0))
     for n in range(1, cfg.num_rounds + 1):
@@ -114,23 +152,46 @@ def _build_timeline(cfg: SessionConfig) -> list[PhaseInfo]:
     return timeline
 
 
+def planned_markers(cfg: SessionConfig) -> list[tuple]:
+    """Every system marker a full recording of this plan writes, as
+    ``(t_session_seconds, text, phase_id, round_num)`` — the same sequence the
+    controller emits live (used by the demo generator and the tests)."""
+    out = [(0.0, MARKER_RECORDING_START, Phase.LEAD_IN.value, 0)]
+    t = 0.0
+    for info in _build_timeline(cfg):
+        if info.token:
+            out.append((t, f"{info.token}_START", info.phase.value, info.round_num))
+        t += info.duration
+        if info.token:
+            out.append((t, f"{info.token}_END", info.phase.value, info.round_num))
+    out.append((t, MARKER_RECORDING_END, Phase.DONE.value, 0))
+    return out
+
+
+def total_seconds(cfg: SessionConfig, lead_in: bool = True) -> int:
+    """Planned length of a recording, lead-in included."""
+    return sum(p.duration for p in _build_timeline(cfg, lead_in=lead_in))
+
+
 # ─── Controller ────────────────────────────────────────────────────────────────
 
 class SessionController(QObject):
     """
-    Drives the automated baseline + rounds + breaks loop.
+    Drives the automated lead-in + baseline + rounds + breaks loop.
 
     Public methods:
         configure(cfg)   — set (or reset) the session plan
-        start()          — begin the session (emits session_started, phase_changed)
-        stop()           — cancel the session mid-flight (emits session_finished)
+        start()          — begin the session
+        stop()           — cancel the session mid-flight (emits RECORDING_END
+                           and session_finished)
 
     The controller stays idle until start() is called.
     """
 
     phase_changed    = pyqtSignal(str, str, int, int)   # phase_id, label, duration_sec, round_num
+    marker           = pyqtSignal(str, str, int)         # text, phase_id, round_num
     tick             = pyqtSignal(int, int, int)         # remaining_sec, elapsed_sec, total_sec
-    beep_requested   = pyqtSignal()
+    bell_requested   = pyqtSignal()
     session_started  = pyqtSignal()
     session_finished = pyqtSignal()
 
@@ -189,38 +250,56 @@ class SessionController(QObject):
             return
         self._idx = -1
         self.session_started.emit()
+        self.marker.emit(MARKER_RECORDING_START, Phase.LEAD_IN.value, 0)
         self._advance()
         self._timer.start()
 
     def stop(self) -> None:
+        """Stop early. The phase in progress gets no _END marker (it did not
+        finish); RECORDING_END is written."""
         if not self.is_running:
             return
         self._timer.stop()
         self._phase = Phase.DONE
         self._idx = -1
+        self.marker.emit(MARKER_RECORDING_END, Phase.DONE.value, 0)
         self.session_finished.emit()
 
     # -- internals -------------------------------------------------------------
 
+    def _close_current(self) -> None:
+        """The current phase ran its full length: its _END marker (and the bell
+        if it was a round)."""
+        info = self.current_phase_info
+        if info is None:
+            return
+        if info.token:
+            self.marker.emit(f"{info.token}_END", info.phase.value, info.round_num)
+        if info.phase == Phase.ROUND:
+            self.bell_requested.emit()
+
     def _advance(self) -> None:
         """Move to the next phase in the timeline, or finish."""
+        self._close_current()
         self._idx += 1
         self._elapsed_in_phase = 0
 
         if self._idx >= len(self._timeline):
             self._timer.stop()
             self._phase = Phase.DONE
+            self.marker.emit(MARKER_RECORDING_END, Phase.DONE.value, 0)
             self.session_finished.emit()
             return
 
         info = self._timeline[self._idx]
         self._phase = info.phase
+        if info.token:
+            self.marker.emit(f"{info.token}_START", info.phase.value, info.round_num)
         self.phase_changed.emit(
             info.phase.value, info.label, info.duration, info.round_num
         )
-        # Beep on BASELINE start and on every ROUND start, not on breaks.
-        if info.phase in (Phase.BASELINE, Phase.ROUND):
-            self.beep_requested.emit()
+        if info.phase == Phase.ROUND:
+            self.bell_requested.emit()
         # Emit the initial tick so UI shows the full duration immediately.
         self.tick.emit(info.duration, 0, info.duration)
 
@@ -237,5 +316,7 @@ class SessionController(QObject):
 
 __all__ = [
     "Phase", "SessionConfig", "PhaseInfo", "SessionController",
-    "BASELINE_DURATION_SEC",
+    "BASELINE_DURATION_SEC", "LEAD_IN_SEC", "LEAD_IN_DEFAULT", "planned_markers", "total_seconds",
+    "MARKER_RECORDING_START", "MARKER_RECORDING_END", "MARKER_SESSION_END_LEGACY",
+    "END_MARKERS",
 ]

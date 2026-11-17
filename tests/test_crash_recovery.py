@@ -101,7 +101,10 @@ def test_disk_estimate_scaling():
     longer = SessionConfig(num_rounds=2, round_sec=60, break_sec=0, baseline_sec=0)
     e1 = ss.estimate_session_bytes(base, n_cameras=4, n_eeg=2)
     e2 = ss.estimate_session_bytes(longer, n_cameras=4, n_eeg=2)
-    check("estimate doubles with double duration", e2 == 2 * e1, f"{e1} {e2}")
+    import brain_battle.capture.session_controller as _sc
+    lead = _sc.LEAD_IN_SEC        # the fixed lead-in is part of every recording
+    check("estimate scales with the recording's length (lead-in included)",
+          e2 * (60 + lead) == e1 * (120 + lead), f"{e1} {e2}")
     e_fewer = ss.estimate_session_bytes(base, n_cameras=2, n_eeg=1)
     check("estimate is smaller with fewer sources", e_fewer < e1, f"{e_fewer} < {e1}")
     check("human_bytes formats MB", ss.human_bytes(264_000_000).endswith("MB"),

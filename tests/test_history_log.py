@@ -167,7 +167,7 @@ def test_recording_hooks():
         flow._layout = create_session(base, cfg)
         try:
             flow._on_session_started()   # no devices connected → just origin + history
-            flow._finish()               # writes SESSION_END + logs recording_finished
+            flow._finish()               # logs recording_finished
             events = [e["event"] for e in sh.read_history(flow._layout.root)]
             check("recording_started logged", "recording_started" in events, str(events))
             check("recording_finished logged", "recording_finished" in events, str(events))

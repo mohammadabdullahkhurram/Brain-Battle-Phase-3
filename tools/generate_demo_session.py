@@ -30,8 +30,8 @@ Usage:
     python3 tools/generate_demo_session.py --out /tmp/demo --interrupted
     python3 tools/generate_demo_session.py --out /tmp/library --library
 
-Deterministic for a given --seed. Default config (rest 20 s, 2 rounds of 60 s
-with a 20 s break = 160 s) generates in well under a minute.
+Deterministic for a given --seed. Default config (15 s lead-in, baseline 20 s,
+2 rounds of 60 s with a 20 s break = 175 s) generates in well under a minute.
 """
 from __future__ import annotations
 
@@ -52,7 +52,8 @@ import cv2
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from brain_battle.capture.session_controller import SessionConfig, _build_timeline  # noqa: E402
+from brain_battle.capture.session_controller import (  # noqa: E402
+    SessionConfig, _build_timeline, planned_markers)
 from brain_battle.data.session_storage import create_session, PhaseRecord  # noqa: E402
 from brain_battle.capture.usb_camera import FrameEncoder, preflight_recording  # noqa: E402
 
@@ -97,37 +98,33 @@ _ILLEGAL = re.compile(r'[<>:"/\\|?*]')
 # ─── Phase timeline ────────────────────────────────────────────────────────────
 
 def _phase_plan(cfg: SessionConfig, interrupted: bool):
-    """Walk the REAL _build_timeline() output and compute, on one synthetic
-    axis, every phase's (start, end) elapsed time, the marker rows a live
-    session would write, and — for --interrupted — where to cut it off.
+    """Walk the REAL _build_timeline() / planned_markers() output and compute,
+    on one synthetic axis, every phase's (start, end) elapsed time, the system
+    markers a live recording writes (RECORDING_START, BASELINE_START/END,
+    ROUND_n_START/END, BREAK_n_START/END, RECORDING_END), and — for
+    --interrupted — where to cut it off.
 
     Returns (phase_records, markers, total_duration) where:
       phase_records: list of dict(phase=Phase, label, round_num, start, end_or_None)
       markers:       list of (t_session_sec, phase_id, label, round_num)
       total_duration: the (possibly truncated) session length in seconds
     """
-    timeline = _build_timeline(cfg)
     phase_records = []
-    markers = []
     elapsed = 0.0
-    for info in timeline:
-        # Mirror live_session_tab's writer exactly: spaces → underscores so
-        # the token reads ROUND_1_START / BREAK_1_START.
-        marker_label = f"{info.label.upper().replace(' ', '_')}_START"
-        markers.append((elapsed, info.phase.value, marker_label, info.round_num))
+    for info in _build_timeline(cfg):
         phase_records.append({
             "phase": info.phase, "label": info.label, "round_num": info.round_num,
             "start": elapsed, "end": elapsed + info.duration,
         })
         elapsed += info.duration
     total_duration = elapsed
+    markers = [(t, pid, text, rn) for t, text, pid, rn in planned_markers(cfg)]
 
     if not interrupted:
-        markers.append((total_duration, "done", "SESSION_END", 0))
         return phase_records, markers, total_duration
 
-    # --interrupted: cut 40% into the FINAL phase — no SESSION_END, the last
-    # phase record stays open (end=None), later phase records never existed.
+    # --interrupted: cut 40% into the FINAL phase — no RECORDING_END, no _END
+    # for the phase in progress, the last phase record stays open (end=None).
     last = phase_records[-1]
     cutoff = last["start"] + 0.4 * (last["end"] - last["start"])
     last["end"] = None  # the open/interrupted phase
@@ -389,7 +386,7 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     for (t_sec, phase_id, label, round_num) in markers:
         layout.append_marker(t_sec, phase_id, label, round_num)   # REAL writer
 
-    marker_times = [m[0] for m in markers]
+    marker_times = sorted({round(m[0], 6) for m in markers})   # one flash per instant
     rng = np.random.default_rng(seed)
 
     # Resolve the H.264 encoder ONCE here (the export_module probe) and pass
@@ -549,7 +546,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--interrupted", action="store_true",
                    help="generate a session that looks like the app crashed mid-round: "
-                        "no SESSION_END marker, last phase has no end time, "
+                        "no RECORDING_END marker, last phase has no end time, "
                         "EEG and video cut off early")
     p.add_argument("--boxer-a", default="K7Q2", help="Boxer A's 4-character code")
     p.add_argument("--boxer-b", default="M3XA", help="Boxer B's 4-character code")
@@ -601,7 +598,7 @@ def main(argv=None):
 
     print(f"Demo session created at: {result['root']}")
     print(f"  total duration: {result['total_duration_sec']:.1f}s"
-          f"{'  (INTERRUPTED — no SESSION_END)' if result['interrupted'] else ''}")
+          f"{'  (INTERRUPTED — no RECORDING_END)' if result['interrupted'] else ''}")
     print(f"  cameras ({len(result['cameras'])}):")
     for c in result["cameras"]:
         drift = "  <-- DRIFT (29.5fps true vs 30fps declared)" if c["is_drift"] else ""

@@ -142,7 +142,7 @@ def test_end_to_end():
 
         root = flow._saved_root
         man = json.load(open(os.path.join(root, "session_manifest.json")))
-        check("manifest has both boxer names",
+        check("manifest has both fighter codes",
               man["boxers"]["A"]["code"] == "K7Q2" and man["boxers"]["B"]["code"] == "M3XA")
         check("manifest records the marked moment", len(man.get("moments", [])) == 1)
         check("manifest has the capture clock", man["capture_clock"]["t0_unix"] is not None)
@@ -165,9 +165,11 @@ def test_end_to_end():
                 if smp is None:
                     break
                 got.append(smp[0]); got_ts.append(ts + marker_inlet.time_correction(timeout=1))
-            check("LSL markers: every phase start, the moment and SESSION_END arrived",
-                  got[0] == "BASELINE_START" and got[-1] == "SESSION_END" and "MOMENT" in got
-                  and "ROUND_2_START" in got, str(got))
+            check("LSL markers: RECORDING_START, every phase start/end, the moment and "
+                  "RECORDING_END arrived",
+                  got[0] == "RECORDING_START" and got[1] == "BASELINE_START"
+                  and got[-1] == "RECORDING_END" and got[-2] == "ROUND_2_END" and "MOMENT" in got
+                  and "ROUND_2_START" in got and "BREAK_1_END" in got, str(got))
             check("LSL marker times are session-start + t_session (within 5 ms)",
                   abs((got_ts[-1] - got_ts[0])
                       - (ss_markers(root)[-1][0] - ss_markers(root)[0][0])) < 0.005,
@@ -191,8 +193,8 @@ def test_end_to_end():
         # "soon after the start": how long the start-up work takes depends on
         # how busy the computer is (1.85 s once on a loaded Windows CI runner).
         base_t = ss_markers(root)[0][0]
-        check("XDF markers: first is BASELINE_START, at its phase_markers.csv time (within 5 ms)",
-              mk["time_series"][0][0] == "BASELINE_START"
+        check("XDF markers: first is RECORDING_START, at its phase_markers.csv time (within 5 ms)",
+              mk["time_series"][0][0] == "RECORDING_START"
               and abs((mk["time_stamps"][0] - t0_lsl) - base_t) < 0.005 and 0 <= base_t < 10,
               f"xdf {mk['time_stamps'][0] - t0_lsl:.4f} s, csv {base_t:.4f} s")
         side = glob.glob(root + "/continuous/Side Cams/session_SIDE_01.timestamps.csv")[0]
@@ -254,8 +256,11 @@ def test_stop_early():
         root = flow._saved_root
         man = json.load(open(os.path.join(root, "session_manifest.json")))
         check("stop early flags stopped_early", man.get("stopped_early") is True)
-        check("SESSION_END marker still written (clean stop, not a crash)",
-              "SESSION_END" in open(root + "/phase_markers.csv").read())
+        mk = open(root + "/phase_markers.csv").read()
+        check("RECORDING_END marker still written (clean stop, not a crash)",
+              "RECORDING_END" in mk)
+        check("the round cut short by Stop gets no _END marker",
+              "ROUND_1_START" in mk and "ROUND_1_END" not in mk, mk)
         import brain_battle.data.session_storage as ss
         info = ss.session_info(root)
         check("stopped-early session is NOT interrupted", not info.interrupted)

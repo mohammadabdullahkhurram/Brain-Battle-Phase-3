@@ -671,7 +671,7 @@ class SetupStep(ui.Card):
         r1.addSpacing(6)
         r1.addWidget(ui.boxer_badge("B", 26)); r1.addWidget(self._name_b, 2)
         r1.addSpacing(10)
-        self._bell = QCheckBox("Ring a bell when each round starts")
+        self._bell = QCheckBox("Ring the bell at the start and end of each round")
         self._bell.setStyleSheet(dt.qss_checkbox())
         r1.addWidget(self._bell)
         r1.addStretch(1)
@@ -1020,9 +1020,12 @@ class RecordingStep(QWidget):
         if phase_id == "round":
             self._round_lbl.setText(f"Round {round_num} of {total_rounds}")
             self._left_lbl.setText("left in this round")
+        elif phase_id == "lead_in":
+            self._round_lbl.setText("Lead-in (recording already running)")
+            self._left_lbl.setText("until the baseline starts")
         elif phase_id == "baseline":
-            self._round_lbl.setText("Rest before round 1")
-            self._left_lbl.setText("until round 1")
+            self._round_lbl.setText("Baseline")
+            self._left_lbl.setText("left in the baseline")
         else:
             self._round_lbl.setText("Break")
             self._left_lbl.setText("until the next round")
@@ -1030,8 +1033,8 @@ class RecordingStep(QWidget):
         self._next_lbl.setText(self.flow.next_phase_text())
 
     def _phase_name(self, pid, rn):
-        return {"baseline": "Rest", "round": f"Round {rn}", "break": "Break",
-                "done": "Finished"}.get(pid, pid.title())
+        return {"lead_in": "Lead-in", "baseline": "Baseline", "round": f"Round {rn}",
+                "break": "Break", "done": "Finished"}.get(pid, pid.title())
 
     def set_time(self, remaining, total, elapsed_session):
         self._count.setText(_mmss(remaining))
@@ -1405,6 +1408,7 @@ class RecordFlow(QWidget):
         c = self._controller
         c.session_started.connect(self._on_session_started)
         c.phase_changed.connect(self._on_phase_changed)
+        c.marker.connect(self._on_system_marker)
         c.tick.connect(self._on_phase_tick)
         c.session_finished.connect(self._on_session_finished)
 
@@ -1450,13 +1454,13 @@ class RecordFlow(QWidget):
                 f"The folder for this recording could not be made in {base} ({e}). Check that "
                 f"the drive is connected and that you are allowed to save there."); return
 
-        # round bell: BASELINE + each ROUND start (SessionController emits this)
+        # round bell: the start AND the end of every round (SessionController)
         try:
-            self._controller.beep_requested.disconnect(self._beep.play)
+            self._controller.bell_requested.disconnect(self._beep.play)
         except TypeError:
             pass
         if self._bell:
-            self._controller.beep_requested.connect(self._beep.play)
+            self._controller.bell_requested.connect(self._beep.play)
 
         self._controller.configure(self._cfg)
         self._recording_step.reset_for_recording()
@@ -1573,16 +1577,10 @@ class RecordFlow(QWidget):
         total_rounds = self._cfg.num_rounds
         self._recording_step.set_phase(phase_id, label, round_num, total_rounds, duration)
         self._recording_step.set_time(duration, duration, self._elapsed_session())
-        if self._layout is not None and self._session_t0 is not None:
-            t = clock.monotonic() - self._session_t0
-            norm = label.upper().replace(" ", "_")
-            marker = f"{norm}_START" if phase_id != "done" else norm
-            self._essential("times", self._layout.append_marker, t, phase_id, marker, round_num)
-            self._publish_marker(marker, t)
         if self._layout is None:
             return
         phase = Phase(phase_id)
-        if phase in (Phase.BASELINE, Phase.ROUND, Phase.BREAK):
+        if phase in (Phase.LEAD_IN, Phase.BASELINE, Phase.ROUND, Phase.BREAK):
             self._essential("plan", self._layout.add_phase, PhaseRecord(
                 phase=phase.value, label=label, round_num=round_num, folder="continuous",
                 planned_duration=duration, start_unix=time.time(),
@@ -1591,6 +1589,15 @@ class RecordFlow(QWidget):
                 pp, pr = self._active_phase
                 self._essential("plan", self._layout.close_phase, pp, pr)
             self._active_phase = (phase, round_num)
+
+    def _on_system_marker(self, text, phase_id, round_num):
+        """An automatic marker (RECORDING_START, ROUND_1_END, …): stamp it on
+        the capture clock, append it to phase_markers.csv and publish it."""
+        if self._layout is None or self._session_t0 is None:
+            return
+        t = clock.monotonic() - self._session_t0
+        self._essential("times", self._layout.append_marker, t, phase_id, text, round_num)
+        self._publish_marker(text, t)
 
     def _on_phase_tick(self, remaining, elapsed, total):
         self._recording_step.set_time(remaining, total, self._elapsed_session())
@@ -1610,12 +1617,11 @@ class RecordFlow(QWidget):
         self._controller.stop()   # → _on_session_finished
 
     def _finish(self, stopped_early=False, goto_saved=True):
-        if self._layout is not None and self._session_t0 is not None:
+        # RECORDING_END was just written by _on_system_marker (the controller
+        # emits it before session_finished).
+        if self._layout is not None and self._session_t0 is not None and stopped_early:
             t = clock.monotonic() - self._session_t0
-            self._essential("times", self._layout.append_marker, t, "done", "SESSION_END", 0)
-            self._publish_marker("SESSION_END", t)
-            if stopped_early:
-                self._essential("plan", self._layout.mark_stopped_early, t)
+            self._essential("plan", self._layout.mark_stopped_early, t)
         if self._active_phase is not None and self._layout is not None:
             ph, rn = self._active_phase
             self._essential("plan", self._layout.close_phase, ph, rn)
@@ -1755,7 +1761,7 @@ class RecordFlow(QWidget):
         if i + 1 >= len(plan):
             return "Last round — the recording stops by itself when it ends."
         nxt = plan[i + 1]
-        nm = {"baseline": "Rest", "round": f"Round {nxt.round_num}",
+        nm = {"baseline": "Baseline", "round": f"Round {nxt.round_num}",
               "break": "Break"}.get(nxt.phase.value, nxt.label)
         txt = f"Next: {nm}, {_mmss(nxt.duration)}"
         if self._bell and i + 2 < len(plan) and plan[i + 2].phase == Phase.ROUND:
@@ -1768,7 +1774,8 @@ class RecordFlow(QWidget):
         cur = self._controller.current_phase_info
         where = ""
         if cur is not None:
-            nm = {"baseline": "The rest period", "round": f"Round {cur.round_num}",
+            nm = {"lead_in": "The lead-in", "baseline": "The baseline",
+                  "round": f"Round {cur.round_num}",
                   "break": "The break"}.get(cur.phase.value, cur.label)
             where = f"{nm} is still running. "
         return (f"Stop recording now? {where}Everything recorded so far is kept, but the "
@@ -1859,8 +1866,8 @@ class RecordFlow(QWidget):
                                   dt.warning_color()))
                 problems.append(f"Boxer {which}'s brain recording was not saved.")
         # phases + moments
-        n_rounds = sum(1 for m in markers if m[2].upper().startswith("ROUND"))
-        n_breaks = sum(1 for m in markers if m[2].upper().startswith("BREAK"))
+        n_rounds = sum(1 for m in markers if m[2].upper().startswith("ROUND") and m[2].upper().endswith("_START"))
+        n_breaks = sum(1 for m in markers if m[2].upper().startswith("BREAK") and m[2].upper().endswith("_START"))
         breaks = f" and {_plural(n_breaks, 'break')}" if n_breaks else ""
         if "the round and break times" in self._write_problems:
             checklist.append(("!", "Some round and break times were not saved", dt.warning_color()))

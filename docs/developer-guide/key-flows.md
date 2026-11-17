@@ -38,15 +38,15 @@ that path is fail-soft and nothing above depends on it
 
 ## Crash detection → interrupted banner → dismiss
 
-A recording that never wrote `SESSION_END` is treated as interrupted — kept, not
+A recording that never wrote `RECORDING_END` (`SESSION_END` before 3.1) is treated as interrupted — kept, not
 discarded, and surfaced once.
 
-![Sequence diagram: on launch the app scans for sessions with no SESSION_END, marks them interrupted, and shows a banner; the user dismisses it, which sets a manifest flag so it does not return.](../diagrams/flow-crash-recovery.png)
+![Sequence diagram: on launch the app scans for sessions with no RECORDING_END, marks them interrupted, and shows a banner; the user dismisses it, which sets a manifest flag so it does not return.](../diagrams/flow-crash-recovery.png)
 
 1. On launch, `session_storage.scan_interrupted_sessions` finds folders with
-   recorded phases but no `SESSION_END`.
+   recorded phases but no `RECORDING_END` / `SESSION_END`.
 2. Each is flagged `interrupted: true` in its manifest (no fabricated
-   `SESSION_END`), so it won't nag again, and `SessionsScreen` shows the banner.
+   `RECORDING_END`), so it won't nag again, and `SessionsScreen` shows the banner.
 3. **Dismiss** calls `dismiss_interrupted`, persisting the dismissal — the
    banner does not come back. Everything recorded up to the crash is kept and
    still opens in Review.

@@ -7,7 +7,8 @@ a test run never reads or changes the real user's settings, and gives that
 settings file a labeller name ("Test Labeller") — Review & Label saves labels
 under the name of whoever is labelling, and asks for one when there is none.
 It also selects Qt's offscreen platform when none is set, so scripts can be run
-directly on a machine (or CI runner) with no display.
+directly on a machine (or CI runner) with no display, and shortens the 15 s
+lead-in before the baseline to 2 s so simulated recordings stay quick.
 
 LSL: every script gets its own ``BRAIN_BATTLE_LSL_TAG``, which goes into the
 source id of every stream it publishes (``capture/lsl_outlets.source_id``).
@@ -28,6 +29,9 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 LABELLER = "Test Labeller"
+# Recordings start with a 15 s lead-in; simulated test recordings use 2 s so
+# the suite stays quick. Tests that check the real length read LEAD_IN_DEFAULT.
+TEST_LEAD_IN_SEC = 2
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("BRAIN_BATTLE_LSL_TAG", f"test-{os.getpid()}-{uuid.uuid4().hex[:6]}")
@@ -36,6 +40,10 @@ if not os.environ.get("BRAIN_BATTLE_CONFIG"):
     with open(_cfg, "w", encoding="utf-8") as _f:
         json.dump({"labeller_name": LABELLER}, _f)
     os.environ["BRAIN_BATTLE_CONFIG"] = _cfg
+
+
+import brain_battle.capture.session_controller as _session_controller  # noqa: E402
+_session_controller.LEAD_IN_SEC = TEST_LEAD_IN_SEC
 
 
 def set_labeller(name: str = LABELLER) -> str:

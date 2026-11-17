@@ -353,6 +353,7 @@ def test_settings_drive_a_real_recording():
         check("High-quality estimate is bigger than Standard's would be",
               est_high > est_std)
 
+        su._name_a.setText("K7Q2"); su._name_b.setText("M3XA")
         flow.begin_recording()
         t0 = time.time()
         while flow.is_recording() and time.time() - t0 < 40:

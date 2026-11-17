@@ -5,7 +5,7 @@ sequenceDiagram
     participant Se as SessionsTab
     participant U as User
     App->>St: scan_interrupted_sessions()
-    St-->>App: folders with no SESSION_END
+    St-->>App: no RECORDING_END
     App->>St: mark_session_interrupted()
     App->>Se: show interrupted banner
     Se->>U: "A recording was interrupted"

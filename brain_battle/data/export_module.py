@@ -389,12 +389,15 @@ def build_coregistered_eeg(eeg_dfs, phase_markers, sr: int = 256):
     phase_id    = np.array([""] * n, dtype=object)
     phase_label = np.array([""] * n, dtype=object)
     marker      = np.array([""] * n, dtype=object)
-    for mt, pid, lab in sorted(phase_markers or [], key=lambda m: m[0]):
+    import brain_battle.data.session_storage as session_storage
+    for mt, pid, lab in sorted((tuple(m[:3]) for m in phase_markers or []), key=lambda m: m[0]):
         idx = int(np.searchsorted(grid, mt))     # first grid row >= marker time
         if 0 <= idx < n:
-            marker[idx] = lab
-            phase_id[idx:]    = pid               # active from here onward
-            phase_label[idx:] = lab
+            # two markers on one row (ROUND_1_END + BREAK_1_START) → "A;B"
+            marker[idx] = f"{marker[idx]};{lab}" if marker[idx] else lab
+            if session_storage.is_phase_start(lab):
+                phase_id[idx:]    = pid           # active from here onward
+                phase_label[idx:] = lab
     out["phase_id"], out["phase_label"], out["marker"] = phase_id, phase_label, marker
     return pd.DataFrame(out)
 

@@ -75,6 +75,8 @@ def _round_at(t: float, phase_markers) -> Optional[str]:
     for row in sorted(phase_markers or [], key=lambda r: r[0]):
         mt = float(row[0])
         label = row[2] if len(row) > 2 else (row[1] if len(row) > 1 else "")
+        if str(label).upper().endswith("_END"):
+            continue                       # a phase's end; the next start follows
         if mt <= t + 1e-6:
             active = label
         else:
@@ -89,7 +91,9 @@ def _round_at(t: float, phase_markers) -> Optional[str]:
     if u.startswith("BREAK"):
         return "a break"
     if u.startswith("BASELINE"):
-        return "the rest before round 1"
+        return "the baseline"
+    if u.startswith("RECORDING_START"):
+        return "the lead-in"
     return None
 
 

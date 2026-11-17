@@ -7,8 +7,9 @@ Covers:
      normalised to -1 dBTP — full volume, no clipping — as produced by
      tools/make_round_bell.py; the owner turns it down with the laptop's
      volume if needed, rather than the app being quiet by default).
-  2. SessionController's beep_requested fires at BASELINE start and every
-     ROUND start, and never on a BREAK.
+  2. SessionController's bell_requested fires at the START and END of every
+     round (including the last), never for the lead-in, baseline or a break,
+     and not when a round is stopped early.
   3. SettingsScreen's Test sound button plays the bundled file, headless.
   4. A missing WAV logs a warning and stays silent — RoundBell never raises.
   5. The credits entry for the bell (and the bundled Inter font) exists in
@@ -100,35 +101,56 @@ def test_round_bell_wav_specs():
 
 # ─── 2. the bell rings at baseline + each round start, never on a break ────
 
-def test_beep_requested_timing():
+def test_bell_timing():
+    """The bell rings at the START and at the END of every round — including
+    the last one, whose end also finishes the recording — and never for the
+    lead-in, the baseline or a break."""
     from brain_battle.capture.session_controller import SessionController, SessionConfig, Phase
 
     sc = SessionController()
     sc.configure(SessionConfig(num_rounds=3, round_sec=5, break_sec=5, baseline_sec=5))
 
-    beeped_phases = []
-    phase_changes = []
-    sc.beep_requested.connect(lambda: beeped_phases.append(sc.phase))
-    sc.phase_changed.connect(lambda pid, label, dur, rnd: phase_changes.append(pid))
+    events = []          # ("bell", marker-so-far) and ("marker", text) in order
+    sc.bell_requested.connect(lambda: events.append(("bell", None)))
+    sc.marker.connect(lambda text, pid, rn: events.append(("marker", text)))
+    finished = []
+    sc.session_finished.connect(lambda: finished.append(True))
 
     sc.start()
-    # Walk the rest of the timeline directly (pure state-machine logic — no
-    # need to wait out a real 1 Hz timer for a timing-only test).
-    timeline = sc.phase_plan()
-    for _ in range(len(timeline) - 1):
+    # Walk the timeline directly (pure state-machine logic — no need to wait
+    # out a real 1 Hz timer for a timing-only test). The last _advance() runs
+    # off the end of the timeline and finishes the recording.
+    for _ in range(len(sc.phase_plan())):
         sc._advance()
-    sc.stop()
 
-    check("every phase in the timeline fired phase_changed",
-          len(phase_changes) == len(timeline), f"{len(phase_changes)} != {len(timeline)}")
-    check("bell rings at BASELINE start and every ROUND start, in order",
-          beeped_phases == [Phase.BASELINE, Phase.ROUND, Phase.ROUND, Phase.ROUND],
-          str(beeped_phases))
-    check("bell never rings on a BREAK",
-          Phase.BREAK not in beeped_phases, str(beeped_phases))
-    check("bell ring count == baseline + rounds, not every phase",
-          len(beeped_phases) == 4 and len(timeline) == 6,
-          f"beeps={len(beeped_phases)} phases={len(timeline)}")
+    # each bell immediately follows the marker that caused it
+    rung_after = [events[i - 1][1] for i, e in enumerate(events) if e[0] == "bell"]
+    check("bell rings at the start and end of every round, in order",
+          rung_after == ["ROUND_1_START", "ROUND_1_END", "ROUND_2_START", "ROUND_2_END",
+                         "ROUND_3_START", "ROUND_3_END"], str(rung_after))
+    check("the last round's end rings too (before RECORDING_END)",
+          events[-1] == ("marker", "RECORDING_END") and events[-2] == ("bell", None)
+          and events[-3] == ("marker", "ROUND_3_END"), str(events[-3:]))
+    check("no bell for the lead-in, the baseline or a break",
+          not any(m and (m.startswith("BASELINE") or m.startswith("BREAK")
+                         or m == "RECORDING_START") for m in rung_after), str(rung_after))
+    check("the recording finished after the last round", finished == [True])
+
+
+def test_bell_not_on_early_stop():
+    """Stopping early writes RECORDING_END but no _END for the unfinished round
+    and does not ring the bell."""
+    from brain_battle.capture.session_controller import SessionController, SessionConfig
+    sc = SessionController()
+    sc.configure(SessionConfig(num_rounds=2, round_sec=5, break_sec=5, baseline_sec=5))
+    events = []
+    sc.bell_requested.connect(lambda: events.append("bell"))
+    sc.marker.connect(lambda text, pid, rn: events.append(text))
+    sc.start(); sc._advance(); sc._advance()       # lead-in → baseline → round 1
+    events.clear()
+    sc.stop()
+    check("early stop: only RECORDING_END, no ROUND_1_END, no bell",
+          events == ["RECORDING_END"], str(events))
 
 
 # ─── 3. Settings' Test sound plays the bundled file ────────────────────────
@@ -194,7 +216,8 @@ def test_credits_page_exists():
 
 if __name__ == "__main__":
     test_round_bell_wav_specs()
-    test_beep_requested_timing()
+    test_bell_timing()
+    test_bell_not_on_early_stop()
     test_settings_test_sound_plays_bundled_bell()
     test_missing_bell_file_stays_silent()
     test_credits_page_exists()

@@ -170,8 +170,8 @@ def test_interrupted_session():
 
         with open(os.path.join(result["root"], "phase_markers.csv"), encoding="utf-8") as f:
             marker_rows = f.read().strip().splitlines()[1:]
-        check("interrupted: no SESSION_END marker",
-              not any("SESSION_END" in row for row in marker_rows),
+        check("interrupted: no RECORDING_END marker",
+              not any("RECORDING_END" in row or "SESSION_END" in row for row in marker_rows),
               f"{len(marker_rows)} marker rows")
 
         manifest = json.loads(
@@ -196,10 +196,17 @@ def test_marker_label_format():
                                        break_sec=3, baseline_sec=3, seed=4)
         with open(os.path.join(result["root"], "phase_markers.csv"), encoding="utf-8") as f:
             labels = [row.split(",")[2] for row in f.read().strip().splitlines()[1:]]
-        expected = ["BASELINE_START", "ROUND_1_START", "BREAK_1_START",
-                    "ROUND_2_START", "SESSION_END"]
-        check("generated markers use underscore form (ROUND_1_START)",
+        expected = ["RECORDING_START", "BASELINE_START", "BASELINE_END",
+                    "ROUND_1_START", "ROUND_1_END", "BREAK_1_START", "BREAK_1_END",
+                    "ROUND_2_START", "ROUND_2_END", "RECORDING_END"]
+        check("generated system markers: start/end of everything, underscore form",
               labels == expected, str(labels))
+        times = [float(row.split(",")[0]) for row in
+                 open(os.path.join(result["root"], "phase_markers.csv"),
+                      encoding="utf-8").read().strip().splitlines()[1:]]
+        import brain_battle.capture.session_controller as _sc
+        check("RECORDING_START at 0, BASELINE_START one lead-in later",
+              times[0] == 0.0 and abs(times[1] - _sc.LEAD_IN_SEC) < 1e-6, str(times[:2]))
 
     # The merged screen's marker parser (review_label_screen.friendly_phase) must
     # read BOTH the new underscore form and the legacy space form.
@@ -207,7 +214,9 @@ def test_marker_label_format():
     pairs = [
         ("ROUND_1_START", "ROUND 1_START", "Round 1"),
         ("BREAK_2_START", "BREAK 2_START", "Break"),
-        ("BASELINE_START", "BASELINE_START", "Rest before round 1"),
+        ("BASELINE_START", "BASELINE_START", "Baseline"),
+        ("RECORDING_START", "RECORDING_START", "Lead-in"),
+        ("RECORDING_END", "RECORDING_END", "Finished"),
         ("SESSION_END", "SESSION_END", "Finished"),
     ]
     for new_form, old_form, want in pairs:

@@ -42,10 +42,12 @@ boxers' names while they do.
 
 **Bottom half — plan the session**
 
-- **Names.** Type each boxer's name (optional). The names go into the
-  recording's folder name and its files; they can be hidden later — see
+- **Fighter codes.** Each fighter gets a 4-character code (capital letters and
+  digits, like K7Q2); **New code** makes one up. The two codes must differ. No
+  names are stored — see
   [Personal data note](../research-and-data/personal-data.md).
-- **Ring a bell when each round starts** — on or off for this recording.
+- **Ring the bell at the start and end of each round** — on or off for this
+  recording.
 - **Rounds, Round length, Break between, Rest before round 1.** Use − and +.
   They start at the values in [Settings](settings.md).
 - The coloured bar shows the whole session: rest, each round, each break. The
@@ -56,7 +58,10 @@ boxers' names while they do.
   session. If the recordings folder is on a network drive you are told that
   recording straight to it is risky — see [Troubleshooting](troubleshooting.md).
 
-Press **Start recording**. Recording starts with the rest period.
+Press **Start recording**. Recording starts **15 seconds before the
+baseline** (the lead-in), so every device is running before anything that
+matters happens. The start and end of the recording, the baseline, every round
+and every break are marked automatically.
 
 ## Step 2 — Recording
 
