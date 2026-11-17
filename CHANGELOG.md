@@ -5,6 +5,12 @@
 reviewed `3.0.0-beta.2`. The "Phase 2.N" headings further down are historical
 dev-log numbering, kept as history — they do not track the release version.
 
+## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
+
+**Cleanup**
+- Removed two unused variables (`actual_w`, `actual_h`) from the camera thread
+  and the stale `.brain_battle_prefs.json` line from `.gitignore`.
+
 ## 3.1.0-dev · Tidy-up, both CI systems green, a README for testers (no new tag)
 
 **README rewritten for testers**

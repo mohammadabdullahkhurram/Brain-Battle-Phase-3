@@ -594,8 +594,6 @@ class USBCameraThread(QThread):
         except Exception:
             pass
 
-        actual_w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))  or self._want_w
-        actual_h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self._want_h
         actual_fps = cap.get(cv2.CAP_PROP_FPS) or float(self._want_fps)
         if abs(actual_fps - self._want_fps) > 0.5:
             log.warning("cam idx=%s requested %s fps but reports %.2f fps — "

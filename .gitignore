@@ -13,7 +13,6 @@ dist/
 *.textClipping
 
 # Runtime-generated data
-.brain_battle_prefs.json
 screens/
 
 # Local AI-coding-agent config (kept locally, never committed)
