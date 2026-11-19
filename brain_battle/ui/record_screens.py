@@ -31,7 +31,7 @@ from PyQt6.QtGui import QPainter, QColor, QFont, QPen
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, QFrame,
     QSizePolicy, QLineEdit, QCheckBox, QDialog, QTextEdit, QTableWidget,
-    QTableWidgetItem, QHeaderView, QAbstractItemView,
+    QTableWidgetItem, QHeaderView, QAbstractItemView, QMessageBox,
 )
 
 import brain_battle.ui.design_tokens as dt
@@ -259,6 +259,26 @@ class HeadIcon(QWidget):
 
 
 _PLACE = {"TP9": "left-ear", "AF7": "left-forehead", "AF8": "right-forehead", "TP10": "right-ear"}
+
+
+def poor_sensors(statuses: dict) -> list:
+    """The sensors whose signal does not look good, e.g. ['right ear (TP10)']."""
+    return [f"{_PLACE[ch].replace('-', ' ')} ({ch})" for ch in ("TP9", "AF7", "AF8", "TP10")
+            if statuses.get(ch) not in (None, "good")]
+
+
+def ask_start_anyway(parent, text: str) -> bool:
+    """'Signal looks poor on K7Q2 right ear (TP10). Start anyway?' —
+    Start anyway (True) / Go back (False). Tests replace this function."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Signal looks poor")
+    box.setText(text)
+    go = box.addButton("Start anyway", QMessageBox.ButtonRole.AcceptRole)
+    back = box.addButton("Go back", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(back)
+    box.exec()
+    return box.clickedButton() is go
 
 
 def poor_text(statuses: dict) -> str:
@@ -548,7 +568,7 @@ class GetReadyScreen(QWidget):
         av.addWidget(self.timing_btn)
         self._start = ui.primary_button("●  Start recording")
         self._start.setMinimumHeight(52)
-        self._start.clicked.connect(flow.begin_recording)
+        self._start.clicked.connect(self.start_pressed)
         av.addWidget(self._start)
         self.start_note = QLabel(""); self.start_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.start_note.setWordWrap(True)
@@ -705,6 +725,28 @@ class GetReadyScreen(QWidget):
         disk_ok, disk_note = f.disk_check(self.config())
         out.append((disk_ok, "Enough space", disk_note, False))
         return out
+
+    def poor_signal_text(self) -> str:
+        """'Signal looks poor on K7Q2 right ear (TP10). Start anyway?' — or ''
+        when the signal check is green (or a headband is not connected yet)."""
+        a, b = self.names()
+        parts = []
+        for w, code in (("A", a), ("B", b)):
+            if not self.flow._bands[w].connected:
+                continue
+            for sensor in poor_sensors(self._cards[w].statuses()):
+                parts.append(f"{code or 'Boxer ' + w} {sensor}")
+        if not parts:
+            return ""
+        return f"Signal looks poor on {', '.join(parts)}. Start anyway?"
+
+    def start_pressed(self) -> None:
+        """Start recording — after asking, when the signal check is not green
+        (it is our heuristic, so it never blocks)."""
+        text = self.poor_signal_text()
+        if text and not ask_start_anyway(self, text):
+            return
+        self.flow.begin_recording()
 
     def problems(self) -> int:
         return sum(1 for ok, _t, _n, soft in self._checks if not ok and not soft)

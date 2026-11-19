@@ -32,6 +32,9 @@ dev-log numbering, kept as history — they do not track the release version.
   `ROUND_2_END`) at the stop time, then `RECORDING_END`; the bell does not
   ring; the manifest keeps `stopped_early`. `test_record_flow`,
   `test_round_bell` and `file-formats.md` updated.
+- **Get ready asks before starting with a poor signal:** "Signal looks poor
+  on K7Q2 right ear (TP10). Start anyway?" — Start anyway / Go back (the
+  signal check is our heuristic, so it still never blocks). Test included.
 
 **Design F — the new screens** (`docs/DESIGN.md`, rewritten from `docs/design/prototype.html`)
 - A white top header (logo · Sessions · Documentation · the Settings gear)

@@ -470,6 +470,39 @@ def test_cancel_marks_interrupted():
         flow.shutdown(); pump(0.3)
 
 
+def test_poor_signal_asks_before_start():
+    _fresh_env()
+    import brain_battle.ui.record_screens as rs
+    flow = _new_flow()
+    real_ask = rs.ask_start_anyway
+    asked = []
+    try:
+        flow.start(); pump(1.8)
+        _setup_short(flow, rest=2, rnd=10, brk=0, rounds=1)
+        gr = flow._get_ready
+        gr._cards["A"].statuses = lambda: {"TP9": "good", "AF7": "good", "AF8": "good",
+                                           "TP10": "poor"}
+        gr._cards["B"].statuses = lambda: {"TP9": "good", "AF7": "good", "AF8": "good",
+                                           "TP10": "good"}
+        text = gr.poor_signal_text()
+        check("the question names the code and the sensor",
+              text == "Signal looks poor on K7Q2 right ear (TP10). Start anyway?", text)
+        rs.ask_start_anyway = lambda parent, t: (asked.append(t), False)[1]
+        gr.start_pressed(); pump(0.3)
+        check("Go back: the question was asked and nothing started",
+              asked == [text] and not flow.is_recording())
+        rs.ask_start_anyway = lambda parent, t: (asked.append(t), True)[1]
+        gr.start_pressed(); pump(0.3)
+        check("Start anyway: the recording starts", flow.is_recording())
+        flow.stop_and_save(); pump(0.5)
+        gr._cards["A"].statuses = gr._cards["B"].statuses
+        asked.clear()
+        check("a green signal check asks nothing", gr.poor_signal_text() == "")
+    finally:
+        rs.ask_start_anyway = real_ask
+        flow.shutdown(); pump(0.3)
+
+
 # ─── 7. every flow step fits ───────────────────────────────────────────────────
 
 def _overflows(win, page):
@@ -606,6 +639,7 @@ if __name__ == "__main__":
     test_disk_blocked()
     test_quit_confirmation()
     test_cancel_marks_interrupted()
+    test_poor_signal_asks_before_start()
     test_every_step_fits()
     test_moment_popup_and_notes()
     test_no_simulation_when_unset()

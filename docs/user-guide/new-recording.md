@@ -22,8 +22,10 @@ start".
   looks poor. "The right-ear signal (TP10) looks poor" usually means the band is
   not flat behind the ear, or hair is in the way. Adjust it and press **I've
   adjusted it**. *This is the app's own judgement from the signal — the
-  headband does not report how well it fits — so it advises but never blocks
-  Start.* Under it is the live brain activity, five traces, five seconds across.
+  headband does not report how well it fits — so it never blocks Start:*
+  pressing **Start recording** while a sensor looks poor asks, for example,
+  "Signal looks poor on K7Q2 right ear (TP10). Start anyway?" — **Start
+  anyway** or **Go back**. Under it is the live brain activity, five traces, five seconds across.
 - **4 cameras connected.** Four live pictures, each with its frame rate (60 fps
   when Settings › Advanced › "Record cameras at 60 fps" is on). A camera that is
   not found shows a dashed outline: check its USB cable and press **Search
