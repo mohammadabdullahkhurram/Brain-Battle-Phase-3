@@ -328,6 +328,88 @@ class PacketTimer:
         return out
 
 
+class FrameClock:
+    """Per camera: the time of every frame on the camera's own steady clock,
+    instead of the moment this computer happened to read it (ADR-0025).
+
+    A camera captures a frame every period T on its own crystal. With a
+    1-frame driver buffer the reader always gets the NEWEST frame, so a frame
+    is read between 0 and one period after it became available — later when
+    the computer was busy. Stamping the read time puts some frames up to a
+    period (17 ms at 60 fps) late.
+
+    A small tracker follows the camera's ON-TIME frame clock (the earliest a
+    frame is ever read) instead:
+
+    * **Frame number.** ``steps = floor((read time − previous stamp) / T +
+      EARLY)``. Two reads less than 1.5 periods apart are consecutive frames
+      (nothing can have been skipped): one step — or none, when ``steps`` is
+      0, which means the previous frame was counted one too far after a
+      pause, so one mistake never shifts later frames. After a longer pause:
+      ``max(1, steps)``; more than one step is frames the camera lost.
+    * **Stamp.** predicted = previous stamp + steps·T. A frame read EARLIER
+      than predicted moves the clock a fifth of the way towards it (the
+      on-time clock is earlier than thought); a frame read later moves it
+      only a hundredth (being late is normal, the clock is not). The period T
+      follows these corrections, so a camera that declares 30 fps but runs at
+      29.5 is tracked. T starts as the median of the first frame intervals.
+
+    Everything is local, so nothing can drift far: no global line that a
+    wrong frame count could bend. Measured on a simulated busy reader:
+    stamps within 0.5–2.7 ms of the true frame time (99 %), against up to a
+    period for read times; a constant ~1.3 ms early (the on-time edge rather
+    than the typical read), which the buzzer test calibrates out with the rest
+    of the camera's delay. ``reset()`` after the camera was reopened (a new
+    frame clock); stamps never go backwards."""
+
+    EARLY = 0.25
+    TOWARDS_EARLY = 0.2      # share of the gap to an early frame taken at once
+    TOWARDS_LATE = 0.01      # share of the gap to a late frame
+    PERIOD_GAIN = 0.02       # how much the period follows each correction
+    WARMUP = 60              # frame intervals used for the first period
+
+    def __init__(self, fps: float):
+        self.fps = float(fps) if fps and fps > 0 else 30.0
+        self.nominal = 1.0 / self.fps
+        self.lost = 0
+        self._last_out: Optional[float] = None
+        self.reset()
+
+    def reset(self) -> None:
+        self.period = self.nominal
+        self._warm: list = []
+        self._stamp: Optional[float] = None
+        self._arrival: Optional[float] = None
+
+    def stamp(self, arrival: float) -> float:
+        arrival = float(arrival)
+        if self._stamp is None:
+            out = arrival
+        else:
+            gap = arrival - self._arrival
+            if len(self._warm) < self.WARMUP and gap < 1.5 * self.nominal:
+                self._warm.append(gap)
+                if len(self._warm) >= 10:
+                    self.period = float(np.median(self._warm))
+            T = self.period
+            steps = int(math.floor((arrival - self._stamp) / T + self.EARLY))
+            k = (1 if steps >= 1 else 0) if gap < 1.5 * T else max(1, steps)
+            self.lost += max(0, k - 1)
+            predicted = self._stamp + k * T
+            r = arrival - predicted
+            c = self.TOWARDS_EARLY * r if r < 0 else self.TOWARDS_LATE * min(r, 0.5 * T)
+            out = predicted + c
+            if k >= 1:
+                self.period = min(2.0 * self.nominal, max(0.5 * self.nominal,
+                                                         T + self.PERIOD_GAIN * c / k))
+        self._stamp = out
+        self._arrival = arrival
+        if self._last_out is not None and out <= self._last_out:
+            out = self._last_out + 1e-4
+        self._last_out = out
+        return out
+
+
 # ═══════════════════════════════════════════════════ 3. buzzer calibration
 
 def _robust_noise(x) -> float:
@@ -565,7 +647,7 @@ def correction_for(manifest, device: str) -> float:
 
 __all__ = [
     "GOAL_MS", "N_BEEPS", "BEEP_INTERVAL_SEC", "TAP_WINDOW",
-    "TimingSnapshot", "RateMonitor", "LinearClockFit", "PacketTimer",
+    "TimingSnapshot", "RateMonitor", "LinearClockFit", "PacketTimer", "FrameClock",
     "detect_eeg_tap", "detect_camera_tap", "calibrate", "summary_text",
     "camera_device", "band_device", "corrections", "correction_for",
 ]

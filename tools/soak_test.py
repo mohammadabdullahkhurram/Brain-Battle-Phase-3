@@ -119,9 +119,12 @@ def analyse_recording(root: str, fps: float) -> dict:
     end = markers[-1][0] if markers else 0.0
     for stem, mp4, side in ss.camera_files(root):
         try:
-            t = ss.read_csv_tolerant(side)["t_session_seconds"].to_numpy(dtype=float)
+            df = ss.read_csv_tolerant(side)
+            t = df["t_session_seconds"].to_numpy(dtype=float)
+            arr = (df["t_arrival_monotonic"].to_numpy(dtype=float)
+                   if "t_arrival_monotonic" in df.columns else None)
         except Exception:
-            t = np.zeros(0)
+            t = np.zeros(0); arr = None
         if len(t) < 2:
             out["cameras"][stem] = {"frames": int(len(t)), "lost": None, "late": None}
             continue
@@ -133,11 +136,19 @@ def analyse_recording(root: str, fps: float) -> dict:
         # than 1.5 frame periods — a frame read late (its stamp is late too),
         # usually followed by a short interval when nothing was lost; the
         # first version of this tool counted these as "missing".
-        late = int(np.sum(d > 1.5 * per))
+        # read late: from the read times when the sidecar has them (the frame
+        # stamps are on the camera's fitted clock and do not show it)
+        da = np.diff(arr) if arr is not None and len(arr) == len(t) else d
+        late = int(np.sum(da > 1.5 * per))
+        # stamps off the steady clock: intervals between stamps that are not
+        # a whole number of frame periods (± a quarter)
+        k = np.round(d / per)
+        off = int(np.sum((k >= 1) & (np.abs(d - k * per) > 0.25 * per)))
         out["cameras"][stem] = {
             "frames": int(len(t)), "span_s": round(float(t[-1] - t[0]), 2),
             "expected": expected, "lost": max(0, expected - int(len(t))),
-            "late": late, "max_gap_ms": round(float(d.max()) * 1000, 1),
+            "late": late, "stamps_off_clock": off,
+            "max_gap_ms": round(float(d.max()) * 1000, 1),
             "big_gaps_at_s": [round(float(t[i]), 1) for i in np.nonzero(d > 0.08)[0][:8]]}
     for who, path in ss.eeg_files(root).items():
         try:

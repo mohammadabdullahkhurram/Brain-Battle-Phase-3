@@ -123,6 +123,58 @@ def _recovery_error(cal, delays_s):
     return max(abs(e - c) for e in errs.values())
 
 
+def _camera_run(true_fps, nominal, stall_p, seed=1, minutes=5):
+    """A camera with a 1-frame buffer on its own steady clock, read by a
+    reader that is sometimes late (a busy computer). Returns the errors of
+    FrameClock stamps and of read times against each frame's true time (+ the
+    usual delay), and the true / counted lost frames."""
+    import random
+    from brain_battle.capture.timing import FrameClock
+    rng = random.Random(seed)
+    P = 1 / true_fps; delay = 0.055; jit = 0.002
+    fc = FrameClock(nominal)
+    now = t0 = 100.0; n = 0; es, er = [], []; lost = 0
+    for _ in range(int(true_fps * 60 * minutes)):
+        now += rng.uniform(0.001, 0.004) + (rng.uniform(0.02, 0.15) if rng.random() < stall_p else 0)
+        late = now - (t0 + n * P + delay)
+        if late > P:                       # older frames are gone: the newest is read
+            k = int(late / P); n += k; lost += k
+        shown = t0 + n * P
+        now = max(now, shown + delay + rng.uniform(-jit, jit))
+        es.append(fc.stamp(now) - (shown + delay)); er.append(now - (shown + delay))
+        n += 1
+    return np.asarray(es[600:]), np.abs(er[600:]), lost, fc.lost
+
+
+def test_frame_clock():
+    """Camera frames are stamped on the camera's own steady frame clock, not
+    when a busy computer happened to read them (ADR-0025)."""
+    for fps, nominal, stall_p in ((60.0, 60.0, 0.004), (60.0, 60.0, 0.03), (29.5, 30.0, 0.01),
+                                  (30.0, 30.0, 0.03)):
+        for seed in (1, 2):
+            es, er, lost, counted = _camera_run(fps, nominal, stall_p, seed=seed)
+            off = float(np.median(es))             # constant: calibrated out with the delay
+            spread = np.abs(es - off)
+            tag = f"{fps} fps (says {nominal}), stalls {stall_p}, seed {seed}"
+            print(f"FRAME CLOCK {tag}: offset {off * 1e3:+.2f} ms, spread p99 "
+                  f"{np.percentile(spread, 99) * 1e3:.2f} ms, >4 ms {np.sum(spread > 0.004)} | read "
+                  f"time p99 {np.percentile(er, 99) * 1e3:.2f} ms, >4 ms {np.sum(er > 0.004)} | lost "
+                  f"{lost}, counted {counted}")
+            within = float(np.mean(spread <= 0.003))
+            # (with 3 % of reads stalled up to 150 ms, ~1 % of frames are read
+            # almost a whole period late just after a pause — indistinguishable
+            # from the next frame — and their stamps are off by a period)
+            check(f"{tag}: at least 98.5 % of stamps within 3 ms of the camera's steady clock",
+                  within >= 0.985, f"{within * 100:.2f} %")
+            check(f"{tag}: fewer frames off by more than 4 ms than with read times",
+                  np.sum(spread > 0.004) < np.sum(er > 0.004),
+                  f"{np.sum(spread > 0.004)} vs {np.sum(er > 0.004)}")
+            check(f"{tag}: the constant offset is small (under 3 ms)", abs(off) < 0.003,
+                  f"{off * 1e3:.2f} ms")
+            check(f"{tag}: lost frames counted within 30 %",
+                  abs(counted - lost) <= max(5, 0.3 * lost), f"{counted} vs {lost}")
+
+
 def test_synthetic_calibration():
     errs, cal0 = [], None
     for seed in range(40):
@@ -214,6 +266,7 @@ def test_simulated_devices_end_to_end():
 if __name__ == "__main__":
     test_rate_monitor()
     test_packet_timer()
+    test_frame_clock()
     test_synthetic_calibration()
     test_simulated_devices_end_to_end()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")

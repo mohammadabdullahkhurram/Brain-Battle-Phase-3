@@ -358,7 +358,8 @@ class FrameEncoder:
     def is_alive(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
 
-    def write_frame(self, frame: np.ndarray, t_monotonic: float) -> bool:
+    def write_frame(self, frame: np.ndarray, t_monotonic: float,
+                    t_arrival: Optional[float] = None) -> bool:
         """Feed one frame to ffmpeg and, on success, stamp its sidecar row.
         Returns False if ffmpeg's pipe is gone (process died) — the caller
         should stop this camera. Blocks while ffmpeg's stdin is full (the
@@ -376,7 +377,7 @@ class FrameEncoder:
             proc.stdin.write(memoryview(frame).cast("B"))
         except (BrokenPipeError, OSError, ValueError):
             return False
-        self._write_sidecar_row(t_monotonic)   # only AFTER a successful write
+        self._write_sidecar_row(t_monotonic, t_arrival)   # only AFTER a successful write
         return True
 
     def close(self, timeout: float = 5.0) -> Optional[int]:
@@ -419,12 +420,18 @@ class FrameEncoder:
             # Line-buffered so each complete row reaches the OS on its newline,
             # keeping the sidecar crash-consistent with the fragmented video.
             self._ts_file = open(ts_path, "w", buffering=1, encoding="utf-8", newline="")
-            self._ts_file.write("frame_index,t_session_seconds,t_monotonic,t_unix\n")
+            self._ts_file.write(
+                "frame_index,t_session_seconds,t_monotonic,t_unix,t_arrival_monotonic\n")
         except OSError as e:
             self._ts_file = None
             log.warning("could not open timestamp sidecar %s: %s", ts_path, e)
 
-    def _write_sidecar_row(self, t_monotonic: float) -> None:
+    def _write_sidecar_row(self, t_monotonic: float, t_arrival: Optional[float] = None) -> None:
+        """One row: the frame's time (``t_monotonic``: its stamp on the
+        camera's fitted steady clock, ``timing.FrameClock``; the read time
+        when no fit is given) and, last, the moment it was actually read."""
+        if t_arrival is None:
+            t_arrival = t_monotonic
         clock = self._clock
         if clock is not None:
             t0_mono, t0_unix = clock
@@ -439,7 +446,8 @@ class FrameEncoder:
         try:
             if self._ts_file is not None:
                 self._ts_file.write(
-                    f"{self._frame_idx},{t_session:.6f},{t_monotonic:.6f},{t_unix:.6f}\n")
+                    f"{self._frame_idx},{t_session:.6f},{t_monotonic:.6f},{t_unix:.6f},"
+                    f"{t_arrival:.6f}\n")
         except OSError:
             pass  # a sidecar write failure must not stop capture
         if self._on_frame is not None:
@@ -585,15 +593,21 @@ class USBCameraThread(QThread):
     def _apply(self, kind: str, payload) -> None:  # noqa: C901 — one switch
         if kind == "frames":
             sim = None
+            # (read time, stamp on the camera's fitted clock, energy, sim delay):
+            # the live rate / jitter use the read times (that is the jitter);
+            # the buzzer test uses the stamps, like the sidecar
             with self._energy_lock:
-                for t, e, delay in payload:
-                    self._energy.append((t, e))
-            for t, e, delay in payload:
-                self.monitor.add(t)
+                for _t_read, t_stamp, e, _delay in payload:
+                    self._energy.append((t_stamp, e))
+            for t_read, t_stamp, _e, delay in payload:
+                self.monitor.add(t_read)
                 if delay is not None:
                     if sim is None:
                         import brain_battle.capture.simulation as sim
-                    sim.note_delivered(sim.camera_key(self._dev.index), t, delay)
+                    # ground truth = the delay the recording carries: the
+                    # frame's stamp minus the instant it shows
+                    sim.note_delivered(sim.camera_key(self._dev.index), t_read,
+                                       delay - (t_read - t_stamp))
             if payload:
                 self._last_frame_t = payload[-1][0]
         elif kind == "preview":

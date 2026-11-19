@@ -97,18 +97,26 @@ one short one with nothing lost, so the tool now reports **lost** and
    25–150 ms a few times a minute — and a pause longer than one frame period
    loses a frame with a 1-frame buffer. No change inside the app can stop
    that.
-2. **Frames read late**: about 0.8 % of frames in the 12-minute recording
-   (≈ 0 in the 1-minute ones) were read more than half a frame period late, so
-   their timestamps are late by 10–35 ms. The buzzer calibration is not
-   affected (it locks onto the camera's steady frame clock), but playback and
-   `recording.xdf` use each frame's own stamp.
+2. **Frames read late** — fixed after this ADR was first written. About 0.6 %
+   of frames in the 12-minute recording were read more than half a period
+   late, so their read times were 10–35 ms late. Each frame is now stamped on
+   the camera's own steady frame clock (`timing.FrameClock`): a small tracker
+   of the on-time edge, with frame numbers counted from the previous frame
+   (two reads less than 1.5 periods apart are consecutive frames). In a
+   2-minute soak, every interval between stamps was a whole number of frame
+   periods (`stamps_off_clock` 0 on all four cameras); on a simulated busy
+   reader, ≥ 98.5 % of stamps lie within 3 ms of the true frame clock, against
+   up to a period for read times. The read time is kept in the sidecar's
+   `t_arrival_monotonic`. (A first version — one robust straight line
+   through every frame's number and read time, as for the headbands — was
+   more precise when it worked but could bend itself away after a wrong frame
+   count, so it was not used.)
 
-Ways to remove the rest, all needing real cameras to confirm:
+Ways to remove the rest of the losses, both needing real cameras to confirm:
 
-- stamp each frame on the camera's **fitted steady clock** (as the headbands
-  already are, ADR-0024) instead of its read time — removes the late stamps;
 - a **deeper driver buffer** with the camera's own frame timestamps
-  (`CAP_PROP_POS_MSEC` where the driver supplies them) — removes the losses;
+  (`CAP_PROP_POS_MSEC` where the driver supplies them), so a paused reader
+  catches up without losing frames;
 - a **quieter recording computer** (no browser, no background indexing) —
   the cheapest thing to try at the first real session.
 

@@ -24,7 +24,9 @@ loop reports through one function ``out(kind, payload)``:
     state         "opening" / "live" / "reconnecting" / "error: …" / "stopped"
     fps           (actual fps, fell back to 30?)
     fps_note      "… can only record at 30 fps, not 60."
-    frames        [(t_monotonic, energy, simulated delivery delay or None), …]
+    frames        [(read time, stamp, energy, simulated delivery delay or None), …]
+                  (stamp = the frame's time on the camera's fitted steady clock,
+                  timing.FrameClock — what the sidecar and recording.xdf use)
     preview       a small BGR picture (≤ PREVIEW_FPS_CAP a second)
     stats         (frames in the last second, frames in total)
     dropped       (t_monotonic, dropped this recording)   encoder queue full
@@ -89,6 +91,7 @@ class CaptureLoop:
         self._pool_n = 0
         self._pool_shape = None
         self._frames: list = []
+        self._fclock = None
         self._written: list = []
         self._written_lock = threading.Lock()
         self._last_flush = 0.0
@@ -208,6 +211,8 @@ class CaptureLoop:
                 self._negotiate(new)
                 self._cap = new
                 self._prev_small = None
+                if self._fclock is not None:
+                    self._fclock.reset()            # a reopened camera: a new frame clock
                 return new
             time.sleep(min(2.0, 0.3 * attempt))
         return None
@@ -250,6 +255,8 @@ class CaptureLoop:
         self._cap = cap
         actual_fps, fallback = self._negotiate(cap)
         self.out("fps", (actual_fps, fallback))
+        from brain_battle.capture.timing import FrameClock
+        self._fclock = FrameClock(actual_fps)
         if abs(actual_fps - self.want_fps) > 0.5 and not fallback:
             log.warning("cam idx=%s requested %s fps but reports %.2f fps — may drift "
                         "across long sessions vs other cameras", self.dev.index,
@@ -328,7 +335,8 @@ class CaptureLoop:
                         self.out("state", "live")
                     fail_since = None
                 self._last_frame_t = now
-                self._frames.append((now, self._energy(frame),
+                stamp = self._fclock.stamp(now)
+                self._frames.append((now, stamp, self._energy(frame),
                                      getattr(cap, "last_delivered", None)))
                 window.append(now)
                 if window[0] < now - 1.0:
@@ -342,7 +350,7 @@ class CaptureLoop:
                 enqueued = False
                 if self.recording and self._rec_queue is not None:
                     try:
-                        self._rec_queue.put_nowait((frame, now))
+                        self._rec_queue.put_nowait((frame, stamp, now))
                         enqueued = True
                         depth = self._rec_queue.qsize()
                         if now - last_queue_reset >= 1.0:
@@ -421,8 +429,8 @@ class CaptureLoop:
             except queue.Empty:
                 item = None
             if item is not None:
-                frame, t_mono = item
-                ok_w = enc.write_frame(frame, t_mono)
+                frame, t_stamp, t_read = item
+                ok_w = enc.write_frame(frame, t_stamp, t_read)
                 self._give_buffer(frame)
                 if not ok_w:
                     died = True

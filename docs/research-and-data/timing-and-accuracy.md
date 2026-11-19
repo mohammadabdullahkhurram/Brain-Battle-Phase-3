@@ -25,8 +25,11 @@ placed relative to that origin:
 
 ![One shared origin feeding the camera sidecars, EEG timestamps, and phase markers onto one t_session_seconds axis](../diagrams/session-clock.png)
 
-- **Camera frames:** each frame's monotonic capture time minus
-  `t0_monotonic` (`usb_camera.FrameEncoder._write_sidecar_row`).
+- **Camera frames:** each frame's time on the camera's own steady frame clock
+  (`timing.FrameClock`: the frame's place on the clock the camera captures
+  by, not the moment a busy computer happened to read it) minus
+  `t0_monotonic` (`usb_camera.FrameEncoder._write_sidecar_row`). The read
+  time is kept in the sidecar's `t_arrival_monotonic` column.
 - **EEG samples:** each sample's arrival time on the same clock (expressed as
   Unix time) minus `t0_unix` (`eeg_module`).
 - **Inside `recording.xdf`:** every timestamp is `t0_lsl + t_session_seconds`,
@@ -72,7 +75,7 @@ between all devices after correction**
 | Part of the clock | Status |
 |---|---|
 | The shared origin (`capture_clock`) | **Measured** — one reading, taken once at start |
-| Camera frame times (sidecars) | **Measured** — the arrival time of each frame is recorded per row |
+| Camera frame times (sidecars) | **Measured** — each frame's read time, placed on the camera's steady frame clock (`timing.FrameClock`, ADR-0025); late reads are removed, lost frames show as whole-period gaps |
 | Each device's delay relative to the others | **Measured** by the buzzer test, when it is run — and corrected |
 | Headband arrival jitter | **Removed** by the per-band line fit (`timing.PacketTimer`) |
 | The arithmetic that places EEG on the axis | **Verified** by unit tests (`tests/test_capture_clock.py`) |
@@ -85,7 +88,8 @@ between all devices after correction**
 
 | What | Number | Source |
 |---|---|---|
-| Calibration recovers simulated delays (6 devices, jitter ±2 ms cameras / ±4 ms headbands) | within **2 ms** (measured 0.3–1.2 ms) | `tests/test_timing.py` |
+| Calibration recovers simulated delays (6 devices, jitter ±2 ms cameras / ±4 ms headbands) | within **2 ms** (measured 0.3–1.8 ms) | `tests/test_timing.py` |
+| Camera frame stamps vs the camera's true frame clock, reader stalled at random (simulated) | **≥ 98.5 %** of frames within 3 ms (p99 0.5–2.7 ms when ≤ 1 % of reads stall; read times: up to a frame period) | `tests/test_timing.py` (`test_frame_clock`) |
 | Same on synthetic data, 40 random runs | 95 % within **2 ms** | `tests/test_timing.py` |
 | Camera-to-camera frame alignment without a buzzer test | within **one frame period** (~17 ms at 60 fps, ~34 ms at 30 fps) | By design — each camera captures on its own phase |
 | Flash spread across the four cameras (30 fps demo) | worst **17.2 ms** measured, bound **≤ 34 ms** | `tests/test_flash_sync.py` |

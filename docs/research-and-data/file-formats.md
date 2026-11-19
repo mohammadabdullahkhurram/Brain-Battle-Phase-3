@@ -185,14 +185,26 @@ is what places a video frame on the session clock.
 |---|---|---|---|---|
 | `frame_index` | int | — | 0-based frame number in this video | `0` |
 | `t_session_seconds` | float | seconds | Time since session start | `0.071412` |
-| `t_monotonic` | float | seconds | The capture clock's reading (the computer's high-resolution monotonic clock; its zero is arbitrary) | `1352413.022679` |
+| `t_monotonic` | float | seconds | The frame's time on the capture clock (the computer's high-resolution monotonic clock; its zero is arbitrary) — on the camera's **fitted steady clock** (below) | `1352413.022679` |
 | `t_unix` | float | seconds | The same frame as a Unix timestamp | `1794241571.032568` |
+| `t_arrival_monotonic` | float | seconds | When the computer actually read the frame (capture clock). Absent in recordings made before 2026-11-19 | `1352413.023104` |
 
 ```csv
-frame_index,t_session_seconds,t_monotonic,t_unix
-0,0.071412,1352413.022679,1794241571.032568
-1,0.104746,1352413.056013,1794241571.065901
+frame_index,t_session_seconds,t_monotonic,t_unix,t_arrival_monotonic
+0,0.071412,1352413.022679,1794241571.032568,1352413.023104
+1,0.104746,1352413.056013,1794241571.065901,1352413.055877
 ```
+
+**Frame times are on the camera's steady clock.** A camera captures a frame
+every period on its own crystal; the computer reads it a little later — and,
+when it is busy, up to a whole period later. `t_monotonic` /
+`t_session_seconds` are therefore not the read time but the frame's place on a
+robust straight line fitted through every frame's number and read time
+(`timing.FrameClock`, ADR-0025): the camera's usual delivery delay stays in
+(the buzzer test measures and corrects it), the computer's lateness does not.
+Lost frames show as a gap of whole frame periods. The read time is kept in
+`t_arrival_monotonic`. In recordings made before 2026-11-19 the frame times
+are the read times.
 
 > One camera in the generated demo deliberately drifts (declares 30 fps but
 > captures at ~29.5 fps) so analysis code is tested against a real drift case.

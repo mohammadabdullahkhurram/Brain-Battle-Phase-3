@@ -78,9 +78,12 @@ def _sidecar_rows(mp4_path):
         return -1
     with open(sc, encoding="utf-8") as f:
         lines = f.read().splitlines()
-    # data rows that actually have the 4 expected fields (ignore a partial
-    # final line a hard kill may have truncated)
-    return sum(1 for ln in lines[1:] if ln.count(",") == 3)
+    # data rows with all the header's fields (ignore a partial final line a
+    # hard kill may have truncated)
+    if not lines:
+        return 0
+    n = lines[0].count(",")
+    return sum(1 for ln in lines[1:] if ln.count(",") == n and not ln.endswith(","))
 
 
 # ─── 1. SIGKILL mid-recording ───────────────────────────────────────────────
@@ -127,9 +130,9 @@ def test_backpressure_drops_and_consistency():
     import brain_battle.capture.usb_camera as usb_camera
     orig_write = usb_camera.FrameEncoder.write_frame
 
-    def slow_write(self, frame, t):
+    def slow_write(self, frame, t, t_arrival=None):
         time.sleep(0.01)       # throttle the encoder write path
-        return orig_write(self, frame, t)
+        return orig_write(self, frame, t, t_arrival)
 
     with tempfile.TemporaryDirectory() as tmp:
         source = os.path.join(tmp, "src.mp4")

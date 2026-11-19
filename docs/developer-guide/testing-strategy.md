@@ -64,7 +64,7 @@ demo session, about five minutes on its own; everything else is quick. The
 | `test_xdf.py` | XDF writer + `recording.xdf` read back with pyxdf; the one capture clock | fast |
 | `test_xdf_csv_parity.py` | Every stream in an export's `recording.xdf` has its CSV (same samples, values, times minus the correction); `moments.csv` + `timing_quality.csv` exported | moderate |
 | `test_stability.py` | Camera watchdog (stall → reopened → same file, reported), repeated headband drops, contact-log failures through `RecordFlow._essential`, and a short soak with simulated devices; the full soak is `tools/soak_test.py` | slow |
-| `test_timing.py` | Rate / jitter / dropped monitors, the per-band de-jitter fit, tap detectors, calibration on synthetic data (40 runs) and end to end with simulated devices that inject known delays + jitter (recovered within 2 ms) | moderate |
+| `test_timing.py` | Rate / jitter / dropped monitors, the per-band de-jitter fit, camera frame stamps on the steady frame clock (`FrameClock`, simulated busy reader, drifting camera), tap detectors, calibration on synthetic data (40 runs) and end to end with simulated devices that inject known delays + jitter (recovered within 2 ms) | moderate |
 | `test_moments.py` | Moments as {t, note} in the manifest and `moments.csv`; notes added later; "Needs labels" until every moment has a note; XDF `BrainBattle_Moments` | moderate |
 | `test_lsl_streams.py` | Live LSL outlets as a real LSL receiver sees them | moderate |
 | `test_eeg_viewer.py` | EEG viewer: window, honest µV scale, filter, markers, controls | fast |

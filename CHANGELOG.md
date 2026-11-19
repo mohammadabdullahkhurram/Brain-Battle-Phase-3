@@ -22,6 +22,13 @@ dev-log numbering, kept as history — they do not track the release version.
   350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
   multiprocessing helper and the encoders separately. What is left (the
   machine's own pauses) is in the ADR.
+- **Camera frames are stamped on the camera's own steady frame clock**
+  (`timing.FrameClock`), not when a busy computer read them: frames read up
+  to a period late no longer carry late timestamps (2-minute soak: every
+  stamp interval a whole number of periods; simulated busy reader: ≥ 98.5 %
+  of stamps within 3 ms of the true frame clock). The sidecars gain
+  `t_arrival_monotonic` (the read time). The soak reports `stamps_off_clock`.
+  The simulated cameras' ground-truth delay is now measured on the stamp.
 - **The soak test reports frames *lost* and *late* separately.** It used to
   count every interval of more than 1.5 frame periods as lost frames; a frame
   read late followed by one on time is not a loss (the file has the frame),
