@@ -268,8 +268,15 @@ def test_stop_early():
         mk = open(root + "/phase_markers.csv").read()
         check("RECORDING_END marker still written (clean stop, not a crash)",
               "RECORDING_END" in mk)
-        check("the round cut short by Stop gets no _END marker",
-              "ROUND_1_START" in mk and "ROUND_1_END" not in mk, mk)
+        import csv as _csv
+        rows = list(_csv.DictReader(open(root + "/phase_markers.csv", encoding="utf-8")))
+        labels = [r["label"] for r in rows]
+        check("the round cut short by Stop gets ROUND_1_END at the stop time, then "
+              "RECORDING_END last",
+              "ROUND_1_START" in labels and labels[-2:] == ["ROUND_1_END", "RECORDING_END"]
+              and abs(float(rows[-2]["t_session_seconds"])
+                      - float(rows[-1]["t_session_seconds"])) < 0.05, mk)
+        check("…and no later phase is marked", "BREAK_1_START" not in labels, mk)
         import brain_battle.data.session_storage as ss
         info = ss.session_info(root)
         check("stopped-early session is NOT interrupted", not info.interrupted)
@@ -434,8 +441,8 @@ def _check_interrupted(root, how):
           man.get("interrupted") is True and man.get("stopped_early") is True)
     check(f"{how}: Sessions shows it as Interrupted",
           ss.session_info(root).status == ss.STATUS_INTERRUPTED)
-    check(f"{how}: RECORDING_END is written (a clean save)",
-          labels[-1] == "RECORDING_END", str(labels[-3:]))
+    check(f"{how}: the current phase's _END and RECORDING_END are written",
+          labels[-1] == "RECORDING_END" and labels[-2].endswith("_END"), str(labels[-3:]))
     ev = [e for e in sh.read_history(root) if e.get("event") == sh.EVENT_RECORDING_INTERRUPTED]
     check(f"{how}: history says how it was interrupted",
           bool(ev) and (ev[-1].get("details") or {}).get("how") == how, str(ev[-1:]))

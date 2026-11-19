@@ -28,6 +28,10 @@ dev-log numbering, kept as history — they do not track the release version.
   manifest write; `stopped_early` too). ✕ Cancel now really marks it — before,
   it only stopped early. History: `recording_interrupted` with `how`
   (`cancel` / `quit`). `RecordFlow.abandon_recording`; tests for both.
+- **Stopping early writes the running phase's `_END` marker** (e.g.
+  `ROUND_2_END`) at the stop time, then `RECORDING_END`; the bell does not
+  ring; the manifest keeps `stopped_early`. `test_record_flow`,
+  `test_round_bell` and `file-formats.md` updated.
 
 **Design F — the new screens** (`docs/DESIGN.md`, rewritten from `docs/design/prototype.html`)
 - A white top header (logo · Sessions · Documentation · the Settings gear)

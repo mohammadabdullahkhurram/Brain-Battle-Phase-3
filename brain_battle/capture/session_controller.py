@@ -24,8 +24,9 @@ Signals
         phase_markers.csv and the XDF Markers stream, in order:
         RECORDING_START, BASELINE_START, BASELINE_END, ROUND_1_START,
         ROUND_1_END, BREAK_1_START, BREAK_1_END, …, ROUND_N_END,
-        RECORDING_END. A phase that is cut short by Stop gets no _END marker
-        (it did not end); RECORDING_END is always the last marker.
+        RECORDING_END. A phase that is cut short by Stop gets its _END marker
+        at the stop time (then RECORDING_END); RECORDING_END is always the
+        last marker.
     tick(remaining_sec:int, elapsed_sec:int, total_sec:int)
         Fired every second inside any active phase.
     bell_requested()
@@ -255,11 +256,14 @@ class SessionController(QObject):
         self._timer.start()
 
     def stop(self) -> None:
-        """Stop early. The phase in progress gets no _END marker (it did not
-        finish); RECORDING_END is written."""
+        """Stop early. The phase in progress gets its _END marker at the stop
+        time (no bell), then RECORDING_END is written."""
         if not self.is_running:
             return
         self._timer.stop()
+        info = self.current_phase_info
+        if info is not None and info.token:
+            self.marker.emit(f"{info.token}_END", info.phase.value, info.round_num)
         self._phase = Phase.DONE
         self._idx = -1
         self.marker.emit(MARKER_RECORDING_END, Phase.DONE.value, 0)

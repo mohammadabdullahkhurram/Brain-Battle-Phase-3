@@ -127,7 +127,9 @@ Recording starts with a fixed **15-second lead-in** before the baseline. The
 - `RECORDING_END` — always the last row of a finished recording.
 
 A phase's `_END` and the next phase's `_START` share one instant. A phase cut
-short by **Stop recording** gets no `_END` row (it did not end); a recording
+short by **Stop recording** gets its `_END` row at the stop time, followed by
+`RECORDING_END` at the same instant (and `stopped_early: true` in the
+manifest); a recording
 that crashed has no `RECORDING_END` (it shows as *Interrupted*). Recordings
 made before the lead-in existed start at `BASELINE_START`, have no `_END` rows
 and end with **`SESSION_END`**; they are still read everywhere. Example:

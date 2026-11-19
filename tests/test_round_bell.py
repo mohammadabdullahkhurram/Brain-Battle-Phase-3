@@ -139,7 +139,7 @@ def test_bell_timing():
 
 
 def test_bell_not_on_early_stop():
-    """Stopping early writes RECORDING_END but no _END for the unfinished round
+    """Stopping early writes the unfinished round's _END, then RECORDING_END,
     and does not ring the bell."""
     from brain_battle.capture.session_controller import SessionController, SessionConfig
     sc = SessionController()
@@ -150,8 +150,8 @@ def test_bell_not_on_early_stop():
     sc.start(); sc._advance(); sc._advance()       # lead-in → baseline → round 1
     events.clear()
     sc.stop()
-    check("early stop: only RECORDING_END, no ROUND_1_END, no bell",
-          events == ["RECORDING_END"], str(events))
+    check("early stop: ROUND_1_END then RECORDING_END, no bell",
+          events == ["ROUND_1_END", "RECORDING_END"], str(events))
 
 
 # ─── 3. the bell plays the bundled file ─────────────────────────────────────
