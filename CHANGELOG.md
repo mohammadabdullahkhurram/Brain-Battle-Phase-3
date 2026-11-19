@@ -22,6 +22,12 @@ dev-log numbering, kept as history — they do not track the release version.
   350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
   multiprocessing helper and the encoders separately. What is left (the
   machine's own pauses) is in the ADR.
+- **Quitting the app while recording** now does what ✕ Cancel does: stops,
+  saves everything, writes RECORDING_END, and marks the recording
+  *Interrupted* (`interrupted: true` in the manifest, kept by every later
+  manifest write; `stopped_early` too). ✕ Cancel now really marks it — before,
+  it only stopped early. History: `recording_interrupted` with `how`
+  (`cancel` / `quit`). `RecordFlow.abandon_recording`; tests for both.
 
 **Design F — the new screens** (`docs/DESIGN.md`, rewritten from `docs/design/prototype.html`)
 - A white top header (logo · Sessions · Documentation · the Settings gear)

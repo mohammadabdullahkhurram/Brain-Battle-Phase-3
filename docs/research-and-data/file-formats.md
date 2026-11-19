@@ -29,8 +29,10 @@ by `session_storage.SessionLayout._write_manifest`. One JSON object:
 | `boxers` | object | `A` and `B`, each `{code, colour, colour_hex, headband}` — the fighter's 4-character code and the colour they wear (never a name) |
 | `demo` | bool | `true` only for generated demo data (shows the Demo badge) |
 | `moments` | array | "Mark this moment" presses — each `{t_session_seconds, unix_time, note}`; `note` is the observer's text (`""` until someone writes one — while recording or later in Review). The same rows are in [`moments.csv`](#momentscsv) |
-| `stopped_early` | bool | `true` if the operator pressed Stop and save before the plan finished |
+| `stopped_early` | bool | `true` if the recording ended before the plan finished (Stop recording, ✕ Cancel or quitting the app) |
 | `stopped_t_session` | number \| null | Where it was stopped (session seconds), else `null` |
+| `interrupted` | bool | Present and `true` when the recording did not reach its end — a crash (set on the next start), or ✕ Cancel / quitting the app while recording. Shows as *Interrupted* in Sessions |
+| `interrupted_dismissed` | bool | Present and `true` once someone dismissed the interrupted-recording banner |
 | `capture_clock` | object | The shared clock origin, one instant on three time scales: `{t0_monotonic, t0_unix, t0_lsl}` (`t0_lsl` is `null` in recordings made before version 3.1) |
 | `source_starts` | object | Per source, its measured first sample: `{first_unix, first_t_session}` |
 | `config` | object | The round plan: `{num_rounds, round_sec, break_sec, baseline_sec}` (seconds) |
@@ -508,7 +510,7 @@ The `event` values (from `session_history`):
 |---|---|---|
 | `recording_started` | A recording begins | boxers, config |
 | `recording_finished` | A recording ends cleanly | duration, whether stopped early |
-| `recording_interrupted` | A recording didn't close cleanly | where it stopped |
+| `recording_interrupted` | A recording didn't close cleanly: a crash (found on the next start), or someone left with ✕ Cancel or quit the app while recording | `how` (`cancel` / `quit`; absent after a crash), `t_session` (where it stopped) |
 | `recording_recovered` | An interrupted recording was detected/recovered | — |
 | `opened_for_review` | The session is opened in Review & Label | — |
 | `moment_marked` | "Mark this moment" was pressed | the moment time |

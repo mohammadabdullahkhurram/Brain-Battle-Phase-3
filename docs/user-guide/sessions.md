@@ -37,7 +37,7 @@ recordings folder, and the place the app opens on.
 | Needs labels | Nobody has placed a label yet, **or** a moment marked while recording still has no note. |
 | Labelled | Labels are placed and every marked moment has a note. |
 | Exported | It has been exported for analysis at least once. |
-| Interrupted | The recording stopped unexpectedly (a crash, a power cut, or leaving mid-recording). Everything up to that moment was kept. |
+| Interrupted | The recording did not reach its end: a crash or power cut, or someone left with ✕ Cancel or quit the app while recording. Everything up to that moment was kept. |
 | Can't be opened | The folder's details could not be read. The files are still there. |
 
 ## The history drawer

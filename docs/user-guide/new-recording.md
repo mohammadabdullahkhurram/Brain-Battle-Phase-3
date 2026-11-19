@@ -86,7 +86,8 @@ drive; the Saved screen will say "saved, but with problems".
 
 **Stopping early.** The recording stops by itself at the end of the last round.
 To stop sooner press **■ Stop recording**; the app asks first. Everything
-recorded so far is kept. Leaving with **✕ Cancel** while recording also keeps
+recorded so far is kept. Leaving with **✕ Cancel** while recording — or
+**quitting the app** while recording — asks first, then also saves
 everything, but marks the recording *Interrupted*.
 
 ## Step 3 — Saved

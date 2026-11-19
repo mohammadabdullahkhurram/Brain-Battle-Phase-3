@@ -73,11 +73,14 @@ class BrainBattleApp(QMainWindow):
                 reply = QMessageBox.question(
                     self, "Quit while recording?",
                     "A recording is in progress. Quit anyway? Everything recorded so "
-                    "far is kept, but the rest of the session will not happen.",
+                    "far is saved and the recording is marked Interrupted; the rest "
+                    "of the session will not happen.",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No)
                 if reply != QMessageBox.StandardButton.Yes:
                     event.ignore(); return
+                # stop + save now and mark it Interrupted (same as ✕ Cancel)
+                self.record_flow.abandon_recording("quit")
         except Exception:
             pass
         try:

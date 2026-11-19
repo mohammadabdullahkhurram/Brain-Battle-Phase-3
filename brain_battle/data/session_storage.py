@@ -165,6 +165,7 @@ class SessionLayout:
     # "Stopped at 9:41 of 12:00".
     stopped_early:        bool = False
     stopped_t_session:    Optional[float] = None
+    interrupted:          bool = False     # left mid-recording (✕ Cancel, quitting)
     # Recording starts this long before the baseline (session_controller).
     lead_in_sec:          int = 0
     # The buzzer test's result (capture/timing.calibrate), or None if not run.
@@ -245,6 +246,13 @@ class SessionLayout:
         self.stopped_t_session = round(float(t_session_sec), 3)
         self._write_manifest()
 
+    def mark_interrupted(self) -> None:
+        """Left in the middle of the recording (✕ Cancel or quitting the app):
+        everything so far is saved, and the recording shows as Interrupted.
+        Kept by every later manifest write."""
+        self.interrupted = True
+        self._write_manifest()
+
     # ---- capture-time clock bridge ------------------------------------------
 
     def set_capture_origin(self, t0_monotonic: float, t0_unix: float,
@@ -307,6 +315,8 @@ class SessionLayout:
             "camera_fps":     self.camera_fps,
             "phases":         [asdict(p) for p in self.phases],
         }
+        if self.interrupted:
+            data["interrupted"] = True
         # Atomic (temp file + swap): a reader on another computer, or a crash
         # mid-write, never sees half a manifest.
         import brain_battle.data.safe_io as safe_io

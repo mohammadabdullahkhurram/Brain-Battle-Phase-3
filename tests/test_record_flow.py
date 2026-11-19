@@ -397,7 +397,20 @@ def test_quit_confirmation():
         win.closeEvent(ev)
         check("quit while recording asks, and No vetoes the close",
               _FakeMsg.calls["question"] == 1 and not ev.isAccepted())
-        win.record_flow.stop_and_save(); pump(0.5)
+        check("…and the recording carries on", win.record_flow.is_recording())
+        pump(4.5)                                 # into round 1
+
+        # user answers Yes → stop, save, mark Interrupted (same as ✕ Cancel)
+        class _Yes(_FakeMsg):
+            @staticmethod
+            def question(*a, **k): _FakeMsg.calls["question"] += 1; return 1
+        _app.QMessageBox = _Yes
+        ev = QCloseEvent()
+        win.closeEvent(ev)
+        pump(0.5)
+        root = win.record_flow._saved_root
+        check("quit (Yes) stops the recording", not win.record_flow.is_recording())
+        _check_interrupted(root, "quit")
     finally:
         _app.QMessageBox = real_msg
         try:
@@ -405,6 +418,49 @@ def test_quit_confirmation():
         except Exception:
             pass
         pump(0.3)
+
+
+def _check_interrupted(root, how):
+    import csv as _csv
+    import brain_battle.data.session_storage as ss
+    import brain_battle.data.session_history as sh
+    check(f"{how}: the recording was saved", bool(root) and os.path.isdir(root), str(root))
+    if not root:
+        return
+    man = json.load(open(os.path.join(root, "session_manifest.json")))
+    labels = [r["label"] for r in _csv.DictReader(open(os.path.join(root, "phase_markers.csv"),
+                                                       encoding="utf-8"))]
+    check(f"{how}: manifest interrupted: true (and stopped_early kept)",
+          man.get("interrupted") is True and man.get("stopped_early") is True)
+    check(f"{how}: Sessions shows it as Interrupted",
+          ss.session_info(root).status == ss.STATUS_INTERRUPTED)
+    check(f"{how}: RECORDING_END is written (a clean save)",
+          labels[-1] == "RECORDING_END", str(labels[-3:]))
+    ev = [e for e in sh.read_history(root) if e.get("event") == sh.EVENT_RECORDING_INTERRUPTED]
+    check(f"{how}: history says how it was interrupted",
+          bool(ev) and (ev[-1].get("details") or {}).get("how") == how, str(ev[-1:]))
+
+
+def test_cancel_marks_interrupted():
+    _fresh_env()
+    import brain_battle.ui.record_flow as record_flow
+    flow = _new_flow()
+    real_msg = record_flow.QMessageBox
+
+    class _Yes(_FakeMsg):
+        @staticmethod
+        def question(*a, **k): return 1
+    try:
+        flow.start(); pump(1.8)
+        _setup_short(flow, rest=2, rnd=30, brk=0, rounds=1)
+        flow.begin_recording(); pump(4.5)
+        record_flow.QMessageBox = _Yes
+        flow.cancel(); pump(0.5)
+        check("✕ Cancel (Yes) stops the recording", not flow.is_recording())
+        _check_interrupted(flow._saved_root, "cancel")
+    finally:
+        record_flow.QMessageBox = real_msg
+        flow.shutdown(); pump(0.3)
 
 
 # ─── 7. every flow step fits ───────────────────────────────────────────────────
@@ -542,6 +598,7 @@ if __name__ == "__main__":
     test_headband_drop_reconnect()
     test_disk_blocked()
     test_quit_confirmation()
+    test_cancel_marks_interrupted()
     test_every_step_fits()
     test_moment_popup_and_notes()
     test_no_simulation_when_unset()

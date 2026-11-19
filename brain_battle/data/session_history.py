@@ -177,7 +177,10 @@ def describe(event: dict) -> tuple[str, str]:
     rec = {
         EVENT_RECORDING_STARTED: "started" + (f" · {d.get('rounds')} rounds" if d.get("rounds") else ""),
         EVENT_RECORDING_FINISHED: "finished" + (" (stopped early)" if d.get("stopped_early") else ""),
-        EVENT_RECORDING_INTERRUPTED: "interrupted · saved up to where it stopped",
+        EVENT_RECORDING_INTERRUPTED: ({"quit": "interrupted: the app was closed while recording",
+                                       "cancel": "interrupted: left while recording (Cancel)"}
+                                      .get(d.get("how"), "interrupted")
+                                      + " · saved up to where it stopped"),
         EVENT_RECORDING_RECOVERED: "recovered after an interruption",
         EVENT_MOMENT_MARKED: f"moment marked{at}",
         EVENT_CAMERA_STALLED: f"{d.get('camera', 'a camera')} stopped sending pictures{at}",

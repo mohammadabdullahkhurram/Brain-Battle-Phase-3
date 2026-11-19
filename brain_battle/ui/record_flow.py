@@ -143,6 +143,7 @@ class RecordFlow(QWidget):
         self._seen_lost = {}              # boxer → headband drops already logged
         self._active_phase = None
         self._stopping_early = False
+        self._abandon_how = None          # "cancel" / "quit" while recording → Interrupted
         self._cam_rec_paths = {}
         self._band_rec_paths = {}
         self._saved_root = None
@@ -234,6 +235,7 @@ class RecordFlow(QWidget):
         self._moments = []; self._active_phase = None
         self._live_markers = []
         self._stopping_early = False
+        self._abandon_how = None
         self._cam_rec_paths = {}; self._band_rec_paths = {}
         self._saved_root = None
         self._write_problems = []
@@ -565,6 +567,17 @@ class RecordFlow(QWidget):
         if self._layout is not None and self._session_t0 is not None and stopped_early:
             t = clock.monotonic() - self._session_t0
             self._essential("plan", self._layout.mark_stopped_early, t)
+        if self._abandon_how and self._layout is not None:
+            # left mid-recording (✕ Cancel or quitting the app): everything so
+            # far is saved, and the recording is marked Interrupted
+            root = self._layout.root
+            self._essential("plan", self._layout.mark_interrupted)
+            self._essential("history", session_history.log_event, root,
+                            session_history.EVENT_RECORDING_INTERRUPTED,
+                            {"how": self._abandon_how,
+                             "t_session": round(clock.monotonic() - self._session_t0, 3)
+                             if self._session_t0 is not None else None})
+            self._abandon_how = None
         if self._active_phase is not None and self._layout is not None:
             ph, rn = self._active_phase
             self._essential("plan", self._layout.close_phase, ph, rn)
@@ -1130,6 +1143,16 @@ class RecordFlow(QWidget):
     def is_recording(self):
         return self._controller.is_running
 
+    def abandon_recording(self, how: str = "cancel") -> None:
+        """Leave in the middle of a recording (✕ Cancel, or quitting the app):
+        stop, save everything recorded so far (the current phase's _END and
+        RECORDING_END are written), and mark the recording Interrupted."""
+        if not self.is_recording():
+            return
+        self._abandon_how = how
+        self._stopping_early = True
+        self._controller.stop()             # → _finish (saves + marks it)
+
     def _anything_connected(self):
         return (any(s.device is not None for s in self._cams)
                 or any(b.device is not None for b in self._bands.values()))
@@ -1139,13 +1162,12 @@ class RecordFlow(QWidget):
             r = QMessageBox.question(
                 self, "Stop the recording?",
                 "A recording is in progress. Stop it and leave? Everything recorded "
-                "so far is kept.",
+                "so far is saved and the recording is marked Interrupted.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if r != QMessageBox.StandardButton.Yes:
                 return
-            self._stopping_early = True
-            self._controller.stop()         # finalises + saves what was recorded
+            self.abandon_recording("cancel")
             self._leave_to_sessions()
             return
         if self._anything_connected():
@@ -1202,8 +1224,8 @@ class RecordFlow(QWidget):
     def shutdown(self):
         try:
             if self._controller.is_running:
-                self._stopping_early = True
-                self._controller.stop()
+                # the app is closing while recording: same as ✕ Cancel
+                self.abandon_recording("quit")
         except Exception:
             pass
         self._contact_timer.stop()
