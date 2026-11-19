@@ -22,6 +22,16 @@ dev-log numbering, kept as history — they do not track the release version.
   350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
   multiprocessing helper and the encoders separately. What is left (the
   machine's own pauses) is in the ADR.
+- **App Nap tested; latency-critical activity while recording.** A/B soaks
+  (App Nap disabled via `defaults`, and the activity on/off, each with a
+  machine-noise probe) showed no measurable effect: lost frames follow the
+  machine's noise the same way (~4–6 per noise unit). The activity
+  (`keep_awake.LatencyActivity`: `beginActivityWithOptions(UserInitiated |
+  LatencyCritical)`) is kept — held by the main process and each camera
+  process while recording, released at stop — because macOS naps hidden or
+  covered windows, which the offscreen soak cannot reproduce. Tests: requested
+  and released (`test_platform`), all 4 camera processes hold and release it
+  (`test_record_flow`, macOS).
 - **User guide: a "Recording computer checklist"** on the New recording page —
   plugged in, heavy apps closed, indexing and syncing paused, notifications
   off, the app window kept in front — because a busy computer loses camera

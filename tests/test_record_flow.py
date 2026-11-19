@@ -91,6 +91,14 @@ def _new_flow():
     return RecordFlow()
 
 
+def _camera_activities() -> int:
+    """macOS: how many 'Brain Battle camera recording' activities the system
+    holds right now (pmset -g assertions)."""
+    import subprocess
+    out = subprocess.run(["pmset", "-g", "assertions"], capture_output=True, text=True).stdout
+    return out.count("Brain Battle camera recording")
+
+
 def _setup_short(flow, rest=2, rnd=10, brk=2, rounds=2, a="K7Q2", b="M3XA"):
     """A short plan (shorter than Get ready's buttons offer) and the two codes."""
     from brain_battle.capture.session_controller import SessionConfig
@@ -133,13 +141,26 @@ def test_end_to_end():
         flow.begin_recording()
         check("sleep prevention requested while recording", flow._keep_awake.is_active())
         marked = False
+        cams_held = None
         t0 = time.time()
         while flow.is_recording() and time.time() - t0 < 45:
             pump(0.1)
             if not marked and time.time() - t0 > 6:
                 flow.mark_moment(); marked = True
+            if cams_held is None and time.time() - t0 > 3:
+                cams_held = _camera_activities()
         pump(0.6)
         check("sleep prevention released after recording", not flow._keep_awake.is_active())
+        if sys.platform == "darwin":
+            # each camera process marks its recording latency-critical (no App
+            # Nap / timer coalescing) and releases it when the recording stops
+            check("every camera process holds a latency-critical activity while recording",
+                  cams_held == 4, str(cams_held))
+            deadline = time.time() + 10
+            while _camera_activities() and time.time() < deadline:
+                pump(0.2)
+            check("…and releases it when the recording stops", _camera_activities() == 0,
+                  str(_camera_activities()))
         check("flow landed on the Saved step", flow._stack.currentIndex() == flow.STEP_SAVED)
 
         root = flow._saved_root

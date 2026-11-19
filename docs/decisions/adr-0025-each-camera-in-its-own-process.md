@@ -120,6 +120,33 @@ Ways to remove the rest of the losses, both needing real cameras to confirm:
 - a **quieter recording computer** (no browser, no background indexing) —
   the cheapest thing to try at the first real session.
 
+## App Nap and timer coalescing (tested 2026-11-19)
+
+Could macOS App Nap or timer coalescing cause the remaining pauses? Two A/B
+tests, 2-minute soaks alternated so machine noise cannot fake a result, with
+the bare noise probe beside each run:
+
+| Test | Frames lost | Machine noise (late wakes) | Lost per noise unit |
+|---|---|---|---|
+| `defaults write org.python.python NSAppSleepDisabled -bool YES` — off (2 runs) | 10 + 2993 | 5 + 509 | ~5.8 |
+| … App Nap disabled (2 runs) | 0 + 245 | 0 + 55 | ~4.5 |
+| latency-critical activity on (4 runs) | 300 | 69 | 4.3 |
+| … off (4 runs) | 780 | 194 | 4.0 |
+
+Losses follow the machine's noise the same way with or without it: App Nap /
+timer coalescing is **not** the cause here. (The `defaults` change also
+applied to the noise probe — same bundle id — so the second test, which
+affects only the recording processes, is the cleaner one. The `defaults`
+change was removed afterwards.)
+
+The activity is **kept anyway**: while recording, the main process
+(`keep_awake.KeepAwake`) and every camera process (`CaptureLoop`) hold
+`NSProcessInfo.beginActivityWithOptions(UserInitiated | LatencyCritical)`
+(`keep_awake.LatencyActivity`), released when recording stops. It costs
+nothing, and macOS normally naps an app whose windows are hidden or covered —
+which the offscreen soak cannot reproduce, so the test cannot rule out a
+benefit in real use. Windows needs nothing beyond `SetThreadExecutionState`.
+
 ## Consequences
 
 - One more process per camera while Get ready / Recording is open (they exit

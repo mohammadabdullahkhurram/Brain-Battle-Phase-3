@@ -92,6 +92,8 @@ class CaptureLoop:
         self._pool_shape = None
         self._frames: list = []
         self._fclock = None
+        from brain_battle.capture.keep_awake import LatencyActivity
+        self.activity = LatencyActivity("Brain Battle camera recording")
         self._written: list = []
         self._written_lock = threading.Lock()
         self._last_flush = 0.0
@@ -417,6 +419,7 @@ class CaptureLoop:
             name="cam-enc-writer", daemon=True)
         self._writer_thread.start()
         self.recording = True
+        self.activity.begin()               # no App Nap / timer coalescing while recording
         self.out("rec_started", None)
 
     def _writer_loop(self, enc, q, stop_event) -> None:
@@ -448,6 +451,7 @@ class CaptureLoop:
             except Exception:
                 pass
             self.recording = False
+            self.activity.end()
             if self._encoder is enc:
                 self._encoder = None
             self.out("record_error", "Recording for this camera stopped because of a "
@@ -467,6 +471,7 @@ class CaptureLoop:
         self._rec_stop_event = None
         self._encoder = None
         self.recording = False
+        self.activity.end()
         with self._written_lock:
             w, self._written = self._written, []
         if w:

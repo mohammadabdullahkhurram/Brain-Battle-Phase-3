@@ -375,8 +375,12 @@ updated (honesty test).
 ### `keep_awake.py`
 `KeepAwake` prevents the computer sleeping during a recording (macOS:
 `caffeinate -dimsu`; Windows: `SetThreadExecutionState`). Best-effort and
-cross-platform. **Called by:** `record_flow` (started at record start, released
-at stop).
+cross-platform. `LatencyActivity` (macOS: `NSProcessInfo.beginActivityWithOptions`
+with UserInitiated | LatencyCritical — no App Nap, no timer coalescing) is held
+by `KeepAwake` and by each camera process while it records (ADR-0025);
+`BRAIN_BATTLE_NO_LATENCY_ACTIVITY=1` switches it off for experiments.
+**Called by:** `record_flow` (started at record start, released at stop),
+`camera_worker`.
 
 ### `round_bell.py`
 `RoundBell(QObject)` plays `assets/sounds/round_bell.wav` (a real boxing-bell

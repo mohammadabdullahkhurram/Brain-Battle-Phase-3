@@ -191,6 +191,33 @@ def test_keep_awake_never_raises():
         platform.system = real_system
 
 
+def test_latency_activity():
+    """While recording, the app tells macOS its work is latency-critical (no
+    App Nap, no timer coalescing) and releases it afterwards (ADR-0025)."""
+    import platform
+    import subprocess
+    from brain_battle.capture.keep_awake import KeepAwake
+    k = KeepAwake()
+    k.start()
+    on, token = k.activity.is_active(), k.activity.token
+    listed = None
+    if platform.system() == "Darwin":
+        out = subprocess.run(["pmset", "-g", "assertions"], capture_output=True, text=True).stdout
+        listed = "Brain Battle recording" in out
+    k.stop()
+    check("the latency-critical activity is requested with the keep-awake", on)
+    if platform.system() == "Darwin":
+        check("on a Mac the system holds it (a token, listed by pmset)",
+              token is not None and listed, f"token={token is not None} listed={listed}")
+        out = subprocess.run(["pmset", "-g", "assertions"], capture_output=True, text=True).stdout
+        check("…and it is released when recording stops",
+              not k.activity.is_active() and k.activity.token is None
+              and "Brain Battle recording" not in out)
+    else:
+        check("elsewhere it is a no-op that is released cleanly",
+              token is None and not k.activity.is_active())
+
+
 def test_bundled_files():
     import brain_battle.paths as paths
     fonts = os.path.join(str(paths.ASSETS_DIR), "fonts")
@@ -215,6 +242,7 @@ if __name__ == "__main__":
     test_windows_safe_names()
     test_encoder_and_ffmpeg_help()
     test_keep_awake_never_raises()
+    test_latency_activity()
     test_bundled_files()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
