@@ -6,6 +6,23 @@ to "Recording saved". There are three screens: **Get ready**, **Recording** and
 
 ![The new-recording flow: Get ready with its checklist and the buzzer test, the recording with its automatic markers and moments, and Saved.](../diagrams/new-recording-flow.png)
 
+## Recording computer checklist
+
+The cameras record 60 pictures a second each. When the computer is busy with
+something else it can miss pictures, so before a session:
+
+- **Plugged in** — not on battery (a laptop on battery slows itself down).
+- **Close Chrome and other heavy apps** — browsers, video calls, games, large
+  downloads.
+- **Pause indexing and syncing** — Spotlight indexing on a Mac, OneDrive /
+  Dropbox / Google Drive syncing and Windows Search indexing.
+- **Notifications off** — Focus / Do Not Disturb on a Mac, Focus assist on
+  Windows.
+- **Keep the Brain Battle window in front** for the whole recording; don't
+  minimise it or work in another app.
+
+The Saved screen and the timing report show if any pictures were lost.
+
 ## Step 1 — Get ready
 
 ![Get ready: the checklist on the left; the cameras, both boxers and the plan on the right.](../images/get-ready.png)

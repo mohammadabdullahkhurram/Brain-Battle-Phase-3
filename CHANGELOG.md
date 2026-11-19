@@ -22,6 +22,10 @@ dev-log numbering, kept as history — they do not track the release version.
   350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
   multiprocessing helper and the encoders separately. What is left (the
   machine's own pauses) is in the ADR.
+- **User guide: a "Recording computer checklist"** on the New recording page —
+  plugged in, heavy apps closed, indexing and syncing paused, notifications
+  off, the app window kept in front — because a busy computer loses camera
+  pictures (ADR-0025).
 - **Camera frames are stamped on the camera's own steady frame clock**
   (`timing.FrameClock`), not when a busy computer read them: frames read up
   to a period late no longer carry late timestamps (2-minute soak: every
