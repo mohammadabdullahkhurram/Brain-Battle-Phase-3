@@ -212,14 +212,16 @@ def test_short_soak():
     miss_s = sum(h.get("missing") or 0 for rec in recs for h in rec["files"]["headbands"].values())
     drops = sum(sum(rec["encoder_queue_dropped"].values()) for rec in recs)
     frames = sum(c.get("frames") or 0 for rec in recs for c in rec["files"]["cameras"].values())
-    miss_f = sum(c.get("missing") or 0 for rec in recs for c in rec["files"]["cameras"].values())
-    print(f"SHORT SOAK: frames {frames}, not delivered by the (simulated) cameras {miss_f} "
-          f"({100.0 * miss_f / max(1, frames + miss_f):.2f} %), encoder drops {drops}, "
+    miss_f = sum(c.get("lost") or 0 for rec in recs for c in rec["files"]["cameras"].values())
+    late_f = sum(c.get("late") or 0 for rec in recs for c in rec["files"]["cameras"].values())
+    print(f"SHORT SOAK: frames {frames}, lost {miss_f} "
+          f"({100.0 * miss_f / max(1, frames + miss_f):.2f} %), read late {late_f} "
+          f"({100.0 * late_f / max(1, frames):.2f} %), encoder drops {drops}, "
           f"EEG samples missing {miss_s}")
     check("soak: no EEG samples missing", miss_s == 0, str(miss_s))
     check("soak: no frame dropped by the encoder queue (ffmpeg never blocked capture)",
           drops == 0, str(drops))
-    check("soak: under 2 % of frames not delivered in simulation",
+    check("soak: under 2 % of frames lost (absent against the camera's clock)",
           miss_f <= 0.02 * max(1, frames + miss_f), f"{miss_f}/{frames}")
     d = [x for x in rep.get("descriptors", []) if x["point"].endswith("left the flow")]
     check("soak: descriptors back to the same numbers after each recording",

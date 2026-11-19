@@ -13,9 +13,10 @@ capture, encoding and file-writing paths:
 
 and reports, per recording:
 
-  • frames: per camera, frames written vs. expected, frames dropped by the
-    encoder queue, gaps in the frame times (frames the camera never delivered),
-    the deepest the encoder queue got;
+  • frames: per camera, frames written vs. expected from the camera's own
+    clock ("lost"), frames read more than half a period late ("late": their
+    timestamps are late too), frames dropped by the encoder queue, the
+    deepest the encoder queue got;
   • samples: per headband, EEG samples written vs. expected and gaps in the
     sample times (missing samples);
   • memory: resident memory every 10 s (start, end, peak, growth per minute);
@@ -122,15 +123,21 @@ def analyse_recording(root: str, fps: float) -> dict:
         except Exception:
             t = np.zeros(0)
         if len(t) < 2:
-            out["cameras"][stem] = {"frames": int(len(t)), "missing": None}
+            out["cameras"][stem] = {"frames": int(len(t)), "lost": None, "late": None}
             continue
         d = np.diff(t)
         per = 1.0 / fps
-        missing = int(np.sum(np.maximum(0, np.round(d / per) - 1)[d > 1.5 * per]))
+        expected = int(round((t[-1] - t[0]) * fps)) + 1
+        # lost: frames absent from the file, counted against the camera's own
+        # steady clock (it captures one every 1/fps). late: intervals of more
+        # than 1.5 frame periods — a frame read late (its stamp is late too),
+        # usually followed by a short interval when nothing was lost; the
+        # first version of this tool counted these as "missing".
+        late = int(np.sum(d > 1.5 * per))
         out["cameras"][stem] = {
             "frames": int(len(t)), "span_s": round(float(t[-1] - t[0]), 2),
-            "expected": int(round((t[-1] - t[0]) * fps)) + 1,
-            "missing": missing, "max_gap_ms": round(float(d.max()) * 1000, 1),
+            "expected": expected, "lost": max(0, expected - int(len(t))),
+            "late": late, "max_gap_ms": round(float(d.max()) * 1000, 1),
             "big_gaps_at_s": [round(float(t[i]), 1) for i in np.nonzero(d > 0.08)[0][:8]]}
     for who, path in ss.eeg_files(root).items():
         try:
@@ -335,6 +342,7 @@ def main(argv=None) -> int:
         queue_peak = {}
         last_mem = 0.0
         cpu = []
+        child_procs = {}
         psutil.cpu_percent(None); proc.cpu_percent(None)
         while flow.is_recording():
             pump(0.5)
@@ -344,13 +352,19 @@ def main(argv=None) -> int:
             if time.time() - last_mem >= 10:
                 last_mem = time.time()
                 mem.append((n, round(time.time() - t_start, 1), proc.memory_info().rss))
-                kids = 0.0
+                cams = enc = 0.0
                 for ch in proc.children(recursive=True):
                     try:
-                        kids += ch.cpu_percent(None)
+                        if ch.pid not in child_procs:
+                            child_procs[ch.pid] = ch; ch.cpu_percent(None); continue
+                        v = child_procs[ch.pid].cpu_percent(None)
+                        if "ffmpeg" in ch.name().lower():
+                            enc += v
+                        else:
+                            cams += v
                     except psutil.Error:
                         pass
-                cpu.append((psutil.cpu_percent(None), proc.cpu_percent(None), kids))
+                cpu.append((psutil.cpu_percent(None), proc.cpu_percent(None), cams, enc))
         dur = time.time() - t_start
         if probe is not None:
             _slow_report(t0_mono)
@@ -366,9 +380,13 @@ def main(argv=None) -> int:
             c = cpu[1:]
             rec_cpu = {"machine_pct": round(sum(x[0] for x in c) / len(c), 1),
                        "app_pct": round(sum(x[1] for x in c) / len(c), 1),
+                       "camera_processes_pct": round(sum(x[2] for x in c) / len(c), 1),
+                       "encoders_pct": round(sum(x[3] for x in c) / len(c), 1),
                        "machine_cores": psutil.cpu_count()}
             print(f"  CPU: machine {rec_cpu['machine_pct']} % of {rec_cpu['machine_cores']} "
-                  f"cores, the app {rec_cpu['app_pct']} % (100 % = one core)", flush=True)
+                  f"cores; the app {rec_cpu['app_pct']} %, camera processes "
+                  f"{rec_cpu['camera_processes_pct']} %, ffmpeg {rec_cpu['encoders_pct']} % "
+                  f"(100 % = one core)", flush=True)
         else:
             rec_cpu = {}
         rec = {"n": n, "wall_s": round(dur, 1), "root": root, "files": files, "cpu": rec_cpu,
@@ -376,9 +394,11 @@ def main(argv=None) -> int:
                "rss_start_mb": round(rss0 / 2**20, 1), "rss_end_mb": round(rss1 / 2**20, 1),
                "write_problems": flow.write_problems()}
         report["recordings"].append(rec)
-        miss_f = sum((c.get("missing") or 0) for c in files["cameras"].values())
+        miss_f = sum((c.get("lost") or 0) for c in files["cameras"].values())
+        late_f = sum((c.get("late") or 0) for c in files["cameras"].values())
         miss_s = sum((h.get("missing") or 0) for h in files["headbands"].values())
-        print(f"  recorded {files['recorded_s']} s · frames missing {miss_f} · encoder drops "
+        print(f"  recorded {files['recorded_s']} s · frames lost {miss_f} · frames late {late_f} "
+              f"· encoder drops "
               f"{sum(dropped.values())} · EEG samples missing {miss_s} · queue peak "
               f"{max(queue_peak.values() or [0])} · memory {rec['rss_start_mb']} → "
               f"{rec['rss_end_mb']} MB", flush=True)

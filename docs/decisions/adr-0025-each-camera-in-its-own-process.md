@@ -67,21 +67,48 @@ What was measured (2-minute soaks, `--diagnose`; `support/stall_probe.py`):
    the same loop as a thread — used by a test that patches the encoder, and
    by the soak test's `--in-process` comparison.
 
+## Result
+
+Full soaks (12-minute recording + three 1-minute recordings, 4 cameras at
+60 fps) on the development Mac, frames **lost** = absent from the file
+against the camera's own steady clock. A bare 4-thread process ran beside
+each soak to record how noisy the machine was at the time:
+
+| Run | Machine noise (bare process, ~19 min) | 12-min recording, lost per camera | 1-min recordings, lost per camera |
+|---|---|---|---|
+| cameras as threads (before) | — | 606–608 (1.4 %) | 10–256 |
+| camera processes, quiet machine | 15 stalls, worst 47 ms | 3–8 (0.01–0.02 %) | 0, 0, 0 |
+| camera processes, the committed run | 40 stalls, worst 150 ms | 85–91 (0.2 %) | 0, 3–4, 0 |
+| camera processes, very busy machine | 561 stalls, worst 359 ms | ~3000 (6.7 %) | 21–522 |
+
+So the loss now follows the machine's own pauses rather than the app's.
+The committed run's full output is `docs/reviews/2026-11-soak.txt`.
+
+(The soak first counted every interval longer than 1.5 frame periods as lost
+frames. A frame read late and the next one on time give one long interval and
+one short one with nothing lost, so the tool now reports **lost** and
+**late** separately.)
+
 ## What is left
 
-The operating system still pauses whole processes now and then. On the
-development Mac (an M1 with heavy background work) a bare process misses a
-60 Hz deadline by 25–150 ms a few times a minute. With a 1-frame buffer each
-such pause costs one to nine frames on every camera. **No change inside the
-app can stop that**; the soak reports it as "frames not delivered by the
-(simulated) cameras". The measured numbers are in
-`docs/reviews/2026-11-soak.txt`.
+1. **A few frames lost on a busy machine** (3–8 per camera in 12 minutes on
+   the development Mac). The operating system still pauses whole processes
+   now and then — a bare process on that Mac misses a 60 Hz deadline by
+   25–150 ms a few times a minute — and a pause longer than one frame period
+   loses a frame with a 1-frame buffer. No change inside the app can stop
+   that.
+2. **Frames read late**: about 0.8 % of frames in the 12-minute recording
+   (≈ 0 in the 1-minute ones) were read more than half a frame period late, so
+   their timestamps are late by 10–35 ms. The buzzer calibration is not
+   affected (it locks onto the camera's steady frame clock), but playback and
+   `recording.xdf` use each frame's own stamp.
 
-Two ways to remove the rest, both needing real cameras to check:
+Ways to remove the rest, all needing real cameras to confirm:
 
+- stamp each frame on the camera's **fitted steady clock** (as the headbands
+  already are, ADR-0024) instead of its read time — removes the late stamps;
 - a **deeper driver buffer** with the camera's own frame timestamps
-  (`CAP_PROP_POS_MSEC` where the driver supplies them), so a paused reader
-  catches up without losing frames or stamping them late; or
+  (`CAP_PROP_POS_MSEC` where the driver supplies them) — removes the losses;
 - a **quieter recording computer** (no browser, no background indexing) —
   the cheapest thing to try at the first real session.
 

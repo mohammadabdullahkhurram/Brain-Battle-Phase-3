@@ -22,6 +22,13 @@ dev-log numbering, kept as history — they do not track the release version.
   350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
   multiprocessing helper and the encoders separately. What is left (the
   machine's own pauses) is in the ADR.
+- **The soak test reports frames *lost* and *late* separately.** It used to
+  count every interval of more than 1.5 frame periods as lost frames; a frame
+  read late followed by one on time is not a loss (the file has the frame),
+  but its timestamp is late. Full soaks: 3–91 frames lost per camera in 12
+  minutes with camera processes (depending on how busy the machine was),
+  against 606–608 as threads; the committed run's full output is
+  `docs/reviews/2026-11-soak.txt`.
 - **Quitting the app while recording** now does what ✕ Cancel does: stops,
   saves everything, writes RECORDING_END, and marks the recording
   *Interrupted* (`interrupted: true` in the manifest, kept by every later

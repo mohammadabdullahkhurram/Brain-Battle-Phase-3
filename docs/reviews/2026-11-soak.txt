@@ -1,0 +1,70 @@
+17:08:03 INFO    brain_battle.ui.fonts: registered 6 bundled font file(s) from /Users/mohammadabdullahkhurram/Developer/Projects/Brain-Battle-Phase-3/assets/fonts
+qt.multimedia.ffmpeg: Using Qt multimedia with FFmpeg version 7.1.2 LGPL version 2.1 or later
+qt.qpa.fonts: Populating font family aliases took 118 ms. Replace uses of missing font family "Sans Serif" with one that exists to avoid this cost. 
+
+Recording 1 of 4 …
+  #1 flow opened                       fds   33  threads  14  children  4
+17:08:09 INFO    brain_battle.data.export_module: H.264 encoder: h264_videotoolbox
+17:08:10 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7538. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
+17:08:10 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7564. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
+  #1 left the flow                     fds    9  threads   8  children  0
+  CPU: machine 27.8 % of 8 cores; the app 20.7 %, camera processes 57.1 %, ffmpeg 36.2 % (100 % = one core)
+  recorded 735.2 s · frames lost 355 · frames late 1049 · encoder drops 0 · EEG samples missing 0 · queue peak 24 · memory 128.5 → 233.2 MB
+    SIDE_01: {'frames': 43985, 'span_s': 734.57, 'expected': 44075, 'lost': 90, 'late': 270, 'max_gap_ms': 290.5, 'big_gaps_at_s': [32.4, 32.6, 32.7, 32.9, 115.7, 132.5, 685.7, 685.9]}
+    SIDE_02: {'frames': 43985, 'span_s': 734.58, 'expected': 44076, 'lost': 91, 'late': 294, 'max_gap_ms': 207.4, 'big_gaps_at_s': [32.4, 32.7, 32.9, 47.4, 115.7, 115.9, 136.2, 685.7]}
+    POV_01: {'frames': 43991, 'span_s': 734.58, 'expected': 44076, 'lost': 85, 'late': 256, 'max_gap_ms': 304.4, 'big_gaps_at_s': [32.3, 32.6, 47.4, 115.7, 115.9, 132.5, 685.6]}
+    POV_02: {'frames': 43987, 'span_s': 734.59, 'expected': 44076, 'lost': 89, 'late': 229, 'max_gap_ms': 266.3, 'big_gaps_at_s': [32.2, 32.3, 32.7, 32.8, 115.8, 115.9, 685.6]}
+    EEG A: {'samples': 188220, 'span_s': 735.23, 'expected': 188220, 'missing': 0}
+    EEG B: {'samples': 188316, 'span_s': 735.61, 'expected': 188316, 'missing': 0}
+
+Recording 2 of 4 …
+  #2 flow opened                       fds   33  threads  11  children  4
+17:20:35 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7538. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
+17:20:35 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7564. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
+  #2 left the flow                     fds    9  threads   7  children  0
+  CPU: machine 25.5 % of 8 cores; the app 19.6 %, camera processes 53.4 %, ffmpeg 34.8 % (100 % = one core)
+  recorded 60.2 s · frames lost 0 · frames late 1 · encoder drops 0 · EEG samples missing 0 · queue peak 20 · memory 127.6 → 128.4 MB
+    SIDE_01: {'frames': 3588, 'span_s': 59.78, 'expected': 3588, 'lost': 0, 'late': 0, 'max_gap_ms': 24.7, 'big_gaps_at_s': []}
+    SIDE_02: {'frames': 3588, 'span_s': 59.77, 'expected': 3587, 'lost': 0, 'late': 1, 'max_gap_ms': 26.1, 'big_gaps_at_s': []}
+    POV_01: {'frames': 3588, 'span_s': 59.78, 'expected': 3588, 'lost': 0, 'late': 0, 'max_gap_ms': 24.2, 'big_gaps_at_s': []}
+    POV_02: {'frames': 3587, 'span_s': 59.77, 'expected': 3587, 'lost': 0, 'late': 0, 'max_gap_ms': 24.7, 'big_gaps_at_s': []}
+    EEG A: {'samples': 15420, 'span_s': 60.23, 'expected': 15420, 'missing': 0}
+    EEG B: {'samples': 15516, 'span_s': 60.6, 'expected': 15516, 'missing': 0}
+
+Recording 3 of 4 …
+  #3 flow opened                       fds   33  threads  11  children  4
+17:21:43 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7538. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
+17:21:43 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7564. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
+  #3 left the flow                     fds    9  threads   8  children  0
+  CPU: machine 24.3 % of 8 cores; the app 20.2 %, camera processes 55.2 %, ffmpeg 36.8 % (100 % = one core)
+  recorded 59.9 s · frames lost 14 · frames late 14 · encoder drops 0 · EEG samples missing 0 · queue peak 18 · memory 124.0 → 119.0 MB
+    SIDE_01: {'frames': 3567, 'span_s': 59.49, 'expected': 3571, 'lost': 4, 'late': 2, 'max_gap_ms': 68.6, 'big_gaps_at_s': []}
+    SIDE_02: {'frames': 3566, 'span_s': 59.46, 'expected': 3569, 'lost': 3, 'late': 3, 'max_gap_ms': 50.3, 'big_gaps_at_s': []}
+    POV_01: {'frames': 3566, 'span_s': 59.49, 'expected': 3570, 'lost': 4, 'late': 4, 'max_gap_ms': 68.1, 'big_gaps_at_s': []}
+    POV_02: {'frames': 3568, 'span_s': 59.51, 'expected': 3571, 'lost': 3, 'late': 5, 'max_gap_ms': 48.0, 'big_gaps_at_s': []}
+    EEG A: {'samples': 15348, 'span_s': 59.95, 'expected': 15348, 'missing': 0}
+    EEG B: {'samples': 15444, 'span_s': 60.32, 'expected': 15444, 'missing': 0}
+
+Recording 4 of 4 …
+  #4 flow opened                       fds   33  threads  11  children  4
+17:22:51 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7538. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
+17:22:51 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7564. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
+  #4 left the flow                     fds    9  threads   8  children  0
+  CPU: machine 23.4 % of 8 cores; the app 19.4 %, camera processes 52.8 %, ffmpeg 34.7 % (100 % = one core)
+  recorded 60.2 s · frames lost 0 · frames late 4 · encoder drops 0 · EEG samples missing 0 · queue peak 18 · memory 108.7 → 133.1 MB
+    SIDE_01: {'frames': 3589, 'span_s': 59.79, 'expected': 3588, 'lost': 0, 'late': 1, 'max_gap_ms': 25.5, 'big_gaps_at_s': []}
+    SIDE_02: {'frames': 3589, 'span_s': 59.79, 'expected': 3588, 'lost': 0, 'late': 1, 'max_gap_ms': 30.4, 'big_gaps_at_s': []}
+    POV_01: {'frames': 3589, 'span_s': 59.79, 'expected': 3588, 'lost': 0, 'late': 1, 'max_gap_ms': 25.4, 'big_gaps_at_s': []}
+    POV_02: {'frames': 3590, 'span_s': 59.81, 'expected': 3589, 'lost': 0, 'late': 1, 'max_gap_ms': 25.0, 'big_gaps_at_s': []}
+    EEG A: {'samples': 15420, 'span_s': 60.23, 'expected': 15420, 'missing': 0}
+    EEG B: {'samples': 15588, 'span_s': 60.89, 'expected': 15588, 'missing': 0}
+
+Memory during the long recording: 126 → 64 MB (-5.10 MB/min), peak 125.6 MB
+
+PROBLEMS: see above.
+
+=== Added after the run (not soak output) ===
+Command: python3 tools/soak_test.py   (camera processes, 60 fps, develop @ ca1af61 + the lost/late measure)
+Machine: Apple M1 (4 performance + 4 efficiency cores), development Mac with background load.
+Machine noise during the run, from a separate bare Python process (4 threads at 60 Hz + a 5 ms probe):
+  bare (with numpy work, QoS user-interactive), 1080 s: late camera wakes 189, probe stalls 40, worst probe stall 150 ms
