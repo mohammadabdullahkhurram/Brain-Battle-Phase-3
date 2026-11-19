@@ -19,10 +19,10 @@ remove, or rename a module, update this page in the same commit (see
 |---|---|
 | **Package top** | `app` · `version` · `paths` · (root shim `brain_battle_main`) |
 | **`ui/`** | `header_shell` · `welcome_screen` · `sessions_screen` · `record_flow` · `record_screens` · `review_label_screen` · `eeg_viewer` · `settings_screen` · `docs_screen` · `design_tokens` · `widgets` · `fonts` |
-| **`capture/`** | `clock` · `usb_camera` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `timing` · `timing_log` · `buzzer_test` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
+| **`capture/`** | `clock` · `usb_camera` · `camera_worker` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `timing` · `timing_log` · `buzzer_test` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
 | **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `fighters` · `safe_io` · `export_module` · `app_settings` |
-| **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` |
+| **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` · `stall_probe` |
 | **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `measure_descriptors` · `soak_test` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its
@@ -221,8 +221,13 @@ stall watchdog's state (`stalled`, `stall_events`) and the encoder queue use
 `USBCameraThread` runs off the UI thread; the slot itself lives on the UI thread.
 
 ### `usb_camera.py`
-The camera capture + encode layer. `USBCameraThread(QThread)` opens a camera
-(cv2, or a simulated capture) and runs a tight capture loop; `FrameEncoder`
+The camera capture + encode layer. `USBCameraThread(QThread)` is one camera:
+it starts that camera's **capture process** (`camera_worker`, ADR-0025) — or,
+with `isolated=False` / `BRAIN_BATTLE_CAMERA_PROCESS=0`, runs the same loop in
+its own thread — passes commands to it and turns its reports into the signals
+and numbers the app reads (`monitor`, `energy_since`, `stall_events`,
+`queue_peak`, `dropped_frames`, `recording_finalised`, `frame_hook`).
+`capture_debug()` reads the soak test's debug switches; `FrameEncoder`
 spawns one `ffmpeg` subprocess per camera, feeds it raw frames over stdin
 (fragmented H.264, crash-safe), and writes the per-frame sidecar
 `<stem>.timestamps.csv` — one row per **encoded** frame, matching the MP4 frame
@@ -570,13 +575,35 @@ state has its own icon shape), `pill`, `boxer_badge` / `boxer_chip`,
 name and scopes its stylesheet to it, so its background never leaks into child
 widgets.
 
+### `camera_worker.py`
+`brain_battle/capture/camera_worker.py` — one camera's capture loop,
+`CaptureLoop` (plain Python, no Qt): open + `_negotiate` (MJPG, size, frame
+rate, 1-frame buffer, 60 → 30 fps fallback), read into pooled buffers, stamp
+with the capture clock, frame-difference energy, the bounded encoder queue
+and writer thread (`FrameEncoder`), previews (≤ 15 a second, downscaled), the
+stall watchdog and reopen. It reports through one `out(kind, payload)`
+function. `main(conn, …)` is the entry point of a camera process (spawned by
+`USBCameraThread`): reader + writer + control + sender threads, warnings sent
+to the app's log, and the video finalised if the app goes away. **Why a
+process:** [ADR-0025](../decisions/adr-0025-each-camera-in-its-own-process.md).
+**Thread:** its own process.
+
+### `stall_probe.py`
+`brain_battle/support/stall_probe.py` — debug only (`tools/soak_test.py
+--diagnose`). `StallProbe` records every time a 5 ms sleeper thread woke more
+than 20 ms late, every garbage collection's duration (`gc.callbacks`), and
+dumps every thread's stack *during* a stall through
+`faulthandler.dump_traceback_later` (a C watchdog that needs no interpreter
+lock). Used to find the cause of camera frame loss (ADR-0025).
+
 ### `platform_utils.py`
 `brain_battle/support/platform_utils.py` — the few things that differ between
 macOS and Windows, in one place: `format_date` / `format_date_time` /
 `format_iso` (no `%-d`, which Windows rejects), `file_manager_name` /
 `show_in_file_manager_label` / `reveal_in_file_manager` / `open_folder`
 (Finder vs. Explorer), `shortcut` (⌘Z vs. Ctrl+Z), `computer_name`,
-`ffmpeg_install_hint`. Stdlib only; every function takes an optional
+`ffmpeg_install_hint`, `raise_thread_priority` (capture threads: macOS
+`USER_INTERACTIVE` quality of service, Windows `THREAD_PRIORITY_HIGHEST`). Stdlib only; every function takes an optional
 `platform_name` so tests exercise both systems on one machine. See
 [Cross-platform & CI](cross-platform-and-ci.md).
 

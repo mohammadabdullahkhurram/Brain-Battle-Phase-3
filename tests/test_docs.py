@@ -551,7 +551,7 @@ def test_docs_images_have_no_sim_or_demo_artefacts():
     with open(src_path, "r", encoding="utf-8") as f:
         src = f.read()
     check("docs mode installs a text-free camera (no 'SIM CAM' overlay)",
-          "_install_text_free_camera()" in src)
+          'os.environ["BRAIN_BATTLE_SIM_PICTURE"] = "neutral"' in src)
     check("docs mode strips the 'Demo' flag from its fixtures",
           "_strip_demo_flag_from_fixtures(DOCS_RECORDINGS_DIR)" in src)
 

@@ -354,6 +354,11 @@ remaining seam — the optional combined 2×2 export video — is tracked in
 
 ## Conventions & gotchas
 
+- **Each camera captures in a process of its own** (`capture/camera_worker.py`,
+  ADR-0025) so nothing in the app can delay it. Anything a camera process must
+  know goes through `BRAIN_BATTLE_*` environment variables or the command pipe
+  — patching a module in the app (or a test) does not reach it; use
+  `USBCameraThread(isolated=False)` in a test that must patch capture code.
 - Review & Label playback is in-process via **PyAV** (`playback/pyav_player.py`):
   one `t_session_seconds` playhead, decode off the UI thread, no VLC/Qt-Multimedia
   players and no native-surface z-order hacks.

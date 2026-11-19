@@ -51,6 +51,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 
 import brain_battle.capture.clock as _clock
@@ -109,7 +110,7 @@ def _ffmpeg_path() -> Optional[str]:
 # human eye perceives stutter for a small preview tile, well above any
 # meaningful sampling rate for situational awareness, and reduces the
 # main-thread queued-signal load by roughly 33-66% versus 30/60 fps cameras.
-PREVIEW_FPS_CAP      = 20
+PREVIEW_FPS_CAP      = 15
 PREVIEW_INTERVAL_SEC = 1.0 / PREVIEW_FPS_CAP
 
 
@@ -283,6 +284,8 @@ class FrameEncoder:
 
     # ── lifecycle ──
     def start(self) -> bool:
+        if "null-encoder" in capture_debug():
+            return self._start_null()
         ff = _ffmpeg_path()
         if ff is None:
             log.error("[cam-enc] ffmpeg not found — cannot record %s", self.path)
@@ -318,6 +321,25 @@ class FrameEncoder:
         self._stderr_thread = threading.Thread(
             target=self._drain_stderr, daemon=True, name="cam-enc-stderr")
         self._stderr_thread.start()
+        self._open_sidecar()
+        return True
+
+    def _start_null(self) -> bool:
+        """Debug only (soak experiments): no ffmpeg — frames go nowhere, the
+        timestamp sidecar is still written."""
+        class _Null:
+            def __init__(self):
+                self.stdin = open(os.devnull, "wb")
+                self.stderr = None
+            def poll(self):
+                return None
+            def wait(self, timeout=None):
+                return 0
+            def kill(self):
+                pass
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        open(self.path, "wb").close()
+        self._proc = _Null()
         self._open_sidecar()
         return True
 
@@ -442,25 +464,25 @@ class FrameEncoder:
 
 class USBCameraThread(QThread):
     """
-    One capture thread per camera. Reads frames in a tight loop, emits them
-    to the UI, and optionally writes each frame to an MP4.
+    One camera. The capture itself — read, timestamp, hand to ffmpeg, write
+    the timestamp sidecar — runs in a **process of its own**
+    (``camera_worker``, ADR-0025), so nothing in the app's main process can
+    delay it; this QThread starts that process, passes commands to it and
+    turns what it reports into the signals and numbers the app reads.
+    ``isolated=False`` runs the same loop in this thread instead (tests that
+    patch the encoder use that).
 
     Signals
     ────────
-    * ``frame_ready(np.ndarray)`` — latest BGR frame, emitted at capture rate.
-      The UI should receive it, convert once to ``QImage``, and display.
-    * ``state_changed(str)``     — textual status for UI diagnostics:
-      ``"opening"``, ``"live"``, ``"error: …"``, ``"stopped"``.
-    * ``stats(fps, frames_total)`` — rolling FPS + total frame count, 1 Hz.
+    * ``frame_ready(np.ndarray)`` — a small BGR preview picture (≤ 15 a second).
+    * ``state_changed(str)``     — ``"opening"``, ``"live"``, ``"reconnecting"``,
+      ``"error: …"``, ``"stopped"``.
+    * ``stats(fps, frames_total)`` — once a second.
+    * ``record_error(str)`` / ``stalled(s)`` / ``recovered(s)`` / ``fps_note(str)``.
 
-    Lifecycle
-    ────────
-    ``start()`` begins the capture. Call ``stop()`` from the UI thread to
-    request an orderly shutdown; the thread quits when the current frame
-    returns or a 2-second watchdog expires, whichever comes first.
-    Call ``start_recording(path)`` / ``stop_recording()`` at any time — the
-    thread picks up the request between frames, so it is safe to call across
-    threads.
+    ``start()`` begins; ``stop()`` asks for an orderly shutdown (the video is
+    finalised first). ``start_recording(path, clock)`` / ``stop_recording()``
+    are safe to call from any thread.
     """
 
     frame_ready   = pyqtSignal(np.ndarray)
@@ -474,96 +496,56 @@ class USBCameraThread(QThread):
     def __init__(self, device: CameraDevice,
                  width: int = 960, height: int = 540, fps: int = 30,
                  bitrate_mbps: float = REC_BITRATE_MBPS,
-                 parent: QObject | None = None):
-        # Default 960×540 (qHD, 16:9). This is ~56% the pixel count of 720p
-        # but visually nearly indistinguishable on the small preview tiles
-        # we render. The pixel cost adds up across 4 cameras: at 720p each
-        # frame is ~1.4 MB; at 540 it's ~780 KB. Four cameras at 30 fps
-        # means ~94 MB/sec vs ~166 MB/sec of pixel data moving through
-        # Qt's signal queue + JPEG decode. The chosen res still captures
-        # enough detail for boxing analysis (faces, gloves, body posture)
-        # while keeping low-end laptops responsive. Callers can override
-        # with explicit width/height when needed.
+                 parent: QObject | None = None, isolated: Optional[bool] = None):
         super().__init__(parent)
-        self._dev       = device
-        self._want_w    = width
-        self._want_h    = height
-        self._want_fps  = fps
+        self._dev = device
+        self._want_w, self._want_h, self._want_fps = width, height, fps
         self._bitrate_mbps = float(bitrate_mbps)
-        # Preview frames are downscaled to at most this width BEFORE crossing
-        # the thread boundary (recording still gets the full-quality frame);
-        # keeps the Qt signal queue light with four live tiles. 0 → no cap.
+        self._isolated = isolated_capture() if isolated is None else bool(isolated)
         self._preview_w = 0
-
-        self._stop_flag:       bool = False
-        self._recording:       bool = False
-        self._rec_path:        Optional[Path] = None
-        self._rec_req_path:    Optional[Path] = None     # start request
-        self._rec_stop_req:    bool = False              # stop request
-        # Capture-time clock origin (t0_monotonic, t0_unix) shared across all
-        # camera threads so every frame stamp sits on one reference; set per
-        # recording via start_recording(clock=...). None → each thread uses
-        # its own first recorded frame as the origin (still self-consistent).
-        self._rec_req_clock:   Optional[tuple[float, float]] = None
-        # Crash-safe recording: a bounded queue hands frames from this capture
-        # thread to a writer thread that feeds the FrameEncoder's ffmpeg stdin.
-        # Capture never blocks on the encoder — a full queue drops the frame.
-        self._encoder:         Optional[FrameEncoder] = None
-        self._rec_queue:       Optional[queue.Queue] = None
-        self._rec_stop_event:  Optional[threading.Event] = None
-        self._writer_thread:   Optional[threading.Thread] = None
-        self._dropped_frames:  int = 0
-        self._last_drop_log:   float = 0.0
-        # Optional callback(frame_index, t_monotonic) per recorded frame (see
-        # FrameEncoder). Set before start_recording().
-        self.frame_hook = None
-        # Live timing (rate / jitter / dropped) and, for the buzzer test, the
-        # frame-difference energy of every frame: (t_monotonic, energy).
+        self._stop_flag = False
+        self._cmds: "queue.SimpleQueue" = queue.SimpleQueue()   # → the loop / process
+        self._loop = None
+        self._recording = False
+        self._rec_pending = False          # asked to start, not started yet
+        self._stop_pending = False         # asked to stop, not finalised yet
+        self._dropped_frames = 0
+        self.frame_hook = None             # callback(frame_index, t_monotonic) per recorded frame
         import brain_battle.capture.timing as timing
         self.monitor = timing.RateMonitor(device.name, 1.0 / max(1, fps), unit="fps")
         self._energy_lock = threading.Lock()
         self._energy: deque = deque(maxlen=int(ENERGY_KEEP_SEC * 120))
-        self._prev_small = None
-        # Stall watchdog + recovery bookkeeping (read from the UI thread).
         self._last_frame_t: Optional[float] = None
-        self._cap = None
         self.stall_events: list = []       # [(t_monotonic, "stalled"|"recovered", seconds)]
         self.actual_fps: float = float(fps)
         self.fps_fallback = False
-        self.queue_peak = 0                # deepest the encoder queue got this second
+        self.queue_peak = 0
         self.queue_capacity = REC_QUEUE_MAXSIZE
-        # Reusable frame buffers: frames are read into a free buffer and the
-        # buffer comes back once ffmpeg has it — no 1.5 MB allocation per frame
-        # (four cameras at 60 fps would otherwise churn ~360 MB/s, and the
-        # operating system then stalls the whole program now and then).
-        self._pool: "queue.SimpleQueue" = queue.SimpleQueue()
-        self._pool_n = 0
-        self._pool_shape = None
+        self.process_pid: Optional[int] = None
 
-    # ── Public API (thread-safe; uses flags the run-loop polls) ──────────
+    # ── commands (any thread) ──
     def set_preview_width(self, w: int) -> None:
-        """Cap the width of preview frames emitted to the UI (0 = full size).
-        Recording is unaffected — the encoder always gets the full frame."""
         self._preview_w = max(0, int(w))
+        self._cmds.put(("preview_width", self._preview_w))
 
     def stop(self) -> None:
         self._stop_flag = True
+        self._cmds.put(("stop", None))
 
     def start_recording(self, path: str | Path,
                         clock: Optional[tuple[float, float]] = None) -> None:
-        """Queue a recording-start request. Picked up on the next frame.
-
-        `clock` is the shared capture-time origin (t0_monotonic, t0_unix)
-        captured once at session recording-start; passing the same tuple to
-        every camera thread puts all their frame stamps on one reference.
-        """
-        self._rec_req_path = Path(path)
-        self._rec_req_clock = clock
+        """Start recording into ``path`` (picked up on the next frame).
+        ``clock`` = the shared capture-time origin (t0_monotonic, t0_unix)."""
+        self._rec_pending = True
+        self._cmds.put(("start_recording", (str(path), clock)))
 
     def stop_recording(self) -> None:
-        """Queue a recording-stop request. Picked up on the next frame."""
-        self._rec_stop_req = True
+        if not (self._recording or self._rec_pending):
+            return
+        self._stop_pending = True
+        self._cmds.put(("stop_recording", None))
 
+    # ── state the app reads ──
     @property
     def device(self) -> CameraDevice:
         return self._dev
@@ -576,27 +558,19 @@ class USBCameraThread(QThread):
     def recording_finalised(self) -> bool:
         """True once no recording is running AND the last one's video +
         sidecar are fully written and closed (safe to read from disk)."""
-        return (not self._recording and self._writer_thread is None
-                and self._rec_req_path is None)
+        return not (self._recording or self._rec_pending or self._stop_pending)
 
-    def _take_buffer(self, shape):
-        """A free frame buffer of ``shape`` (or None: read a new array)."""
-        if shape != self._pool_shape:
-            self._pool_shape = shape
-            self._pool = queue.SimpleQueue(); self._pool_n = 0
-        try:
-            return self._pool.get_nowait()
-        except queue.Empty:
-            pass
-        if self._pool_n < POOL_MAX:
-            self._pool_n += 1
-            return np.empty(shape, dtype=np.uint8)
-        return None
+    @property
+    def dropped_frames(self) -> int:
+        """Frames dropped this recording because the encoder couldn't keep up
+        (bounded-queue overflow). 0 is the healthy case."""
+        return self._dropped_frames
 
-    def _give_buffer(self, buf) -> None:
-        """Back to the pool (any thread)."""
-        if buf is not None and buf.shape == self._pool_shape:
-            self._pool.put(buf)
+    @property
+    def seconds_since_frame(self) -> Optional[float]:
+        if self._last_frame_t is None:
+            return None
+        return _clock.monotonic() - self._last_frame_t
 
     def energy_since(self, t0: float) -> tuple[np.ndarray, np.ndarray]:
         """(frame times, frame-difference energy) for frames after ``t0``."""
@@ -607,413 +581,232 @@ class USBCameraThread(QThread):
         a = np.asarray(rows, dtype=float)
         return a[:, 0], a[:, 1]
 
-    def _note_energy(self, frame, now) -> None:
-        try:
-            # every 4th pixel in each direction, averaged over the colours: a
-            # fraction of the cost of resizing the whole frame, fine enough
-            # that ordinary motion does not alias into false "taps", and the
-            # energy still grows with how much of the picture changed
-            g = frame[::ENERGY_STRIDE, ::ENERGY_STRIDE].sum(axis=2, dtype=np.int16) // 3
-        except Exception:
-            return
-        e = 0.0 if self._prev_small is None else float(np.mean(np.abs(g - self._prev_small)))
-        self._prev_small = g
-        with self._energy_lock:
-            self._energy.append((now, e))
-
-    @property
-    def seconds_since_frame(self) -> Optional[float]:
-        """For the watchdog: how long since the last frame (None before one)."""
-        if self._last_frame_t is None:
-            return None
-        return _clock.monotonic() - self._last_frame_t
-
-    @property
-    def dropped_frames(self) -> int:
-        """Frames dropped this recording because the encoder couldn't keep up
-        (bounded-queue overflow). 0 is the healthy case."""
-        return self._dropped_frames
-
-    def _open_capture(self):
-        """Open the capture device. Under BRAIN_BATTLE_SIMULATE a synthetic,
-        real-time-paced cv2.VideoCapture-compatible source is substituted — the
-        rest of run() (negotiation, encode, sidecar) is identical."""
-        try:
-            import brain_battle.capture.simulation as simulation
-            if simulation.enabled():
-                return simulation.open_capture(
-                    self._dev, w=self._want_w, h=self._want_h, fps=self._want_fps)
-        except Exception:
-            pass
-        return cv2.VideoCapture(self._dev.index, self._dev.backend or _preferred_backend())
-
-    def _negotiate(self, cap) -> float:
-        """Ask the camera for MJPG, the size, the frame rate and a 1-frame
-        buffer; fall back to 30 fps (and say so) when 60 was asked for and
-        the camera cannot do it. Returns the frame rate the camera reports."""
-        try:
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        except Exception:
-            pass
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self._want_w)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._want_h)
-        cap.set(cv2.CAP_PROP_FPS,          self._want_fps)
-        try:
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except Exception:
-            pass
-        actual = cap.get(cv2.CAP_PROP_FPS) or float(self._want_fps)
-        if self._want_fps >= 59 and actual < 50:
-            cap.set(cv2.CAP_PROP_FPS, 30)
-            actual = cap.get(cv2.CAP_PROP_FPS) or 30.0
-            self.fps_fallback = True
-            log.warning("cam idx=%s cannot record at %s fps (reports %.1f) — using 30 fps",
-                        self._dev.index, self._want_fps, actual)
-            self.fps_note.emit(f"{self._dev.name} can only record at {actual:.0f} fps, "
-                               f"not {self._want_fps}.")
-        return float(actual)
-
-    def _reopen(self, cap):
-        """Watchdog recovery: release the stalled device and open it again,
-        retrying until it delivers or the thread is stopped. The recording
-        (encoder + sidecar) keeps running, so frames continue in the same
-        file."""
-        try:
-            cap.release()
-        except Exception:
-            pass
-        attempt = 0
-        while not self._stop_flag:
-            attempt += 1
-            new = self._open_capture()
-            if new is not None and new.isOpened():
-                self._negotiate(new)
-                self._cap = new
-                self._prev_small = None
-                return new
-            self.msleep(min(2000, 300 * attempt))
-        return None
-
-    def _watchdog(self) -> None:
-        """Runs beside the capture loop. No frame for STALL_SEC: say so at once
-        (the Recording screen shows it within 2 s). A read that fails is
-        reopened by the loop itself; only a read that has HUNG for 3 × STALL_SEC
-        has its device released from here, so it returns and the loop reopens
-        it (releasing during a read is a last resort — some drivers dislike
-        it)."""
-        flagged = forced = False
-        while not self._stop_flag:
-            time.sleep(0.25)
-            since = self.seconds_since_frame
-            if since is None:
-                continue
-            if since >= STALL_SEC and not flagged:
-                flagged = True
-                self.stalled.emit(float(since))
-            if since >= 3 * STALL_SEC and not forced and not getattr(self, "_in_reopen", False):
-                forced = True
-                cap = self._cap
-                if cap is not None:
+    # ── what the loop reports ──
+    def _apply(self, kind: str, payload) -> None:  # noqa: C901 — one switch
+        if kind == "frames":
+            sim = None
+            with self._energy_lock:
+                for t, e, delay in payload:
+                    self._energy.append((t, e))
+            for t, e, delay in payload:
+                self.monitor.add(t)
+                if delay is not None:
+                    if sim is None:
+                        import brain_battle.capture.simulation as sim
+                    sim.note_delivered(sim.camera_key(self._dev.index), t, delay)
+            if payload:
+                self._last_frame_t = payload[-1][0]
+        elif kind == "preview":
+            self.frame_ready.emit(payload)
+        elif kind == "written":
+            hook = self.frame_hook
+            if hook is not None:
+                for idx, t in payload:
                     try:
-                        cap.release()
+                        hook(idx, t)
                     except Exception:
                         pass
-            if since < STALL_SEC:
-                flagged = forced = False
+        elif kind == "stats":
+            self.stats.emit(float(payload[0]), int(payload[1]))
+        elif kind == "queue":
+            self.queue_peak, self.queue_capacity = int(payload[0]), int(payload[1])
+        elif kind == "dropped":
+            self._dropped_frames = int(payload[1])
+            self.monitor.add_dropped(payload[0])
+        elif kind == "rec_started":
+            self._recording = True; self._rec_pending = False; self._dropped_frames = 0
+        elif kind == "rec_finalised":
+            self._recording = self._rec_pending = self._stop_pending = False
+        elif kind == "record_error":
+            self._recording = self._rec_pending = False
+            self.record_error.emit(str(payload))
+        elif kind == "state":
+            self.state_changed.emit(str(payload))
+        elif kind == "fps":
+            self.actual_fps = float(payload[0]); self.fps_fallback = bool(payload[1])
+            self.monitor.nominal = 1.0 / max(1.0, self.actual_fps)
+        elif kind == "fps_note":
+            self.fps_note.emit(str(payload))
+        elif kind == "stalled":
+            self.stalled.emit(float(payload))
+        elif kind == "recovered":
+            self.recovered.emit(float(payload))
+        elif kind == "stall_event":
+            self.stall_events.append(tuple(payload))
+        elif kind == "log":
+            level, name, msg = payload
+            logging.getLogger(name).log(level, "[camera process] %s", msg)
 
-    # ── Thread body ──
-    def run(self) -> None:  # noqa: C901 — single run-loop, hard to split further
-        self.state_changed.emit("opening")
-        cap = self._open_capture()
-        if not cap.isOpened():
-            self.state_changed.emit(f"error: could not open camera {self._dev.index}")
-            return
-        self._cap = cap
+    # ── thread body ──
+    def run(self) -> None:
+        if self._isolated:
+            self._run_process()
+        else:
+            self._run_in_thread()
 
-        # ── Camera format negotiation ──────────────────────────────────────
-        # MUST set FOURCC=MJPG BEFORE resolution/fps. Without this, most USB
-        # webcams default to raw YUYV (16-bit uncompressed). At 1280×720 YUYV
-        # that's ~55 MB/sec per camera over USB — with 4 cameras on a USB 2.0
-        # bus you simply cannot fit, and the cameras drop to 5-15 fps. With
-        # MJPG each camera consumes ~3-5 Mbps. The set order is critical:
-        # FOURCC first, THEN resolution/fps (macOS AVFoundation and many
-        # DirectShow drivers ignore later changes). A 1-frame driver buffer
-        # (CAP_PROP_BUFFERSIZE) means we always pull the newest frame, which
-        # keeps the camera's delay short and constant. See _negotiate.
-        actual_fps = self._negotiate(cap)
-        self.actual_fps = actual_fps
-        self.monitor.nominal = 1.0 / max(1.0, actual_fps)
-        if abs(actual_fps - self._want_fps) > 0.5 and not self.fps_fallback:
-            log.warning("cam idx=%s requested %s fps but reports %.2f fps — "
-                        "may drift across long sessions vs other cameras",
-                        self._dev.index, self._want_fps, actual_fps)
-
-        self.state_changed.emit("live")
-        total_frames = 0
-        stats_window: list[float] = []
-        last_stats_emit = _clock.monotonic()
-        last_preview_emit = 0.0  # forces first frame to emit immediately
-        # The first frame is the source of truth for VideoWriter dimensions.
-        # cap.get() values can be 0/NaN on macOS AVFoundation before warmup,
-        # which causes VideoWriter to "open" but silently reject frames →
-        # 257-byte MP4 files with header but no data. We capture the first
-        # frame's shape and use that for all writer init from this point on.
-        first_frame_shape: tuple[int, int] | None = None  # (h, w)
-        fail_since: Optional[float] = None
-        wd = threading.Thread(target=self._watchdog, name="cam-watchdog", daemon=True)
-        wd.start()
-        last_queue_reset = _clock.monotonic()
-
+    def _run_in_thread(self) -> None:
+        from brain_battle.capture.camera_worker import CaptureLoop
+        loop = CaptureLoop(self._dev, self._want_w, self._want_h, self._want_fps,
+                           self._bitrate_mbps, out=self._apply, batch_sec=0.0)
+        self._loop = loop
+        relay = threading.Thread(target=self._relay_to_loop, args=(loop,),
+                                 name="cam-commands", daemon=True)
+        relay.start()
         try:
-            while not self._stop_flag:
-                # Handle recording-start request — DEFERRED until we have a
-                # valid first frame, so the encoder always gets correct dims.
-                if self._rec_req_path is not None and not self._recording \
-                        and first_frame_shape is not None:
-                    path = self._rec_req_path; self._rec_req_path = None
-                    clock = self._rec_req_clock; self._rec_req_clock = None
-                    fh, fw = first_frame_shape
-                    # Sanity-check FPS: cap.get() returns NaN/0 on some
-                    # backends. Default to 30 when invalid.
-                    safe_fps = float(actual_fps) if actual_fps and actual_fps > 5 else 30.0
-                    if safe_fps > 120: safe_fps = 30.0  # bogus-high reading
-                    self._start_recording_encoder(path, fw, fh, safe_fps, clock)
-
-                # Handle recording-stop request.
-                if self._rec_stop_req and self._recording:
-                    self._rec_stop_req = False
-                    self._stop_recording_encoder()
-
-                buf = (self._take_buffer((first_frame_shape[0], first_frame_shape[1], 3))
-                       if first_frame_shape is not None else None)
-                if buf is not None:
-                    ok, frame = cap.read(buf)
-                    if frame is not buf:                 # the backend made its own array
-                        self._give_buffer(buf)
-                else:
-                    ok, frame = cap.read()
-                pooled = buf is not None and frame is buf
-                if not ok or frame is None:
-                    # Transient read failure. Give the device a moment and
-                    # try again. Failing for STALL_SEC = a stalled camera:
-                    # reopen it and carry on recording into the same file.
-                    t_fail = _clock.monotonic()
-                    fail_since = fail_since or t_fail
-                    stalled_for = t_fail - (self._last_frame_t or fail_since)
-                    if stalled_for >= STALL_SEC and not self._stop_flag:
-                        log.warning("cam idx=%s: no frame for %.1f s — reopening",
-                                    self._dev.index, stalled_for)
-                        self.stall_events.append((t_fail, "stalled", stalled_for))
-                        self.state_changed.emit("reconnecting")
-                        self._in_reopen = True
-                        new = self._reopen(cap)
-                        self._in_reopen = False
-                        if new is None:
-                            break
-                        cap = new
-                        fail_since = None
-                        continue
-                    self.msleep(30)
-                    continue
-
-                # Lock in first-frame shape on first successful read.
-                if first_frame_shape is None:
-                    first_frame_shape = (frame.shape[0], frame.shape[1])
-                elif (frame.shape[0], frame.shape[1]) != first_frame_shape:
-                    # a reopened camera that came back at another size: keep the
-                    # recording's size so the same file continues
-                    if pooled:
-                        self._give_buffer(frame)
-                    frame = cv2.resize(frame, (first_frame_shape[1], first_frame_shape[0]))
-                    pooled = False
-
-                total_frames += 1
-                now = _clock.monotonic()
-                if fail_since is not None or (self._last_frame_t is not None
-                                              and now - self._last_frame_t >= STALL_SEC):
-                    gap = now - (self._last_frame_t or now)
-                    if gap >= STALL_SEC:
-                        self.stall_events.append((now, "recovered", gap))
-                        self.recovered.emit(float(gap))
-                        self.state_changed.emit("live")
-                    fail_since = None
-                self._last_frame_t = now
-                self.monitor.add(now)
-                self._note_energy(frame, now)
-                stats_window.append(now)
-                if stats_window and stats_window[0] < now - 1.0:
-                    stats_window = [t for t in stats_window if t > now - 1.0]
-                if now - last_stats_emit > 1.0:
-                    last_stats_emit = now
-                    self.stats.emit(float(len(stats_window)), total_frames)
-
-                # Hand the frame to the encoder writer thread WITHOUT blocking:
-                # capture must keep its cadence even if ffmpeg stalls. A full
-                # queue means the encoder can't keep up — drop the frame, count
-                # it, and (rate-limited) log it. `frame` is a fresh array per
-                # cap.read() (or a pool buffer nobody else holds), so enqueuing it
-                # by reference is safe; the writer gives a pool buffer back once
-                # ffmpeg has the bytes.
-                enqueued = False
-                if self._recording and self._rec_queue is not None:
-                    try:
-                        self._rec_queue.put_nowait((frame, now))
-                        enqueued = True
-                        depth = self._rec_queue.qsize()
-                        if now - last_queue_reset >= 1.0:
-                            last_queue_reset = now
-                            self.queue_peak = depth
-                        else:
-                            self.queue_peak = max(self.queue_peak, depth)
-                    except queue.Full:
-                        self._dropped_frames += 1
-                        self.monitor.add_dropped(now)
-                        if now - self._last_drop_log >= 1.0:
-                            self._last_drop_log = now
-                            log.warning("cam idx=%s: encoder queue full — dropping "
-                                        "frames (total this run: %d)",
-                                        self._dev.index, self._dropped_frames)
-
-                # ── Preview emit throttling ───────────────────────────────
-                # Cap preview emits at ~20 Hz (50 ms). Even if the camera
-                # delivers 30/60 fps, the eye cannot perceive a difference
-                # above ~20 fps on a small preview tile, and every emit
-                # carries the full frame across the Qt thread boundary →
-                # a queued-connection copy of ~1 MB at 720p × 4 cameras.
-                # At native 30 fps × 4 cameras the system was moving
-                # ~120 MB/sec through Qt's event queue just to keep
-                # previews live. Throttling to 20 Hz cuts that to ~80 MB/sec
-                # and frees the main thread to handle other work (EEG
-                # plots, button clicks). Recording above is unaffected —
-                # the disk writer still gets every captured frame.
-                if (now - last_preview_emit) >= PREVIEW_INTERVAL_SEC:
-                    last_preview_emit = now
-                    # Downscale the PREVIEW copy before it crosses the thread
-                    # boundary (recording above already got the full frame).
-                    pv = frame
-                    if self._preview_w and frame.shape[1] > self._preview_w:
-                        s = self._preview_w / float(frame.shape[1])
-                        pv = cv2.resize(frame, (self._preview_w,
-                                                max(1, int(frame.shape[0] * s))))
-                    elif pooled:
-                        pv = frame.copy()        # the pool buffer will be reused
-                    self.frame_ready.emit(pv)
-                if pooled and not enqueued:
-                    self._give_buffer(frame)
+            loop.run()
         finally:
-            # Always stop recording (finalise ffmpeg + sidecar) and release the
-            # device, even on exception — so no orphaned ffmpeg survives.
+            self._stop_flag = True
+            self._cmds.put(("stop", None))
+            relay.join(timeout=1.0)
+
+    def _relay_to_loop(self, loop) -> None:
+        while True:
+            kind, payload = self._cmds.get()
+            if kind == "stop":
+                loop.stop(); return
+            if kind == "start_recording":
+                loop.start_recording(*payload)
+            elif kind == "stop_recording":
+                loop.stop_recording()
+            elif kind == "preview_width":
+                loop.set_preview_width(payload)
+
+    def _run_process(self) -> None:
+        import brain_battle.capture.simulation as simulation
+        from brain_battle.capture import camera_worker
+        ctx = _mp_context()
+        parent_end, child_end = ctx.Pipe(duplex=True)
+        env = {k: v for k, v in os.environ.items() if k.startswith("BRAIN_BATTLE_")}
+        proc = ctx.Process(target=camera_worker.main, name=f"camera-{self._dev.index}",
+                           args=(child_end, self._dev, self._want_w, self._want_h,
+                                 self._want_fps, self._bitrate_mbps, env), daemon=True)
+        try:
+            with _MAIN_LOCK:
+                with _no_main_reimport():
+                    proc.start()
+        except Exception as e:
+            log.error("cam idx=%s: could not start the camera process: %r", self._dev.index, e)
+            self.state_changed.emit(f"error: could not start camera {self._dev.index}")
+            return
+        finally:
+            child_end.close()
+        self.process_pid = proc.pid
+
+        def taps(times, clear=False):
+            self._cmds.put(("clear_taps", None) if clear else ("taps", list(times)))
+        sim_on = simulation.enabled()
+        if sim_on:
+            simulation.add_tap_listener(taps)
+            current = simulation.taps_between(-1e18, 1e18)
+            if current:
+                taps(current)
+        if self._preview_w:
+            self._cmds.put(("preview_width", self._preview_w))
+        stopping_since = None
+        try:
+            while True:
+                # commands → the camera process
+                while True:
+                    try:
+                        cmd = self._cmds.get_nowait()
+                    except queue.Empty:
+                        break
+                    try:
+                        parent_end.send(cmd)
+                    except (OSError, EOFError, BrokenPipeError):
+                        pass
+                    if cmd[0] == "stop" and stopping_since is None:
+                        stopping_since = time.monotonic()
+                # what it reports → signals / numbers
+                try:
+                    if parent_end.poll(0.02):
+                        kind, payload = parent_end.recv()
+                        if kind == "exit":
+                            break
+                        self._apply(kind, payload)
+                        continue
+                except (OSError, EOFError):
+                    break                       # the camera process has gone
+                if not proc.is_alive():
+                    break
+                if stopping_since is not None and time.monotonic() - stopping_since > 20.0:
+                    log.error("cam idx=%s: the camera process did not stop — ending it",
+                              self._dev.index)
+                    break
+        finally:
+            if sim_on:
+                simulation.remove_tap_listener(taps)
+            proc.join(timeout=5.0)
+            if proc.is_alive():
+                proc.terminate(); proc.join(timeout=2.0)
             try:
-                if self._recording or self._writer_thread is not None:
-                    self._stop_recording_encoder()
+                parent_end.close()
             except Exception:
                 pass
-            self._stop_flag = True          # ends the watchdog
-            try:
-                cap.release()
-            except Exception:
-                pass
+            if hasattr(proc, "close"):
+                try:
+                    proc.close()
+                except Exception:
+                    pass
+            if self._recording or self._rec_pending or self._stop_pending:
+                self._recording = self._rec_pending = self._stop_pending = False
+                if proc.exitcode not in (0, None) and not self._stop_flag:
+                    self.record_error.emit("The camera stopped unexpectedly. The footage "
+                                           "saved up to that point has been kept.")
             self.state_changed.emit("stopped")
 
-    # ── Crash-safe recording: encoder + writer thread ──
-    #
-    # Every frame handed to the encoder appends one row to a sidecar CSV next
-    # to the MP4 (<mp4-stem>.timestamps.csv), written by FrameEncoder ONLY
-    # after that frame's bytes reached ffmpeg's stdin — so sidecar rows ==
-    # encoded frames (dropped frames get neither). This turns the video from
-    # "frames at a nominal fps" into "frames at known capture instants"
-    # (docs/archive/architecture-and-evaluation.md §1.6).
 
-    def _start_recording_encoder(self, path, fw, fh, fps, clock) -> None:
-        enc = FrameEncoder(path, fw, fh, fps, clock, bitrate_mbps=self._bitrate_mbps,
-                           on_frame=self.frame_hook)
-        if not enc.start():
-            self.state_changed.emit("error: could not start video encoder")
-            self.record_error.emit(
-                "Could not start recording for this camera (video encoder "
-                "failed to launch).")
-            return
-        self._encoder = enc
-        # ~2 s of frames at the camera's real rate (60 at 30 fps, 120 at 60 fps)
-        self.queue_capacity = max(REC_QUEUE_MAXSIZE, int(round(2 * fps)))
-        self._rec_queue = queue.Queue(maxsize=self.queue_capacity)
-        self._rec_stop_event = threading.Event()
-        self._dropped_frames = 0
-        self._last_drop_log = 0.0
-        self._rec_path = Path(path)
-        self._writer_thread = threading.Thread(
-            target=self._encoder_writer_loop,
-            args=(enc, self._rec_queue, self._rec_stop_event),
-            name="cam-enc-writer", daemon=True,
-        )
-        self._writer_thread.start()
-        self._recording = True
+# ─── the camera processes ─────────────────────────────────────────────────────
 
-    def _encoder_writer_loop(self, enc, q, stop_event) -> None:
-        """Feed queued frames to the encoder. Blocks on ffmpeg's stdin when the
-        encoder is slow (that's the back-pressure the capture loop turns into
-        drops). Runs until stopped and drained, or until ffmpeg dies."""
-        died = False
-        while True:
-            try:
-                item = q.get(timeout=0.2)
-            except queue.Empty:
-                item = None
-            if item is not None:
-                frame, t_mono = item
-                ok_w = enc.write_frame(frame, t_mono)
-                self._give_buffer(frame)
-                if not ok_w:
-                    died = True
-                    break
-            # Detect an encoder that exited on its own (crash / error) even
-            # during a gap in frames — not just on the next failed write.
-            elif not stop_event.is_set() and not enc.is_alive():
-                died = True
-                break
-            if stop_event.is_set() and q.empty():
-                break
-        if died:
-            self._handle_encoder_death(enc)
-        else:
-            enc.close()   # normal stop: flush + finalise the fragmented MP4
+_MAIN_LOCK = threading.Lock()
 
-    def _handle_encoder_death(self, enc) -> None:
-        """One camera's ffmpeg died mid-session. Stop ONLY this camera, keep
-        its partial (still-playable, fragmented) file + sidecar, and signal the
-        slot — the other cameras and EEG keep recording."""
-        tail = enc.stderr_tail()
-        log.error("cam idx=%s: ffmpeg encoder died mid-recording — keeping the "
-                  "partial file. ffmpeg stderr tail:\n%s", self._dev.index, tail)
-        try:
-            enc.close(timeout=2.0)   # reap the dead process + close the sidecar
-        except Exception:
-            pass
-        self._recording = False
-        if self._encoder is enc:
-            self._encoder = None
-        self.record_error.emit(
-            "Recording for this camera stopped because of a video-encoder "
-            "error. The footage saved up to that point has been kept.")
 
-    def _stop_recording_encoder(self) -> None:
-        """Normal stop: tell the writer to drain + finalise, then join it (so
-        ffmpeg has exited and no orphan remains before we return)."""
-        self._recording = False
-        if self._rec_stop_event is not None:
-            self._rec_stop_event.set()
-        wt = self._writer_thread
-        if wt is not None:
-            wt.join(timeout=12.0)
-            if wt.is_alive():
-                log.error("cam idx=%s: encoder writer did not stop in time — "
-                          "video may be missing its final fragment", self._dev.index)
-        self._writer_thread = None
-        self._rec_queue = None
-        self._rec_stop_event = None
-        self._rec_path = None
-        self._encoder = None
+def isolated_capture() -> bool:
+    """Run each camera in a process of its own (the default; ADR-0025).
+    ``BRAIN_BATTLE_CAMERA_PROCESS=0`` runs them as threads of the app."""
+    return os.environ.get("BRAIN_BATTLE_CAMERA_PROCESS", "1").strip().lower() not in (
+        "0", "false", "no", "off")
+
+
+def capture_debug() -> set:
+    """Debug-only switches for experiments (tools/soak_test.py):
+    ``BRAIN_BATTLE_CAPTURE_DEBUG=no-preview,null-encoder``."""
+    return {w.strip() for w in os.environ.get("BRAIN_BATTLE_CAPTURE_DEBUG", "").split(",")
+            if w.strip()}
+
+
+def _mp_context():
+    import multiprocessing as mp
+    return mp.get_context("spawn")       # never fork a process that runs Qt
+
+
+class _no_main_reimport:
+    """A spawned process normally re-runs the starting script (``__main__``)
+    before calling its target. The camera process needs nothing from it, and a
+    test script or the app would do real work on import — so, while the
+    process is being started, ``__main__`` is made to look like an interactive
+    session (no file, no module name) and multiprocessing skips it."""
+
+    def __enter__(self):
+        import sys
+        m = sys.modules.get("__main__")
+        self._m = m
+        self._saved = {}
+        if m is not None:
+            for k in ("__file__", "__spec__"):
+                if k in m.__dict__:
+                    self._saved[k] = m.__dict__[k]
+            m.__dict__.pop("__file__", None)
+            m.__dict__["__spec__"] = None
+        return self
+
+    def __exit__(self, *exc):
+        m = self._m
+        if m is not None:
+            m.__dict__.pop("__spec__", None)
+            m.__dict__.update(self._saved)
+        return False
 
 
 __all__ = ["CameraDevice", "USBCameraThread", "FrameEncoder",
-           "preflight_recording", "list_cameras"]
+           "preflight_recording", "list_cameras", "isolated_capture", "capture_debug"]

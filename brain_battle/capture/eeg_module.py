@@ -448,6 +448,8 @@ class _MuseDirectReader(QThread):
 
     def run(self) -> None:
         import asyncio
+        from brain_battle.support import platform_utils
+        platform_utils.raise_thread_priority()      # packet arrival times matter
         try:
             from muselsl.muse import Muse
         except ImportError:

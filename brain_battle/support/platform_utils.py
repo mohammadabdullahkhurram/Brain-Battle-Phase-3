@@ -160,7 +160,35 @@ def ffmpeg_install_hint(platform_name: Optional[str] = None) -> str:
     return "Install it with your package manager, e.g.  sudo apt install ffmpeg"
 
 
+# macOS QoS classes (sys/qos.h) and Windows thread priorities (winbase.h)
+_QOS_CLASS_USER_INTERACTIVE = 0x21
+_THREAD_PRIORITY_HIGHEST = 2
+
+
+def raise_thread_priority(platform_name: Optional[str] = None) -> bool:
+    """Ask the OS to run the CALLING thread promptly (capture threads only).
+
+    On a Mac a thread starts at the default quality of service and may wait
+    behind busy background work (or on the slower cores) for tens of
+    milliseconds — long enough for a camera with a one-frame buffer to lose
+    frames. ``USER_INTERACTIVE`` is the class macOS gives to work the user is
+    waiting on. On Windows: ``THREAD_PRIORITY_HIGHEST``. Elsewhere nothing.
+    Never raises; returns True if the request was accepted."""
+    try:
+        import ctypes
+        if is_mac(platform_name):
+            lib = ctypes.CDLL("/usr/lib/libSystem.dylib")
+            return lib.pthread_set_qos_class_self_np(_QOS_CLASS_USER_INTERACTIVE, 0) == 0
+        if is_windows(platform_name):
+            k32 = ctypes.windll.kernel32           # type: ignore[attr-defined]
+            return bool(k32.SetThreadPriority(k32.GetCurrentThread(), _THREAD_PRIORITY_HIGHEST))
+    except Exception:
+        return False
+    return False
+
+
 __all__ = ["is_windows", "is_mac", "format_date", "format_time", "format_date_time",
            "format_iso", "file_manager_name", "show_in_file_manager_label",
            "reveal_command", "reveal_in_file_manager", "open_folder", "shortcut",
-           "computer_name", "ffmpeg_install_hint", "connect_drive_hint"]
+           "computer_name", "ffmpeg_install_hint", "connect_drive_hint",
+           "raise_thread_priority"]

@@ -201,9 +201,14 @@ def test_recordings_in_a_row():
         check(f"threads {what} do not grow from visit to visit",
               later[len(later) // 2] <= 3 and later[-1] <= TOLERANCE,
               str([r[key]["threads"] for r in runs]))
-    check("no helper program is left running after a recording",
-          all(r["saved"]["children"] == 0 and r["left"]["children"] == 0 for r in runs),
-          str([(r["saved"]["children"], r["left"]["children"]) for r in runs]))
+    # On Saved the cameras are still live (each in its own process,
+    # ADR-0025) but no encoder runs; leaving the flow ends them all.
+    check("no video encoder is left running after a recording",
+          all(r["saved"]["encoders"] == 0 for r in runs),
+          str([r["saved"]["encoders"] for r in runs]))
+    check("no helper program (camera process, encoder) is left after leaving the flow",
+          all(r["left"]["children"] == 0 for r in runs),
+          str([r["left"]["children"] for r in runs]))
     # (no upper bound: on Windows an installed ffmpeg can be a launcher that
     # starts the real one, which doubles the count)
     check("helper programs (the video encoders) run while recording",

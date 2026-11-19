@@ -151,16 +151,53 @@ def stall_camera():
         return None
 
 
-def schedule_taps(times_monotonic) -> None:
+_tap_listeners: list = []     # camera processes that must hear about taps
+
+
+def add_tap_listener(fn) -> None:
+    """``fn(times, clear=False)`` is told about every schedule/clear — a camera
+    running in its own process keeps its own copy of the taps."""
+    _tap_listeners.append(fn)
+
+
+def remove_tap_listener(fn) -> None:
+    try:
+        _tap_listeners.remove(fn)
+    except ValueError:
+        pass
+
+
+def schedule_taps(times_monotonic, notify: bool = True) -> None:
     """Both boxers tap their headband at these capture-clock instants."""
+    times = [float(t) for t in times_monotonic]
     with _taps_lock:
-        _taps.extend(float(t) for t in times_monotonic)
+        _taps.extend(times)
         _taps.sort()
+    if notify:
+        for fn in list(_tap_listeners):
+            try:
+                fn(times)
+            except Exception:
+                pass
 
 
-def clear_taps() -> None:
+def clear_taps(notify: bool = True) -> None:
     with _taps_lock:
         _taps.clear()
+    if notify:
+        for fn in list(_tap_listeners):
+            try:
+                fn((), clear=True)
+            except Exception:
+                pass
+
+
+def picture_style() -> str:
+    """How simulated cameras draw their picture (env, so it reaches camera
+    processes): "" — label, clock, moving bar; "neutral" — no text (the
+    committed documentation screenshots); "plain" — a ready-made picture,
+    no drawing at all (soak-test experiments)."""
+    return os.environ.get("BRAIN_BATTLE_SIM_PICTURE", "").strip().lower()
 
 
 def taps_between(t0: float, t1: float) -> list:
@@ -224,6 +261,8 @@ class SimCapture:
         self._rng = random.Random(self._index)
         self._stall = stall_camera()
         self._made = time.monotonic()
+        self._style = picture_style()
+        self.last_delivered = None        # delay of the last frame handed out (ground truth)
         # Pre-render a static background so each read() is cheap.
         self._bg = None
         self._make_bg()
@@ -290,13 +329,19 @@ class SimCapture:
             self._n += int(late_by * self._fps)
         shown = self._t0 + self._n / self._fps
         ready = shown + self._delay + self._rng.uniform(-self._jit, self._jit)
-        frame = self._render(self._n, image)
-        self._draw_tap(frame, shown)
+        if self._style == "plain":
+            frame = image if image is not None and image.shape == self._bg.shape else self._bg
+        else:
+            frame = (self._render_neutral(self._n, image) if self._style == "neutral"
+                     else self._render(self._n, image))
+            self._draw_tap(frame, shown)
         wait = ready - self._clock.monotonic()
         if wait > 0:
             time.sleep(min(wait, 0.2))
         now = self._clock.monotonic()
-        note_delivered(camera_key(self._index), now, now - shown)
+        # the app's camera code reports this with the frame (note_delivered),
+        # wherever this camera runs
+        self.last_delivered = now - shown
         self._n += 1
         return True, frame
 
@@ -319,6 +364,20 @@ class SimCapture:
         img[:, bar_x:bar_x + 40] = (60, 70, 160)
         cv2.putText(img, f"{t:6.2f}s  f{n}", (28, 130), cv2.FONT_HERSHEY_SIMPLEX,
                     0.9, (180, 190, 210), 2, cv2.LINE_AA)
+        return img
+
+    def _render_neutral(self, n, out=None):
+        """No text: a soft gradient and a slow highlight bar (screenshots)."""
+        import cv2
+        if out is not None and out.shape == (self._h, self._w, 3):
+            img = out
+        else:
+            img = np.empty((self._h, self._w, 3), np.uint8)
+        base = 26 + (self._index % 4) * 6
+        col = np.linspace(base, base + 44, self._h).astype(np.uint8)
+        img[:] = col[:, None, None]
+        bar_x = int((n * 5) % self._w)
+        cv2.rectangle(img, (bar_x, 0), (bar_x + 36, self._h), (70, 80, 150), -1)
         return img
 
     def _draw_tap(self, img, shown):
@@ -400,6 +459,8 @@ def _sim_reader_cls():
             (``_on_eeg`` with its arrival time) ``delay + jitter`` after its
             last sample — so the reader's packet log and straight-line fit see
             what a real Bluetooth link would give them."""
+            from brain_battle.support import platform_utils
+            platform_utils.raise_thread_priority()
             self._running = True
             self._first_chunk_seen = False
             rng = np.random.default_rng(abs(hash(self.name)) % (2**32))

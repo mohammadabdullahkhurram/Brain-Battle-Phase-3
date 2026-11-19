@@ -7,6 +7,22 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
+**Follow-up fixes (2026-11-19)**
+- **Camera frame loss: each camera captures in its own process**
+  ([ADR-0025](docs/decisions/adr-0025-each-camera-in-its-own-process.md)).
+  Diagnosed with a stall detector, GC timing and stacks dumped during stalls
+  (`support/stall_probe.py`, `tools/soak_test.py --diagnose` and the
+  `--no-preview` / `--fps 30` / `--no-encoder` / `--minimal-source` /
+  `--no-ui-tick` / `--in-process` experiments): not garbage collection, not
+  CPU load, no slow call — the machine pauses whole processes for 25–150 ms
+  now and then, and ~20 threads sharing one interpreter lock made each pause
+  230–290 ms. Capture (read → stamp → ffmpeg → sidecar) now runs in a small
+  process per camera at raised OS priority (`platform_utils.raise_thread_priority`);
+  the app uses ~19 % of a core and 170 MB while recording instead of 66 % and
+  350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
+  multiprocessing helper and the encoders separately. What is left (the
+  machine's own pauses) is in the ADR.
+
 **Design F — the new screens** (`docs/DESIGN.md`, rewritten from `docs/design/prototype.html`)
 - A white top header (logo · Sessions · Documentation · the Settings gear)
   replaces the sidebar (`ui/header_shell.py`; `sidebar_shell.py` removed). A

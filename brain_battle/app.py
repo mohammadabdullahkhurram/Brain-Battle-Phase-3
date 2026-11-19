@@ -248,6 +248,8 @@ def main():
     ``python3 -m brain_battle``, the ``brain-battle`` console script, and the
     ``brain_battle_main.py`` launcher shim."""
     import traceback as _tb
+    import multiprocessing as _mp
+    _mp.freeze_support()        # the camera processes (ADR-0025) in a packaged app
 
     # Safety net: macOS starts programs with room for only 256 open files.
     # A recording needs far fewer (see ADR-0022), but give it headroom anyway.

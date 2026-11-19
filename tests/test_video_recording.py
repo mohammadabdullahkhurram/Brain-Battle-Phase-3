@@ -139,7 +139,8 @@ def test_backpressure_drops_and_consistency():
         usb_camera.FrameEncoder.write_frame = slow_write
         try:
             dev = CameraDevice(index=source, name="file", backend=cv2.CAP_FFMPEG)
-            th = USBCameraThread(dev)
+            # in this process: the patched encoder must be the one that runs
+            th = USBCameraThread(dev, isolated=False)
             th.start_recording(out, clock=(1000.0, 1_700_000_000.0))
             th.start()
             # Let the source fully decode (fast) while the writer lags behind.
@@ -173,8 +174,11 @@ def test_ffmpeg_death_isolated_to_one_camera():
         out_b = os.path.join(tmp, "cam_b.mp4")   # finishes normally
 
         errors_a = []
-        th_a = USBCameraThread(CameraDevice(index=source, name="A", backend=cv2.CAP_FFMPEG))
-        th_b = USBCameraThread(CameraDevice(index=source, name="B", backend=cv2.CAP_FFMPEG))
+        # in this process: the test reaches into camera A's encoder to break it
+        th_a = USBCameraThread(CameraDevice(index=source, name="A", backend=cv2.CAP_FFMPEG),
+                               isolated=False)
+        th_b = USBCameraThread(CameraDevice(index=source, name="B", backend=cv2.CAP_FFMPEG),
+                               isolated=False)
         th_a.record_error.connect(lambda m: errors_a.append(m))
         th_a.start_recording(out_a, clock=(1000.0, 1_700_000_000.0))
         th_b.start_recording(out_b, clock=(1000.0, 1_700_000_000.0))
@@ -185,11 +189,14 @@ def test_ffmpeg_death_isolated_to_one_camera():
         # (close stdin → ffmpeg hits EOF, finalises, and exits — the realistic
         # "encoder died / pipe broke" that still leaves a playable partial).
         safety = time.monotonic() + 15.0
-        while th_a._encoder is None and time.monotonic() < safety:
+        def _enc():
+            loop = th_a._loop
+            return loop._encoder if loop is not None else None
+        while _enc() is None and time.monotonic() < safety:
             time.sleep(0.05)
         time.sleep(1.5)
         killed = False
-        enc = th_a._encoder
+        enc = _enc()
         if enc is not None and enc._proc is not None and enc._proc.stdin is not None:
             try:
                 enc._proc.stdin.close()

@@ -13,7 +13,7 @@ simulated-device scenario two ways:
       screens/ dump. Docs mode also strips dev/sim artefacts a real user would
       never see: the simulated camera's "SIM CAM N" overlay becomes a neutral
       text-free picture, and the demo-library "Demo" badges are cleared from
-      the fixture manifests (see _install_text_free_camera /
+      the fixture manifests (see BRAIN_BATTLE_SIM_PICTURE=neutral /
       _strip_demo_flag_from_fixtures).
 
 Runs with BRAIN_BATTLE_SIMULATE=1 so the Connect / Recording steps show live
@@ -54,32 +54,6 @@ _TMP_CFG = os.path.join(tempfile.mkdtemp(prefix="bb_render_cfg_"), "settings.jso
 os.environ["BRAIN_BATTLE_CONFIG"] = _TMP_CFG
 
 
-def _install_text_free_camera():
-    """Docs mode only: replace the simulated camera's burned-in "SIM CAM N"
-    label + clock overlay with a neutral, text-free picture, so a committed
-    doc screenshot of the live camera preview doesn't show a dev/sim artefact
-    a real user would never see. Patches simulation.SimCapture only — no app
-    code changes. (The screens/ review dump keeps the labels: there they help
-    identify which tile is which.)"""
-    import numpy as np
-    import brain_battle.capture.simulation as sim
-
-    def _neutral_render(self, n, out=None):
-        import cv2
-        # A soft vertical gradient reads as a camera view rather than a flat
-        # rectangle; brightness varies a little per camera index for variety.
-        base = 26 + (self._index % 4) * 6
-        col = np.linspace(base, base + 44, self._h).astype(np.uint8)
-        img = np.repeat(col[:, None, None], self._w, axis=1)
-        img = np.repeat(img, 3, axis=2).copy()
-        # A slow highlight bar gives motion between frames — still no text.
-        bar_x = int((n * 5) % self._w)
-        cv2.rectangle(img, (bar_x, 0), (bar_x + 36, self._h), (70, 80, 150), -1)
-        return img
-
-    sim.SimCapture._render = _neutral_render
-
-
 def _strip_demo_flag_from_fixtures(folder):
     """Docs mode only: clear `demo: true` in every session manifest under
     `folder`, so the committed Sessions screenshot shows ordinary recordings
@@ -106,7 +80,7 @@ def _strip_demo_flag_from_fixtures(folder):
 
 
 if DOCS_MODE:
-    _install_text_free_camera()
+    os.environ["BRAIN_BATTLE_SIM_PICTURE"] = "neutral"   # reaches the camera processes
     # A normal saved-setting recordings folder, cleanly named, no env override.
     shutil.rmtree(DOCS_RECORDINGS_DIR, ignore_errors=True)
     os.makedirs(DOCS_RECORDINGS_DIR, exist_ok=True)

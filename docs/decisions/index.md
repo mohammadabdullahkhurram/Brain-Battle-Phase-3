@@ -48,6 +48,7 @@ file is missing from this index or from `nav.yml`.
 | [ADR-0022](adr-0022-lsl-outlets-open-once.md) | LSL streams are opened once per run and reused | 2026-11-16 | Accepted |
 | [ADR-0023](adr-0023-fighter-codes-and-colours.md) | Fighters are codes and colours, never names | 2026-11-17 | Accepted |
 | [ADR-0024](adr-0024-timing-check-and-buzzer-calibration.md) | Timing goal under 10 ms: live timing check and buzzer calibration | 2026-11-17 | Accepted |
+| [ADR-0025](adr-0025-each-camera-in-its-own-process.md) | Each camera captures in a process of its own | 2026-11-19 | Accepted |
 
 The sources behind these decisions are the planning documents
 ([DESIGN.md, ROADMAP.md, playback-proposal.md, architecture-and-evaluation.md,

@@ -118,15 +118,33 @@ def count_open_descriptors() -> dict:
 
 def snapshot() -> dict:
     """Descriptors + threads (all native threads when psutil is there, else
-    Python's) + child processes."""
+    Python's) + child processes.
+
+    ``children`` counts camera processes, ffmpeg and anything else started
+    for a recording. Python's multiprocessing ``resource_tracker`` — one
+    helper started with the first camera process and kept for the app's
+    whole run (ADR-0025) — is counted separately as ``helpers``, so a
+    recording that cleaned up after itself shows ``children`` back at 0."""
     out = count_open_descriptors()
     out["threads"] = threading.active_count()
     out["children"] = 0
+    out["helpers"] = 0
+    out["encoders"] = 0          # ffmpeg processes (also counted in children)
     try:
         import psutil
         p = psutil.Process()
         out["threads"] = p.num_threads()
-        out["children"] = len(p.children(recursive=True))
+        for c in p.children(recursive=True):
+            try:
+                tracker = "multiprocessing.resource_tracker" in " ".join(c.cmdline())
+            except psutil.Error:
+                tracker = False
+            out["helpers" if tracker else "children"] += 1
+            try:
+                if "ffmpeg" in c.name().lower():
+                    out["encoders"] += 1
+            except psutil.Error:
+                pass
     except Exception:
         pass
     return out
