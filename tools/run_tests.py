@@ -12,7 +12,11 @@ this runs them several at a time and prints one line per script:
 Scripts that measure real-time behaviour (playback pacing, a simulated
 recording, crash-kill timing) or that publish LSL streams under fixed names are
 run one at a time in a single "serial lane", so they neither disturb each other
-nor get slowed down by a neighbour. Everything else shares the remaining
+nor get slowed down by a neighbour. Scripts that measure millisecond timing
+under a real-time load (``ALONE``: the buzzer calibration, the soak) run after
+everything else has finished, one at a time, with nothing beside them — they
+fail on a busy machine for reasons that have nothing to do with the code.
+Everything else shares the remaining
 workers. Each script's full output is kept in a log file whose folder is
 printed at the end; failing scripts have their FAIL lines echoed. Because some
 scripts measure real time, a script that fails while others are running is run
@@ -40,6 +44,10 @@ SERIAL = {"test_record_flow", "test_settings_screen", "test_lsl_streams", "test_
           "test_player", "test_video_recording", "test_eeg_streaming", "test_crash_recovery",
           "test_history_log", "test_smoke", "test_round_bell", "test_shared_folder",
           "test_descriptors"}
+
+# Millisecond-timing scripts under real-time load: run last, alone (nothing in
+# parallel), so a neighbour's CPU use cannot fail them.
+ALONE = {"test_timing", "test_stability"}
 
 
 # Longest script is about five minutes; anything past this is stuck.
@@ -124,18 +132,25 @@ def main(argv=None) -> int:
             for ln in shown[:20]:
                 print("        " + ln[:200])
 
-    serial = [s for s in scripts if os.path.splitext(os.path.basename(s))[0] in SERIAL]
-    parallel = [s for s in scripts if s not in serial]
+    def _name(s):
+        return os.path.splitext(os.path.basename(s))[0]
+    alone = [s for s in scripts if _name(s) in ALONE]
+    scripts_shared = [s for s in scripts if s not in alone]
+    serial = [s for s in scripts_shared if _name(s) in SERIAL]
+    parallel = [s for s in scripts_shared if s not in serial]
     t0 = time.monotonic()
     jobs = max(1, args.jobs)
     if jobs == 1:
-        _run_lane(scripts, log_dir, report)
+        _run_lane(scripts_shared, log_dir, report)
     else:
         with futures.ThreadPoolExecutor(max_workers=jobs) as pool:
             pending = [pool.submit(_run_lane, serial, log_dir, report)]
             pending += [pool.submit(lambda p=p: report(_run(p, log_dir))) for p in parallel]
             for f in pending:
                 f.result()
+    if alone:
+        print(f"Now the timing scripts, alone: {', '.join(_name(s) for s in alone)}", flush=True)
+    _run_lane(alone, log_dir, report)
 
     # Several scripts measure real time, so a busy machine can fail one that
     # is fine. Give each failure one more go with nothing else running; only a

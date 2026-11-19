@@ -30,6 +30,10 @@ minutes for everything, instead of eleven one after another). Scripts that
 measure real time or publish LSL streams under fixed names are kept in a single
 serial lane, and a script that fails while others are running is re-run on its
 own before it counts as failed — so a busy laptop doesn't produce false alarms.
+The two scripts that measure millisecond timing under a real-time load —
+`test_timing` (buzzer calibration within 2 ms) and `test_stability` (the
+short soak) — are listed in `ALONE` and run **after** everything else, one at
+a time with nothing beside them, also in CI.
 Full output for every script is kept in a log folder printed at the end.
 
 `tests/test_flash_sync.py` is **slow** — it generates and verifies a 12-minute

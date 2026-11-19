@@ -35,6 +35,9 @@ dev-log numbering, kept as history — they do not track the release version.
 - **Get ready asks before starting with a poor signal:** "Signal looks poor
   on K7Q2 right ear (TP10). Start anyway?" — Start anyway / Go back (the
   signal check is our heuristic, so it still never blocks). Test included.
+- **`test_timing` and `test_stability` run alone**, after the parallel batch
+  (`tools/run_tests.py` `ALONE`), so a busy machine or CI runner no longer
+  fails them.
 
 **Design F — the new screens** (`docs/DESIGN.md`, rewritten from `docs/design/prototype.html`)
 - A white top header (logo · Sessions · Documentation · the Settings gear)

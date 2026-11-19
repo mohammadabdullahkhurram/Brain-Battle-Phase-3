@@ -245,8 +245,8 @@ on macOS and Windows in GitHub Actions (`.github/workflows/tests.yml`).
 All need ffmpeg on PATH; playback/decoding is PyAV (`av`), no VLC. Run them all
 with `python3 tools/run_tests.py` (several at a time, one PASS/FAIL line per
 script, ~5½ min; `python3 tools/run_tests.py xdf player` runs only matching
-scripts; a script that fails while others are running is re-run alone before it
-counts as failed; a script still running after 15 minutes is stopped and counts
+scripts; `test_timing` and `test_stability` always run last, alone; a script
+that fails while others are running is re-run alone before it counts as failed; a script still running after 15 minutes is stopped and counts
 as failed).
 
 
