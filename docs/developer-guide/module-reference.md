@@ -601,6 +601,10 @@ than 20 ms late, every garbage collection's duration (`gc.callbacks`), and
 dumps every thread's stack *during* a stall through
 `faulthandler.dump_traceback_later` (a C watchdog that needs no interpreter
 lock). Used to find the cause of camera frame loss (ADR-0025).
+`wake_lateness()` measures the computer itself — how late it wakes a thread
+sleeping to 60 Hz deadlines; `tools/wake_probe.py` prints it, and
+`test_timing` / `test_stability` use it to decide whether a computer can
+judge millisecond precision at all (`tests/_env.py` `timing_judgeable`).
 
 ### `platform_utils.py`
 `brain_battle/support/platform_utils.py` — the few things that differ between

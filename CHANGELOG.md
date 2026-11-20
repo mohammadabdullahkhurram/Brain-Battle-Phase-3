@@ -30,6 +30,16 @@ dev-log numbering, kept as history — they do not track the release version.
   camera processes. `resource_limits.release_qthread` hands a stopped thread
   to Qt for deletion; the soak prints live Qt thread objects and
   `test_stability` checks they come back to the same number.
+- **Timing checks measure the computer first.** `test_timing` and
+  `test_stability` start by measuring how late this computer wakes a thread
+  at 60 Hz (`stall_probe.wake_lateness`, `tools/wake_probe.py`). With more
+  than 10 % of wake-ups over half a frame late (GitHub's macOS runner: ~71 %,
+  a median 16 ms) their millisecond checks print `NOT JUDGED` instead of
+  failing; on a desk Mac and the Windows runner (~0 %) they are judged as
+  before (owner's decision). The temporary CI diagnostic steps are removed.
+  The latency-activity checks read only this test's own processes from
+  `pmset -g assertions` (it lists every process, and other test scripts record
+  at the same time — `test_platform` failed once that way).
 - **`tools/wake_probe.py`: how late does this computer wake a sleeping thread**
   (60 Hz for 20 s, in the process and in a spawned child). The CI comparison
   on the macOS runner (Apple M2 Pro, virtual, 5 cores) showed simulated

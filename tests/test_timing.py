@@ -252,8 +252,8 @@ def test_simulated_devices_end_to_end():
         err = _recovery_error(cal, truth) if cal and None not in truth.values() else float("inf")
         print(f"CALIBRATION RECOVERY: worst error {err:.2f} ms "
               f"(corrections {[(d, v['correction_ms']) for d, v in cal.get('devices', {}).items()]})")
-        check("simulated devices: injected delays recovered within 2 ms", err < 2.0,
-              f"worst {err:.2f} ms")
+        _env.check_timing(check, *_JUDGE, "simulated devices: injected delays recovered within 2 ms",
+                          err < 2.0, f"worst {err:.2f} ms")
         check("calibration kept by the flow for the next recording", flow.calibration is cal)
         check("Recording screen timing line names the result", "after correction" in flow.timing_line(),
               flow.timing_line())
@@ -264,6 +264,9 @@ def test_simulated_devices_end_to_end():
 
 
 if __name__ == "__main__":
+    _JUDGE = _env.timing_judgeable()
+    print(f"MACHINE: {_JUDGE[1]} — precision checks "
+          f"{'judged' if _JUDGE[0] else 'NOT JUDGED (over half a frame late)'}")
     test_rate_monitor()
     test_packet_timer()
     test_frame_clock()

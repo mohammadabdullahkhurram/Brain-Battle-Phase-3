@@ -83,6 +83,16 @@ then fixed at the cause. No test was skipped or loosened to get there.
 `pylsl` is now 1.18.7 (liblsl 1.18), which no longer leaks descriptors —
 [ADR-0022](../decisions/adr-0022-lsl-outlets-open-once.md).
 
+### Camera processes in CI (2026-11-20)
+
+The first runs with each camera in its own process (ADR-0025) found:
+
+| Where | What happened | Cause | Fix |
+|---|---|---|---|
+| Windows | `test_record_flow`: `FileNotFoundError` | the test asked macOS's `pmset` on Windows | `pmset` only on macOS |
+| Windows | soak: handles 727 → 748 → … about +20 every recording, with camera threads too | every capture `QThread` (4 cameras, 2 headbands) and every Sessions folder scan had a long-lived Qt parent, so a stopped one was never deleted; on Windows each keeps handles | `resource_limits.release_qthread`; the soak counts live Qt thread objects and `test_stability` checks they come back |
+| macOS | `test_timing` worst 4–24 ms (limit 2), soak 21–27 % of frames lost, with camera threads as well as processes, on a runner 27 % busy | the runner (Apple M2 Pro, virtual, 5 cores) wakes a bare sleeping thread a median 16 ms late, worst 72 ms; about half of all 60 Hz deadlines are missed by more than a frame (`tools/wake_probe.py`; Windows runner: 0.3 ms, worst 0.8 ms) | the precision checks measure the computer first and say `NOT JUDGED` there (see testing-strategy) |
+
 ### Still open: two first-attempt failures on Windows
 
 Runs `43997541652` and `44000265457` (2026-11-17) both ended green on macOS and

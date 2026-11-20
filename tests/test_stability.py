@@ -115,8 +115,8 @@ def test_camera_stall_watchdog():
         evs = [r["event"] for r in rows if r["device"] == "SIDE_02" and r["event"]]
         check("timing_quality.csv: 'stalled' and 'reopened after' rows",
               "stalled" in evs and any(e.startswith("reopened after") for e in evs), str(evs))
-        check("the other cameras were not disturbed",
-              all(not s.stall_events for s in flow._cams if s.stem != "SIDE_02"))
+        _env.check_timing(check, *_JUDGE, "the other cameras were not disturbed",
+                          all(not s.stall_events for s in flow._cams if s.stem != "SIDE_02"))
     finally:
         flow.shutdown()
 

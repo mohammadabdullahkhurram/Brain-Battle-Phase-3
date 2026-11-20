@@ -33,7 +33,16 @@ own before it counts as failed — so a busy laptop doesn't produce false alarms
 The two scripts that measure millisecond timing under a real-time load —
 `test_timing` (buzzer calibration within 2 ms) and `test_stability` (the
 short soak) — are listed in `ALONE` and run **after** everything else, one at
-a time with nothing beside them, also in CI.
+a time with nothing beside them, also in CI. Both first measure **how late
+this computer wakes a thread** sleeping to 60 Hz deadlines (`MACHINE:` line,
+`tests/_env.py` `timing_judgeable`). If more than 10 % of wake-ups come over
+half a frame late, frames are lost and stamps drift whatever the app does, so
+their millisecond checks (delays recovered within 2 ms, under 2 % of frames
+lost, the other cameras not disturbed) print `NOT JUDGED` with the
+measurement instead of failing; every other check still counts. GitHub's
+macOS runner is such a computer (a median 16 ms late, about 71 % of wake-ups
+over half a frame); a desk Mac and the Windows runner are not (~0 %), so
+there the checks are judged as before (owner's decision, 2026-11-20).
 Full output for every script is kept in a log folder printed at the end.
 
 `tests/test_flash_sync.py` is **slow** — it generates and verifies a 12-minute

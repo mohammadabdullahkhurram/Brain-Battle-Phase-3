@@ -92,13 +92,23 @@ def _new_flow():
 
 
 def _camera_activities() -> int:
-    """macOS: how many 'Brain Battle camera recording' activities the system
-    holds right now (pmset -g assertions)."""
+    """macOS: how many 'Brain Battle camera recording' activities THIS test's
+    camera processes hold right now (pmset -g assertions lists every process
+    on the computer, and other test scripts record at the same time)."""
     if sys.platform != "darwin":
         return 0                    # pmset is macOS only
     import subprocess
+    import psutil
+    pids = {c.pid for c in psutil.Process().children(recursive=True)}
     out = subprocess.run(["pmset", "-g", "assertions"], capture_output=True, text=True).stdout
-    return out.count("Brain Battle camera recording")
+    n = 0
+    for ln in out.splitlines():
+        if "Brain Battle camera recording" in ln and ln.strip().startswith("pid "):
+            try:
+                n += int(ln.split()[1].split("(")[0]) in pids
+            except ValueError:
+                pass
+    return n
 
 
 def _setup_short(flow, rest=2, rnd=10, brk=2, rounds=2, a="K7Q2", b="M3XA"):

@@ -197,13 +197,16 @@ def test_latency_activity():
     import platform
     import subprocess
     from brain_battle.capture.keep_awake import KeepAwake
+
+    def mine(out):      # pmset lists every process; other test scripts record too
+        return [ln for ln in out.splitlines() if f"pid {os.getpid()}(" in ln]
     k = KeepAwake()
     k.start()
     on, token = k.activity.is_active(), k.activity.token
     listed = None
     if platform.system() == "Darwin":
         out = subprocess.run(["pmset", "-g", "assertions"], capture_output=True, text=True).stdout
-        listed = "Brain Battle recording" in out
+        listed = any("Brain Battle recording" in ln for ln in mine(out))
     k.stop()
     check("the latency-critical activity is requested with the keep-awake", on)
     if platform.system() == "Darwin":
@@ -212,7 +215,7 @@ def test_latency_activity():
         out = subprocess.run(["pmset", "-g", "assertions"], capture_output=True, text=True).stdout
         check("…and it is released when recording stops",
               not k.activity.is_active() and k.activity.token is None
-              and "Brain Battle recording" not in out)
+              and not any("Brain Battle recording" in ln for ln in mine(out)))
     else:
         check("elsewhere it is a no-op that is released cleanly",
               token is None and not k.activity.is_active())

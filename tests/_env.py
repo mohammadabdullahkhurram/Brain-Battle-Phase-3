@@ -98,3 +98,29 @@ def lsl_inlet(name: str, outlet=None, timeout: float = 10.0):
     if outlet is not None:
         outlet.wait_for_consumers(max(0.5, deadline - time.monotonic()))
     return inlet
+
+
+def timing_judgeable(seconds: float = 3.0):
+    """Can this computer judge millisecond timing at all? Measures how late it
+    wakes a thread sleeping to 60 Hz deadlines (``stall_probe.wake_lateness``).
+    If more than 10 % of wake-ups come over half a frame (8.3 ms) late, frames
+    are lost and stamps drift whatever the app does, so the precision checks are
+    reported as NOT JUDGED instead of failing (owner's decision, 2026-11-20).
+    A share, not a percentile: one stray hiccup must not switch the checks off
+    on a good computer (GitHub's macOS runner: ~71 %; a desk Mac or the Windows
+    runner: ~0 %). Returns ``(judgeable, description)``; printed either way."""
+    from brain_battle.support.stall_probe import wake_lateness
+    w = wake_lateness(seconds)
+    text = (f"this computer wakes a 60 Hz thread {w['median']:.1f} ms late "
+            f"(p99 {w['p99']:.1f} ms, worst {w['worst']:.0f} ms; "
+            f"{100 * w['over_half']:.0f} % over half a frame)")
+    return w["over_half"] <= 0.10, text
+
+
+def check_timing(check, judgeable, text, name, cond, detail=""):
+    """``check(name, cond, detail)`` on a computer that keeps 60 Hz; elsewhere
+    print the result as NOT JUDGED (it does not count as a failure)."""
+    if judgeable or cond:
+        return check(name, cond, detail)
+    print(f"NOT JUDGED  {name}  {detail}  — {text}")
+    return True

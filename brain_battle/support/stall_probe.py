@@ -23,6 +23,10 @@ Three instruments, all stamped with the one capture clock
     probe = StallProbe(stack_file="stalls.txt"); probe.start()
     ...
     probe.stop(); probe.stalls, probe.gcs
+
+``wake_lateness()`` measures the computer itself: how late it wakes a thread
+sleeping to 60 Hz deadlines (``tools/wake_probe.py``; the timing tests use it
+to decide whether this computer can judge millisecond precision at all).
 """
 from __future__ import annotations
 
@@ -107,4 +111,27 @@ class StallProbe:
                 for g, e in sorted(out.items())}
 
 
-__all__ = ["StallProbe", "TICK_SEC", "STALL_SEC"]
+def wake_lateness(seconds: float = 3.0, period: float = 1 / 60) -> dict:
+    """Sleep to ``period`` deadlines for ``seconds`` and measure how late each
+    wake-up was (ms): ``median``, ``p99``, ``worst``, ``over_half`` (share of
+    wake-ups more than half a period late) and ``lost`` (count more than a whole
+    period late — what would lose a frame). A camera reader is such a sleeper."""
+    late = []
+    t0 = time.perf_counter()
+    n = 1
+    while time.perf_counter() - t0 < seconds:
+        due = t0 + n * period
+        wait = due - time.perf_counter()
+        if wait > 0:
+            time.sleep(wait)
+        late.append((time.perf_counter() - due) * 1000.0)
+        n += 1
+    late.sort()
+    k = max(1, len(late))
+    half = period * 500.0
+    return {"n": len(late), "median": late[k // 2], "p99": late[min(k - 1, int(k * 0.99))],
+            "worst": late[-1], "over_half": sum(1 for x in late if x > half) / k,
+            "lost": sum(1 for x in late if x > 2 * half)}
+
+
+__all__ = ["StallProbe", "TICK_SEC", "STALL_SEC", "wake_lateness"]
