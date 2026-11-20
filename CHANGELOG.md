@@ -22,6 +22,14 @@ dev-log numbering, kept as history — they do not track the release version.
   350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
   multiprocessing helper and the encoders separately. What is left (the
   machine's own pauses) is in the ADR.
+- **Full soak re-run** (`docs/reviews/2026-11-soak.txt`, camera processes +
+  frame-clock stamps): `stamps_off_clock` 0 on every camera in every
+  recording; frames lost per camera 152–173 in the 12-minute recording
+  (0.4 %, mostly one burst at 395–402 s while the whole machine stalled —
+  noise probe beside it: 41 stalls, worst 369 ms, same burst) and
+  0 / 0–1 / 1–4 in the three 1-minute recordings; no encoder drops, no EEG
+  samples missing, descriptors back to baseline. The soak still ends with
+  "PROBLEMS" because any lost frame counts as one.
 - **App Nap tested; latency-critical activity while recording.** A/B soaks
   (App Nap disabled via `defaults`, and the activity on/off, each with a
   machine-noise probe) showed no measurable effect: lost frames follow the

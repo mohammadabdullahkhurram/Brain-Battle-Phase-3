@@ -78,11 +78,12 @@ each soak to record how noisy the machine was at the time:
 |---|---|---|---|
 | cameras as threads (before) | — | 606–608 (1.4 %) | 10–256 |
 | camera processes, quiet machine | 15 stalls, worst 47 ms | 3–8 (0.01–0.02 %) | 0, 0, 0 |
-| camera processes, the committed run | 40 stalls, worst 150 ms | 85–91 (0.2 %) | 0, 3–4, 0 |
+| camera processes, an earlier run | 40 stalls, worst 150 ms | 85–91 (0.2 %) | 0, 3–4, 0 |
 | camera processes, very busy machine | 561 stalls, worst 359 ms | ~3000 (6.7 %) | 21–522 |
+| camera processes + frame-clock stamps, the committed run | 41 stalls, worst 369 ms | 152–173 (0.4 %), mostly one burst at 395–402 s | 0; 0–1; 1–4 |
 
 So the loss now follows the machine's own pauses rather than the app's.
-The committed run's full output is `docs/reviews/2026-11-soak.txt`.
+The committed run's full output is `docs/reviews/2026-11-soak.txt`; in it `stamps_off_clock` is 0 on every camera in every recording (every late read was put back on the camera's clock).
 
 (The soak first counted every interval longer than 1.5 frame periods as lost
 frames. A frame read late and the next one on time give one long interval and
