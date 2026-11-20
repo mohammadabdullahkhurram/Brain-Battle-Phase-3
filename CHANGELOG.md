@@ -22,6 +22,14 @@ dev-log numbering, kept as history — they do not track the release version.
   350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
   multiprocessing helper and the encoders separately. What is left (the
   machine's own pauses) is in the ADR.
+- **No capture thread left behind after a recording (Windows handles).** Each
+  camera thread, headband reader and Sessions folder scan had a long-lived Qt
+  parent, so a stopped one was never deleted — 7 `QThread` objects per
+  recording (and one per headband Reconnect). On Windows each keeps handles:
+  the soak's count rose about 20 per recording, with camera threads as well as
+  camera processes. `resource_limits.release_qthread` hands a stopped thread
+  to Qt for deletion; the soak prints live Qt thread objects and
+  `test_stability` checks they come back to the same number.
 - **`tools/wake_probe.py`: how late does this computer wake a sleeping thread**
   (60 Hz for 20 s, in the process and in a spawned child). The CI comparison
   on the macOS runner (Apple M2 Pro, virtual, 5 cores) showed simulated

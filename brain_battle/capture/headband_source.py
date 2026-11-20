@@ -22,6 +22,7 @@ from PyQt6.QtCore import QObject, pyqtSignal, Qt
 
 import brain_battle.capture.contact_quality as cq
 import brain_battle.data.app_settings as app_settings
+from brain_battle.support.resource_limits import release_qthread
 from brain_battle.capture.eeg_module import (
     _RingBuffer, _MuseDirectReader, EEG_CHANNELS, SAMPLE_RATE)
 
@@ -95,6 +96,7 @@ class HeadbandSlot(QObject):
                 r.wait(3000)
             except Exception as e:
                 log.warning("stopping Boxer %s's headband: %s", self.which, e)
+            release_qthread(r)
         self._reader = None
         self._connected = False
         self._recording = False

@@ -44,6 +44,7 @@ import brain_battle.ui.design_tokens as dt
 import brain_battle.ui.widgets as ui
 import brain_battle.data.app_settings as app_settings
 import brain_battle.data.safe_io as safe_io
+from brain_battle.support.resource_limits import release_qthread
 import brain_battle.data.session_storage as ss
 import brain_battle.data.session_history as session_history
 from brain_battle.support import platform_utils
@@ -458,6 +459,7 @@ class SessionsScreen(QWidget):
             return
         if not self._scanned_once:
             self._footer.setText("Looking for recordings…")
+        release_qthread(self._scan_worker)      # the finished one (it is our child)
         self._scan_worker = _ScanWorker(self._capture_dir, self)
         self._scan_worker.folder_state.connect(self._on_folder_state)
         self._scan_worker.free_space.connect(self._on_free_space)

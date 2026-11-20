@@ -637,8 +637,13 @@ limit. `raise_open_file_limit()` lifts the soft limit to 4096 (or the hard
 limit, if lower) on macOS / Linux and does nothing on Windows; it is called
 once from `app.main()` and logs what it did. `count_open_descriptors()` /
 `snapshot()` count what the process holds right now — files, sockets, pipes,
-threads, child processes. Qt-free, never raises. **Called by:** `app.main()`,
-`tools/measure_descriptors.py`, `tests/test_descriptors.py`. **Gotcha:** it is
+threads, child processes. `release_qthread(t)` hands a stopped capture
+`QThread` to Qt for deletion (now, or when it finishes): capture threads have
+their slot as Qt parent and would otherwise live as long as the app — on
+Windows each keeps handles (about 20 per recording, found by the soak).
+Otherwise Qt-free, never raises. **Called by:** `app.main()`,
+`tools/measure_descriptors.py`, `tests/test_descriptors.py`; `release_qthread`
+by `camera_source`, `headband_source` and `sessions_screen`. **Gotcha:** it is
 a safety net; never call it on import or from a screen, or
 `tests/test_descriptors.py` (which runs under 256 on purpose) stops testing
 anything. What a recording needs, measured: about 163 with New recording open,

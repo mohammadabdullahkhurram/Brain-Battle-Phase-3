@@ -150,5 +150,25 @@ def snapshot() -> dict:
     return out
 
 
+def release_qthread(t) -> None:
+    """Let go of a stopped capture QThread so Qt deletes it.
+
+    Capture threads are created with their slot as Qt parent, and the slots
+    live as long as the app, so a stopped thread would otherwise stay alive
+    with its parent. On macOS that costs nothing visible; on Windows every
+    QThread keeps a few handles until it is deleted (about 20 handles per
+    recording, found by the soak). Deletes it now if it has finished, or as
+    soon as it does."""
+    if t is None:
+        return
+    try:
+        if t.isRunning():
+            t.finished.connect(t.deleteLater)
+        else:
+            t.deleteLater()
+    except RuntimeError:            # already deleted on the C++ side
+        pass
+
+
 __all__ = ["TARGET_OPEN_FILES", "open_file_limit", "raise_open_file_limit",
-           "count_open_descriptors", "snapshot"]
+           "count_open_descriptors", "snapshot", "release_qthread"]

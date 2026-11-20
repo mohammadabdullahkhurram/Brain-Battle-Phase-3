@@ -21,6 +21,7 @@ from PyQt6.QtGui import QImage
 
 import brain_battle.data.app_settings as app_settings
 from brain_battle.capture.usb_camera import USBCameraThread, CameraDevice
+from brain_battle.support.resource_limits import release_qthread
 
 # The four camera slots: (index, name shown in the UI, kind).
 SLOT_SPECS = [
@@ -97,6 +98,7 @@ class CameraSlot(QObject):
         if self._thread is not None:
             self._thread.stop()
             self._thread.wait(10000)
+            release_qthread(self._thread)
             self._thread = None
 
     # ── recording ──
@@ -227,6 +229,7 @@ class CameraSlot(QObject):
         t = self.sender()
         if t is not None and t is not self._thread:
             return
+        release_qthread(self._thread)
         self._thread = None
         self.fps = 0.0
         if self.state != "error":

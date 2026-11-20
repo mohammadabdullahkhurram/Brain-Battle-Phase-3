@@ -226,16 +226,22 @@ def test_short_soak():
     check("soak: no EEG samples missing", miss_s == 0, str(miss_s))
     check("soak: no frame dropped by the encoder queue (ffmpeg never blocked capture)",
           drops == 0, str(drops))
-    check("soak: under 2 % of frames lost (absent against the camera's clock)",
-          miss_f <= 0.02 * max(1, frames + miss_f), f"{miss_f}/{frames}")
+    _env.check_timing(check, *_JUDGE, "soak: under 2 % of frames lost (absent against the camera's clock)",
+                      miss_f <= 0.02 * max(1, frames + miss_f), f"{miss_f}/{frames}")
     d = [x for x in rep.get("descriptors", []) if x["point"].endswith("left the flow")]
     check("soak: descriptors back to the same numbers after each recording",
           len(d) == 2 and abs(d[0]["fds"] - d[1]["fds"]) <= 6
           and d[0]["children"] == d[1]["children"] == 0, str([(x["fds"], x["children"]) for x in d]))
+    check("soak: no Qt thread object left behind by a recording (each keeps Windows handles)",
+          len(d) == 2 and d[0].get("qthreads") == d[1].get("qthreads"),
+          str([x.get("qthread_kinds") for x in d]))
     check("soak: nothing failed to save", all(not rec["write_problems"] for rec in recs))
 
 
 if __name__ == "__main__":
+    _JUDGE = _env.timing_judgeable()
+    print(f"MACHINE: {_JUDGE[1]} — precision checks "
+          f"{'judged' if _JUDGE[0] else 'NOT JUDGED (over half a frame late)'}")
     test_camera_stall_watchdog()
     test_repeated_headband_drops()
     test_contact_log_failure_reaches_the_operator()

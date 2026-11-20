@@ -331,9 +331,14 @@ def main(argv=None) -> int:
 
     def snap(label):
         sn = rl.snapshot()
+        import gc as _gc
+        from PyQt6.QtCore import QThread as _QT
+        _qts = [type(o).__name__ for o in _gc.get_objects() if isinstance(o, _QT)]
+        sn["qthreads"] = len(_qts)
+        sn["qthread_kinds"] = {k: _qts.count(k) for k in sorted(set(_qts))}
         report["descriptors"].append({"point": label, **sn})
         print(f"  {label:<36} fds {sn['fds']:>4}  threads {sn['threads']:>3}  "
-              f"children {sn['children']:>2}", flush=True)
+              f"children {sn['children']:>2}  Qt threads {sn['qthreads']:>3} {sn['qthread_kinds']}", flush=True)
         return sn
 
     plans = [_plan_for(args.minutes)] + [_plan_for(args.then_minutes)] * args.then
