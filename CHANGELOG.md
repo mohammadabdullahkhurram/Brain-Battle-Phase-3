@@ -28,7 +28,11 @@ dev-log numbering, kept as history — they do not track the release version.
   cameras missing 60 fps with camera threads too (52–57 fps, calibration
   worst 7.0 ms) as with camera processes (54 fps, 3.3 ms), on a machine 27 %
   busy — so the probe now runs in CI to measure the runner itself; the soak
-  also counts descriptors again after a garbage collection.
+  also counts descriptors again after a garbage collection. Result: the
+  macOS runner wakes a bare sleeping thread a median 16 ms late (worst 72 ms;
+  half of all 60 Hz deadlines missed by over a frame); the Windows runner
+  0.3 ms (worst 0.8 ms). A temporary Windows step counts handles after each of
+  four recordings, camera processes vs threads.
 - **CI fixes after the first push of camera processes.** `test_record_flow`
   asked `pmset` (macOS only) on Windows; leaving the flow now stops every
   camera together and waits up to 10 s for each camera process to finish its

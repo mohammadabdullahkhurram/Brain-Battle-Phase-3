@@ -64,6 +64,18 @@ jobs:
         continue-on-error: true
         run: python tools/wake_probe.py
 
+      # TEMPORARY (2026-11-20): Windows handles after each of 4 recordings,
+      # camera processes vs camera threads.
+      - name: "Diagnose: handles per recording (Windows)"
+        if: always() && runner.os == 'Windows'
+        continue-on-error: true
+        shell: bash
+        run: |
+          for mode in 1 0; do
+            echo "=== BRAIN_BATTLE_CAMERA_PROCESS=$mode ==="
+            BRAIN_BATTLE_CAMERA_PROCESS=$mode python tools/soak_test.py --minutes 0.3 --then 3 --then-minutes 0.3 2>&1 | grep -E "Machine|baseline|left the flow|before|opened" || true
+          done
+
       - name: Keep the logs if anything failed
         if: failure()
         uses: actions/upload-artifact@v4
