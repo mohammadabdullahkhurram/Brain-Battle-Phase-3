@@ -286,6 +286,10 @@ def main(argv=None) -> int:
 
     import psutil
     from brain_battle.support import resource_limits as rl
+    from brain_battle.capture.usb_camera import isolated_capture
+    print(f"Machine: {psutil.cpu_count()} cores ({psutil.cpu_count(logical=False)} physical), "
+          f"{sys.platform}; cameras in "
+          f"{'their own processes' if isolated_capture() else 'threads of the app'}", flush=True)
     _apply_variants(args)
     probe = None
     if args.diagnose:

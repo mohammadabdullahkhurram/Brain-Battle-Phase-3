@@ -91,9 +91,12 @@ class CameraSlot(QObject):
             self._thread.stop()
 
     def shutdown(self) -> None:
+        """Stop the camera and wait until it has let go of everything. A camera
+        process may need several seconds to finish its video and exit
+        (ADR-0025); call ``stop()`` on every slot first so they stop together."""
         if self._thread is not None:
             self._thread.stop()
-            self._thread.wait(2500)
+            self._thread.wait(10000)
             self._thread = None
 
     # ── recording ──

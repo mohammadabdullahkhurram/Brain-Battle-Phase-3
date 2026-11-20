@@ -58,6 +58,19 @@ jobs:
       - name: Run every test script
         run: python tools/run_tests.py --jobs 2
 
+      # TEMPORARY (2026-11-20): compare camera threads with camera processes on
+      # the macOS runner, where simulated cameras missed 60 fps. Removed again
+      # once the numbers are in.
+      - name: "Diagnose: camera threads vs camera processes (macOS)"
+        if: always() && runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          sysctl -n hw.ncpu hw.perflevel0.physicalcpu machdep.cpu.brand_string || true
+          for mode in 0 1; do
+            echo "=== BRAIN_BATTLE_CAMERA_PROCESS=$mode ==="
+            BRAIN_BATTLE_CAMERA_PROCESS=$mode python tests/test_timing.py 2>&1 | grep -E "Test timing: a live row|CALIBRATION|simulated devices" | cut -c1-900 || true
+          done
+
       - name: Keep the logs if anything failed
         if: failure()
         uses: actions/upload-artifact@v4

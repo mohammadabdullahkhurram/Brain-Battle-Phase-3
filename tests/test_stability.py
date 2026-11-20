@@ -209,6 +209,11 @@ def test_short_soak():
     rep = json.load(open(out)) if os.path.isfile(out) else {}
     recs = rep.get("recordings", [])
     check("soak: both recordings ran", len(recs) == 2, r.stdout[-400:])
+    # the soak's own numbers, so a CI log shows where frames went
+    for ln in r.stdout.splitlines():
+        if (ln.startswith(("Machine:", "  CPU:", "  recorded", "    SIDE", "    POV", "    EEG"))
+                or "left the flow" in ln):
+            print("  soak|" + ln.strip())
     miss_s = sum(h.get("missing") or 0 for rec in recs for h in rec["files"]["headbands"].values())
     drops = sum(sum(rec["encoder_queue_dropped"].values()) for rec in recs)
     frames = sum(c.get("frames") or 0 for rec in recs for c in rec["files"]["cameras"].values())

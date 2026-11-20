@@ -94,6 +94,8 @@ def _new_flow():
 def _camera_activities() -> int:
     """macOS: how many 'Brain Battle camera recording' activities the system
     holds right now (pmset -g assertions)."""
+    if sys.platform != "darwin":
+        return 0                    # pmset is macOS only
     import subprocess
     out = subprocess.run(["pmset", "-g", "assertions"], capture_output=True, text=True).stdout
     return out.count("Brain Battle camera recording")

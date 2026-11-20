@@ -753,6 +753,7 @@ class USBCameraThread(QThread):
             proc.join(timeout=5.0)
             if proc.is_alive():
                 proc.terminate(); proc.join(timeout=2.0)
+            exitcode = proc.exitcode        # read before close(): it raises after
             try:
                 parent_end.close()
             except Exception:
@@ -764,7 +765,7 @@ class USBCameraThread(QThread):
                     pass
             if self._recording or self._rec_pending or self._stop_pending:
                 self._recording = self._rec_pending = self._stop_pending = False
-                if proc.exitcode not in (0, None) and not self._stop_flag:
+                if exitcode not in (0, None) and not self._stop_flag:
                     self.record_error.emit("The camera stopped unexpectedly. The footage "
                                            "saved up to that point has been kept.")
             self.state_changed.emit("stopped")

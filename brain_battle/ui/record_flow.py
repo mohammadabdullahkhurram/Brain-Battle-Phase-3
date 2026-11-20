@@ -1213,7 +1213,9 @@ class RecordFlow(QWidget):
     # ── teardown ──
     def _stop_devices(self):
         for slot in self._cams:
-            slot.shutdown()
+            slot.stop()             # all cameras stop together…
+        for slot in self._cams:
+            slot.shutdown()         # …then wait for each to let go
         for b in self._bands.values():
             b.shutdown()
             b.publisher = None

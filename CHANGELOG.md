@@ -22,6 +22,16 @@ dev-log numbering, kept as history — they do not track the release version.
   350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
   multiprocessing helper and the encoders separately. What is left (the
   machine's own pauses) is in the ADR.
+- **CI fixes after the first push of camera processes.** `test_record_flow`
+  asked `pmset` (macOS only) on Windows; leaving the flow now stops every
+  camera together and waits up to 10 s for each camera process to finish its
+  video and exit (it waited 2.5 s per camera, so the soak counted the handles
+  of processes still shutting down on Windows); a camera process's exit code
+  is read before `close()` (reading it after raised). The soak prints the
+  machine's cores and whether cameras run in processes, and `test_stability`
+  prints the soak's CPU and per-camera lines. A temporary CI step compares
+  camera threads with camera processes on the macOS runner, where simulated
+  cameras managed only 46 of 60 fps.
 - **Full soak re-run** (`docs/reviews/2026-11-soak.txt`, camera processes +
   frame-clock stamps): `stamps_off_clock` 0 on every camera in every
   recording; frames lost per camera 152–173 in the 12-minute recording
