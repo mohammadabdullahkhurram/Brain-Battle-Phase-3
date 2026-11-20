@@ -391,6 +391,9 @@ def main(argv=None) -> int:
         rss1 = proc.memory_info().rss
         flow._leave_to_sessions(); pump(2.0)
         after = snap(f"#{n} left the flow")
+        import gc as _gc
+        _gc.collect(); pump(3.0)
+        snap(f"#{n} left the flow, after gc")
         if cpu[1:]:
             c = cpu[1:]
             rec_cpu = {"machine_pct": round(sum(x[0] for x in c) / len(c), 1),

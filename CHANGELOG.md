@@ -22,6 +22,13 @@ dev-log numbering, kept as history — they do not track the release version.
   350 MB. Previews ≤ 15 a second. `resource_limits.snapshot` counts the
   multiprocessing helper and the encoders separately. What is left (the
   machine's own pauses) is in the ADR.
+- **`tools/wake_probe.py`: how late does this computer wake a sleeping thread**
+  (60 Hz for 20 s, in the process and in a spawned child). The CI comparison
+  on the macOS runner (Apple M2 Pro, virtual, 5 cores) showed simulated
+  cameras missing 60 fps with camera threads too (52–57 fps, calibration
+  worst 7.0 ms) as with camera processes (54 fps, 3.3 ms), on a machine 27 %
+  busy — so the probe now runs in CI to measure the runner itself; the soak
+  also counts descriptors again after a garbage collection.
 - **CI fixes after the first push of camera processes.** `test_record_flow`
   asked `pmset` (macOS only) on Windows; leaving the flow now stops every
   camera together and waits up to 10 s for each camera process to finish its
