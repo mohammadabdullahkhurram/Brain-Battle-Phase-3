@@ -76,6 +76,12 @@ dev-log numbering, kept as history — they do not track the release version.
 - **Review & Label says what is worth knowing**: a banner with "Worth
   checking" (a weak signal for 30 s or more) and "Timing not measured" (no
   buzzer test), as the Saved screen does after recording.
+- **README "Run the app"**: three clear ways — with demo data
+  (`python3 tools/demo.py`, and how to reset it), without demo data on
+  simulated devices (`BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle`; Windows
+  PowerShell `$env:BRAIN_BATTLE_SIMULATE=1; python -m brain_battle`), and real
+  use. Mirrored in Getting started › Installation and First run. Testers on
+  `staging` will use exactly these steps.
 
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**

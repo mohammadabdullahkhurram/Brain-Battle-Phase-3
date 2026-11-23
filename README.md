@@ -57,22 +57,9 @@ that is what you use to try it out.
    ```bash
    python3 -m pip install -e .
    ```
-5. **Start it in demo mode** (simulated cameras and headbands):
-   ```bash
-   BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle
-   ```
-6. **Make some demo recordings** to look at and label. In a second Terminal
-   window, inside the same folder:
-   ```bash
-   python3 tools/generate_demo_session.py --library --out ~/BrainBattleDemo
-   ```
-   Then start the app pointed at that folder:
-   ```bash
-   BRAIN_BATTLE_SIMULATE=1 BRAIN_BATTLE_CAPTURE_DIR=~/BrainBattleDemo python3 -m brain_battle
-   ```
-   (Or choose `BrainBattleDemo` as the recordings folder in the app's
-   **Settings**.)
-7. **Update to the latest version later:** in Terminal, inside the folder,
+5. **Run it** — see [Run the app](#run-the-app) below (with demo data,
+   with simulated devices, or for real).
+6. **Update to the latest version later:** in Terminal, inside the folder,
    run `git pull` and then `python3 -m pip install -e .` again. Without git,
    download the ZIP again (step 3) and repeat step 4.
 
@@ -102,23 +89,61 @@ that is what you use to try it out.
    ```powershell
    python -m pip install -e .
    ```
-5. **Start it in demo mode** (simulated cameras and headbands):
-   ```powershell
-   $env:BRAIN_BATTLE_SIMULATE = "1"
-   python -m brain_battle
-   ```
-   (`$env:…` lasts until you close that PowerShell window.)
-6. **Make some demo recordings** to look at and label:
-   ```powershell
-   python tools\generate_demo_session.py --library --out "$HOME\BrainBattleDemo"
-   $env:BRAIN_BATTLE_CAPTURE_DIR = "$HOME\BrainBattleDemo"
-   python -m brain_battle
-   ```
-   (Or choose `BrainBattleDemo` as the recordings folder in the app's
-   **Settings**.)
-7. **Update to the latest version later:** in PowerShell, inside the folder,
+5. **Run it** — see [Run the app](#run-the-app) below.
+6. **Update to the latest version later:** in PowerShell, inside the folder,
    run `git pull` and then `python -m pip install -e .` again. Without git,
    download the ZIP again (step 3) and repeat step 4.
+
+## Run the app
+
+Three ways, from inside the `Brain-Battle-Phase-3` folder. (When the
+`staging` branch exists, testers use exactly these steps on it.)
+
+### a) With demo data — for testing
+
+```bash
+python3 tools/demo.py              # Mac
+python tools\demo.py               # Windows (PowerShell)
+```
+
+The first time, this makes 6 demo recordings in a folder called **Brain
+Battle Demo** in your home folder (about two minutes), then opens the app on
+it with **simulated cameras and headbands**. Later runs open straight away.
+You will see every kind of recording in **Sessions** — labelled by two people
+(try **Compare**), needs labels, exported, interrupted, stopped early — with
+labels, custom notes, marked moments, a "Worth checking" weak-signal note and
+one recording without a buzzer test ("Timing not measured"). **New recording**
+works too, with the simulated devices. Fighters are codes and colours only.
+
+It **never touches your real recordings or settings**: it uses only the demo
+folder and keeps its own settings file inside it.
+
+**Reset the demo:** `python3 tools/demo.py --fresh` (Windows:
+`python tools\demo.py --fresh`) deletes the demo recordings and makes them
+again — or just delete the **Brain Battle Demo** folder. `--out <folder>` uses
+another demo folder.
+
+### b) Without demo data, simulated devices — try New recording without hardware
+
+```bash
+BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle          # Mac / Linux
+```
+
+```powershell
+$env:BRAIN_BATTLE_SIMULATE=1; python -m brain_battle      # Windows PowerShell
+```
+
+The app looks as usual, with fake cameras and headbands on **Get ready**. It
+uses your normal recordings folder and settings, so recordings you make this
+way are saved there like real ones (delete them afterwards, or use way **a**).
+On Windows, `$env:…` lasts until you close that PowerShell window.
+
+### c) Real use, real hardware
+
+```bash
+python3 -m brain_battle            # Mac
+python -m brain_battle             # Windows
+```
 
 Live signals for other programs (LSL) are **off** by default (Settings →
 Advanced). If you switch them on, Windows or macOS may ask whether Python may
@@ -131,7 +156,7 @@ use the network — either answer is fine for recording.
 | `python` / `python3` "not found" or "not recognized" | Python is not on your PATH. Windows: run the installer again, choose *Modify*, and tick "Add Python to environment variables" — or type `py` instead of `python`. Mac: use `python3`, not `python`. |
 | Recording won't start and the app says ffmpeg is missing | Install ffmpeg (step 2), then **close and reopen** Terminal / PowerShell and start the app again. |
 | `pip install` stops with an error | Run `python -m pip install --upgrade pip` (Mac: `python3 -m pip …`) and try step 4 again. Check you are inside the `Brain-Battle-Phase-3` folder (it contains `pyproject.toml`). |
-| The Sessions screen is empty | The app is looking at a different folder. The foot of Sessions shows which one; change it in **Settings**, or start the app with `BRAIN_BATTLE_CAPTURE_DIR` as in step 6. |
+| The Sessions screen is empty | The app is looking at a different folder. The foot of Sessions shows which one; change it in **Settings**. For demo recordings use `tools/demo.py` ([Run the app](#run-the-app)). |
 
 More answers: the **Troubleshooting** and **FAQ** pages in the app's
 **Documentation** screen ([docs/user-guide/troubleshooting.md](docs/user-guide/troubleshooting.md)).

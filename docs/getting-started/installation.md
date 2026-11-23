@@ -34,7 +34,7 @@ git clone --branch staging https://github.com/mohammadabdullahkhurram/Brain-Batt
 or, on the GitHub page, switch the branch menu to `staging` and use
 **Code → Download ZIP**. To update later, run `git pull` in the folder and
 install again (`pip install -e .`). The project's `README.md` has the same
-steps, numbered, for Mac and Windows, including demo mode.
+steps, numbered, for Mac and Windows, and the same three ways to run it (below).
 
 ## Mac
 
@@ -96,6 +96,42 @@ Notes for Windows:
   make sure desktop apps may use the camera.
 - The app picks the fastest video encoder your graphics card offers (NVIDIA, AMD
   or Intel) and falls back to a built-in one if none works — nothing to set up.
+
+## Run the app
+
+Three ways, from inside the project folder:
+
+**a) With demo data — for testing.**
+
+```bash
+python3 tools/demo.py              # Mac
+python tools\demo.py               # Windows
+```
+
+The first time it makes 6 demo recordings in **Brain Battle Demo** in your
+home folder (about two minutes), then opens the app on them with simulated
+cameras and headbands. You see every kind of recording — labelled by two
+people, needs labels, exported, interrupted, stopped early — and New recording
+works without hardware. It never touches your real recordings or settings.
+To reset it: `python3 tools/demo.py --fresh`, or delete the **Brain Battle
+Demo** folder.
+
+**b) Without demo data, simulated devices** — to try New recording without
+hardware:
+
+```bash
+BRAIN_BATTLE_SIMULATE=1 python3 -m brain_battle          # Mac / Linux
+```
+
+```powershell
+$env:BRAIN_BATTLE_SIMULATE=1; python -m brain_battle      # Windows PowerShell
+```
+
+This uses your normal recordings folder and settings: recordings made this way
+are saved there like real ones.
+
+**c) Real use, real hardware:** `python3 -m brain_battle` (Windows:
+`python -m brain_battle`).
 
 ## Verify the install
 

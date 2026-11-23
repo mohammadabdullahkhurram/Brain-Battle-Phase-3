@@ -57,16 +57,19 @@ screen and remembered for next time. Everything saves automatically.
 
 ## Trying it without cameras or headbands
 
-You can look around with a made-up recording. In Terminal, from the project
-folder:
+You can look around with made-up recordings and simulated devices. In
+Terminal, from the project folder:
 
 ```bash
-python3 tools/generate_demo_session.py --library \
-    --out "/path/to/an/empty/folder"
+python3 tools/demo.py              # Windows: python tools\demo.py
 ```
 
-Then choose that folder in **Settings → Recordings folder**. The recordings it
-makes are marked "Demo" so they are never mistaken for real ones.
+It makes 6 demo recordings in **Brain Battle Demo** in your home folder the
+first time, then opens the app on them with simulated cameras and headbands —
+without touching your real recordings or settings. The recordings are marked
+"Demo" so they are never mistaken for real ones. See
+[Installation › Run the app](installation.md#run-the-app) for the other ways
+to run it.
 
 ## Next
 
