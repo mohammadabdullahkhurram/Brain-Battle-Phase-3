@@ -434,8 +434,15 @@ def _generate(out, rounds, round_sec, break_sec, baseline_sec, seed, interrupted
     import brain_battle.data.session_history as _sh
     import brain_battle.data.session_storage as _ss
 
-    def hist(root, event, details=None, user=None):
-        _sh.log_event(root, event, details, user=user or "Recording", computer=DEMO_COMPUTER)
+    import datetime as _dtm
+    started = started_at or _dtm.datetime.now()
+
+    def hist(root, event, details=None, user=None, at=0.0):
+        """A history line dated on the recording's own day (``at`` seconds
+        after it started), not when the demo was generated."""
+        when = (started + _dtm.timedelta(seconds=float(at))).astimezone().isoformat()
+        _sh.log_event(root, event, details, user=user or "Recording", computer=DEMO_COMPUTER,
+                      when=when)
 
     base_dir = out or _default_capture_root()
     os.makedirs(base_dir, exist_ok=True)
@@ -463,8 +470,6 @@ def _generate(out, rounds, round_sec, break_sec, baseline_sec, seed, interrupted
 
     phase_records, markers, total_duration = _phase_plan(cfg, interrupted, stop_at)
     stopped = stop_at is not None and abs(total_duration - stop_at) < 1e-9
-    hist(layout.root, _sh.EVENT_RECORDING_STARTED,
-         {"boxer_a": boxer_a, "boxer_b": boxer_b, "rounds": rounds})
 
     for rec in phase_records:
         layout.add_phase(PhaseRecord(               # REAL writer
@@ -482,15 +487,22 @@ def _generate(out, rounds, round_sec, break_sec, baseline_sec, seed, interrupted
     for t_sec, note in (moments or []):
         if t_sec <= total_duration:
             layout.add_moment(t_sec, note=note)                    # REAL writer
-            hist(layout.root, _sh.EVENT_MOMENT_MARKED, {"t_session_seconds": t_sec})
     if calibration:
         import brain_battle.capture.timing as _timing
         beeps = [1.0 + 1.5 * i for i in range(_timing.N_BEEPS)]
-        events = {dev: [b + 0.2 + c / 1000.0 for b in beeps] for dev, c in calibration.items()}
+        jr = np.random.default_rng(seed + 99)       # the taps are never perfectly sharp
+        events = {dev: [b + 0.2 + c / 1000.0 + float(jr.normal(0, 0.0015)) for b in beeps]
+                  for dev, c in calibration.items()}
         cal = _timing.calibrate(beeps, events)
         layout.set_timing_calibration(cal)                         # REAL format
-        hist(layout.root, _sh.EVENT_TIMING_CALIBRATED,
-             {"largest_difference_ms": cal.get("largest_difference_ms")})
+        hist(layout.root, _sh.EVENT_TIMING_CALIBRATED,          # on Get ready, before
+             {"largest_difference_ms": cal.get("largest_difference_ms")}, at=-60)
+    # the history in the order it happened
+    hist(layout.root, _sh.EVENT_RECORDING_STARTED,
+         {"boxer_a": boxer_a, "boxer_b": boxer_b, "rounds": rounds})
+    for t_sec, _note in (moments or []):
+        if t_sec <= total_duration:
+            hist(layout.root, _sh.EVENT_MOMENT_MARKED, {"t_session_seconds": t_sec}, at=t_sec)
     if stopped:
         layout.mark_stopped_early(stop_at)                         # REAL writer
 
@@ -573,6 +585,12 @@ def _generate(out, rounds, round_sec, break_sec, baseline_sec, seed, interrupted
                       None if off is None else off * 1000.0)
     tw.close()
 
+    if interrupted:
+        hist(layout.root, _sh.EVENT_RECORDING_INTERRUPTED, {"how": "crash"}, at=total_duration)
+    else:
+        hist(layout.root, _sh.EVENT_RECORDING_FINISHED,
+             {"stopped_early": bool(stopped), "moments": len(moments or [])}, at=total_duration)
+
     # Labels: each labeller's own file, through the REAL store
     import brain_battle.data.labels_store as _ls
     import brain_battle.data.label_vocab as _lv
@@ -590,13 +608,11 @@ def _generate(out, rounds, round_sec, break_sec, baseline_sec, seed, interrupted
                                         float(t), t_end=t_end, color=e.get("color", "#3D4FD6"),
                                         created_by=labeller))
         store.save()
-        hist(layout.root, _sh.EVENT_LABELS_ADDED, {"count": len(items)}, user=labeller)
+        first = next((i for i in items if i[0] != "note"), items[0]) if items else None
+        hist(layout.root, _sh.EVENT_LABELS_ADDED,
+             {"label": first[0] if first else "", "count": len(items)}, user=labeller,
+             at=total_duration + 3600 * (1 + list((labels or {})).index(labeller)))
 
-    if interrupted:
-        hist(layout.root, _sh.EVENT_RECORDING_INTERRUPTED, {"how": "crash"})
-    else:
-        hist(layout.root, _sh.EVENT_RECORDING_FINISHED,
-             {"stopped_early": bool(stopped), "moments": len(moments or [])})
 
     # A crashed recording has no recording.xdf until the app finds it again and
     # rebuilds it, so the --interrupted fixture leaves it out too.
@@ -703,7 +719,8 @@ def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
                               started_at=when(3, 11, 45), **short)
     _sh.log_event(r["root"], _sh.EVENT_EXPORT_CREATED,
                   {"name": f"{os.path.basename(r['root'])}.zip"}, user=LABELLER_2,
-                  computer=DEMO_COMPUTER)
+                  computer=DEMO_COMPUTER,
+                  when=(when(3, 11, 45) + _dt.timedelta(hours=5)).astimezone().isoformat())
     r["status"] = "exported"; results.append(r)
 
     # 4) interrupted (the app stopped mid-round)

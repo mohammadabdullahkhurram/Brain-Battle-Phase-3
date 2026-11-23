@@ -68,6 +68,8 @@ dev-log numbering, kept as history — they do not track the release version.
   `contact_quality.csv`, `timing_quality.csv`, filled `camera_fps`, a session
   log; the folder gets the team's `label_list.json` and `fighter_colours.json`.
   New `--stopped-early`. Video text is small, top right.
+  History lines are dated on the recording's own day, in the order things
+  happened; the demo buzzer test has realistic tap jitter (a few ms).
 - **`python3 tools/demo.py`** — makes that library in `~/Brain Battle Demo` (or
   `--out`) once and starts the app on it with simulated devices and its own
   settings file; `--fresh` deletes and regenerates (only a folder it made).
