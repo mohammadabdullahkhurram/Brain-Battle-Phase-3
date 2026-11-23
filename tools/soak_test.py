@@ -343,6 +343,8 @@ def main(argv=None) -> int:
 
     def snap(label):
         sn = rl.snapshot()
+        if machine.alive():
+            sn["children"] = max(0, sn["children"] - 1)   # the bare stall probe is not the app's
         import gc as _gc
         from PyQt6.QtCore import QThread as _QT
         _qts = [type(o).__name__ for o in _gc.get_objects() if isinstance(o, _QT)]

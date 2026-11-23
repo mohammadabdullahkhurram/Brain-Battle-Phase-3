@@ -182,6 +182,9 @@ class MachineStallProbe:
         self._proc.start()
         return self
 
+    def alive(self) -> bool:
+        return self._proc.is_alive()
+
     def stop(self, timeout: float = 10.0) -> list:
         self._stop.set()
         try:
