@@ -14,7 +14,7 @@ import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QTimer
 
 from brain_battle.ui.record_flow import RecordFlow
 from brain_battle.version import __version__
@@ -35,7 +35,7 @@ def _supplementary_qss():
         QListWidget::item:selected {{ background-color: {dt.accent_ghost()}; color: {dt.accent()}; }}
         QProgressBar {{ background-color: {dt.card_bg()}; border: 1px solid {dt.border()}; height: 4px; text-align: center; color: transparent; border-radius: 2px; }}
         QProgressBar::chunk {{ background-color: {dt.accent()}; border-radius: 2px; }}
-    """ + dt.qss_combo()
+    """
 
 MIN_WINDOW = (1180, 720)   # smallest usable window (below the 1280×800 DESIGN
 #                            target, for the owner's smaller laptop); the Review
@@ -188,7 +188,7 @@ class BrainBattleApp(QMainWindow):
 
     def _export_session(self, session_root):
         """Sessions → right-click → Export for analysis: export without opening it."""
-        from brain_battle.data.export_module import ExportOptionsDialog
+        from brain_battle.ui.export_dialog import ExportOptionsDialog
         ExportOptionsDialog(session_root, parent=self).exec()
         self._sessions_page.refresh()
 

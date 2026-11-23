@@ -23,7 +23,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QStackedWidget, QFrame,
+    QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QFrame,
 )
 
 import brain_battle.ui.design_tokens as dt

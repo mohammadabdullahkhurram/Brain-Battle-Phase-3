@@ -669,13 +669,9 @@ def corrections(manifest_or_cal) -> dict:
     return out
 
 
-def correction_for(manifest, device: str) -> float:
-    return corrections(manifest).get(device, 0.0)
-
-
 __all__ = [
     "GOAL_MS", "N_BEEPS", "BEEP_INTERVAL_SEC", "TAP_WINDOW",
     "TimingSnapshot", "RateMonitor", "LinearClockFit", "PacketTimer", "FrameClock",
     "detect_eeg_tap", "detect_camera_tap", "calibrate", "summary_text",
-    "camera_device", "band_device", "corrections", "correction_for",
+    "camera_device", "band_device", "corrections",
 ]

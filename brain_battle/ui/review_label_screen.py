@@ -39,12 +39,12 @@ from __future__ import annotations
 import os
 import time
 
-from PyQt6.QtCore import Qt, pyqtSignal, QRect, QRectF, QPointF, QEvent, QThread, QTimer, QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QEvent, QThread, QTimer, QSize
 from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QFont, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QScrollArea, QSizePolicy, QToolTip, QApplication,
-    QDialog, QStackedWidget, QLineEdit, QTextEdit,
+    QScrollArea, QSizePolicy, QApplication,
+    QStackedWidget, QLineEdit, QTextEdit,
 )
 
 import brain_battle.ui.design_tokens as dt
@@ -725,16 +725,6 @@ def _label_button_qss(colour: str) -> str:
             f"QPushButton:hover {{ background: {dt.card_bg_hover()}; }}"
             f"QPushButton:pressed {{ background: {dt.accent_ghost()}; }}"
             f"QPushButton:disabled {{ color: {dt.text_tertiary()}; background: {dt.surface_subtle()}; }}")
-
-
-def _who_qss(which: str, active: bool) -> str:
-    if not active:
-        return dt.qss_secondary_button(compact=True)
-    line, soft, text = (dt.boxer_colors(which) if which in ("A", "B")
-                        else (dt.accent(), dt.accent_ghost(), dt.accent_pressed()))
-    return (f"QPushButton {{ background: {soft}; color: {text}; border: 1.5px solid {line}; "
-            f"border-radius: {dt.RADIUS_SM}px; padding: 6px 8px; font-weight: 700; "
-            f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; }}")
 
 
 class ReviewLabelScreen(QWidget):
@@ -1607,7 +1597,6 @@ class ReviewLabelScreen(QWidget):
                     bd, bg = (dt.text_secondary(), "#F1F3F7") if on else (dt.border_strong(), dt.surface())
                 else:
                     btn.setText(f"{w} · {self._names.get(w) or ('Boxer ' + w)}")
-                    col = QColor(fc.get(w))
                     bd = fc.get(w) if on else dt.border_strong()
                     bg = _tint(fc.get(w), 0.12) if on else dt.surface()
                 btn.setStyleSheet(f"QPushButton {{ border: {'2px' if on else '1px'} solid {bd}; "
@@ -1899,7 +1888,7 @@ class ReviewLabelScreen(QWidget):
         self._save_moment_note()
         if self._player:
             self._player.pause() if hasattr(self._player, "pause") else None
-        from brain_battle.data.export_module import ExportOptionsDialog
+        from brain_battle.ui.export_dialog import ExportOptionsDialog
         ExportOptionsDialog(self._root, None, self._phases, self).exec()
 
     # ---- teardown ----

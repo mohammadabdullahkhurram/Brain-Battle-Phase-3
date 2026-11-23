@@ -94,10 +94,6 @@ class WrapLabel(QLabel):
         self._fit()
 
 
-def set_text_style(label: QLabel, size=dt.SIZE_MD, weight=400, color=None) -> None:
-    label.setStyleSheet(dt.css_text(size, weight, color or dt.text_secondary()))
-
-
 # ── surfaces ─────────────────────────────────────────────────────────────────
 
 class Card(QFrame):
@@ -801,7 +797,7 @@ class Dropdown(QComboBox):
             p.end()
 
 
-__all__ = ["title", "heading", "body", "muted", "caption", "set_text_style", "Card", "hline",
+__all__ = ["title", "heading", "body", "muted", "caption", "Card", "hline",
            "primary_button", "secondary_button", "ghost_button", "danger_button",
            "icon_button", "help_button", "Segmented", "StatusLine", "pill", "boxer_badge",
            "boxer_chip", "FlowLayout", "fighter_badge", "fighter_html", "versus_html", "status_chip",

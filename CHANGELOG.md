@@ -121,6 +121,15 @@ dev-log numbering, kept as history — they do not track the release version.
 - **The timing limits documented** with their reasons (98.5 % of frame stamps
   within 3 ms, lost frames counted within 30 %, delays within 2 ms, under 2 %
   lost in the short soak, NOT JUDGED on slow CI computers) — testing-strategy.
+- **Code organisation pass.** `ExportOptionsDialog` moved from
+  `data/export_module.py` to its own `ui/export_dialog.py` (the data module
+  keeps only the export). Removed what nothing used any more: the old sidebar
+  styles and token (there is no sidebar), `qss_combo` (replaced by
+  `widgets.Dropdown`), `ui_font`, `phase_fill`, `set_text_style`,
+  `timing.correction_for`, `timing_log.read_rows`, two private helpers, a
+  broken leftover camera picker, `brain_battle_main`'s `QMessageBox`
+  re-export, and every unused import (app, tools and tests). `pyflakes` is
+  clean on `brain_battle/` and `tools/`. Module reference updated.
 
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**

@@ -131,7 +131,6 @@ def test_old_recording_with_names():
 
 
 def test_old_recording_xdf_keeps_names():
-    import subprocess
     out = tempfile.mkdtemp(prefix="bb_legacy_xdf_")
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import generate_demo_session as gen

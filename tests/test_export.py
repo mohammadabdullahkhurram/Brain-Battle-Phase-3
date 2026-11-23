@@ -109,8 +109,8 @@ def test_export_dialog():
     included, offers the two video choices and the codes note."""
     from PyQt6.QtWidgets import QApplication
     QApplication.instance() or QApplication(sys.argv)
-    import brain_battle.data.export_module as em
-    dlg = em.ExportOptionsDialog(DEMO_ROOT)
+    from brain_battle.ui.export_dialog import ExportOptionsDialog
+    dlg = ExportOptionsDialog(DEMO_ROOT)
     try:
         check("export window opens", dlg is not None)
         check("the 4 camera videos: on; one combined video: off",
@@ -118,7 +118,7 @@ def test_export_dialog():
         check("the zip is named after the recording (codes, never names)",
               dlg._name_lbl.text() == os.path.basename(DEMO_ROOT) + ".zip", dlg._name_lbl.text())
         check("what is always included names the timing report",
-              any("timing_quality.csv" in t for t in em.ExportOptionsDialog.ALWAYS))
+              any("timing_quality.csv" in t for t in ExportOptionsDialog.ALWAYS))
     finally:
         dlg.close()
 

@@ -34,7 +34,7 @@ from typing import Optional
 
 import brain_battle.capture.clock as _clock
 from brain_battle.capture.session_controller import (
-    SessionConfig, Phase, END_MARKERS, MARKER_RECORDING_START, total_seconds as _plan_total)
+    SessionConfig, Phase, END_MARKERS, total_seconds as _plan_total)
 from brain_battle.data.signals import EEG_DIR_NAME, SENSOR_DIR_NAME, SENSORS
 from brain_battle.version import __version__
 

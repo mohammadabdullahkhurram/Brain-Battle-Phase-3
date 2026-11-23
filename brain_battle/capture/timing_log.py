@@ -86,16 +86,4 @@ class TimingQualityWriter:
             self._f = None
 
 
-def read_rows(session_root) -> list[dict]:
-    """The rows of a recording's timing_quality.csv ([] if none)."""
-    p = path_for(session_root)
-    if not os.path.isfile(p):
-        return []
-    try:
-        with open(p, encoding="utf-8") as f:
-            return list(csv.DictReader(f))
-    except OSError:
-        return []
-
-
-__all__ = ["FILENAME", "COLUMNS", "TimingQualityWriter", "path_for", "read_rows"]
+__all__ = ["FILENAME", "COLUMNS", "TimingQualityWriter", "path_for"]

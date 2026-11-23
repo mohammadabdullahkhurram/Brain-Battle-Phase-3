@@ -366,7 +366,6 @@ def test_image_height_matches_displayed_size():
     width AND height, proportional to the source aspect ratio."""
     from brain_battle.ui.docs_screen import DocsScreen
     from PyQt6.QtWidgets import QMainWindow
-    from PyQt6.QtGui import QTextDocument
     tab = DocsScreen()
     win = QMainWindow(); win.setCentralWidget(tab); win.resize(1280, 800); win.show()
     for _ in range(4):

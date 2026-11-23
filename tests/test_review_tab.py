@@ -71,7 +71,7 @@ def test_fast_open_labels_first():
     on Open; the (slow) video + brain data load in the background."""
     import brain_battle.ui.review_label_screen as rl
     import brain_battle.data.labels_store as labels_store
-    import json, time as _t
+    import time as _t
     # seed a few labels on disk so there is something to show at once
     store = labels_store.open_for_labeller(DEMO_ROOT, _env.LABELLER)
     for nm, t0 in (("Jab", 3.0), ("Cross", 5.0), ("Hook", 7.0)):

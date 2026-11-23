@@ -18,7 +18,6 @@ import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env
 import datetime as dt
 import json
 import os
-import signal
 import subprocess
 import sys
 import tempfile

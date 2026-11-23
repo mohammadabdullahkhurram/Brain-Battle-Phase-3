@@ -37,11 +37,8 @@ import threading
 import time
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRectF, QSize
-from PyQt6.QtGui import QPainter, QColor, QFont, QPen, QIcon
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QStackedWidget, QLabel,
-)
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QStackedWidget
 
 import logging
 
@@ -58,20 +55,17 @@ import brain_battle.data.session_history as session_history
 import brain_battle.data.session_xdf as session_xdf
 from brain_battle.capture.lsl_outlets import LslPublisher
 from brain_battle.capture.headband_source import HeadbandSlot
-from brain_battle.data.signals import EEG_CHANNELS
-from brain_battle.ui.eeg_viewer import EEGViewer
-from brain_battle.capture.camera_source import CameraSlot
-from brain_battle.capture.session_controller import SessionController, SessionConfig, Phase, _build_timeline
+from brain_battle.capture.session_controller import SessionController, SessionConfig, Phase
 from brain_battle.data.session_storage import (
     create_session, SessionLayout, PhaseRecord, estimate_session_bytes,
-    human_bytes, session_total_seconds, disk_space_verdict,
+    human_bytes, disk_space_verdict,
     video_bytes_per_sec_for_mbps, folder_size_bytes, read_phase_markers, short_phase,
 )
 from brain_battle.capture.round_bell import RoundBell
 from brain_battle.capture.keep_awake import KeepAwake
 from brain_battle.support.log_setup import attach_session_log, detach_session_log
 from brain_battle.support import platform_utils
-from brain_battle.capture.usb_camera import list_cameras, preflight_recording, CameraDevice
+from brain_battle.capture.usb_camera import list_cameras, preflight_recording
 from brain_battle.ui.fonts import register_fonts
 from brain_battle.ui.record_screens import (
     FlowHeader, GetReadyScreen, RecordingScreen, SavedScreen, MomentDialog, TimingDialog,
@@ -86,8 +80,6 @@ _ILLEGAL = re.compile(r'[<>:"/\\|?*]')
 
 
 # ── small helpers ────────────────────────────────────────────────────────────
-
-
 
 def _join_words(items) -> str:
     """["a", "b", "c"] → "a, b and c"."""
@@ -105,10 +97,6 @@ def ask_leave_recording(parent) -> bool:
                   "kept, and the session is marked as interrupted.",
                   "Stop and leave", "Keep recording", tone="danger", safe_first=True,
                   danger=True)
-
-
-def _plural(n: int, word: str) -> str:
-    return f"{n} {word}{'' if n == 1 else 's'}"
 
 
 class RecordFlow(QWidget):

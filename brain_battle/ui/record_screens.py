@@ -23,9 +23,6 @@ widgets only show its state and call it back.
 """
 from __future__ import annotations
 
-import os
-import random
-
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRectF, QPointF
 from PyQt6.QtGui import QPainter, QColor, QFont, QPen
 from PyQt6.QtWidgets import (
@@ -1153,7 +1150,7 @@ class SavedScreen(QWidget):
             self._row(ok, title, detail)
         self._xdf_row = self._row(True, "Analysis file", "Making recording.xdf…")
         folder = QFrame(); folder.setObjectName("folderRow")
-        folder.setStyleSheet(f"#folderRow {{ background: #F9FAFC; }}")
+        folder.setStyleSheet("#folderRow { background: #F9FAFC; }")
         fh = QHBoxLayout(folder); fh.setContentsMargins(22, 14, 22, 14)
         fl = QLabel(info["folder_line"]); fl.setTextFormat(Qt.TextFormat.RichText); fl.setWordWrap(True)
         fh.addWidget(fl, 1)

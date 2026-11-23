@@ -25,7 +25,6 @@ class _Palette:
     canvas          = "#F6F8FC"   # --bg
     surface         = "#FFFFFF"   # --surface
     surface_subtle  = "#F9FAFC"   # quiet fill inside a card (table header, wells)
-    sidebar_bg      = "#FFFFFF"
     card_bg         = "#FFFFFF"
     card_bg_hover   = "#F1F3F7"
     raised          = "#FFFFFF"
@@ -97,7 +96,6 @@ def _p():
 def canvas_bg():      return _p().canvas
 def surface():        return _p().surface
 def surface_subtle(): return _p().surface_subtle
-def sidebar_bg():     return _p().sidebar_bg
 def card_bg():        return _p().card_bg
 def card_bg_hover():  return _p().card_bg_hover
 def raised():         return _p().raised
@@ -141,14 +139,6 @@ def phase_colors():
         "break":    p.phase_break[1],
         "done":     p.success,
     }
-
-def phase_fill(phase_id: str):
-    """(soft background, text) for a phase id."""
-    p = _p()
-    return {"lead_in": p.phase_lead, "baseline": p.phase_rest, "round": p.phase_round,
-            "break": p.phase_break,
-            "done": (p.success_bg, p.success_text)}.get(phase_id, p.phase_rest)
-
 
 def semantic(kind: str):
     """(foreground, soft background, text-on-soft) for ok / warn / bad / info / idle."""
@@ -216,12 +206,6 @@ EASE_EMPHASIS = QEasingCurve.Type.OutQuint
 
 
 # ═══════════════════════════════════════════════════════════════ FONTS
-
-def ui_font(pt: int = 11, weight: int = QFont.Weight.Normal) -> QFont:
-    f = QFont("Inter"); f.setStyleHint(QFont.StyleHint.SansSerif)
-    f.setPointSize(pt); f.setWeight(weight)
-    return f
-
 
 def number_font(px: int, weight: int = QFont.Weight.DemiBold) -> QFont:
     """Inter with tabular (equal-width) figures, for timers and counts that are
@@ -341,43 +325,6 @@ def qss_card(name: str = "card", radius: int = RADIUS_LG, bg: str | None = None,
             f"border: 1px solid {border_color or p.border}; border-radius: {radius}px; }}")
 
 
-def qss_sidebar() -> str:
-    p = _p()
-    return f"""
-        QWidget#sidebar {{
-            background: {p.sidebar_bg};
-            border-right: 1px solid {p.border};
-        }}
-        QPushButton#sidebarItem {{
-            background: transparent;
-            border: none;
-            color: {p.text_secondary};
-            padding: 11px 14px;
-            text-align: left;
-            font-family: {FONT_UI};
-            font-size: {SIZE_MD}px;
-            font-weight: 500;
-            border-radius: {RADIUS_MD}px;
-            margin: 1px 12px;
-        }}
-        QPushButton#sidebarItem:hover {{ background: {p.card_bg_hover}; color: {p.text_primary}; }}
-        QPushButton#sidebarItem:checked {{ background: {p.accent_ghost}; color: {p.accent_pressed}; font-weight: 600; }}
-        QPushButton#sidebarPrimary {{
-            background: {p.text_primary};
-            border: none;
-            color: #FFFFFF;
-            padding: 12px 14px;
-            text-align: left;
-            font-family: {FONT_UI};
-            font-size: {SIZE_MD}px;
-            font-weight: 600;
-            border-radius: {RADIUS_MD}px;
-            margin: 0 12px 8px 12px;
-        }}
-        QPushButton#sidebarPrimary:hover {{ background: #1D2939; }}
-    """
-
-
 def _button(bg, fg, bd, hover_bg, hover_fg=None, hover_bd=None, compact=False, weight=600,
             pressed_bg=None) -> str:
     p = _p()
@@ -461,27 +408,6 @@ def qss_input() -> str:
             border: 1px solid {p.accent};
         }}
         QLineEdit:disabled {{ background: {p.card_bg_hover}; color: {p.text_tertiary}; }}
-    """
-
-
-def qss_combo(compact: bool = False) -> str:
-    p = _p()
-    return f"""
-        QComboBox {{
-            background: {p.surface}; color: {p.text_primary};
-            border: 1px solid {p.border_strong};
-            border-radius: {RADIUS_SM if compact else RADIUS_MD}px;
-            padding: {'3px 10px' if compact else '8px 12px'};
-            font-family: {FONT_UI}; font-size: {SIZE_XS if compact else SIZE_MD}px;
-        }}
-        QComboBox:hover {{ border-color: {p.text_tertiary}; }}
-        QComboBox:focus {{ border-color: {p.accent}; }}
-        QComboBox::drop-down {{ border: none; width: 22px; }}
-        QComboBox QAbstractItemView {{
-            background: {p.surface}; color: {p.text_primary};
-            border: 1px solid {p.border_strong}; outline: none;
-            selection-background-color: {p.accent_ghost}; selection-color: {p.accent_pressed};
-        }}
     """
 
 

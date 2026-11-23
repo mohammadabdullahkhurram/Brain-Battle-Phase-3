@@ -43,7 +43,6 @@ import brain_battle.ui.widgets as ui
 import brain_battle.data.app_settings as app_settings
 import brain_battle.data.fighters as fighters
 import brain_battle.data.safe_io as safe_io
-from brain_battle.support import platform_utils
 import brain_battle.data.label_vocab as label_vocab
 from brain_battle.version import __version__
 from brain_battle.ui.fonts import register_fonts
@@ -523,7 +522,7 @@ class SettingsScreen(QWidget):
         self._signal_boxes = {}
         for key, title, note in ADVANCED_SWITCHES:
             box = QCheckBox(title)
-            box.setStyleSheet(dt.qss_checkbox() + f" QCheckBox {{ font-weight: 600; }}")
+            box.setStyleSheet(dt.qss_checkbox() + " QCheckBox { font-weight: 600; }")
             box.toggled.connect(lambda on, k=key: self._on_signal_toggled(k, on))
             b.addWidget(box)
             n = ui.muted(note); n.setContentsMargins(28, 0, 0, 0)

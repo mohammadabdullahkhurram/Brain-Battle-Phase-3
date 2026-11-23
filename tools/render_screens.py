@@ -284,7 +284,7 @@ def main():
     review._tabs.set_value("mine", emit=True)
 
     # ── the export window (rendered on its own) ──
-    from brain_battle.data.export_module import ExportOptionsDialog
+    from brain_battle.ui.export_dialog import ExportOptionsDialog
     dlg = ExportOptionsDialog(flow._saved_root)
     dlg.resize(560, dlg.sizeHint().height()); dlg.show(); _pump(app, 0.3)
     fn = os.path.join(OUT, "export.png" if DOCS_MODE else "09_export_dialog.png")

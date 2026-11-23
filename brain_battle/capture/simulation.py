@@ -269,7 +269,6 @@ class SimCapture:
 
     # cv2.VideoCapture surface used by USBCameraThread.run() ───────────────────
     def _make_bg(self):
-        import cv2
         self._bg = np.full((self._h, self._w, 3), 22, dtype=np.uint8)
 
     def isOpened(self):  # noqa: N802

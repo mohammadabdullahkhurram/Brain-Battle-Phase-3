@@ -20,8 +20,8 @@ All colour, type, spacing, and component styling comes from one module so the
 app reads as one system. Two kinds of thing live there:
 
 - **Token accessors** — `canvas_bg()`, `surface()`, `border()`, `accent()`,
-  `text_primary()`, `boxer_colors(which)`, `phase_colors()`, `ui_font(pt,
-  weight)`, etc. — the DESIGN tokens as functions, not scattered hex literals.
+  `text_primary()`, `boxer_colors(which)`, `phase_colors()`, `number_font(px)`,
+  etc. — the DESIGN tokens as functions, not scattered hex literals.
 - **QSS factories** — `qss_card()`, `qss_primary_button()`, `qss_chip(active)`,
   `qss_input()`, `qss_status_pill(kind)`, and so on. A screen composes these
   rather than hand-writing stylesheets, so a token change propagates everywhere.

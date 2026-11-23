@@ -18,7 +18,7 @@ remove, or rename a module, update this page in the same commit (see
 | Group (subpackage) | Modules |
 |---|---|
 | **Package top** | `app` · `version` · `paths` · (root shim `brain_battle_main`) |
-| **`ui/`** | `header_shell` · `welcome_screen` · `sessions_screen` · `record_flow` · `record_screens` · `review_label_screen` · `eeg_viewer` · `settings_screen` · `docs_screen` · `design_tokens` · `widgets` · `fonts` |
+| **`ui/`** | `header_shell` · `welcome_screen` · `sessions_screen` · `record_flow` · `record_screens` · `review_label_screen` · `eeg_viewer` · `export_dialog` · `settings_screen` · `docs_screen` · `design_tokens` · `widgets` · `fonts` |
 | **`capture/`** | `clock` · `usb_camera` · `camera_worker` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `timing` · `timing_log` · `buzzer_test` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
 | **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `fighters` · `safe_io` · `export_module` · `app_settings` |
@@ -175,6 +175,15 @@ data. `BandPowerBars` is the alternative band-power picture. Drawn with
 `record_flow`. **Thread:** UI. **Gotcha:** this is the ONE module allowed to
 show channel codes; `tests/test_no_placeholders.py` still forbids them
 elsewhere.
+
+### `export_dialog.py`
+`ExportOptionsDialog` — Export for analysis, in the app's dialog
+(`widgets.AppDialog`): what is always included, the two video choices (the 4
+camera videos; one combined video), where to save; runs
+`export_module.SessionExportWorker` with a progress bar and ends with "Show in
+Finder / Explorer". (Moved out of `data/export_module.py`, which keeps only
+the export itself.) **Called by:** `review_label_screen`, `app` (Sessions →
+right-click → Export for analysis…).
 
 ### `settings_screen.py`
 Settings (DESIGN "Settings", design F), four cards that save the moment they
@@ -350,8 +359,7 @@ XDF / export / Review subtract), `summary_text`. Pure logic + numpy, no Qt.
 ### `timing_log.py`
 `TimingQualityWriter` — `timing_quality.csv`, one row per device per second
 (rate, jitter, dropped, the applied correction, events such as a camera stall);
-`append` raises on a write error so `record_flow` can show it. `read_rows`
-reads it back. **Called by:** `record_flow`, the demo generator.
+`append` raises on a write error so `record_flow` can show it. **Called by:** `record_flow`, the demo generator.
 
 ### `buzzer_test.py`
 `BuzzerTest(QObject)` — "Run buzzer test": 5 beeps 1.5 s apart (a generated
@@ -546,9 +554,8 @@ manifest, history, README) straight from the recording folder;
 `include_videos=False` leaves the MP4s out (their frame-time CSVs stay). `build_coregistered_eeg`
 merges both bands onto one uniform 256 Hz `t_session_seconds` grid (`_01` is
 always Boxer A, `_02` Boxer B); `VideoExportWorker(QThread)` is the optional 2×2 merge
-(hardware-encoder-validated with a libx264 fallback). `ExportOptionsDialog` runs
-it with a progress bar and the two video choices (the 4 camera videos; one combined video).
-**Called by:** `review_label_screen`, `app` (Sessions → ⋯ → Export). **Thread:** export
+(hardware-encoder-validated with a libx264 fallback). Its screen is
+`ui/export_dialog.py`. **Called by:** `export_dialog`. **Thread:** export
 runs on a worker thread. **Gotcha:** the combined video is **optional and off by
 default** — most analysis wants the data, not a preview.
 

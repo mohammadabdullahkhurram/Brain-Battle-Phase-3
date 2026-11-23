@@ -44,7 +44,6 @@ import brain_battle.capture.timing as timing
 import brain_battle.data.export_module as em
 import brain_battle.data.labels_store as ls
 import brain_battle.data.session_storage as ss
-import brain_battle.data.session_xdf as sx
 import generate_demo_session as gen
 
 _failures = []

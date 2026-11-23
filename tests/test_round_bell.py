@@ -29,7 +29,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -109,7 +108,7 @@ def test_bell_timing():
     """The bell rings at the START and at the END of every round — including
     the last one, whose end also finishes the recording — and never for the
     lead-in, the baseline or a break."""
-    from brain_battle.capture.session_controller import SessionController, SessionConfig, Phase
+    from brain_battle.capture.session_controller import SessionController, SessionConfig
 
     sc = SessionController()
     sc.configure(SessionConfig(num_rounds=3, round_sec=5, break_sec=5, baseline_sec=5))

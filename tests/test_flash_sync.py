@@ -24,7 +24,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import numpy as np
 
 import brain_battle.playback.pyav_player as pp
 from brain_battle.ui.review_label_screen import _discover_cameras, read_phase_markers
