@@ -82,6 +82,22 @@ dev-log numbering, kept as history — they do not track the release version.
   PowerShell `$env:BRAIN_BATTLE_SIMULATE=1; python -m brain_battle`), and real
   use. Mirrored in Getting started › Installation and First run. Testers on
   `staging` will use exactly these steps.
+- **EEG never looks like it lost data — the cause of the "missing EEG sample"
+  in CI soaks found.** No sample was ever lost: every sample handed over is
+  written (the writer's queue is unbounded and drained on close). The *times*
+  jumped: in the first ~10 s after a headband connects, the per-band clock
+  line (`timing.LinearClockFit`) switches on and is re-estimated freely, and
+  one late packet could skew its slope — a 7–13 ms step between neighbouring
+  samples, which the soak counts as 1–4 missing samples. A recording that
+  started inside that window showed it (intermittently, "once per runner").
+  `timing.PacketTimer` now keeps sample times continuous: each packet follows
+  on from the last and moves towards the line by at most 1 ms (`MAX_SLEW`),
+  spacing within ±0.2 % of nominal (`MAX_RATE_ERROR`); packets that really
+  went missing still show as a gap of exactly their samples. Reproduced with
+  the real `PacketTimer` (296 of 300 simulated connections showed 2–4
+  "missing" samples; now 0). `test_timing` checks it (200 connections with a
+  computer pause, a really lost packet, and every sample handed to the reader
+  in its CSV); accuracy unchanged.
 
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**

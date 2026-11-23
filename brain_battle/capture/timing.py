@@ -284,7 +284,22 @@ class PacketTimer:
     sample index of every sample (counting samples lost in missing packets
     from the gaps in the timestamps the Muse library hands over), keeps the
     ``LinearClockFit`` and feeds a ``RateMonitor``. ``stamp(arrival, ts)``
-    returns the de-jittered times for one chunk."""
+    returns the de-jittered times for one chunk.
+
+    **Sample times never jump.** Each chunk follows on from the previous one
+    (one sample period later, or the right number of periods after packets
+    that really went missing), and may move towards the fitted line by at most
+    ``MAX_SLEW`` (1 ms) per packet. Before this, the first seconds after a
+    headband connected — while the line switches on and is re-estimated freely
+    (``LinearClockFit.SETTLE``) — could put a 7–13 ms step between two
+    neighbouring samples, which reads as "missing samples" although none was
+    lost (found by the soak; ``tests/test_timing.py`` checks it can't happen).
+    The output catches up with the line within about half a second, and the
+    spacing of samples stays within ``MAX_RATE_ERROR`` (±0.2 %) of the nominal
+    rate even while the line is still being worked out from a few packets."""
+
+    MAX_SLEW = 0.001        # s: the most one chunk may move against the previous one
+    MAX_RATE_ERROR = 0.002  # the sample spacing stays within ±0.2 % of nominal
 
     def __init__(self, device: str, rate: float = 256.0, chunk: int = 12):
         self.rate = float(rate)
@@ -294,6 +309,7 @@ class PacketTimer:
         self._next_index = 0
         self._prev_last_ts: Optional[float] = None
         self._last_out: Optional[float] = None
+        self._last_idx: Optional[int] = None
         self.packets = 0
         self.missing_samples = 0
 
@@ -314,17 +330,29 @@ class PacketTimer:
         # the packet "arrives" when its last sample has been sent
         self.fit.add(idx[-1], arrival_unix)
         self.monitor.add(arrival_unix, n)
+        nominal = 1.0 / self.rate
         if not self.fit.ready:
             out = arrival_unix - (n - 1 - np.arange(n)) / self.rate
+            period = nominal
         else:
             out = self.fit.times(idx)
-        # Times never go backwards: while the line is still settling (the first
-        # seconds after the headband connects) a sample may come out at or
-        # before the previous one; only those samples are nudged just past it
-        # (by 0.1 ms each), so nothing is carried into later samples.
-        if self._last_out is not None and out[0] <= self._last_out:
-            out = np.maximum(out, self._last_out + 1e-4 * np.arange(1, n + 1))
+            # A real headband's clock is within a fraction of a percent of its
+            # nominal rate; a line fitted to the first few packets (one of them
+            # very late) can be 25 % off, so the spacing is kept within
+            # MAX_RATE_ERROR of nominal.
+            period = min(max(self.fit.params()[1], nominal * (1 - self.MAX_RATE_ERROR)),
+                         nominal * (1 + self.MAX_RATE_ERROR))
+            out = out[0] + (idx - idx[0]) * period
+        if self._last_out is not None:
+            # Where this chunk's first sample follows on from the last one
+            # (counting samples lost in missing packets), and how far the line
+            # wants to move it: at most MAX_SLEW per chunk.
+            expect = self._last_out + (int(idx[0]) - self._last_idx) * period
+            dev = float(out[0]) - expect
+            if abs(dev) > self.MAX_SLEW:
+                out = out - (dev - math.copysign(self.MAX_SLEW, dev))
         self._last_out = float(out[-1])
+        self._last_idx = int(idx[-1])
         return out
 
 

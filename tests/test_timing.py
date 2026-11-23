@@ -4,6 +4,11 @@ Timing check and buzzer calibration (capture/timing.py, ADR-0024).
   1. RateMonitor: rate, jitter and dropped frames / missing packets.
   2. PacketTimer: per-band straight-line fit removes Bluetooth arrival jitter
      and keeps the constant delay; missing packets are counted and skipped.
+     EEG never looks like it lost data: in the first seconds after a headband
+     connects (the line switching on and settling, a computer pause) no two
+     neighbouring sample times are more than 1.5 periods apart, every sample
+     handed over is stamped and written (the reader's CSV has them all), and
+     a packet that really went missing still shows as exactly its 12 samples.
   3. Detectors + calibrate() on synthetic data with known delays, jitter and
      a reaction time that varies per tap: every device recovered within 2 ms
      (40 random runs).
@@ -77,6 +82,67 @@ def test_packet_timer():
     snap = pt.monitor.snapshot()
     check("packet timer: live rate ~256 Hz, packet interval ~47 ms",
           240 < snap.rate < 270 and 44 < snap.packet_ms < 50, f"{snap.rate} {snap.packet_ms}")
+
+
+def _apparent_missing(t, per=1 / 256):
+    """The soak's count: samples 'missing' from gaps of more than 1.5 periods."""
+    d = np.diff(np.asarray(t))
+    return int(np.sum(np.maximum(0, np.round(d / per) - 1)[d > 1.5 * per]))
+
+
+def test_eeg_never_looks_lost():
+    import random
+    per = 1 / 256
+    bad = []
+    for seed in range(200):
+        r = random.Random(seed)
+        pt = T.PacketTimer("EEG_A")
+        stall_at, stall = r.uniform(0.3, 12.0), r.uniform(0.03, 0.25)
+        out, n_in = [], 0
+        for k in range(400):                       # ~19 s from the moment it connects
+            ts = 1000.0 + (k * 12 + np.arange(12)) * per
+            arr = ts[-1] + 0.031 + r.uniform(-0.004, 0.004)
+            if stall_at <= ts[-1] - 1000.0 < stall_at + stall:   # the computer paused
+                arr = 1000.0 + stall_at + stall + 0.031 + r.uniform(0, 0.002)
+            out.append(pt.stamp(arr, ts)); n_in += 12
+        o = np.concatenate(out)
+        miss = _apparent_missing(o)
+        if miss or len(o) != n_in or np.any(np.diff(o) <= 0):
+            bad.append((seed, miss, len(o) - n_in))
+    check("EEG: no sample looks missing in the first seconds after connecting "
+          "(200 runs with a computer pause; none were lost)", not bad, str(bad[:5]))
+    # a packet that really went missing is still shown at its true size
+    pt = T.PacketTimer("EEG_A"); out = []
+    rng = np.random.default_rng(3)
+    for k in range(300):
+        if k == 150:
+            continue
+        ts = 1000.0 + (k * 12 + np.arange(12)) * per
+        out.append(pt.stamp(ts[-1] + 0.031 + rng.uniform(-0.004, 0.004), ts))
+    o = np.concatenate(out)
+    check("EEG: a packet lost on the way still shows as exactly its 12 samples",
+          _apparent_missing(o) == 12 and pt.missing_samples == 12,
+          f"{_apparent_missing(o)} / {pt.missing_samples}")
+    # every sample handed to the reader is written to its CSV
+    import tempfile
+    from brain_battle.capture.eeg_module import _MuseDirectReader
+    import brain_battle.data.session_storage as ss
+    d = tempfile.mkdtemp(prefix="bb_eeg_count_")
+    path = os.path.join(d, "Muse data", "session_Muse S 0001.csv")
+    rd = _MuseDirectReader(address="test", name="MuseS-0001", motion=False)
+    rd.start_recording(path, origin_unix=1000.0)
+    sent = 0
+    r2 = np.random.default_rng(4)
+    for k in range(2000):                           # ~94 s, arrivals with jitter and pauses
+        ts = 1000.0 + (k * 12 + np.arange(12)) * per
+        late = 0.031 + r2.uniform(-0.004, 0.004) + (0.15 if k % 400 == 7 else 0.0)
+        rd._on_eeg(r2.normal(0, 8, (5, 12)).astype(np.float32), ts, arrival=float(ts[-1] + late))
+        sent += 12
+    rd.stop_recording()
+    t = ss.read_csv_tolerant(path)["t_session_seconds"].to_numpy(dtype=float)
+    check("EEG: every sample handed over is in the recording's CSV",
+          len(t) == sent, f"{len(t)} of {sent}")
+    check("EEG: …and none looks missing", _apparent_missing(t) == 0, str(_apparent_missing(t)))
 
 
 def _synthetic_run(seed):
@@ -269,6 +335,7 @@ if __name__ == "__main__":
           f"{'judged' if _JUDGE[0] else 'NOT JUDGED (over half a frame late)'}")
     test_rate_monitor()
     test_packet_timer()
+    test_eeg_never_looks_lost()
     test_frame_clock()
     test_synthetic_calibration()
     test_simulated_devices_end_to_end()

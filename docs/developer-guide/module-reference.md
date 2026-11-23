@@ -335,7 +335,8 @@ How well the devices keep time, and the buzzer calibration
 ([ADR-0024](../decisions/adr-0024-timing-check-and-buzzer-calibration.md)).
 `RateMonitor` (live rate / jitter / dropped per device), `LinearClockFit` +
 `PacketTimer` (per-band de-jittered EEG times from packet arrivals, missing
-packets counted), `FrameClock` (per camera: each frame's time on the camera's
+packets counted; neighbouring sample times never jump — each packet may move
+at most `MAX_SLEW` = 1 ms against the last, spacing within `MAX_RATE_ERROR`), `FrameClock` (per camera: each frame's time on the camera's
 steady frame clock instead of its read time — frame numbers counted locally,
 an asymmetric tracker of the on-time edge; ADR-0025), `detect_eeg_tap` (sub-sample tap onset, accelerometer check),
 `detect_camera_tap` (sub-frame onset from frame-difference energy on the

@@ -54,7 +54,13 @@ between all devices after correction**
 2. **De-jittered headband times.** Each Bluetooth packet's arrival is logged.
    Every sample gets the time of a straight line through (sample number,
    arrival) over the last ~90 s, with late outlier packets dropped — so
-   arrival jitter never reaches the files. Missing packets are counted.
+   arrival jitter never reaches the files. Missing packets are counted, and
+   shown as a gap of exactly their samples. Sample times never jump: in the
+   first seconds after a headband connects, while that line is still being
+   worked out, each packet follows on from the last one and moves towards the
+   line by at most 1 ms (sample spacing within ±0.2 % of 256 Hz). Before
+   this, a 7–13 ms step there could look like "missing samples" although
+   none was lost.
 3. **Live timing.** Rate, jitter and lost frames / packets per device, live in
    the **Test timing** dialog and once a second in
    [`timing_quality.csv`](file-formats.md#timing_qualitycsv).
