@@ -172,7 +172,7 @@ def test_label_list_card():
     from brain_battle.ui.settings_screen import SettingsScreen
     import brain_battle.data.label_vocab as lv
     st = SettingsScreen(); st.show(); pump()
-    check("the shared list starts with the 8 defaults", st.label_names()[:2] == ["Punch thrown", "Punch landed"]
+    check("the shared list starts with the 8 defaults", st.label_names()[:2] == ["Punch initiated", "Punch landed"]
           and len(st.label_names()) == 8, str(st.label_names()))
     st._on_add_label(); pump()
     check("+ Add opens the inline box", st._new_label.isVisible() and not st._add_label_btn.isVisible())

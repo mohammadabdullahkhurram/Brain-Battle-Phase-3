@@ -74,10 +74,13 @@ bundled. Timers use equal-width digits.
   can be added for the team)
 - **Status chips:** Needs labels (warn) · Labelled (good) · Exported (blue) ·
   Interrupted (red)
-- **Label list defaults (keys 1–8):** Punch thrown `#2155D6`, Punch landed
+- **Label list defaults (keys 1–8):** Punch initiated `#2155D6`, Punch landed
   `#0F7A62`, Punch missed `#7A3FC4`, Punch blocked `#465063`, Punch dodged
   `#A8570A`, Clinch `#B5246B` (lasts a while), Knockdown `#B42318`, Referee break
-  `#161A22` (lasts a while)
+  `#161A22` (lasts a while) — the professor's list, no punch types. A team list
+  that is still exactly an old default (Jab, Cross, Hook, Uppercut, Block,
+  Clinch, Knockdown, Referee stop) becomes this list once, noted in the list's
+  history; a list the team edited is kept.
 - **Radii:** 10 px controls, 16 px cards, 18–22 px hero cards. Type: 28 page
   title · 22 card title · 17 section · 15 body · 13 small.
 

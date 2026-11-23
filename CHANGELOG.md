@@ -49,6 +49,13 @@ dev-log numbering, kept as history — they do not track the release version.
     never cut); Settings › headbands uses neutral A / B badges; video quality
     sizes follow the 60 fps switch; the EEG viewer's place names ("left
     forehead") are no longer cut off. `test_layout_fit` checks these.
+- **The professor's default label list** (no punch types): Punch initiated,
+  Punch landed, Punch missed, Punch blocked, Punch dodged, Clinch, Knockdown,
+  Referee break (keys 1–8). A team `label_list.json` that is still exactly an
+  old built-in default (Jab, Cross, Hook, Uppercut, Block, Clinch, Knockdown,
+  Referee stop — or the short-lived "Punch thrown" list) is replaced by it
+  once, recorded in the file's new `history` (`default_list_replaced`, who,
+  when, from, to) and the log; a list a team edited is kept.
 
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**

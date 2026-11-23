@@ -51,7 +51,7 @@ The panel says "Add a label at 3:27".
 
 1. **Who did it?** — **A · K7Q2**, **B · M3XA** or **Both** (Tab switches).
 2. **What happened?** — click a label or press its number (1–8). It is placed
-   at the moment the video shows. The starting list is Punch thrown, Punch
+   at the moment the video shows. The starting list is Punch initiated, Punch
    landed, Punch missed, Punch blocked, Punch dodged, Clinch, Knockdown and
    Referee break; the team can change it in [Settings](settings.md).
 

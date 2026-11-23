@@ -40,9 +40,10 @@ recordings folder (`label_vocabulary.json` in that folder). Each chip is a
 label; **×** removes it, **+ Add** adds one (type the name, press Enter). The
 order is the number keys 1–8. Removing a label never removes labels already
 placed. One-off descriptions belong in a **Custom note** while labelling, not in
-the list. A new team starts with Punch thrown, Punch landed, Punch missed,
-Punch blocked, Punch dodged, Clinch, Knockdown and Referee break; a team that
-already has a list keeps it.
+the list. A new team starts with Punch initiated, Punch landed, Punch missed,
+Punch blocked, Punch dodged, Clinch, Knockdown and Referee break. A team that
+edited its list keeps it; a list that was still the old built-in one (Jab,
+Cross, Hook, …) is switched to the new one once.
 
 ## Fighter colours — shared with the team
 

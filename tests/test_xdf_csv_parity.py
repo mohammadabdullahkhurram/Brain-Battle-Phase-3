@@ -71,7 +71,7 @@ def test_parity():
                                   moments=[(3.0, "B covered up"), (5.5, "")], calibration=CAL)
     root = r["root"]
     for who, items in (("Maya K", [("Punch landed", "A", 4.0, None), ("Clinch", "Both", 5.0, 6.5)]),
-                       ("Jonas R", [("Punch thrown", "B", 4.2, None)])):
+                       ("Jonas R", [("Punch initiated", "B", 4.2, None)])):
         st = ls.open_for_labeller(root, who)
         for name, side, t0, t1 in items:
             st.add(ls.new_label(name, side, ls.DURATION if t1 else ls.POINT, t0, t_end=t1,

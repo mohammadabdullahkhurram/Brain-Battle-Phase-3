@@ -35,7 +35,7 @@ def test_seed_and_roundtrip():
     check("seed wrote label_list.json", os.path.isfile(lv.path(d)))
     names = [x["name"] for x in labels]
     check("the professor's default list, keys 1-8, in order",
-          names == ["Punch thrown", "Punch landed", "Punch missed", "Punch blocked",
+          names == ["Punch initiated", "Punch landed", "Punch missed", "Punch blocked",
                     "Punch dodged", "Clinch", "Knockdown", "Referee break"], str(names))
     kinds = {x["name"]: x["kind"] for x in labels}
     check("Clinch + Referee break are duration ('lasts a while')",
@@ -62,6 +62,45 @@ def test_existing_team_list_not_overwritten():
     got = lv.load(d)
     check("an existing team list is kept as it is (not replaced by the new defaults)",
           [x["name"] for x in got] == ["Jab", "Referee stop"], str(got))
+
+
+def test_old_default_replaced_once():
+    """A list that is still exactly the OLD default (Jab … Referee stop) was
+    never edited: it becomes the new default once, and the file's history
+    says so. Afterwards (even if someone sets the old list again) it is kept."""
+    d = tempfile.mkdtemp(prefix="bb_vocab_old_")
+    old_names = ["Jab", "Cross", "Hook", "Uppercut", "Block", "Clinch", "Knockdown", "Referee stop"]
+    lv.save(d, [{"key": i + 1, "name": n, "color": "#3D4FD6",
+                 "kind": lv.DURATION if n in ("Clinch", "Referee stop") else lv.POINT}
+                for i, n in enumerate(old_names)])
+    got = [x["name"] for x in lv.load(d)]
+    check("the untouched old default is replaced by the new default",
+          got == [x["name"] for x in lv.DEFAULT_LABELS], str(got))
+    on_disk = [x["name"] for x in json.load(open(lv.path(d), encoding="utf-8"))["labels"]]
+    check("…and saved", on_disk == got)
+    h = lv.history(d)
+    check("…and logged in the list's history (who, when, from, to)",
+          len(h) == 1 and h[0]["event"] == lv.EVENT_DEFAULT_REPLACED
+          and h[0]["details"]["from"] == old_names and h[0]["details"]["to"] == got
+          and h[0].get("time") and h[0].get("user"), str(h))
+    # once only: put the old list back on purpose → kept
+    lv.save(d, [{"key": i + 1, "name": n, "color": "#3D4FD6", "kind": lv.POINT}
+                for i, n in enumerate(old_names)])
+    check("once only: the old list set again later is kept",
+          [x["name"] for x in lv.load(d)] == old_names and len(lv.history(d)) == 1)
+    # the short-lived 3.1-dev default (Punch thrown …) is an untouched default too
+    d2 = tempfile.mkdtemp(prefix="bb_vocab_dev_")
+    lv.save(d2, [{"key": i + 1, "name": n, "color": "#2155D6", "kind": lv.POINT}
+                 for i, n in enumerate(lv.OLD_DEFAULTS[1])])
+    check("the previous dev default (Punch thrown …) is replaced too",
+          [x["name"] for x in lv.load(d2)][0] == "Punch initiated")
+    # an edited old list (one label renamed) is the team's own: kept
+    d3 = tempfile.mkdtemp(prefix="bb_vocab_edit_")
+    edited = old_names[:7] + ["Ref stop"]
+    lv.save(d3, [{"key": i + 1, "name": n, "color": "#3D4FD6", "kind": lv.POINT}
+                 for i, n in enumerate(edited)])
+    check("an edited list is kept", [x["name"] for x in lv.load(d3)] == edited
+          and lv.history(d3) == [])
 
 
 def test_custom_notes():
@@ -110,6 +149,7 @@ if __name__ == "__main__":
     test_seed_and_roundtrip()
     test_unreadable_falls_back()
     test_existing_team_list_not_overwritten()
+    test_old_default_replaced_once()
     test_custom_notes()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:

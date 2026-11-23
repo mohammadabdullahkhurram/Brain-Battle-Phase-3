@@ -176,13 +176,13 @@ def test_review_screen():
     import brain_battle.ui.review_label_screen as rl
     root = DEMO_ROOT
     other = ls.open_for_labeller(root, "Jonas R")
-    other.add(_lab("Punch thrown", "A", 4.2, by="Jonas R")); other.add(_lab("Hook", "B", 8.0, by="Jonas R"))
+    other.add(_lab("Punch initiated", "A", 4.2, by="Jonas R")); other.add(_lab("Hook", "B", 8.0, by="Jonas R"))
     other.save()
     _env.set_labeller("Maya K")
     tab = rl.ReviewLabelScreen()
     try:
         tab.load_session_folder(root); tab.wait_loaded()
-        jab = next(e for e in tab._vocab if e["name"] == "Punch thrown")
+        jab = next(e for e in tab._vocab if e["name"] == "Punch initiated")
         tab._set_who("A"); tab._seek(4.0); tab._place_from_vocab(jab)
         mine = json.load(open(ls.labeller_path(root, "Maya K"), encoding="utf-8"))
         check("my label is saved in MY file, under my name",

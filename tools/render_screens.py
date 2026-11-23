@@ -261,7 +261,7 @@ def main():
     # a second labeller's labels, so the screen shows what comparing looks like
     import brain_battle.data.labels_store as _ls
     other = _ls.open_for_labeller(flow._saved_root, "Jonas R")
-    for t, name, who, col in ((19.7, "Punch thrown", "A", "#2155D6"),
+    for t, name, who, col in ((19.7, "Punch initiated", "A", "#2155D6"),
                               (20.9, "Punch landed", "A", "#0F7A62"),
                               (22.4, "Punch blocked", "B", "#465063")):
         other.add(_ls.new_label(name, who, "point", t, color=col, created_by="Jonas R"))

@@ -465,24 +465,34 @@ Nothing is lost and label ids are unchanged.
 ## `label_list.json`
 
 The **shared** team label vocabulary — one file in the recordings folder (not
-per session), written by `label_vocab`. An array of entries; each:
+per session), written by `label_vocab`: `{"schema_version": 1, "labels": [...],
+"history": [...]}`. Each entry of `labels`:
 
 | Field | Type | Meaning |
 |---|---|---|
 | `key` | int | Number key `1`–`9` to place it (matches display order) |
-| `name` | string | The label text, e.g. `"Jab"` |
+| `name` | string | The label text, e.g. `"Punch landed"` |
 | `color` | string | `#RRGGBB` swatch |
 | `kind` | string | `point` or `duration` |
 
 ```json
-[{"key": 1, "name": "Punch thrown", "color": "#2155D6", "kind": "point"},
- {"key": 6, "name": "Clinch", "color": "#B5246B", "kind": "duration"}]
+{"schema_version": 1,
+ "labels": [{"key": 1, "name": "Punch initiated", "color": "#2155D6", "kind": "point"},
+            {"key": 6, "name": "Clinch", "color": "#B5246B", "kind": "duration"}],
+ "history": [{"time": "2026-11-23T10:02:11+01:00", "user": "Maya K", "computer": "LAB-PC-2",
+              "app_version": "3.1.0-dev", "event": "default_list_replaced",
+              "details": {"from": ["Jab", "Cross", "…"], "to": ["Punch initiated", "…"]}}]}
 ```
 
-A recordings folder without the file is seeded with the default list: Punch
-thrown, Punch landed, Punch missed, Punch blocked, Punch dodged, Clinch,
+`history` (only present once something happened to the list itself) uses the
+same fields as a recording's `history.jsonl` line; its one event so far is
+`default_list_replaced`. A recordings folder without the file is seeded with
+the default list: Punch initiated, Punch landed, Punch missed, Punch blocked, Punch dodged, Clinch,
 Knockdown, Referee break (keys 1–8; Clinch and Referee break last a while).
-**An existing team list is never replaced** by the defaults. Custom notes are
+**A list the team edited is never replaced.** A list that is still exactly an
+old built-in default (Jab, Cross, Hook, Uppercut, Block, Clinch, Knockdown,
+Referee stop — or the short-lived Punch thrown … list) is replaced by the
+current default **once**, and that is recorded in `history`. Custom notes are
 not entries in this list.
 
 ## `fighter_colours.json`
