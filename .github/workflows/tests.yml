@@ -27,6 +27,7 @@ jobs:
       QT_QPA_PLATFORM: offscreen          # no display on the runners
       PYTHONUTF8: "1"                     # Windows: read/write files as UTF-8
       PYTHONIOENCODING: utf-8
+      BRAIN_BATTLE_MUTE: "1"              # tests never make a sound
     steps:
       - uses: actions/checkout@v4
 

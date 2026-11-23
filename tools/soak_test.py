@@ -280,6 +280,7 @@ def main(argv=None) -> int:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ["BRAIN_BATTLE_SIMULATE"] = "1"
+    os.environ["BRAIN_BATTLE_MUTE"] = "1"         # the soak rings many bells: keep it silent
     cap_dir = tempfile.mkdtemp(prefix="bb_soak_")
     os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = cap_dir
     os.environ["BRAIN_BATTLE_CONFIG"] = os.path.join(tempfile.mkdtemp(), "settings.json")

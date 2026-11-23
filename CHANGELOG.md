@@ -7,6 +7,14 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
+**Click-through fixes, demo data, tidy-up (2026-11-23)**
+- **Tests run silently (`BRAIN_BATTLE_MUTE`).** Every sound now plays through
+  `support/sound.py`; with `BRAIN_BATTLE_MUTE` set, the round bell and the
+  buzzer-test beeps never reach the audio output and only log that they would
+  have played. `tests/_env.py`, `tools/soak_test.py` and CI set it.
+  `test_round_bell` checks the bell and buzzer call no audio output when muted
+  (and do when not). No sound file was renamed or moved.
+
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**
   ([ADR-0025](docs/decisions/adr-0025-each-camera-in-its-own-process.md)).

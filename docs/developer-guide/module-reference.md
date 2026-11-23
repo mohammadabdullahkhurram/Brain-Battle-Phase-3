@@ -22,7 +22,7 @@ remove, or rename a module, update this page in the same commit (see
 | **`capture/`** | `clock` · `usb_camera` · `camera_worker` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `timing` · `timing_log` · `buzzer_test` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
 | **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `fighters` · `safe_io` · `export_module` · `app_settings` |
-| **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` · `stall_probe` |
+| **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` · `stall_probe` · `sound` |
 | **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `measure_descriptors` · `soak_test` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its
@@ -386,7 +386,7 @@ by `KeepAwake` and by each camera process while it records (ADR-0025);
 `RoundBell(QObject)` plays `assets/sounds/round_bell.wav` (a real boxing-bell
 recording — see [credits](../project/credits.md)) through `QSoundEffect`;
 `bundled_bell_path` resolves the WAV's path regardless of cwd. **Called by:**
-`record_flow` (the start and end of every round) and `settings_screen` (Test sound). **Note:** this was
+`record_flow` (the start and end of every round). Plays through `support/sound.py`, so it is silent under `BRAIN_BATTLE_MUTE`. **Note:** this was
 once `sync_beep.py` / `SyncBeep`, named for an audio-xcorr sync engine that has
 since been removed (see
 [ADR-0002](../decisions/adr-0002-remove-audio-xcorr.md)); it was renamed once
@@ -605,6 +605,15 @@ lock). Used to find the cause of camera frame loss (ADR-0025).
 sleeping to 60 Hz deadlines; `tools/wake_probe.py` prints it, and
 `test_timing` / `test_stability` use it to decide whether a computer can
 judge millisecond precision at all (`tests/_env.py` `timing_judgeable`).
+
+### `sound.py`
+`brain_battle/support/sound.py` — the one place the app makes a sound.
+`play(effect, what)` plays a `QSoundEffect` (the round bell, the buzzer-test
+beeps) unless `muted()`: with the environment variable `BRAIN_BATTLE_MUTE` set
+(anything but empty or `0`) it only logs that the sound would have played.
+`tests/_env.py`, `tools/soak_test.py` and CI set it, so tests never make a
+sound. **Called by:** `round_bell`, `buzzer_test`. **Gotcha:** never call an
+effect's `play()` anywhere else — `tests/test_round_bell.py` fails if you do.
 
 ### `platform_utils.py`
 `brain_battle/support/platform_utils.py` — the few things that differ between

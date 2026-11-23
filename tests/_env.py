@@ -8,7 +8,8 @@ settings file a labeller name ("Test Labeller") — Review & Label saves labels
 under the name of whoever is labelling, and asks for one when there is none.
 It also selects Qt's offscreen platform when none is set, so scripts can be run
 directly on a machine (or CI runner) with no display, and shortens the 15 s
-lead-in before the baseline to 2 s so simulated recordings stay quick.
+lead-in before the baseline to 2 s so simulated recordings stay quick, and
+sets ``BRAIN_BATTLE_MUTE=1`` so no test (or anything it starts) makes a sound.
 
 LSL: every script gets its own ``BRAIN_BATTLE_LSL_TAG``, which goes into the
 source id of every stream it publishes (``capture/lsl_outlets.source_id``).
@@ -34,6 +35,8 @@ LABELLER = "Test Labeller"
 TEST_LEAD_IN_SEC = 2
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# Tests never make a sound: the bell and buzzer beeps only log (support/sound.py).
+os.environ["BRAIN_BATTLE_MUTE"] = "1"
 os.environ.setdefault("BRAIN_BATTLE_LSL_TAG", f"test-{os.getpid()}-{uuid.uuid4().hex[:6]}")
 if not os.environ.get("BRAIN_BATTLE_CONFIG"):
     _cfg = os.path.join(tempfile.mkdtemp(prefix="bb_test_cfg_"), "settings.json")

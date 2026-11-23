@@ -23,6 +23,8 @@ low-latency fire-and-forget playback on macOS, Windows, and Linux without
 blocking the UI thread. If the WAV is missing, or QtMultimedia can't play it
 for any reason, `play()` silently does nothing (after logging a warning once)
 — the bell is a nice-to-have cue, never something worth crashing over.
+With `BRAIN_BATTLE_MUTE` set (tests, the soak, CI) it never reaches the
+audio output (`support/sound.py`).
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ import logging
 import os
 
 from brain_battle.paths import ASSETS_DIR
+from brain_battle.support import sound
 
 log = logging.getLogger(__name__)
 
@@ -77,16 +80,9 @@ class RoundBell(QObject):
             self._sfx = None
 
     def play(self) -> None:
-        """Fire-and-forget bell. Safe to call even mid-playback."""
-        if self._sfx is None:
-            return
-        try:
-            # Restart from the beginning if already playing.
-            if self._sfx.isPlaying():
-                self._sfx.stop()
-            self._sfx.play()
-        except Exception as e:                        # pragma: no cover
-            log.warning("round bell playback failed (%s)", e)
+        """Fire-and-forget bell. Safe to call even mid-playback. Silent (and
+        only logged) when ``BRAIN_BATTLE_MUTE`` is set — see support/sound.py."""
+        sound.play(self._sfx, "round bell")
 
     def path(self) -> str:
         return self._path

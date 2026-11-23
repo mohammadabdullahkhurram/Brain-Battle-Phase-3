@@ -30,6 +30,7 @@ from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
 
 import brain_battle.capture.clock as clock
 import brain_battle.capture.timing as timing
+from brain_battle.support import sound
 
 log = logging.getLogger(__name__)
 
@@ -92,11 +93,7 @@ class BuzzerTest(QObject):
 
     def _beep(self) -> None:
         t = clock.monotonic()
-        try:
-            if self._sfx is not None:
-                self._sfx.play()
-        except Exception:
-            pass
+        sound.play(self._sfx, "buzzer-test beep")
         self._beeps.append(t)
         self._simulate_tap(t)
         self.beeped.emit(len(self._beeps))

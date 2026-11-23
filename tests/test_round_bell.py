@@ -15,6 +15,9 @@ Covers:
   4. A missing WAV logs a warning and stays silent — RoundBell never raises.
   5. The credits entry for the bell (and the bundled Inter font) exists in
      docs/project/credits.md and nav.yml.
+  6. Tests are silent: tests/_env.py sets BRAIN_BATTLE_MUTE=1, and with it the
+     round bell and the buzzer-test beeps never call the audio output (they
+     only log that they would have played); without it they do.
 
 Run:  python3 tests/test_round_bell.py
 """
@@ -215,6 +218,76 @@ def test_credits_page_exists():
     check("credits page is listed in nav.yml", "project/credits.md" in nav_text)
 
 
+# ─── 6. tests run silently (BRAIN_BATTLE_MUTE) ─────────────────────────────
+
+class _FakeEffect:
+    """Stands in for QSoundEffect and counts every call to the audio output."""
+    def __init__(self):
+        self.plays = 0
+    def isPlaying(self):
+        return False
+    def stop(self):
+        pass
+    def play(self):
+        self.plays += 1
+
+
+def test_muted_bell_and_buzzer_make_no_sound():
+    import logging
+    from brain_battle.support import sound
+    import brain_battle.capture.round_bell as round_bell
+    from brain_battle.capture.buzzer_test import BuzzerTest
+
+    check("tests/_env.py sets BRAIN_BATTLE_MUTE=1",
+          os.environ.get("BRAIN_BATTLE_MUTE") == "1" and sound.muted())
+
+    records = []
+    class _H(logging.Handler):
+        def emit(self, r):
+            records.append(r.getMessage())
+    h = _H()
+    logging.getLogger("brain_battle.support.sound").addHandler(h)
+    logging.getLogger("brain_battle.support.sound").setLevel(logging.INFO)
+    try:
+        bell = round_bell.RoundBell()
+        bell_fx = _FakeEffect()
+        bell._sfx = bell_fx
+        bell.play()
+        bt = BuzzerTest([], {})
+        bt_fx = _FakeEffect()
+        bt._sfx = bt_fx
+        bt._beep()
+        check("muted: the round bell calls no audio output", bell_fx.plays == 0, bell_fx.plays)
+        check("muted: the buzzer beep calls no audio output", bt_fx.plays == 0, bt_fx.plays)
+        check("muted: the buzzer test still records the beep time", len(bt._beeps) == 1)
+        check("muted: the log says the bell would have played",
+              any("round bell would have played" in m for m in records), records)
+        check("muted: the log says the beep would have played",
+              any("buzzer-test beep would have played" in m for m in records), records)
+
+        # Control: without the switch the same calls DO reach the (fake) output.
+        os.environ["BRAIN_BATTLE_MUTE"] = "0"
+        try:
+            bell.play()
+            bt._beep()
+        finally:
+            os.environ["BRAIN_BATTLE_MUTE"] = "1"
+        check("not muted: the bell reaches the audio output", bell_fx.plays == 1, bell_fx.plays)
+        check("not muted: the beep reaches the audio output", bt_fx.plays == 1, bt_fx.plays)
+    finally:
+        logging.getLogger("brain_battle.support.sound").removeHandler(h)
+
+    # The only places that may call an effect's play() are support/sound.py.
+    offenders = []
+    for dirpath, _d, files in os.walk(os.path.join(ROOT, "brain_battle")):
+        for fn in files:
+            if fn.endswith(".py") and fn != "sound.py":
+                text = open(os.path.join(dirpath, fn), encoding="utf-8").read()
+                if re.search(r"_sfx\.play\(|QSoundEffect\(.*\)\.play|QApplication\.beep", text):
+                    offenders.append(fn)
+    check("every sound goes through support/sound.py", not offenders, offenders)
+
+
 if __name__ == "__main__":
     test_round_bell_wav_specs()
     test_bell_timing()
@@ -222,6 +295,7 @@ if __name__ == "__main__":
     test_settings_test_sound_plays_bundled_bell()
     test_missing_bell_file_stays_silent()
     test_credits_page_exists()
+    test_muted_bell_and_buzzer_make_no_sound()
 
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:

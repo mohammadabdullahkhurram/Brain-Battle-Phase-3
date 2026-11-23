@@ -97,7 +97,9 @@ demo session, about five minutes on its own; everything else is quick. The
 Every script starts with `import _env` (`tests/_env.py`), which points the app
 at a throwaway settings file holding a labeller name. A test run therefore
 never reads or changes a real user's settings, and Review & Label has someone
-to save labels under.
+to save labels under. It also sets `BRAIN_BATTLE_MUTE=1`: the round bell and
+the buzzer-test beeps go through `support/sound.py` and only log that they
+would have played, so a test run (and the soak, and CI) never makes a sound.
 
 It also gives the script its own LSL tag (`BRAIN_BATTLE_LSL_TAG`), which the
 app adds to the source id of every stream it publishes. A test that subscribes
