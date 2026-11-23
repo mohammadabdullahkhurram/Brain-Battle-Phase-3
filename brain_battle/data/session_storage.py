@@ -391,7 +391,8 @@ def _has_session_end(session_root: Path) -> bool:
     if not p.is_file():
         return False
     try:
-        text = p.read_text(encoding="utf-8")
+        import brain_battle.data.safe_io as safe_io
+        text = safe_io.read_text(p)
     except OSError:
         return False
     return any(m in text for m in END_MARKERS)
@@ -741,7 +742,8 @@ def _history_has_export(root: Path) -> bool:
     if not p.is_file():
         return False
     try:
-        for ln in p.read_text(encoding="utf-8").splitlines():
+        import brain_battle.data.safe_io as safe_io
+        for ln in safe_io.read_text(p).splitlines():
             ln = ln.strip()
             if not ln:
                 continue

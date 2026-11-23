@@ -39,10 +39,10 @@ These are listed, not fixed, because they need a real machine.
 causes that were fixed (a coarse clock on Windows, non-atomic appends on
 Windows, a test that could hang, LSL tests picking up each other's streams) are
 listed in [Cross-platform & CI](cross-platform-and-ci.md#fixed-on-2026-11-17-ci-green-on-both-systems).
-Two Windows scripts still fail now and then on the first attempt and pass when
-re-run alone (`test_shared_folder` under a reader that never lets go,
-`test_smoke` at shutdown) — see
-[Still open](cross-platform-and-ci.md#still-open-two-first-attempt-failures-on-windows).
+The two Windows scripts that failed now and then on the first attempt
+(`test_shared_folder` under a reader that never lets go, `test_smoke` at
+shutdown) were fixed at the cause on 2026-11-23 — see
+[the two first-attempt failures](cross-platform-and-ci.md#the-two-first-attempt-failures-on-windows-fixed-2026-11-23).
 
 ## Open files ("Too many open files") — fixed in 3.1.0-dev.3, with a cost
 

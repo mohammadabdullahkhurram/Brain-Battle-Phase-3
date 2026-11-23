@@ -254,10 +254,19 @@ if __name__ == "__main__":
     win = part2_construct_tabs_and_shell(app)
     part3_pure_logic(win)
     if win is not None:
-        try:
-            win.record_flow.shutdown(); win._review_page.shutdown()
-        except Exception:
-            pass
+        # Stop every background thread (the Sessions folder scan too) and let
+        # Qt delete the window before Python exits: a QThread still running at
+        # exit makes Qt abort — a script that passed would then fail on exit
+        # (seen on the Windows CI).
+        for stop in (win.record_flow.shutdown, win._review_page.shutdown,
+                     win._sessions_page.shutdown):
+            try:
+                stop()
+            except Exception as e:
+                print("  shutdown:", e)
+        win.close(); win.deleteLater()
+        for _ in range(5):
+            app.processEvents()
 
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:

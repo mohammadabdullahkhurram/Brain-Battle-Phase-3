@@ -131,6 +131,12 @@ def main(argv=None) -> int:
             shown = [ln for ln in lines if ln.startswith("FAIL")] or lines[-12:]
             for ln in shown[:20]:
                 print("        " + ln[:200])
+            if any(ln.startswith("GREEN") for ln in lines):
+                # every check passed, the process failed afterwards (shutdown)
+                print(f"        exit code {rc} ({rc & 0xFFFFFFFF:#x}) after GREEN — "
+                      f"the script failed while shutting down; last lines:")
+                for ln in lines[-6:]:
+                    print("          " + ln[:200])
 
     def _name(s):
         return os.path.splitext(os.path.basename(s))[0]

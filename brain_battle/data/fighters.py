@@ -116,7 +116,8 @@ def load_colours(recordings_dir) -> list[dict]:
     p = Path(colours_path(recordings_dir))
     if p.is_file():
         try:
-            data = json.loads(p.read_text(encoding="utf-8"))
+            import brain_battle.data.safe_io as safe_io
+            data = json.loads(safe_io.read_text(p))
             return _normalise_colours(data.get("colours") if isinstance(data, dict) else data)
         except (OSError, ValueError):
             pass

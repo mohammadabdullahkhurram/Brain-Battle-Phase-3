@@ -93,16 +93,16 @@ The first runs with each camera in its own process (ADR-0025) found:
 | Windows | soak: handles 727 → 748 → … about +20 every recording, with camera threads too | every capture `QThread` (4 cameras, 2 headbands) and every Sessions folder scan had a long-lived Qt parent, so a stopped one was never deleted; on Windows each keeps handles | `resource_limits.release_qthread`; the soak counts live Qt thread objects and `test_stability` checks they come back |
 | macOS | `test_timing` worst 4–24 ms (limit 2), soak 21–27 % of frames lost, with camera threads as well as processes, on a runner 27 % busy | the runner (Apple M2 Pro, virtual, 5 cores) wakes a bare sleeping thread a median 16 ms late, worst 72 ms; about half of all 60 Hz deadlines are missed by more than a frame (`tools/wake_probe.py`; Windows runner: 0.3 ms, worst 0.8 ms) | the precision checks measure the computer first and say `NOT JUDGED` there (see testing-strategy) |
 
-### Still open: two first-attempt failures on Windows
+### The two first-attempt failures on Windows (fixed 2026-11-23)
 
 Runs `43997541652` and `44000265457` (2026-11-17) both ended green on macOS and
 Windows, 35 of 35. In the second, two Windows scripts failed while other
 scripts were running and passed when the runner re-ran them alone:
 
-| Script | What happened | What is known |
-|---|---|---|
-| `test_shared_folder` | "200 replacements succeed while another reader keeps opening the file": `PermissionError(13, 'Access is denied')` even after ~5 s of retries, and one of 160 locked read-change-write edits was lost | Windows refuses to replace a file while another program has it open, and Python opens files without delete-sharing. A reader that re-opens the file in a tight loop (much harder than real use: the app re-reads other labellers every 5 s) can keep the replace refused. The app shows such a failed save and retries it, but the root fix — reading shared files with delete-sharing on Windows — is not done yet |
-| `test_smoke` | All checks passed ("GREEN: 0 failure(s)"), yet the script exited with an error | The process failed *after* its last check, i.e. while Qt and Python were shutting down. The exit code is not in the log; needs a Windows machine (or a CI run that prints the code) to look into |
+| Script | What happened | Cause | Fix |
+|---|---|---|---|
+| `test_shared_folder` | "200 replacements succeed while another reader keeps opening the file": `PermissionError(13, 'Access is denied')` even after ~5 s of retries, and one of 160 locked read-change-write edits was lost | Windows refuses to replace a file while another program has it open **without delete-sharing**, and Python's `open` never asks for it. A reader re-opening the file in a tight loop kept the replace refused past the retries; the edit whose save was refused was the one lost | Every read of a shared file goes through `safe_io.open_shared` / `read_text` (`read_json`, the label lists, labels files, fighter colours, the recording's markers and history): on Windows `CreateFileW` with read, write **and delete** sharing, so a save goes through while someone is reading — the reader keeps the version it opened. A new check holds the file open and replaces it at once |
+| `test_smoke` | All checks passed ("GREEN: 0 failure(s)"), yet the script exited with an error | The process failed while Qt and Python were shutting down. Two things were still alive at that point that a clean exit must not have: the Sessions screen's folder-scan thread (the test never stopped it; a `QThread` still running when Python exits makes Qt abort) and Qt's audio backend (every recording flow made a `QSoundEffect` for the bell, also in tests) | The test stops every background thread (Sessions too) and lets Qt delete the window before exiting; with `BRAIN_BATTLE_MUTE` (tests, CI) the bell and the buzzer test never open the audio device at all. `tools/run_tests.py` now prints a script's exit code when it fails *after* "GREEN", so a shutdown failure is never a mystery again. Not reproducible on macOS — the next Windows CI runs confirm it |
 
 ## Never tried on a real Windows machine
 

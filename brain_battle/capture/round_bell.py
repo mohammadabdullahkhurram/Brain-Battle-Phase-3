@@ -65,8 +65,8 @@ class RoundBell(QObject):
             super().__init__(parent)
         self._path = bundled_bell_path()
         self._sfx = None
-        if not _QT_AUDIO_AVAILABLE:
-            return
+        if not _QT_AUDIO_AVAILABLE or sound.muted():
+            return          # muted (tests, CI): never touch the audio device at all
         if not os.path.isfile(self._path):
             log.warning("round bell WAV not found at %s — bell will stay silent", self._path)
             return

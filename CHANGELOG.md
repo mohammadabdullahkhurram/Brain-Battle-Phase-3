@@ -98,6 +98,15 @@ dev-log numbering, kept as history — they do not track the release version.
   "missing" samples; now 0). `test_timing` checks it (200 connections with a
   computer pause, a really lost packet, and every sample handed to the reader
   in its CSV); accuracy unchanged.
+- **The two old Windows first-attempt failures.** `test_shared_folder`: every
+  read of a shared file now goes through `safe_io.open_shared` / `read_text`,
+  which on Windows opens it with delete-sharing, so a reader never stops
+  another computer's save (Python's `open` blocked the replace — the cause of
+  the refused replacements and the one lost edit). `test_smoke`: stops the
+  Sessions folder scan and lets Qt delete the window before exiting; muted
+  tests never open the audio device (no `QSoundEffect` when
+  `BRAIN_BATTLE_MUTE` is set). `tools/run_tests.py` prints the exit code of a
+  script that fails after "GREEN".
 
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**

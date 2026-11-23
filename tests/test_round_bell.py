@@ -188,6 +188,7 @@ def test_missing_bell_file_stays_silent():
 
     original = round_bell.bundled_bell_path
     round_bell.bundled_bell_path = lambda: "/nonexistent/round_bell.wav"
+    os.environ["BRAIN_BATTLE_MUTE"] = "0"      # (muted, no sound effect is made at all)
     try:
         b = round_bell.RoundBell()
         b.play()   # must not raise
@@ -197,6 +198,7 @@ def test_missing_bell_file_stays_silent():
         print("    missing-file playback raised:", e)
     finally:
         round_bell.bundled_bell_path = original
+        os.environ["BRAIN_BATTLE_MUTE"] = "1"
     check("RoundBell with a missing WAV never crashes", ok)
     check("RoundBell falls back to no sound effect when the file is missing",
           ok and b._sfx is None)
@@ -240,6 +242,8 @@ def test_muted_bell_and_buzzer_make_no_sound():
 
     check("tests/_env.py sets BRAIN_BATTLE_MUTE=1",
           os.environ.get("BRAIN_BATTLE_MUTE") == "1" and sound.muted())
+    check("muted: the bell and the buzzer test do not even open the audio device",
+          round_bell.RoundBell()._sfx is None and BuzzerTest([], {})._sfx is None)
 
     records = []
     class _H(logging.Handler):

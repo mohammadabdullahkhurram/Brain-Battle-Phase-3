@@ -292,7 +292,7 @@ def load(path) -> tuple[LabelsStore, bool]:
     if not p.is_file():
         return LabelsStore(), False
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(safe_io.read_text(p))
     except (OSError, ValueError):
         return LabelsStore(), False
     ver = data.get("schema_version") if isinstance(data, dict) else None

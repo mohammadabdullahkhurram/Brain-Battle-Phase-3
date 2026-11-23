@@ -71,6 +71,8 @@ class BuzzerTest(QObject):
         self._beeps: list[float] = []
         self._sfx = None
         self.running = False
+        if sound.muted():
+            return                  # tests / CI: never touch the audio device at all
         try:
             from PyQt6.QtMultimedia import QSoundEffect
             self._sfx = QSoundEffect(self)

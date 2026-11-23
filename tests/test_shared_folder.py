@@ -107,6 +107,22 @@ def test_atomic_write():
     check("a reader never sees a missing or half-written file while it is being replaced",
           bad == [], f"{len(bad)} bad reads")
     check("no temporary files are left behind", os.listdir(d) == ["data.json"], str(os.listdir(d)))
+    # A reader holding the file open never stops a save (Windows: read with
+    # delete-sharing — before, Python's open() made os.replace fail there).
+    with safe_io.open_shared(path) as held:
+        t0 = time.monotonic()
+        try:
+            os.replace(_write_tmp(d, {"n": "new", "pad": "y" * 10}), path)
+            replaced = True
+        except OSError as e:
+            replaced = repr(e)
+        took = time.monotonic() - t0
+        old = json.load(held)
+    check("a file held open by a reader (open_shared) is replaced at once",
+          replaced is True and took < 0.5, f"{replaced} in {took:.2f} s")
+    check("…the reader keeps the version it opened, the next read sees the new one",
+          isinstance(old, dict) and len(old.get("pad", "")) == 20000
+          and safe_io.read_json(path)["n"] == "new")
     check("read_json: missing → default, garbage → default",
           safe_io.read_json(os.path.join(d, "nope.json"), 7) == 7
           and (open(os.path.join(d, "bad.json"), "w").write("{oops") and
@@ -117,6 +133,13 @@ def test_atomic_write():
     except OSError:
         raised = True
     check("writing into a folder that is not there raises OSError (so the UI can say so)", raised)
+
+
+def _write_tmp(d, obj):
+    p = os.path.join(d, ".replacement.tmp")
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(obj, f)
+    return p
 
 
 _BUMP = r"""

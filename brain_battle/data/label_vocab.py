@@ -108,7 +108,8 @@ def _normalise(raw) -> list[dict]:
 
 
 def _read(p: Path) -> dict:
-    data = json.loads(p.read_text(encoding="utf-8"))
+    import brain_battle.data.safe_io as safe_io
+    data = json.loads(safe_io.read_text(p))
     if isinstance(data, list):
         return {"labels": data}
     return data if isinstance(data, dict) else {}

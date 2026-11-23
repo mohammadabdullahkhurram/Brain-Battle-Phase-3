@@ -43,7 +43,9 @@ measurement instead of failing; every other check still counts. GitHub's
 macOS runner is such a computer (a median 16 ms late, about 71 % of wake-ups
 over half a frame); a desk Mac and the Windows runner are not (~0 %), so
 there the checks are judged as before (owner's decision, 2026-11-20).
-Full output for every script is kept in a log folder printed at the end.
+Full output for every script is kept in a log folder printed at the end. A
+script that fails *after* printing "GREEN" (while shutting down) gets its exit
+code printed too.
 
 `tests/test_flash_sync.py` is **slow** — it generates and verifies a 12-minute
 demo session, about five minutes on its own; everything else is quick. The

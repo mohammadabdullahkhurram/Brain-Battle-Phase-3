@@ -20,6 +20,9 @@ computers have open at once. Three small tools keep that safe:
 
 ``read_json`` reads tolerantly (a short retry, then ``None``), because a file on
 a network drive can be momentarily unreadable while another computer swaps it.
+Every read of a shared file goes through ``open_shared`` / ``read_text``,
+which on Windows opens it with delete-sharing, so a reader never stops another
+computer's save.
 
 Qt-free and stdlib-only. See docs/decisions/adr-0020-shared-folder-safety.md.
 """
@@ -99,14 +102,57 @@ def atomic_write_json(path, obj) -> None:
     atomic_write_text(path, json.dumps(obj, indent=2, ensure_ascii=False))
 
 
+def open_shared(path, binary: bool = False):
+    """Open a shared file for reading WITHOUT stopping anyone replacing it.
+
+    On Windows, Python's ``open`` leaves out delete-sharing, so while any
+    program has the file open nobody can swap a new version into place — a
+    reader that re-opens the file often could keep another computer's save
+    refused (seen as a first-attempt failure on the Windows CI). Here the file
+    is opened with read, write AND delete sharing (``CreateFileW``), so a
+    replace goes through while it is being read; the reader keeps the version
+    it opened. Elsewhere this is plain ``open``. Raises like ``open``."""
+    if not is_windows():
+        return open(path, "rb" if binary else "r", **({} if binary else {"encoding": "utf-8"}))
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+                                wintypes.HANDLE]
+    k32.CreateFileW.restype = wintypes.HANDLE
+    GENERIC_READ, SHARE_ALL = 0x80000000, 0x1 | 0x2 | 0x4
+    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL = 3, 0x80
+    handle = k32.CreateFileW(str(path), GENERIC_READ, SHARE_ALL, None, OPEN_EXISTING,
+                             FILE_ATTRIBUTE_NORMAL, None)
+    if handle in (None, wintypes.HANDLE(-1).value):
+        err = ctypes.get_last_error()
+        if err in (2, 3):                    # file / path not found
+            raise FileNotFoundError(2, "No such file or directory", str(path))
+        if err in (5, 32, 33):               # access denied / sharing / lock
+            raise PermissionError(13, "Access is denied", str(path))
+        raise ctypes.WinError(err)
+    fd = msvcrt.open_osfhandle(handle, os.O_RDONLY | (0 if binary else os.O_TEXT))
+    if binary:
+        return os.fdopen(fd, "rb")
+    return os.fdopen(fd, "r", encoding="utf-8", newline=None)
+
+
+def read_text(path) -> str:
+    """The whole text of a shared file, read with ``open_shared``."""
+    with open_shared(path) as f:
+        return f.read()
+
+
 def read_json(path, default=None):
     """The parsed JSON file, or ``default`` if it is missing, unreadable or not
-    valid JSON. Retries briefly, since another computer may be swapping it
-    (on Windows the file is refused for a moment while it is replaced)."""
+    valid JSON. Retries briefly, since another computer may be swapping it.
+    Read with ``open_shared``, so reading never blocks someone's save."""
     bad_json = 0
     for wait in _waits():
         try:
-            with open(path, encoding="utf-8") as f:
+            with open_shared(path) as f:
                 return json.load(f)
         except FileNotFoundError:
             return default
@@ -342,6 +388,7 @@ def is_network_path(path) -> bool:
 
 
 __all__ = ["atomic_write_bytes", "atomic_write_text", "atomic_write_json", "read_json",
+           "open_shared", "read_text",
            "append_line", "replace_with_retry", "FolderLock", "update_json",
            "folder_status", "folder_problem_text", "is_network_path",
            "FOLDER_OK", "FOLDER_MISSING", "FOLDER_READ_ONLY"]

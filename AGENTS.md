@@ -271,8 +271,8 @@ and — since the last tag — design F (top header, new screens), fighter codes
 and colours (ADR-0023), the 15 s lead-in and system markers, moment notes and
 custom notes, the bell at both ends of a round, the timing check and buzzer
 calibration (ADR-0024), a camera watchdog and a soak test (`tools/soak_test.py`). GitHub Actions is
-green on macOS and Windows (two Windows first-attempt flakes are listed in
-`docs/developer-guide/cross-platform-and-ci.md`). Hardware is broken, so
+green on macOS and Windows (the two old Windows first-attempt flakes were fixed
+at the cause on 2026-11-23; see `docs/developer-guide/cross-platform-and-ci.md`). Hardware is broken, so
 everything runs against **simulated** devices (`capture/simulation.py`,
 `BRAIN_BATTLE_SIMULATE`, dev-only). Phase 4 (labelling) shipped inside the
 Review & Label build. Pass-by-pass history: `CHANGELOG.md` and
