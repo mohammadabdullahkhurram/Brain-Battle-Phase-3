@@ -14,6 +14,41 @@ dev-log numbering, kept as history — they do not track the release version.
   have played. `tests/_env.py`, `tools/soak_test.py` and CI set it.
   `test_round_bell` checks the bell and buzzer call no audio output when muted
   (and do when not). No sound file was renamed or moved.
+- **Click-through fixes (owner's test; `docs/design/prototype.html`).**
+  - **One in-app dialog, no native alerts**
+    ([ADR-0026](docs/decisions/adr-0026-in-app-dialogs-and-dropdowns.md)). `widgets.AppDialog` / `ask` /
+    `tell`: a white rounded card on a dimmed cover, title, text, buttons on the
+    right, `warn` and `danger` variants. Used for "Signal looks poor — Start
+    anyway?", "Stop the recording now?" (Keep recording is the blue button), "A
+    recording is still running" (quit, ✕ Cancel), leaving Get ready, leaving
+    Review ("✓ Your labels are saved"), removing a shared label or colour,
+    errors and folder / disk problems. The Moment, Timing check and Export
+    dialogs use the same card; Settings' colour picker is the app's own.
+    `test_dialogs` fails on any `QMessageBox` / `QColorDialog` / native dialog
+    other than the folder / file picker. (A broken leftover camera picker in
+    `record_flow` was removed.)
+  - **Choose the cameras and headbands on Get ready.** A dropdown above each
+    camera slot lists the connected cameras; a dropdown on each boxer card lists
+    the connected headbands with their battery. A device can be in one place
+    only — picking one that is used elsewhere swaps the two. Remembered for
+    next time (`app_settings` `camera_slots`; the headbands stay the Settings
+    default). Works with simulated devices.
+  - **One app-styled dropdown** (`widgets.Dropdown`) everywhere, including
+    Settings › headbands, Compare and the EEG options.
+  - **Light text fields and panels, even in dark mode.** The app now pins a
+    light palette (`design_tokens.pin_light_palette`) and styles every text
+    field white with dark text and a blue focus border — the Custom note box
+    and the history drawer were dark on a Mac set to dark mode.
+  - **History drawer** slides over Sessions on a dimmed cover (white panel,
+    coloured dots, readable dates) instead of squeezing the rows.
+  - **Documentation** uses the full window width.
+  - **From the owner's screenshots:** Get ready's poor-signal help and checklist
+    are never cut off (both columns scroll on a small window); the simulated
+    camera text is small, in the top-right corner, clear of the camera labels;
+    Sessions rows never clip the Open button (and the New recording text is
+    never cut); Settings › headbands uses neutral A / B badges; video quality
+    sizes follow the 60 fps switch; the EEG viewer's place names ("left
+    forehead") are no longer cut off. `test_layout_fit` checks these.
 
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**

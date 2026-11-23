@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 import sys
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QMessageBox
+    QApplication, QMainWindow, QWidget, QVBoxLayout
 )
 from PyQt6.QtCore import Qt, QTimer
 
@@ -70,14 +70,8 @@ class BrainBattleApp(QMainWindow):
         # Confirm before quitting mid-recording (DESIGN §4 safety).
         try:
             if getattr(self, "record_flow", None) is not None and self.record_flow.is_recording():
-                reply = QMessageBox.question(
-                    self, "Quit while recording?",
-                    "A recording is in progress. Quit anyway? Everything recorded so "
-                    "far is saved and the recording is marked Interrupted; the rest "
-                    "of the session will not happen.",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No)
-                if reply != QMessageBox.StandardButton.Yes:
+                from brain_battle.ui.record_flow import ask_leave_recording
+                if not ask_leave_recording(self):
                     event.ignore(); return
                 # stop + save now and mark it Interrupted (same as ✕ Cancel)
                 self.record_flow.abandon_recording("quit")
@@ -261,6 +255,8 @@ def main():
 
     # Light mode only — no theme preference to load (DESIGN.md).
     app = QApplication(sys.argv); app.setApplicationName("Brain Battle")
+    import brain_battle.ui.design_tokens as _dt
+    _dt.pin_light_palette(app)   # light even when the computer is in dark mode
     from brain_battle.ui.fonts import register_fonts
     register_fonts()   # bundled Inter; falls back to the system font if absent
     def _excepthook(exc_type, exc_value, exc_tb):

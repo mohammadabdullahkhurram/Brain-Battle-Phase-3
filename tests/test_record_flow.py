@@ -377,22 +377,29 @@ def test_headband_drop_reconnect():
 
 # ─── 5. disk-blocked start ─────────────────────────────────────────────────────
 
-class _FakeMsg:
-    class StandardButton:
-        Yes = 1; No = 2
-    calls = {"critical": 0, "question": 0}
-
-    @staticmethod
-    def critical(*a, **k): _FakeMsg.calls["critical"] += 1; return 1
-    @staticmethod
-    def question(*a, **k): _FakeMsg.calls["question"] += 1; return 2  # No
+class _Dialogs:
+    """Answers the app's in-app dialogs (widgets.dialog_responder) and counts
+    them: ``with _Dialogs(answer) as d: …`` — ``d.asked`` lists what was
+    shown (title, text, buttons, tone)."""
+    def __init__(self, answer=0):
+        self.answer = answer
+    def __enter__(self):
+        import brain_battle.ui.widgets as ui
+        self._ui = ui
+        ui.answered_dialogs.clear()
+        ui.dialog_responder = lambda _d: self.answer
+        return self
+    @property
+    def asked(self):
+        return list(self._ui.answered_dialogs)
+    def __exit__(self, *exc):
+        self._ui.dialog_responder = None
+        return False
 
 
 def test_disk_blocked():
     _fresh_env()
-    import brain_battle.ui.record_flow as record_flow
     flow = _new_flow()
-    real_msg = record_flow.QMessageBox
     real_usage = shutil.disk_usage
 
     class _TinyUsage:
@@ -400,16 +407,16 @@ def test_disk_blocked():
     try:
         flow.start(); pump(1.8)
         _setup_short(flow)
-        _FakeMsg.calls = {"critical": 0, "question": 0}
-        record_flow.QMessageBox = _FakeMsg
-        shutil.disk_usage = lambda p: _TinyUsage()
-        flow.begin_recording()
+        with _Dialogs(1) as d:
+            shutil.disk_usage = lambda p: _TinyUsage()
+            flow.begin_recording()
         check("disk-blocked: recording does NOT start", not flow.is_recording())
         check("disk-blocked: stayed on Get ready",
               flow._stack.currentIndex() == flow.STEP_READY)
-        check("disk-blocked: showed a blocking message", _FakeMsg.calls["critical"] == 1)
+        check("disk-blocked: showed one in-app message (danger)",
+              len(d.asked) == 1 and d.asked[0]["tone"] == "danger"
+              and "disk space" in d.asked[0]["title"].lower(), str(d.asked))
     finally:
-        record_flow.QMessageBox = real_msg
         shutil.disk_usage = real_usage
         flow.shutdown(); pump(0.3)
 
@@ -419,10 +426,8 @@ def test_disk_blocked():
 def test_quit_confirmation():
     _fresh_env()
     import brain_battle_main as bbm
-    import brain_battle.app as _app   # closeEvent resolves QMessageBox here
     from PyQt6.QtGui import QCloseEvent
     win = bbm.BrainBattleApp()
-    real_msg = _app.QMessageBox
     try:
         win.show()
         win._shell.set_current_index(win.IDX_RECORD)
@@ -430,29 +435,28 @@ def test_quit_confirmation():
         _setup_short(win.record_flow, rest=2, rnd=30, brk=0, rounds=1)
         win.record_flow.begin_recording()
         check("recording is in progress", win.record_flow.is_recording())
-        _app.QMessageBox = _FakeMsg
-        # user answers No → close is vetoed
-        _FakeMsg.calls = {"critical": 0, "question": 0}
-        ev = QCloseEvent()
-        win.closeEvent(ev)
-        check("quit while recording asks, and No vetoes the close",
-              _FakeMsg.calls["question"] == 1 and not ev.isAccepted())
+        # user answers Keep recording → close is vetoed
+        with _Dialogs(0) as d:
+            ev = QCloseEvent()
+            win.closeEvent(ev)
+        check("quit while recording asks (in-app, danger), and Keep recording vetoes the close",
+              len(d.asked) == 1 and d.asked[0]["tone"] == "danger" and not ev.isAccepted(),
+              str(d.asked))
+        check("…the question is the prototype's 'A recording is still running'",
+              d.asked and d.asked[0]["title"] == "A recording is still running"
+              and d.asked[0]["buttons"] == ["Keep recording", "Stop and leave"], str(d.asked))
         check("…and the recording carries on", win.record_flow.is_recording())
         pump(4.5)                                 # into round 1
 
-        # user answers Yes → stop, save, mark Interrupted (same as ✕ Cancel)
-        class _Yes(_FakeMsg):
-            @staticmethod
-            def question(*a, **k): _FakeMsg.calls["question"] += 1; return 1
-        _app.QMessageBox = _Yes
-        ev = QCloseEvent()
-        win.closeEvent(ev)
-        pump(0.5)
+        # user answers Stop and leave → stop, save, mark Interrupted (same as ✕ Cancel)
+        with _Dialogs(1):
+            ev = QCloseEvent()
+            win.closeEvent(ev)
+            pump(0.5)
         root = win.record_flow._saved_root
-        check("quit (Yes) stops the recording", not win.record_flow.is_recording())
+        check("quit (Stop and leave) stops the recording", not win.record_flow.is_recording())
         _check_interrupted(root, "quit")
     finally:
-        _app.QMessageBox = real_msg
         try:
             win.record_flow.shutdown(); win._review_page.shutdown(); win._sessions_page.shutdown()
         except Exception:
@@ -483,23 +487,91 @@ def _check_interrupted(root, how):
 
 def test_cancel_marks_interrupted():
     _fresh_env()
-    import brain_battle.ui.record_flow as record_flow
     flow = _new_flow()
-    real_msg = record_flow.QMessageBox
-
-    class _Yes(_FakeMsg):
-        @staticmethod
-        def question(*a, **k): return 1
     try:
         flow.start(); pump(1.8)
         _setup_short(flow, rest=2, rnd=30, brk=0, rounds=1)
         flow.begin_recording(); pump(4.5)
-        record_flow.QMessageBox = _Yes
-        flow.cancel(); pump(0.5)
-        check("✕ Cancel (Yes) stops the recording", not flow.is_recording())
+        with _Dialogs(1):
+            flow.cancel(); pump(0.5)
+        check("✕ Cancel (Stop and leave) stops the recording", not flow.is_recording())
         _check_interrupted(flow._saved_root, "cancel")
     finally:
-        record_flow.QMessageBox = real_msg
+        flow.shutdown(); pump(0.3)
+
+
+def test_stop_asks_keep_recording_first():
+    """Stop recording asks in the app's warn dialog; Keep recording is primary."""
+    _fresh_env()
+    flow = _new_flow()
+    try:
+        flow.start(); pump(1.8)
+        _setup_short(flow, rest=2, rnd=30, brk=0, rounds=1)
+        flow.begin_recording(); pump(1.0)
+        with _Dialogs(0) as d:
+            flow.ask_stop(); pump(0.2)
+        check("Stop: asked 'Stop the recording now?' (warn) and Keep recording keeps it going",
+              d.asked and d.asked[0]["title"] == "Stop the recording now?"
+              and d.asked[0]["tone"] == "warn" and flow.is_recording(), str(d.asked))
+        with _Dialogs(1):
+            flow.ask_stop(); pump(0.5)
+        check("Stop now stops the recording", not flow.is_recording())
+    finally:
+        flow.shutdown(); pump(0.3)
+
+
+def test_choose_cameras_and_headbands():
+    """Get ready: a dropdown per camera slot and per boxer lists what is
+    connected; picking one already used swaps the two; remembered."""
+    _fresh_env()
+    import brain_battle.data.app_settings as app_settings
+    flow = _new_flow()
+    try:
+        flow.start(); pump(2.0)
+        gr = flow._get_ready
+        names = [d.name for d in flow.connected_cameras()]
+        dd = list(gr.cam_choice.values())
+        check("every camera slot has a dropdown listing the 4 connected cameras",
+              len(dd) == 4 and all([d.itemText(i) for i in range(d.count())] == names for d in dd),
+              str(names))
+        slots = flow._cams
+        before = [s.device.name for s in slots]
+        check("each dropdown shows its slot's camera",
+              [d.currentData() for d in dd] == before, str([d.currentData() for d in dd]))
+        # put slot 1's... camera from the last slot into the first: they swap
+        flow.assign_camera(slots[0].index, before[3]); pump(1.0)
+        after = [s.device.name for s in slots]
+        check("picking a camera that is in another slot swaps the two",
+              after[0] == before[3] and after[3] == before[0] and after[1:3] == before[1:3],
+              str(after))
+        check("…no camera is in two slots", len(set(after)) == 4)
+        check("…the dropdowns follow", [d.currentData() for d in dd] == after)
+        check("…the preview follows (the slot runs its new camera)",
+              slots[0].device.name == before[3] and slots[0].state in ("live", "starting", "opening")
+              or slots[0].is_live, slots[0].state)
+        saved = app_settings.load().camera_slots
+        check("…and it is remembered for next time",
+              saved.get(str(slots[0].index)) == before[3]
+              and saved.get(str(slots[3].index)) == before[0], str(saved))
+        # headbands
+        bands = flow.connected_headbands()
+        bnames = [n for n, _b in bands]
+        ca, cb = gr.card("A").band_choice, gr.card("B").band_choice
+        check("each boxer card has a dropdown listing the connected headbands",
+              [ca.itemData(i) for i in range(ca.count())] == bnames == [cb.itemData(i) for i in range(cb.count())]
+              and len(bnames) == 2, str(bnames))
+        pump(1.0); gr.card("A").refresh_choices()
+        check("…showing the battery", any("battery" in ca.itemText(i) for i in range(ca.count())),
+              str([ca.itemText(i) for i in range(ca.count())]))
+        a0, b0 = flow._bands["A"].device_name, flow._bands["B"].device_name
+        flow.assign_headband("A", b0); pump(1.0)
+        check("picking Boxer B's headband for Boxer A swaps them",
+              flow._bands["A"].device_name == b0 and flow._bands["B"].device_name == a0)
+        check("…the dropdowns follow", ca.currentData() == b0 and cb.currentData() == a0)
+        s = app_settings.load()
+        check("…and Settings keeps it as the default", s.headband_for("A") == b0
+              and s.headband_for("B") == a0)
+    finally:
         flow.shutdown(); pump(0.3)
 
 
@@ -672,6 +744,8 @@ if __name__ == "__main__":
     test_disk_blocked()
     test_quit_confirmation()
     test_cancel_marks_interrupted()
+    test_stop_asks_keep_recording_first()
+    test_choose_cameras_and_headbands()
     test_poor_signal_asks_before_start()
     test_every_step_fits()
     test_moment_popup_and_notes()

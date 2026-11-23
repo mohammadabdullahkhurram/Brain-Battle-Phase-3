@@ -218,7 +218,13 @@ def test_advanced_card():
     check("defaults: head movement on, pulse off, 60 fps on, LSL off",
           b["record_motion"].isChecked() and not b["record_ppg"].isChecked()
           and b["record_60fps"].isChecked() and not b["lsl_streams"].isChecked())
+    check("video sizes say 'at 60 fps' while 60 fps is on",
+          all(r.text().endswith("at 60 fps") for r in st._quality_rows.values()),
+          st._quality_rows["standard"].text())
     b["lsl_streams"].setChecked(True); b["record_60fps"].setChecked(False)
+    check("…and follow the switch to 30 fps (smaller sizes)",
+          all(r.text().endswith("at 30 fps") for r in st._quality_rows.values())
+          and "2.2 GB" in st._quality_rows["standard"].text(), st._quality_rows["standard"].text())
     s = aps.load()
     check("switches save straight away", s.lsl_streams is True and s.record_60fps is False)
     st._quality_rows["high"].setChecked(True)

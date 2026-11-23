@@ -43,10 +43,20 @@ start".
   pressing **Start recording** while a sensor looks poor asks, for example,
   "Signal looks poor on K7Q2 right ear (TP10). Start anyway?" — **Start
   anyway** or **Go back**. Under it is the live brain activity, five traces, five seconds across.
+- **Which headband is on which boxer.** Each boxer card has a **Headband**
+  list with every headband that is switched on, and its battery. Pick the
+  headband that boxer is wearing. One headband can't be on both boxers:
+  picking the other boxer's swaps them. The choice is remembered and becomes
+  the default in Settings.
 - **4 cameras connected.** Four live pictures, each with its frame rate (60 fps
   when Settings › Advanced › "Record cameras at 60 fps" is on). A camera that is
   not found shows a dashed outline: check its USB cable and press **Search
-  again**. A camera that can only do 30 fps says so.
+  again**. A camera that can only do 30 fps says so. **Which camera is which:**
+  above each picture is a list of the connected cameras. Pick the camera that
+  belongs in that place (Side camera 1, Side camera 2, Boxer A view, Boxer B
+  view) and its picture moves there. A camera can only be in one place: picking
+  one that is already used elsewhere swaps the two. The app remembers the
+  choice for next time.
 - **Fighter codes and colours.** Give each fighter a **code** — exactly 4
   capital letters or digits, like `K7Q2`; **New code** makes one up — and the
   **colour** they wear. The two codes and the two colours must differ. No names
@@ -60,7 +70,7 @@ start".
 - **Enough space.** How much the recording needs and how much is free.
 
 **⇄ Swap the headbands between Boxer A and Boxer B** if the bands are on the
-wrong boxers. **The plan:** Rounds, Round, Break and Baseline (− and +), and
+wrong boxers (the same as swapping them in the lists). **The plan:** Rounds, Round, Break and Baseline (− and +), and
 **Ring the bell at the start and end of each round**. The line beside it says
 the total — "0:15 lead-in + 12:00 = 12:15 in total" — and the plan is
 remembered for next time.

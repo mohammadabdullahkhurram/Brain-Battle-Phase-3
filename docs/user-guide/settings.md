@@ -68,11 +68,16 @@ Folded away by default:
   everything live without it. Switch it on only if another program
   (LabRecorder, an EEG viewer) should receive the headbands, markers and camera
   times while you record. Recordings are saved the same either way.
-- **Which headband each boxer wears** — a list per boxer of every headband
-  seen before, plus **Search for a new headband**. The same headband can't be
-  given to both boxers. (On Get ready, **⇄ Swap the headbands** swaps them.)
+- **Which headband each boxer wears** — the default: a list per boxer of every
+  headband seen before, plus **Search for a new headband**. The same headband
+  can't be given to both boxers. (On Get ready you can pick, or **⇄ Swap**, the
+  headbands for one recording; that choice becomes the default here.)
 - **Video quality** — Standard (960×540, recommended), High (1280×720) or
-  Light (640×360), each with how much space an hour takes per camera.
+  Light (640×360), each with how much space an hour takes per camera at the
+  frame rate you chose (60 or 30 fps).
+
+Removing a label from the shared list, or a colour, asks first — everyone
+using the folder shares them.
 
 The plan (rounds, round length, break, baseline) and the bell are set on Get
 ready and remembered for next time.

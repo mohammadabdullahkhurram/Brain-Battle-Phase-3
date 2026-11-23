@@ -210,7 +210,7 @@ class EEGViewer(QWidget):
     # ── painting ──
     def _geometry(self):
         W, H = self.width(), self.height()
-        gutter = 58 if W >= 420 else 42
+        gutter = 74 if W >= 420 else 42      # room for 'right forehead' under TP10
         top = 15 if self.show_marker_labels else 3
         bottom = 17 if self.show_axis else 3
         return QRectF(gutter, top, max(10, W - gutter - 6), max(10, H - top - bottom))

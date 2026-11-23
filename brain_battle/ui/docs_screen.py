@@ -46,9 +46,11 @@ from brain_battle.ui.fonts import register_fonts
 # on a very wide window), AND never wider than the live content width (so they
 # shrink to fit a narrow window rather than forcing a horizontal scrollbar).
 MAX_IMG_WIDTH = 720
-# Readable line length (DESIGN "~70-80 characters"): cap the content column
-# rather than stretching Markdown prose across a whole wide window.
-CONTENT_MAX_WIDTH = 760
+# The page uses the whole window width (owner, 2026-11-23: no big empty
+# margins). Prose keeps a comfortable line length through the card's padding,
+# which grows on a very wide window (``_ContentBrowser.resizeEvent``) only
+# beyond READ_MAX_TEXT_WIDTH — so there is never a blank strip beside the card.
+READ_MAX_TEXT_WIDTH = 1100
 # Comfortable reading body size + line height (DESIGN typography) — larger than
 # the app's dense-UI default so long-form prose reads easily.
 BODY_PX = 15
@@ -262,6 +264,9 @@ class _ContentBrowser(QTextBrowser):
 
     def resizeEvent(self, ev):
         super().resizeEvent(ev)
+        # Only on a very wide window: pad the text so a line stays readable.
+        extra = max(0, (self.viewport().width() - READ_MAX_TEXT_WIDTH) // 2)
+        self.document().setDocumentMargin(4 + extra)
         self._rescale_images()
 
 
@@ -513,8 +518,7 @@ class DocsScreen(QWidget):
         self._browser.setOpenLinks(False)
         self._browser.setOpenExternalLinks(False)
         self._browser.anchorClicked.connect(self._on_link_clicked)
-        self._browser.setMaximumWidth(CONTENT_MAX_WIDTH)
-        self._browser.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self._browser.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._browser.setStyleSheet(
             f"QTextBrowser {{ background: {dt.card_bg()}; border: 1px solid {dt.border()}; "
             f"border-radius: {dt.RADIUS_LG}px; padding: 18px 24px; "
@@ -523,10 +527,7 @@ class DocsScreen(QWidget):
             f"table {{ border-collapse: collapse; }} "
             f"td, th {{ border: 1px solid {dt.border_strong()}; padding: 6px 10px; }} "
             f"a {{ color: {dt.accent()}; }}")
-        # Stretch factor 1 with no competing item: the browser claims all
-        # available width up to its maximumWidth cap (so it still shrinks
-        # gracefully on a narrow window), and any surplus beyond the cap is
-        # simply left blank rather than stretching prose across the window.
+        # The browser claims all the width there is (no cap, no blank strip).
         content_row.addWidget(self._browser, 1)
         right_col.addLayout(content_row, 1)
         body.addLayout(right_col, 1)

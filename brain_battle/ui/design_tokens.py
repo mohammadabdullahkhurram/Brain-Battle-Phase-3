@@ -244,6 +244,35 @@ def css_text(size: int = SIZE_MD, weight: int = 400, color: str | None = None,
 
 # ═══════════════════════════════════════════════════════ STYLESHEETS
 
+def pin_light_palette(app) -> None:
+    """Light mode only, whatever the computer is set to. Without this a Mac (or
+    Windows PC) in dark mode hands Qt a dark palette, and any widget without
+    its own stylesheet (a text box, a scroll area's background, a list) turns
+    dark — dark text on a dark field. Called once from ``app.main()`` (and by
+    the screenshot tool)."""
+    from PyQt6.QtCore import Qt as _Qt
+    from PyQt6.QtGui import QPalette, QColor as _C
+    try:
+        app.styleHints().setColorScheme(_Qt.ColorScheme.Light)
+    except Exception:                                  # Qt < 6.8
+        pass
+    p = _p()
+    pal = QPalette()
+    R = QPalette.ColorRole
+    for role, col in ((R.Window, p.canvas), (R.WindowText, p.text_primary),
+                      (R.Base, p.surface), (R.AlternateBase, p.surface_subtle),
+                      (R.Text, p.text_primary), (R.Button, p.surface),
+                      (R.ButtonText, p.text_primary), (R.ToolTipBase, p.text_primary),
+                      (R.ToolTipText, "#FFFFFF"), (R.PlaceholderText, "#98A2B3"),
+                      (R.Highlight, p.accent_ghost), (R.HighlightedText, p.text_primary),
+                      (R.Link, p.accent), (R.BrightText, "#FFFFFF")):
+        pal.setColor(role, _C(col))
+    pal.setColor(QPalette.ColorGroup.Disabled, R.Text, _C(p.text_tertiary))
+    pal.setColor(QPalette.ColorGroup.Disabled, R.WindowText, _C(p.text_tertiary))
+    pal.setColor(QPalette.ColorGroup.Disabled, R.ButtonText, _C(p.text_tertiary))
+    app.setPalette(pal)
+
+
 def qss_app() -> str:
     p = _p()
     return f"""
@@ -263,6 +292,16 @@ def qss_app() -> str:
            background sets one in its own stylesheet, which overrides this. */
         QLabel {{ background: transparent; }}
         QDialog {{ background: {p.surface}; }}
+        /* Every text field is light: white field, dark text, normal border,
+           blue when focused — never the computer's dark-mode field. */
+        QLineEdit, QTextEdit, QPlainTextEdit {{
+            background: {p.surface}; color: {p.text_primary};
+            border: 1px solid {p.border_strong}; border-radius: {RADIUS_MD}px;
+            selection-background-color: {p.accent_ghost}; selection-color: {p.text_primary};
+        }}
+        QLineEdit {{ padding: 7px 10px; }}
+        QTextEdit, QPlainTextEdit {{ padding: 6px 8px; }}
+        QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{ border: 1px solid {p.accent}; }}
         QToolTip {{
             background-color: {p.text_primary};
             color: #FFFFFF;
@@ -406,7 +445,7 @@ def qss_chip(active: bool = False) -> str:
 def qss_input() -> str:
     p = _p()
     return f"""
-        QLineEdit, QSpinBox, QDoubleSpinBox {{
+        QLineEdit, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {{
             background: {p.surface};
             color: {p.text_primary};
             border: 1px solid {p.border_strong};
@@ -417,7 +456,8 @@ def qss_input() -> str:
             selection-background-color: {p.accent_ghost};
             selection-color: {p.text_primary};
         }}
-        QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
+        QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus,
+        QPlainTextEdit:focus {{
             border: 1px solid {p.accent};
         }}
         QLineEdit:disabled {{ background: {p.card_bg_hover}; color: {p.text_tertiary}; }}

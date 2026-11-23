@@ -23,7 +23,9 @@ each other. Use the same name on every computer.
 
 ## The screen
 
-- **Header** — **‹ Sessions** goes back. The title shows the two fighters
+- **Header** — **‹ Sessions** goes back (after you added labels it first
+  says "✓ Your labels are saved", with how many are new and how many marked
+  moments still have no note — **Keep labelling** or **Close**). The title shows the two fighters
   (`● K7Q2 vs ● M3XA`), the date and the length. **My labels / Compare**
   appears when someone else has labelled too. "✓ All labels saved" confirms
   everything is on disk — there is no Save button. **Export for analysis** (see

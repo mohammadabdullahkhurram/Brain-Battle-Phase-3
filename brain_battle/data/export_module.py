@@ -740,7 +740,10 @@ def _export_readme(root, labels, manifest=None, agreements=None):
     return "\n".join(lines)
 
 
-class ExportOptionsDialog(QDialog):
+from brain_battle.ui.widgets import AppDialog  # noqa: E402  (the app's dialog)
+
+
+class ExportOptionsDialog(AppDialog):
     """Export for analysis (DESIGN "Export"): what is always included, two
     video choices (the 4 camera videos; also one combined video), where to
     save. Runs the export with a progress bar and ends with "Show in Finder /
@@ -757,7 +760,7 @@ class ExportOptionsDialog(QDialog):
     )
 
     def __init__(self, session_root, labels=None, phase_markers=None, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, width=600)
         import brain_battle.ui.design_tokens as dt
         import brain_battle.data.fighters as fighters
         import brain_battle.data.session_storage as session_storage
@@ -769,14 +772,13 @@ class ExportOptionsDialog(QDialog):
         self._worker = None
         self.setWindowTitle("Export for analysis")
         self.setModal(True)
-        self.setMinimumWidth(560)
-        self.setStyleSheet(f"QDialog {{ background: {dt.surface()}; }}")
+        self.set_cancel_result(0)
 
         manifest = session_storage._read_manifest(session_root) or {}
         self._dir = os.path.dirname(os.path.abspath(session_root))
         self._dest = os.path.join(self._dir, default_export_name(session_root))
 
-        v = QVBoxLayout(self); v.setContentsMargins(28, 24, 28, 22); v.setSpacing(14)
+        v = self.body
         title = QLabel("Export for analysis")
         title.setStyleSheet(dt.css_text(dt.SIZE_XL, 700))
         v.addWidget(title)

@@ -85,8 +85,9 @@ demo session, about five minutes on its own; everything else is quick. The
 | `test_crash_recovery.py` | Interrupted detection + disk branches | moderate |
 | `test_history_log.py` | Append-only history log + hooks | moderate |
 | `test_light_theme.py` | Light-only guard (gate) | fast |
-| `test_layout_fit.py` | Nothing clipped at three sizes (gate) | moderate |
-| `test_record_flow.py` | The guided flow end to end (simulated) | moderate |
+| `test_dialogs.py` | No native alert / message box / colour dialog / system dropdown; the app's `AppDialog` and `Dropdown`; text fields, the custom note box and the history drawer light even when the computer is in dark mode (gate) | fast |
+| `test_layout_fit.py` | Nothing clipped at three sizes, including squeezed wrapped text, the Sessions rows (and with the history drawer open), the simulated camera text kept out of the label area, neutral Settings badges (gate) | moderate |
+| `test_record_flow.py` | The guided flow end to end (simulated), including the in-app questions (stop, leave, low disk) and choosing the camera / headband for each slot (swap, remembered) | moderate |
 | `test_app_settings.py` | Settings store + `BOXER_LABELS` removal | fast |
 | `test_settings_screen.py` | Real Settings screen, computed bitrate, end-to-end | moderate |
 | `test_contact_log.py` | Contact-log weak-period spans | fast |

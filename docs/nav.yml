@@ -181,6 +181,9 @@ sections:
       - id: adr-0025
         title: ADR-0025 Each camera in its own process
         file: decisions/adr-0025-each-camera-in-its-own-process.md
+      - id: adr-0026
+        title: ADR-0026 In-app dialogs and dropdowns
+        file: decisions/adr-0026-in-app-dialogs-and-dropdowns.md
 
   - title: Project
     pages:

@@ -30,8 +30,8 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRectF, QPointF
 from PyQt6.QtGui import QPainter, QColor, QFont, QPen
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, QFrame,
-    QSizePolicy, QLineEdit, QCheckBox, QDialog, QTextEdit, QTableWidget,
-    QTableWidgetItem, QHeaderView, QAbstractItemView, QMessageBox,
+    QSizePolicy, QLineEdit, QCheckBox, QTextEdit, QTableWidget,
+    QTableWidgetItem, QHeaderView, QAbstractItemView, QScrollArea,
 )
 
 import brain_battle.ui.design_tokens as dt
@@ -270,15 +270,8 @@ def poor_sensors(statuses: dict) -> list:
 def ask_start_anyway(parent, text: str) -> bool:
     """'Signal looks poor on K7Q2 right ear (TP10). Start anyway?' —
     Start anyway (True) / Go back (False). Tests replace this function."""
-    box = QMessageBox(parent)
-    box.setIcon(QMessageBox.Icon.Warning)
-    box.setWindowTitle("Signal looks poor")
-    box.setText(text)
-    go = box.addButton("Start anyway", QMessageBox.ButtonRole.AcceptRole)
-    back = box.addButton("Go back", QMessageBox.ButtonRole.RejectRole)
-    box.setDefaultButton(back)
-    box.exec()
-    return box.clickedButton() is go
+    return ui.ask(parent, "Signal looks poor", text, "Start anyway", "Go back",
+                  tone="warn", safe_first=True)
 
 
 def poor_text(statuses: dict) -> str:
@@ -410,7 +403,7 @@ class BoxerCard(QFrame):
         cv.addWidget(ui.muted(f"Boxer {which} code", size=dt.SIZE_SM))
         self.code = QLineEdit(); self.code.setMaxLength(4); self.code.setPlaceholderText("····")
         self.code.setAccessibleName(f"Boxer {which} code")
-        self.code.setFixedWidth(110); self.code.setMinimumHeight(40)
+        self.code.setFixedWidth(100); self.code.setMinimumHeight(40)
         self.code.textEdited.connect(self._on_code_edited)
         cv.addWidget(self.code)
         top.addLayout(cv)
@@ -431,10 +424,20 @@ class BoxerCard(QFrame):
         self.head = HeadIcon(56)
         mid.addWidget(self.head, 0, Qt.AlignmentFlag.AlignTop)
         mv = QVBoxLayout(); mv.setSpacing(6)
-        self.device_line = QLabel(""); self.device_line.setStyleSheet(
-            dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary(), f"font-family: {dt.FONT_MONO};"))
+        hb = QHBoxLayout(); hb.setSpacing(8)
+        hb.addWidget(ui.muted("Headband", size=dt.SIZE_SM))
+        self.band_choice = ui.Dropdown(compact=True)
+        self.band_choice.setAccessibleName(f"Headband for Boxer {which}")
+        self.band_choice.setToolTip(f"Which headband Boxer {which} wears")
+        self.band_choice.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.band_choice.activated.connect(self._band_chosen)
+        hb.addWidget(self.band_choice, 1)
+        mv.addLayout(hb)
+        self.device_line = QLabel("")        # "No headband found yet" when there is none
+        self.device_line.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary()))
+        self.device_line.setVisible(False)
         mv.addWidget(self.device_line)
-        self.signal = QLabel(""); self.signal.setWordWrap(True)
+        self.signal = ui.WrapLabel("")
         mv.addWidget(self.signal)
         self.adjusted = ui.secondary_button("I’ve adjusted it", compact=True)
         self.adjusted.clicked.connect(self._recheck)
@@ -516,11 +519,36 @@ class BoxerCard(QFrame):
         s = self.slot
         return s.contact()[1] if s.connected else {}
 
+    def _band_chosen(self, i):
+        name = self.band_choice.itemData(i)
+        if name:
+            self.flow.assign_headband(self.which, name)
+
+    def refresh_choices(self):
+        """The headband dropdown: every headband found (name + battery)."""
+        bands = self.flow.connected_headbands()
+        mine = self.slot.device_name
+        dd = self.band_choice
+        dd.blockSignals(True)
+        dd.clear()
+        for name, batt in bands:
+            dd.addItem(f"{name} · battery {batt}%" if batt is not None else name, name)
+        if mine and dd.findData(mine) < 0:
+            dd.addItem(mine, mine)
+        dd.setCurrentIndex(max(0, dd.findData(mine)) if mine else -1)
+        dd.setEnabled(dd.count() > 0 and not self.flow.is_recording())
+        dd.blockSignals(False)
+        self.device_line.setText("No headband found yet")
+        self.device_line.setVisible(dd.count() == 0)
+
     def refresh(self):
         s = self.slot
-        dev = (s.device or {}).get("name", "") if s.device else ""
-        batt = f" · battery {s.battery}%" if s.battery is not None else ""
-        self.device_line.setText(f"{dev}{batt}" if dev else "No headband found yet")
+        dd = self.band_choice
+        if s.device is not None and s.battery is not None:
+            i = dd.findData(s.device_name)
+            want = f"{s.device_name} · battery {s.battery}%"
+            if i >= 0 and dd.itemText(i) != want:
+                dd.setItemText(i, want)
         st = self.statuses()
         self.head.set_states(st)
         poor = poor_text(st)
@@ -556,13 +584,24 @@ class GetReadyScreen(QWidget):
         self.flow = flow
         root = QHBoxLayout(self); root.setContentsMargins(24, 18, 24, 24); root.setSpacing(22)
         # ── left: checklist ──
-        aside = ui.Card(radius=16); aside.setMinimumWidth(290); aside.setMaximumWidth(340)
+        aside = ui.Card(radius=16); aside.setMinimumWidth(270); aside.setMaximumWidth(340)
         av = QVBoxLayout(aside); av.setContentsMargins(22, 22, 22, 22); av.setSpacing(12)
         t = QLabel("Get ready"); t.setStyleSheet(dt.css_text(22, 700)); av.addWidget(t)
         av.addWidget(ui.muted("Work down the list. Start unlocks when everything is green."))
         self._checks_box = QVBoxLayout(); self._checks_box.setSpacing(6)
-        av.addLayout(self._checks_box)
-        av.addStretch()
+        self._checks_box.setContentsMargins(0, 0, 0, 0)
+        checks_host = QWidget(); checks_host.setObjectName("readyChecks")
+        checks_host.setStyleSheet("#readyChecks { background: transparent; }")
+        ch_v = QVBoxLayout(checks_host); ch_v.setContentsMargins(0, 0, 0, 0)
+        ch_v.addLayout(self._checks_box); ch_v.addStretch()
+        checks_scroll = QScrollArea(); checks_scroll.setWidgetResizable(True)
+        checks_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        checks_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        checks_scroll.setObjectName("readyChecksScroll")
+        checks_scroll.setStyleSheet("#readyChecksScroll { background: transparent; }")
+        checks_scroll.viewport().setAutoFillBackground(False)
+        checks_scroll.setWidget(checks_host)
+        av.addWidget(checks_scroll, 1)       # the list scrolls; Start stays at the bottom
         self.timing_btn = ui.secondary_button("⏱  Test timing")
         self.timing_btn.clicked.connect(flow.open_timing_dialog)
         av.addWidget(self.timing_btn)
@@ -588,11 +627,21 @@ class GetReadyScreen(QWidget):
         cv.addLayout(ch)
         grid = QHBoxLayout(); grid.setSpacing(8)
         self.tiles = [CameraTile(s) for s in flow._cams]
+        self.cam_choice = {}                 # slot index → its camera dropdown
         for tile in self.tiles:
-            grid.addWidget(tile)
+            col = QVBoxLayout(); col.setSpacing(6)
+            dd = ui.Dropdown(compact=True)
+            dd.setAccessibleName(f"Camera for {tile.slot.title}")
+            dd.setToolTip(f"Which camera is {tile.slot.title}")
+            dd.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            dd.activated.connect(lambda _i, idx=tile.slot.index: self._camera_chosen(idx))
+            self.cam_choice[tile.slot.index] = dd
+            col.addWidget(dd)
+            col.addWidget(tile)
+            grid.addLayout(col, 1)
         cv.addLayout(grid)
         right.addWidget(cams)
-        boxers = QHBoxLayout(); boxers.setSpacing(14)
+        boxers = QHBoxLayout(); boxers.setSpacing(10)
         self._cards = {w: BoxerCard(flow, w) for w in ("A", "B")}
         for c in self._cards.values():
             c.changed.connect(self._recompute)
@@ -627,10 +676,49 @@ class GetReadyScreen(QWidget):
         pl2.addWidget(self.total_line, 1)
         right.addWidget(plan)
         right.addStretch()
-        root.addLayout(right, 3)
+        # The right column scrolls on a small window, so nothing in it (the
+        # poor-signal help, the EEG) is ever squeezed or cut off.
+        right_host = QWidget(); right_host.setObjectName("readyRight")
+        right_host.setStyleSheet("#readyRight { background: transparent; }")
+        right.setContentsMargins(0, 0, 0, 0)
+        right_host.setLayout(right)
+        self._right_scroll = QScrollArea(); self._right_scroll.setWidgetResizable(True)
+        self._right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._right_scroll.setObjectName("readyScroll")
+        self._right_scroll.setStyleSheet("#readyScroll { background: transparent; }")
+        self._right_scroll.viewport().setAutoFillBackground(False)
+        self._right_scroll.setWidget(right_host)
+        root.addWidget(self._right_scroll, 3)
         self._disk = ui.StatusLine("", "idle")       # the space line's state (tests)
         self._disk.setVisible(False)
         self._checks = []
+
+    # ── devices ──
+    def refresh_device_choices(self):
+        """Fill every camera and headband dropdown from what is connected."""
+        devs = self.flow.connected_cameras()
+        recording = self.flow.is_recording()
+        for slot in self.flow._cams:
+            dd = self.cam_choice[slot.index]
+            dd.blockSignals(True)
+            dd.clear()
+            for d in devs:
+                dd.addItem(d.name, d.name)
+            cur = slot.device.name if slot.device is not None else None
+            dd.setCurrentIndex(dd.findData(cur) if cur else -1)
+            if cur is None:
+                dd.setPlaceholderText("No camera")
+            dd.setEnabled(bool(devs) and not recording)
+            dd.blockSignals(False)
+        for c in self._cards.values():
+            c.refresh_choices()
+
+    def _camera_chosen(self, slot_index):
+        dd = self.cam_choice[slot_index]
+        name = dd.currentData()
+        if name:
+            self.flow.assign_camera(slot_index, name)
 
     # ── values ──
     def card(self, which) -> BoxerCard:
@@ -813,7 +901,7 @@ class LiveBoxerCard(QFrame):
         self._badge = QHBoxLayout(); h.addLayout(self._badge)
         tv = QVBoxLayout(); tv.setSpacing(0)
         self.name = QLabel(""); self.name.setTextFormat(Qt.TextFormat.RichText)
-        self.signal = QLabel(""); self.signal.setWordWrap(True)
+        self.signal = ui.WrapLabel("")
         tv.addWidget(self.name); tv.addWidget(self.signal)
         h.addLayout(tv, 1)
         self.battery = ui.muted("", size=dt.SIZE_SM); h.addWidget(self.battery)
@@ -1106,18 +1194,18 @@ class SavedScreen(QWidget):
 
 # ── dialogs ──────────────────────────────────────────────────────────────────
 
-class MomentDialog(QDialog):
-    """⚑ Moment marked at m:ss — the note can wait; recording never pauses."""
+class MomentDialog(ui.AppDialog):
+    """⚑ Moment marked at m:ss — the note can wait; recording never pauses.
+    The app's dialog on a light cover, so the recording stays visible."""
     saved = pyqtSignal(int, str)        # moment index, note
     later = pyqtSignal(int)
 
     def __init__(self, index: int, t_session: float, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, width=540, dim=False)
         self.index = index
         self.setWindowTitle("Moment marked")
         self.setModal(False)
-        self.setMinimumWidth(460)
-        v = QVBoxLayout(self); v.setContentsMargins(24, 22, 24, 20); v.setSpacing(12)
+        v = self.body
         top = QHBoxLayout()
         t = QLabel(f"⚑ Moment marked at {mmss(t_session)}"); t.setStyleSheet(dt.css_text(20, 700))
         top.addWidget(t); top.addStretch()
@@ -1129,7 +1217,7 @@ class MomentDialog(QDialog):
         v.addWidget(lab)
         self.note = QTextEdit(); self.note.setPlaceholderText("e.g. B dropped the guard after a combination")
         self.note.setAcceptRichText(False); self.note.setFixedHeight(90)
-        self.note.setStyleSheet(dt.qss_input().replace("QLineEdit", "QTextEdit"))
+        self.note.setStyleSheet(dt.qss_input())
         self.note.textChanged.connect(self._update)
         self.note.installEventFilter(self)
         v.addWidget(self.note)
@@ -1187,18 +1275,19 @@ class MomentDialog(QDialog):
         super().closeEvent(e)
 
 
-class TimingDialog(QDialog):
+class TimingDialog(ui.AppDialog):
     """⏱ Timing check: live numbers for every device; the buzzer test."""
     COLUMNS = ["Device", "Rate", "Delay (raw)", "Jitter", "Dropped", "After correction"]
 
     def __init__(self, flow, recording: bool, parent=None):
-        super().__init__(parent)
+        super().__init__(parent, width=820, dim=not recording)
         self.flow = flow
         self.recording = recording
         self.setWindowTitle("Timing check")
         self.setModal(not recording)
-        self.setMinimumWidth(780)
-        v = QVBoxLayout(self); v.setContentsMargins(24, 22, 24, 20); v.setSpacing(12)
+        self.card.setMinimumWidth(680)
+        self.set_cancel_result(1)
+        v = self.body
         top = QHBoxLayout()
         t = QLabel("⏱ Timing check"); t.setStyleSheet(dt.css_text(20, 700)); top.addWidget(t)
         top.addStretch()

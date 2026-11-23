@@ -44,7 +44,7 @@ from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QFont, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QFrame, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QGridLayout,
     QScrollArea, QSizePolicy, QToolTip, QApplication,
-    QDialog, QComboBox, QStackedWidget, QLineEdit, QTextEdit,
+    QDialog, QStackedWidget, QLineEdit, QTextEdit,
 )
 
 import brain_battle.ui.design_tokens as dt
@@ -234,14 +234,10 @@ class VideoGrid(QWidget):
 # ── brain activity: a standard EEG viewer per boxer ─────────────────────────────
 
 def _small_combo(items, current, tip):
-    c = QComboBox()
-    for text, value in items:
-        c.addItem(text, value)
+    c = ui.Dropdown(items, compact=True)
     c.setCurrentIndex(max(0, c.findData(current)))
     c.setToolTip(tip)
     c.setFixedHeight(28)
-    c.setCursor(Qt.CursorShape.PointingHandCursor)
-    c.setStyleSheet(dt.qss_combo(compact=True))
     return c
 
 
@@ -841,8 +837,7 @@ class ReviewLabelScreen(QWidget):
         self._agree_sub = ui.muted("", size=dt.SIZE_XS)
         tv.addWidget(self._agree_text); tv.addWidget(self._agree_sub)
         h.addLayout(tv, 1)
-        self._compare_combo = QComboBox(); self._compare_combo.setFixedHeight(32)
-        self._compare_combo.setStyleSheet(dt.qss_combo(compact=True))
+        self._compare_combo = ui.Dropdown(compact=True); self._compare_combo.setFixedHeight(32)
         self._compare_combo.setToolTip("Whose labels to show beside yours")
         self._compare_combo.currentIndexChanged.connect(self._on_compare_changed)
         h.addWidget(self._compare_combo)
@@ -1031,6 +1026,7 @@ class ReviewLabelScreen(QWidget):
         self._note_text.setPlaceholderText("e.g. A keeps pressing forward, B backs onto the ropes "
                                            "and covers up")
         self._note_text.setFixedHeight(110)
+        self._note_text.setStyleSheet(dt.qss_input())
         self._note_text.textChanged.connect(
             lambda: self._note_save.setEnabled(bool(self._note_text.toPlainText().strip())))
         tv.addWidget(self._note_text)
@@ -1054,6 +1050,7 @@ class ReviewLabelScreen(QWidget):
         self._moment_note = QTextEdit(); self._moment_note.setAcceptRichText(False)
         self._moment_note.setPlaceholderText("What did you see at this moment?")
         self._moment_note.setFixedHeight(90)
+        self._moment_note.setStyleSheet(dt.qss_input())
         self._moment_note.textChanged.connect(self._on_moment_note_edited)
         mv.addWidget(self._moment_note)
         mv.addWidget(ui.muted("You can also pick a label below to put a label at this exact moment.",
@@ -1249,10 +1246,21 @@ class ReviewLabelScreen(QWidget):
         self._moments_warn.setVisible(bool(n) and not self._sel_strip.isVisible())
 
     def _leave(self):
-        """‹ Sessions: everything is already saved; say so if labels were added."""
+        """‹ Sessions: everything is already saved; say so if labels were added
+        (prototype: "✓ Your labels are saved" · Keep labelling / Close)."""
         if self._unsaved and self._root:
             self._save_now()
         self._save_moment_note()
+        n = getattr(self, "_added_this_visit", 0)
+        if n and self._root:
+            no_note = sum(1 for m in self._all_moments if not m.get("note"))
+            text = (f"Every label is saved the moment you add it — {n} new this time."
+                    + (f" {no_note} marked moment{'s' if no_note != 1 else ''} still "
+                       f"{'have' if no_note != 1 else 'has'} no note; you can add "
+                       f"{'them' if no_note != 1 else 'it'} next time." if no_note else ""))
+            if not ui.ask(self, "✓ Your labels are saved", text, "Close", "Keep labelling"):
+                return
+            self._added_this_visit = 0
         self.back_to_sessions.emit()
 
     def resizeEvent(self, e):
@@ -1310,6 +1318,7 @@ class ReviewLabelScreen(QWidget):
     def load_session_folder(self, root: str):
         self.shutdown()
         self._root = root
+        self._added_this_visit = 0
         self._loaded = False
         self._labeller = app_settings.labeller_name() or self._labeller
         self._refresh_identity()
@@ -1674,6 +1683,8 @@ class ReviewLabelScreen(QWidget):
     def _autosave_and_history(self, added=None, removed=None):
         if not self._root or not self._labeller:
             return
+        if added is not None:
+            self._added_this_visit = getattr(self, "_added_this_visit", 0) + 1
         saved = self._save_now()
         try:
             for event, lab in ((session_history.EVENT_LABELS_ADDED, added),

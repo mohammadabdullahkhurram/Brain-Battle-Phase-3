@@ -49,6 +49,7 @@ file is missing from this index or from `nav.yml`.
 | [ADR-0023](adr-0023-fighter-codes-and-colours.md) | Fighters are codes and colours, never names | 2026-11-17 | Accepted |
 | [ADR-0024](adr-0024-timing-check-and-buzzer-calibration.md) | Timing goal under 10 ms: live timing check and buzzer calibration | 2026-11-17 | Accepted |
 | [ADR-0025](adr-0025-each-camera-in-its-own-process.md) | Each camera captures in a process of its own | 2026-11-19 | Accepted |
+| [ADR-0026](adr-0026-in-app-dialogs-and-dropdowns.md) | One in-app dialog and one dropdown, no native ones | 2026-11-23 | Accepted |
 
 The sources behind these decisions are the planning documents
 ([DESIGN.md, ROADMAP.md, playback-proposal.md, architecture-and-evaluation.md,

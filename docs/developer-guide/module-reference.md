@@ -113,7 +113,10 @@ recording (codes + colours in the manifest, the plan and bell remembered in
 Moment popup; `set_moment_note`), runs the buzzer test (`run_buzzer_test`) and
 the Test timing dialog (`open_timing_dialog`), writes `contact_quality.csv` and
 `timing_quality.csv` once a second (`_log_contact` / `_log_timing`, stalls and
-reconnections into the history), swaps the headbands, prevents sleep, stops
+reconnections into the history), lets Get ready choose the devices
+(`connected_cameras` / `assign_camera`, `connected_headbands` /
+`assign_headband`: a device in two places swaps; remembered in `app_settings`
+`camera_slots` / `headbands`), swaps the headbands, prevents sleep, stops
 cleanly early, refuses a missing or read-only folder, owns the
 `lsl_outlets.LslPublisher` (off by default), and builds `recording.xdf` on a
 background thread once every camera file is closed (`wait_for_xdf`). Every
@@ -188,7 +191,8 @@ ready instead. **Calls:** `app_settings`, `label_vocab`, `fighters`,
 The in-app Documentation screen. Renders the Markdown under `docs/` at runtime
 using Qt's `QTextDocument.setMarkdown` via `QTextBrowser` — **no QtWebEngine**.
 `DocsScreen` provides the nav tree, always-visible search with highlighting, and
-back/forward. `_ContentBrowser` scales images to the reading column;
+back/forward. The page fills the window width (text gets side padding only past
+`READ_MAX_TEXT_WIDTH`). `_ContentBrowser` scales images to the reading column;
 `_apply_typography`/`_style_code_runs` tune the reading experience in code (Qt's
 Markdown importer ignores most stylesheets). `MAX_IMG_WIDTH = 720` is the
 display width diagrams are sized against. **Calls:** `docs_nav`, `design_tokens`.
@@ -565,8 +569,10 @@ settings, don't hardcode.
 ### `design_tokens.py`
 The **light-only** design system (DESIGN tokens) + QSS factories (`qss_*`), the
 palette accessors, boxer/phase colours, the icon set, and font helpers
-(`number_font` gives equal-width digits for timers). There is no
-dark palette and no theme switching ([ADR-0007](../decisions/adr-0007-light-only-design.md),
+(`number_font` gives equal-width digits for timers), and
+`pin_light_palette(app)`, which hands Qt a light palette so a computer in dark
+mode never turns an unstyled field dark. The app stylesheet makes every text
+field white with dark text. There is no dark palette and no theme switching ([ADR-0007](../decisions/adr-0007-light-only-design.md),
 guarded by `tests/test_light_theme.py`). **Called by:** every UI module.
 
 ### `widgets.py`
@@ -576,10 +582,18 @@ a button or a status line looks the same everywhere: text helpers (`title`,
 (`primary_button`, `secondary_button`, `ghost_button`, `danger_button`,
 `icon_button`, `help_button`), `Segmented`, `StatusLine` (icon + text; each
 state has its own icon shape), `pill`, `boxer_badge` / `boxer_chip`,
-`TimerLabel` (hand-painted, equal-width digits), `Dot`, `clear_layout`.
+`TimerLabel` (hand-painted, equal-width digits), `Dot`, `clear_layout`,
+`WrapLabel` (a wrapped label that is never squeezed shorter than its text),
+`neutral_badge`, and the two components every screen must use instead of Qt's
+native ones: **`AppDialog` / `ask` / `tell`** — the one in-app dialog (white
+rounded card on a dimmed cover, buttons right, `warn` / `danger` variants;
+frameless, never a native alert) — and **`Dropdown`** — the one app-styled
+dropdown. In tests, `widgets.dialog_responder = fn` answers dialogs without
+showing them and `answered_dialogs` lists what was asked.
 **Called by:** every screen. **Gotcha:** `Card` gives itself a unique object
 name and scopes its stylesheet to it, so its background never leaks into child
-widgets.
+widgets. `tests/test_dialogs.py` fails on any `QMessageBox` / `QColorDialog` /
+bare `QComboBox` in the app.
 
 ### `camera_worker.py`
 `brain_battle/capture/camera_worker.py` — one camera's capture loop,

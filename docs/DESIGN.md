@@ -90,6 +90,23 @@ colour), the fighter name (colour dot + code in bold mono), cards, banners,
 status lines, the head icon with four sensor dots, segmented controls, the flow
 layout for chips.
 
+- **The dialog** (`AppDialog`, `ask`, `tell`): a white card with 20 px corners
+  on a dimmed cover over the window (a light cover on Recording, so the
+  recording stays visible); a title, the text, buttons on the right. Variants:
+  **warn** (orange border — "Stop the recording now?", "Signal looks poor",
+  "Low disk space") and **danger** (red border and title — "A recording is
+  still running", removing a shared label, a folder or disk problem). Anything
+  that stops a recording makes the safe answer ("Keep recording", "Go back")
+  the blue button. **No native macOS / Windows alert or message box is used
+  anywhere**; the only system windows are the folder / file pickers.
+- **The dropdown** (`Dropdown`): white, rounded, Inter, a blue border when
+  focused or open, its own chevron and a light list — never the system's
+  dropdown. Used for the camera and headband choices, Compare and the EEG
+  options.
+- **Text fields** are always white with dark text and a normal border, blue
+  when focused, whatever the computer's own light/dark setting
+  (`design_tokens.pin_light_palette`).
+
 ## App structure
 
 A white **top header**: the logo (back to Sessions) · **Sessions** · (space) ·
@@ -118,8 +135,10 @@ system); **Continue**; "You only see this once on this computer."
   labels, 1 moment without a note"); the status chip; ⟲ (history drawer); the
   right button — **Start labelling**, **Continue labelling**, **Add my labels**
   or **Open**. A recording whose moments still lack a note is *Needs labels*.
-- History drawer: the fighters, who labelled (with counts), and every event,
-  newest first.
+- History drawer: slides over the page from the right on a dimmed cover (it
+  never squeezes the rows): a white panel with the fighters, who labelled (with
+  counts), and every event, newest first — a coloured dot, **who** and what, and
+  the date under it.
 - Footer: "Saved in Lab Server › Brain Battle Data · 73.9 GB free · fighters
   are stored only as codes".
 - Banners: the interrupted-recording notice (Open it · Dismiss); the folder
@@ -137,11 +156,18 @@ Header: ✕ Cancel · **New recording** · 1 Get ready · 2 Record · 3 Saved.
   *Good signal* and *Timing checked* advise but never block (the signal is our
   heuristic).
 - **Cameras:** the four live pictures ("60 fps", or a dashed "Not found"),
-  "4 of 4 connected", Search again.
+  "4 of 4 connected", Search again. Above each picture (Side camera 1, Side
+  camera 2, Boxer A view, Boxer B view) a **dropdown of the connected cameras**:
+  picking one moves that camera's picture into the slot; a camera can be in one
+  slot only, so picking one that is in another slot swaps the two. Remembered
+  for next time.
 - **Boxer A / Boxer B cards:** the badge in the chosen colour; **Boxer A code**
   (4 characters, typed in capitals; a wrong code is outlined red with "Use
   exactly 4 capital letters or digits, like K7Q2."); **New code**; colour
-  swatches; the head with four sensor dots; "MuseS-7538 · battery 81%"; "✓
+  swatches; the head with four sensor dots; **Headband** — a dropdown of the
+  connected headbands ("MuseS-7538 · battery 81%"); one headband can't be on
+  both boxers, so picking the other boxer's swaps them (remembered, and kept as
+  the default in Settings); "✓
   Signal looks good on all 4 sensors" or "The right-ear signal (TP10) looks
   poor. Often the band isn't flat behind the ear or hair is in the way. Adjust
   it, then press the button." + **I've adjusted it**; the live EEG (5 s).
@@ -212,7 +238,11 @@ analysis**.
   `ROUND_2_START · 05:15.00`) · A · K7Q2 · B · M3XA · Both · Notes · Moments.
 - Asked once: "Who is labelling?"
 
-### 6. Export for analysis (a window)
+- Leaving with ‹ Sessions after adding labels: "✓ Your labels are saved —
+  Every label is saved the moment you add it — 4 new this time." (and how many
+  marked moments still have no note) · Keep labelling / Close.
+
+### 6. Export for analysis (the app's dialog)
 
 The zip name; **Always included:** recording.xdf; the same data as separate
 CSV files; the timing report (timing_quality.csv); agreement, details, history.
@@ -231,13 +261,15 @@ are stored, so there is nothing to hide." Save to … Change. Cancel / Export.
 - **Advanced** (folded): Record head movement (on) · Record pulse (off) ·
   Record cameras at 60 fps (on) · Send live signals to other programs (LSL)
   (off — "The app shows everything live without it."); which headband each
-  boxer wears; video quality.
+  boxer wears by default (neutral grey A / B badges); video quality, whose
+  sizes per hour follow the 60 fps switch ("… at 60 fps" / "… at 30 fps").
 
 ### 8. Documentation
 
 Search in the screen; the full documentation (getting started, user guide,
 research & data, developer guide, decisions, project), technical where it needs
-to be.
+to be. The page uses the whole window width — no empty margins beside it; only
+on a very wide window does the text get side padding, to keep lines readable.
 
 ## Behaviour that is part of the design
 

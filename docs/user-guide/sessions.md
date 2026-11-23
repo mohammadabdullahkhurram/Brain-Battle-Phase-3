@@ -42,7 +42,8 @@ recordings folder, and the place the app opens on.
 
 ## The history drawer
 
-**⟲** opens a panel on the right: the two fighters, each labeller with how many
+**⟲** slides a panel in from the right (click outside it or **×** to close):
+the two fighters, each labeller with how many
 labels they placed, and every event — recorded, moments marked, labels added and
 removed, notes written, exported, a camera that was reconnected — newest first.
 It is saved with the recording, so everyone sees the same history.

@@ -123,6 +123,10 @@ class AppSettings:
     # Who is labelling on this computer ("Your name", asked once). Each
     # labeller's labels are stored in their own file in the recording folder.
     labeller_name:    str = ""
+    # Which camera goes in which slot on Get ready, by device name
+    # ({"1": "FaceTime HD Camera", …}); picked with the slot dropdowns and
+    # remembered for the next recording.
+    camera_slots:     dict = field(default_factory=dict)
 
     # ---- derived accessors ----
     def capture_dir_resolved(self) -> str:
@@ -230,6 +234,9 @@ def load(path: Optional[str] = None) -> AppSettings:
             setattr(s, key, data[key])
     if isinstance(data.get("labeller_name"), str):
         s.labeller_name = data["labeller_name"].strip()[:60]
+    cs = data.get("camera_slots")
+    if isinstance(cs, dict):
+        s.camera_slots = {str(k): v for k, v in cs.items() if isinstance(v, str) and v}
     return s
 
 

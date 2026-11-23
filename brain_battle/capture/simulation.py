@@ -255,7 +255,7 @@ class SimCapture:
         self._open = True
         self._t0 = clock.monotonic()
         self._n = 0
-        self._label = f"SIM CAM {self._index}"
+        self._label = f"SIM {self._stem or self._index}"
         self._delay = delay_ms(self._stem) / 1000.0 if self._stem else 0.0
         self._jit = jitter_ms("CAM") / 1000.0
         self._rng = random.Random(self._index)
@@ -271,8 +271,6 @@ class SimCapture:
     def _make_bg(self):
         import cv2
         self._bg = np.full((self._h, self._w, 3), 22, dtype=np.uint8)
-        cv2.putText(self._bg, self._label, (28, 70), cv2.FONT_HERSHEY_SIMPLEX,
-                    1.1, (235, 235, 235), 2, cv2.LINE_AA)
 
     def isOpened(self):  # noqa: N802
         return self._open
@@ -362,8 +360,13 @@ class SimCapture:
         pos = (n * 6) % (2 * span)
         bar_x = int(pos if pos < span else 2 * span - pos)     # bounces, never jumps
         img[:, bar_x:bar_x + 40] = (60, 70, 160)
-        cv2.putText(img, f"{t:6.2f}s  f{n}", (28, 130), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.9, (180, 190, 210), 2, cv2.LINE_AA)
+        # Small, in the TOP-RIGHT corner: the app draws the camera's name at top
+        # left, its state at bottom left and the timecode at bottom right.
+        text = f"{self._label}  {t:.2f}s f{n}"
+        scale = max(0.45, self._h / 1080 * 0.9)
+        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)
+        cv2.putText(img, text, (max(4, self._w - tw - int(self._w * 0.03)), int(self._h * 0.05) + th),
+                    cv2.FONT_HERSHEY_SIMPLEX, scale, (170, 180, 200), 1, cv2.LINE_AA)
         return img
 
     def _render_neutral(self, n, out=None):

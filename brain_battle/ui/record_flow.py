@@ -40,8 +40,7 @@ from typing import Optional
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRectF, QSize
 from PyQt6.QtGui import QPainter, QColor, QFont, QPen, QIcon
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QMessageBox, QStackedWidget, QDialog, QListWidget,
-    QListWidgetItem, QDialogButtonBox, QLabel,
+    QWidget, QVBoxLayout, QStackedWidget, QLabel,
 )
 
 import logging
@@ -98,6 +97,16 @@ def _join_words(items) -> str:
     return ", ".join(items[:-1]) + " and " + items[-1]
 
 
+def ask_leave_recording(parent) -> bool:
+    """Quit / leave while recording (prototype: "A recording is still running",
+    danger). True = stop and leave."""
+    return ui.ask(parent, "A recording is still running",
+                  "If you leave now, the recording stops. Everything recorded up to now is "
+                  "kept, and the session is marked as interrupted.",
+                  "Stop and leave", "Keep recording", tone="danger", safe_first=True,
+                  danger=True)
+
+
 def _plural(n: int, word: str) -> str:
     return f"{n} {word}{'' if n == 1 else 's'}"
 
@@ -124,6 +133,8 @@ class RecordFlow(QWidget):
         self._settings = app_settings.load()
         self._cams = camera_source.make_slots(self)
         self._bands = {"A": HeadbandSlot("A", self), "B": HeadbandSlot("B", self)}
+        self._camera_devices: list = []      # every camera the last search found
+        self._found_bands: dict = {}         # every headband found: name → device
         self._controller = SessionController(self)
         self._beep = RoundBell(self)
         self._keep_awake = KeepAwake()
@@ -242,13 +253,13 @@ class RecordFlow(QWidget):
 
     # ── device scanning / assignment ──
     def _scan_and_assign(self):
-        from PyQt6.QtCore import QSettings
         devs = list_cameras()
-        remembered = QSettings("Constructor University", "Brain Battle")
+        self._camera_devices = list(devs)
+        remembered = self._settings.camera_slots
         used = set()
         # honour remembered slot→device-name assignments across launches
         for slot in self._cams:
-            want = remembered.value(f"cameras/slot{slot.index}")
+            want = remembered.get(str(slot.index))
             match = next((d for d in devs if d.name == want and d.index not in used), None)
             if match:
                 slot.assign(match); used.add(match.index)
@@ -261,14 +272,16 @@ class RecordFlow(QWidget):
         for slot in self._cams:
             if slot.device is not None:
                 slot.start()
-                remembered.setValue(f"cameras/slot{slot.index}", slot.device.name)
+        self._remember_cameras()
         self._scan_headbands()
+        self._get_ready.refresh_device_choices()
 
     def _scan_headbands(self):
         try:
             import brain_battle.capture.simulation as simulation
             if simulation.enabled():
                 for d in simulation.muse_devices():
+                    self._found_bands[d["name"]] = d
                     who = d.get("boxer", "")
                     if who in self._bands:
                         self._bands[who].assign({"name": d["name"], "address": d["address"]})
@@ -287,27 +300,89 @@ class RecordFlow(QWidget):
     def _on_headbands_found(self, devices):
         want = {self._settings.headband_for("A"): "A", self._settings.headband_for("B"): "B"}
         for d in devices:
+            if d.get("name"):
+                self._found_bands[d["name"]] = d
             who = want.get(d.get("name"))
             if who and not self._bands[who].connected:
                 self._bands[who].assign({"name": d["name"], "address": d["address"]})
                 self._bands[who].start()
+        self._get_ready.refresh_device_choices()
 
     def search_again(self):
         self._stop_devices()
         self._scan_and_assign()
 
-    def open_camera_picker(self, slot_index):
-        claimed = {s.device.index for s in self._cams if s.device is not None
-                   and s.index != slot_index}
-        dlg = _CameraPicker(claimed, self)
-        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.chosen is not None:
-            slot = next(s for s in self._cams if s.index == slot_index)
-            slot.shutdown()
-            slot.assign(dlg.chosen)
-            slot.start()
-            from PyQt6.QtCore import QSettings
-            QSettings("Constructor University", "Brain Battle").setValue(
-                f"cameras/slot{slot_index}", dlg.chosen.name)
+    # ── choosing devices on Get ready (the slot dropdowns) ──
+    def connected_cameras(self) -> list:
+        """Every camera found by the last search (CameraDevice records)."""
+        return list(self._camera_devices)
+
+    def assign_camera(self, slot_index: int, device_name: str) -> None:
+        """Put the camera called ``device_name`` in slot ``slot_index``. A camera
+        can be in one slot only: if another slot has it, the two slots swap.
+        Remembered for next time."""
+        if self.is_recording():
+            return
+        dev = next((d for d in self._camera_devices if d.name == device_name), None)
+        slot = next((c for c in self._cams if c.index == slot_index), None)
+        if dev is None or slot is None or (slot.device is not None and slot.device.name == device_name):
+            return
+        other = next((c for c in self._cams if c is not slot and c.device is not None
+                      and c.device.name == device_name), None)
+        changed = [slot] + ([other] if other is not None else [])
+        for c in changed:
+            c.shutdown()
+        if other is not None:
+            other.assign(slot.device)
+        slot.assign(dev)
+        for c in changed:
+            if c.device is not None:
+                c.start()
+        self._remember_cameras()
+        self._get_ready.refresh_device_choices()
+
+    def _remember_cameras(self) -> None:
+        """Which camera is in which slot, saved for the next recording."""
+        slots = {str(c.index): c.device.name for c in self._cams if c.device is not None}
+        if slots != self._settings.camera_slots:
+            self._settings.camera_slots = slots
+            try:
+                self._settings.save()
+            except OSError as e:
+                log.warning("could not remember the cameras: %r", e)
+
+    def connected_headbands(self) -> list:
+        """``[(name, battery % or None), …]`` for every headband found."""
+        out = []
+        for name in self._found_bands:
+            batt = next((b.battery for b in self._bands.values()
+                         if b.device is not None and b.device.get("name") == name), None)
+            out.append((name, batt))
+        return out
+
+    def assign_headband(self, which: str, name: str) -> None:
+        """Boxer ``which`` wears the headband ``name``. One headband can't be on
+        both boxers: if the other boxer has it, they swap. Remembered (Settings
+        keeps it as the default)."""
+        if self.is_recording() or which not in self._bands:
+            return
+        other = "B" if which == "A" else "A"
+        if self._bands[which].device_name == name:
+            return
+        if self._bands[other].device_name == name:
+            self.swap_headbands()
+            self._get_ready.refresh_device_choices()
+            return
+        dev = self._found_bands.get(name)
+        if dev is None:
+            return
+        self._settings.headbands[which] = name
+        self._settings.save()
+        band = self._bands[which]
+        band.shutdown()
+        band.assign({"name": dev["name"], "address": dev["address"]})
+        band.start()
+        self._get_ready.refresh_device_choices()
 
     def reconnect_band(self, which):
         b = self._bands.get(which)
@@ -338,24 +413,24 @@ class RecordFlow(QWidget):
         self._bell = self._setup_step.bell()
         err = self._cfg.validate()
         if err:
-            QMessageBox.warning(self, "Invalid session", err); return
+            ui.tell(self, "This session plan can’t be used", err); return
 
         rec_ok, _enc, rec_msg = preflight_recording()
         if not rec_ok:
-            QMessageBox.critical(self, "Can't record video", rec_msg); return
+            ui.tell(self, "Can’t record video", rec_msg, tone="danger"); return
 
         base = self._settings.capture_dir_resolved()
         state = safe_io.folder_status(base, create=True)
         if state != safe_io.FOLDER_OK:
-            QMessageBox.critical(self, "The recordings folder can't be used",
-                                 safe_io.folder_problem_text(base, state)); return
+            ui.tell(self, "The recordings folder can't be used",
+                    safe_io.folder_problem_text(base, state), tone="danger"); return
         if not self._disk_guard(base):
             return
 
         import brain_battle.data.fighters as fighters
         problem = fighters.codes_problem(a, b) or fighters.colours_problem(*self._setup_step.colours())
         if problem:
-            QMessageBox.warning(self, "Fighter codes and colours", problem + "."); return
+            ui.tell(self, "Fighter codes and colours", problem + "."); return
         colours = fighters.load_colours(base)
         ca, cb = self._setup_step.colours()
         boxer_a = fighters.boxer_entry(a, ca, fighters.colour_hex(ca, colours),
@@ -376,10 +451,10 @@ class RecordFlow(QWidget):
             self._layout = create_session(base, self._cfg, boxer_a=boxer_a, boxer_b=boxer_b)
             attach_session_log(self._layout.root)
         except Exception as e:
-            QMessageBox.critical(
-                self, "The recording could not be started",
-                f"The folder for this recording could not be made in {base} ({e}). Check that "
-                f"the drive is connected and that you are allowed to save there."); return
+            ui.tell(self, "The recording could not be started",
+                    f"The folder for this recording could not be made in {base} ({e}). Check "
+                    f"that the drive is connected and that you are allowed to save there.",
+                    tone="danger"); return
 
         # round bell: the start AND the end of every round (SessionController)
         try:
@@ -409,18 +484,16 @@ class RecordFlow(QWidget):
         est = estimate_session_bytes(self._cfg, cams, n_eeg, vbps)
         verdict = disk_space_verdict(self._cfg, cams, n_eeg, free, vbps)
         if verdict == "blocked":
-            QMessageBox.critical(self, "Not enough disk space",
-                                 f"This recording needs about {human_bytes(est)}, but only "
-                                 f"{human_bytes(free)} is free. Free up space or shorten the "
-                                 f"session, then try again.")
+            ui.tell(self, "Not enough disk space",
+                    f"This recording needs about {human_bytes(est)}, but only "
+                    f"{human_bytes(free)} is free. Free up space or shorten the "
+                    f"session, then try again.", tone="danger")
             return False
         if verdict == "low":
-            r = QMessageBox.question(self, "Low disk space",
-                                     f"This recording needs about {human_bytes(est)}. Only "
-                                     f"{human_bytes(free)} is free. Start anyway?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                     QMessageBox.StandardButton.No)
-            if r != QMessageBox.StandardButton.Yes:
+            if not ui.ask(self, "Low disk space",
+                          f"This recording needs about {human_bytes(est)}. Only "
+                          f"{human_bytes(free)} is free. Start anyway?",
+                          "Start anyway", "Go back", tone="warn", safe_first=True):
                 return False
         return True
 
@@ -740,10 +813,8 @@ class RecordFlow(QWidget):
         """Stop recording (header): ask first — the round is not finished."""
         if not self._controller.is_running:
             return
-        r = QMessageBox.question(self, "Stop the recording now?", self.stop_prompt_text(),
-                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                 QMessageBox.StandardButton.No)
-        if r == QMessageBox.StandardButton.Yes:
+        if ui.ask(self, "Stop the recording now?", self.stop_prompt_text(), "Stop now",
+                  "Keep recording", tone="warn", safe_first=True):
             self.stop_and_save()
 
     def open_timing_dialog(self):
@@ -772,6 +843,7 @@ class RecordFlow(QWidget):
         for b in self._bands.values():
             if b.device is not None:
                 b.start()
+        self._get_ready.refresh_device_choices()
 
     def disk_check(self, cfg) -> tuple:
         """(enough space and folder usable?, plain note) for the checklist."""
@@ -1159,24 +1231,15 @@ class RecordFlow(QWidget):
 
     def cancel(self):
         if self.is_recording():
-            r = QMessageBox.question(
-                self, "Stop the recording?",
-                "A recording is in progress. Stop it and leave? Everything recorded "
-                "so far is saved and the recording is marked Interrupted.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if r != QMessageBox.StandardButton.Yes:
+            if not ask_leave_recording(self):
                 return
             self.abandon_recording("cancel")
             self._leave_to_sessions()
             return
         if self._anything_connected():
-            r = QMessageBox.question(
-                self, "Leave setup?",
-                "Leave the recording setup? The cameras and headbands will disconnect.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if r != QMessageBox.StandardButton.Yes:
+            if not ui.ask(self, "Leave Get ready?",
+                          "The cameras and headbands will disconnect. Nothing has been "
+                          "recorded yet.", "Leave", "Stay"):
                 return
         self._leave_to_sessions()
 

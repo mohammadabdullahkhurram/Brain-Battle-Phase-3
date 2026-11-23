@@ -34,10 +34,11 @@ import datetime as _dt
 import os
 import shutil
 
-from PyQt6.QtCore import Qt, pyqtSignal, QThread
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
+from PyQt6.QtGui import QPainter, QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QPushButton,
-    QLineEdit, QScrollArea, QMenu,
+    QLineEdit, QScrollArea, QMenu, QSizePolicy,
 )
 
 import brain_battle.ui.design_tokens as dt
@@ -235,6 +236,21 @@ class _Row(QFrame):
         self.context.emit(e.globalPos())
 
 
+class _DrawerCover(QWidget):
+    """The dimmed cover behind the history drawer; a click on it closes it."""
+    clicked = pyqtSignal()
+
+    def paintEvent(self, _e):
+        p = QPainter(self)
+        try:
+            p.fillRect(self.rect(), QColor(15, 23, 42, 90))
+        finally:
+            p.end()
+
+    def mousePressEvent(self, e):
+        self.clicked.emit()
+
+
 class HistoryDrawer(QFrame):
     """The ⟲ drawer: who labelled it and everything that happened to it."""
     closed = pyqtSignal()
@@ -261,7 +277,12 @@ class HistoryDrawer(QFrame):
         self.people.setTextFormat(Qt.TextFormat.RichText)
         v.addWidget(self.people)
         sc = QScrollArea(); sc.setWidgetResizable(True); sc.setFrameShape(QFrame.Shape.NoFrame)
-        host = QWidget(); self._list = QVBoxLayout(host)
+        sc.setObjectName("historyScroll")
+        sc.setStyleSheet(f"#historyScroll {{ background: {dt.surface()}; border: none; }}")
+        sc.viewport().setAutoFillBackground(False)
+        host = QWidget(); host.setObjectName("historyList")
+        host.setStyleSheet(f"#historyList {{ background: {dt.surface()}; }}")
+        self._list = QVBoxLayout(host)
         self._list.setContentsMargins(0, 0, 0, 0); self._list.setSpacing(0); self._list.addStretch()
         sc.setWidget(host)
         v.addWidget(sc, 1)
@@ -321,10 +342,14 @@ class SessionsScreen(QWidget):
         outer = QHBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0); outer.setSpacing(0)
         page = QWidget()
         outer.addWidget(page, 1)
+        # The history drawer slides over the page from the right, on a dimmed
+        # cover (prototype): it never squeezes the rows.
+        self._cover = _DrawerCover(self)
+        self._cover.clicked.connect(self.close_history)
+        self._cover.setVisible(False)
         self._drawer = HistoryDrawer(self)
-        self._drawer.closed.connect(lambda: self._drawer.setVisible(False))
+        self._drawer.closed.connect(self.close_history)
         self._drawer.setVisible(False)
-        outer.addWidget(self._drawer)
 
         root = QVBoxLayout(page); root.setContentsMargins(32, 28, 32, 20); root.setSpacing(18)
 
@@ -351,6 +376,7 @@ class SessionsScreen(QWidget):
         txt.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         dot.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         nb.addWidget(txt, 1)
+        self._hero_txt = txt
         self._new_btn.clicked.connect(self.new_recording.emit)
         hero.addWidget(self._new_btn, 2)
         self._count_card, self._count_val = self._stat_card("Recordings")
@@ -546,13 +572,19 @@ class SessionsScreen(QWidget):
                           + ("  ·  demo" if info.demo else ""))
             meta.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary(),
                                            f"font-family: {dt.FONT_MONO};"))
+        meta.setWordWrap(True)                   # wraps instead of pushing Open off the row
+        meta.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        vs.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        vs.setMinimumWidth(vs.sizeHint().width())
         left.addWidget(vs); left.addWidget(meta)
         lw = QWidget(); lw.setLayout(left)
         lw.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         h.addWidget(lw, 1)
         if info.readable:
             text, kind, prog = row_action(info, self._labeller)
-            pl = ui.muted(prog, size=dt.SIZE_SM); pl.setFixedWidth(230)
+            pl = ui.muted(prog, size=dt.SIZE_SM)
+            pl.setMinimumWidth(110); pl.setMaximumWidth(230)
+            pl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
             pl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             h.addWidget(pl)
         chip_box = QHBoxLayout(); chip_box.addStretch(); chip_box.addWidget(ui.status_chip(info.status))
@@ -570,7 +602,7 @@ class SessionsScreen(QWidget):
                     f"QPushButton {{ background: {dt.accent_ghost()}; color: {dt.accent_hover()}; "
                     f"border: 1px solid {dt.accent_ghost()}; border-radius: 10px; padding: 0 16px; "
                     f"font-family: {dt.FONT_UI}; font-size: {dt.SIZE_MD}px; font-weight: 600; }}")
-            btn.setMinimumWidth(150)
+            btn.setMinimumWidth(130)
             btn.clicked.connect(lambda _c=False, r=info.root: self.open_session.emit(r))
             h.addWidget(btn)
             row.action_text = text
@@ -584,7 +616,34 @@ class SessionsScreen(QWidget):
         return [self._rows_layout.itemAt(i).widget() for i in range(self._rows_layout.count() - 1)]
 
     def show_history(self, info):
+        self._place_drawer()
+        self._cover.setVisible(True); self._cover.raise_()
         self._drawer.show_for(info)
+
+    def close_history(self):
+        self._drawer.setVisible(False)
+        self._cover.setVisible(False)
+
+    def _place_drawer(self):
+        self._cover.setGeometry(self.rect())
+        w = min(self._drawer.width(), self.width())
+        self._drawer.setGeometry(self.width() - w, 0, w, self.height())
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._place_drawer()
+        QTimer.singleShot(0, self._fit_hero)
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        QTimer.singleShot(0, self._fit_hero)
+
+    def _fit_hero(self):
+        """A button doesn't grow for the wrapped text inside it: size it by hand
+        so "…then follow the checklist." is never cut off on a narrow window."""
+        txt = self._hero_txt
+        if txt.width() > 0:
+            self._new_btn.setMinimumHeight(max(100, txt.heightForWidth(txt.width()) + 40))
 
     def _row_menu(self, info, pos):
         menu = QMenu(self)

@@ -34,8 +34,8 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QFrame, QLineEdit, QCheckBox, QScrollArea, QComboBox,
-    QButtonGroup, QRadioButton, QColorDialog, QFileDialog,
+    QFrame, QLineEdit, QCheckBox, QScrollArea,
+    QButtonGroup, QRadioButton, QFileDialog,
 )
 
 import brain_battle.ui.design_tokens as dt
@@ -86,6 +86,55 @@ def _heading_row(text: str, shared: bool = False) -> QHBoxLayout:
         h.addWidget(_shared_chip())
     h.addStretch()
     return h
+
+
+# Colours offered in the in-app colour chooser (a fighter colour must read well
+# as a small badge with white text, so no pale tints).
+COLOUR_CHOICES = ["#111827", "#D93025", "#2155D6", "#1E7B3C", "#7C3AED", "#C2410C",
+                  "#0E7C86", "#B45309", "#BE185D", "#4B5563", "#0369A1", "#65A30D",
+                  "#9333EA", "#DC2626", "#1D4ED8", "#047857"]
+
+
+def quality_text(key: str, fps60: bool) -> str:
+    """'Standard 960×540 (recommended) · about 4.1 GB per hour per camera at
+    60 fps' — the size follows the 60 fps switch (Advanced)."""
+    q = app_settings.VIDEO_QUALITY[key]
+    mbps = q["mbps"] * (app_settings.FPS60_BITRATE_FACTOR if fps60 else 1.0)
+    return (f"{q['label']} {q['w']}×{q['h']}" + ("  (recommended)" if q.get("recommended") else "")
+            + f" · about {app_settings.gb_per_hour(mbps):.1f} GB per hour per camera at "
+              f"{60 if fps60 else 30} fps")
+
+
+def pick_colour(parent, current: str) -> str:
+    """The app's colour chooser (no native colour dialog): a grid of colours
+    and a hex field. Returns '#RRGGBB', or '' when cancelled."""
+    d = ui.AppDialog(parent, "Fighter colour", "Pick a colour, or type its code (#RRGGBB).")
+    chosen = {"hex": (current or "#2155D6").upper()}
+    grid = QGridLayout(); grid.setSpacing(8)
+    edit = QLineEdit(chosen["hex"]); edit.setMaxLength(7); edit.setStyleSheet(dt.qss_input())
+    edit.setAccessibleName("Colour code")
+
+    def choose(h):
+        chosen["hex"] = h
+        edit.setText(h)
+    for i, h in enumerate(COLOUR_CHOICES):
+        b = QPushButton(); b.setFixedSize(34, 34); b.setToolTip(h); b.setAccessibleName(h)
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setStyleSheet(f"QPushButton {{ background: {h}; border-radius: 17px; "
+                        f"border: 2px solid #FFFFFF; }} QPushButton:focus {{ border: 3px solid "
+                        f"{dt.accent()}; }}")
+        b.clicked.connect(lambda _c=False, h=h: choose(h))
+        grid.addWidget(b, i // 8, i % 8)
+    d.body.addLayout(grid)
+    d.body.addWidget(edit)
+    d.add_button("Cancel", 0)
+    d.add_button("Use this colour", 1, "primary", default=True)
+    if not d.exec():
+        return ""
+    text = edit.text().strip().upper()
+    if not text.startswith("#"):
+        text = "#" + text
+    return text if QColor(text).isValid() and len(text) == 7 else ""
 
 
 class _Chip(QFrame):
@@ -311,7 +360,7 @@ class SettingsScreen(QWidget):
                 w.setParent(None); w.deleteLater()
         for i, entry in enumerate(self._labels):
             chip = _Chip(entry["name"], lead=str(i + 1))
-            chip.removed.connect(lambda i=i: self._remove_label(i))
+            chip.removed.connect(lambda i=i: self._confirm_remove_label(i))
             self._labels_flow.addWidget(chip)
         tail = self._new_label if adding else self._add_label_btn
         self._labels_flow.addWidget(tail)
@@ -327,6 +376,23 @@ class SettingsScreen(QWidget):
         self._labels = label_vocab.renumber(self._labels)
         label_vocab.save(self._settings.capture_dir_resolved(), self._labels)
         self._flash_saved()
+
+    def _confirm_remove_label(self, i):
+        """× on a label: it is the whole team's list, so ask first."""
+        if not (0 <= i < len(self._labels)):
+            return
+        name = self._labels[i]["name"]
+        if ui.ask(self, f"Remove “{name}” from the label list?",
+                  "Everyone using this recordings folder shares this list. Labels already "
+                  "placed in recordings keep their name.", "Remove", "Keep it",
+                  tone="danger", danger=True):
+            self._remove_label(i)
+
+    def _confirm_remove_colour(self, name):
+        if ui.ask(self, f"Remove the colour “{name}”?",
+                  "Everyone using this recordings folder shares these colours. Recordings "
+                  "that used it keep it.", "Remove", "Keep it", tone="danger", danger=True):
+            self.remove_colour(name)
 
     def _remove_label(self, i):
         if 0 <= i < len(self._labels):
@@ -390,9 +456,9 @@ class SettingsScreen(QWidget):
             f"{dt.border_strong()}; border-radius: 8px; }}")
 
     def _pick_new_colour(self):
-        c = QColorDialog.getColor(QColor(self._new_colour_hex), self, "Fighter colour")
-        if c.isValid():
-            self._new_colour_hex = c.name().upper()
+        hexv = pick_colour(self, self._new_colour_hex)
+        if hexv:
+            self._new_colour_hex = hexv
             self._paint_swatch()
 
     def _load_colours(self):
@@ -407,7 +473,7 @@ class SettingsScreen(QWidget):
                 w.setParent(None); w.deleteLater()
         for c in self._colours:
             chip = _Chip(c["name"], dot=c["color"], removable=not fighters.is_preset(c["name"]))
-            chip.removed.connect(lambda n=c["name"]: self.remove_colour(n))
+            chip.removed.connect(lambda n=c["name"]: self._confirm_remove_colour(n))
             self._colours_flow.addWidget(chip)
         tail = self._colour_form if adding else self._add_colour_btn
         self._colours_flow.addWidget(tail)
@@ -488,6 +554,8 @@ class SettingsScreen(QWidget):
         setattr(self._settings, key, bool(on))
         self._settings.save()
         self._flash_saved()
+        if key == "record_60fps":
+            self._refresh_quality()
 
     def _build_headbands(self):
         w = QWidget()
@@ -496,9 +564,10 @@ class SettingsScreen(QWidget):
         grid = QGridLayout(); grid.setHorizontalSpacing(10); grid.setVerticalSpacing(8)
         self._hb_combo = {}
         for row, which in enumerate(("A", "B")):
-            grid.addWidget(ui.fighter_badge(which, None, 22), row, 0)
+            grid.addWidget(ui.neutral_badge(which, 22), row, 0)
             grid.addWidget(ui.body(f"Boxer {which}"), row, 1)
-            combo = QComboBox(); combo.setStyleSheet(dt.qss_input()); combo.setMinimumHeight(36)
+            combo = ui.Dropdown()
+            combo.setAccessibleName(f"Default headband for Boxer {which}")
             combo.currentTextChanged.connect(lambda name, wh=which: self._on_headband_changed(wh, name))
             grid.addWidget(combo, row, 2)
             self._hb_combo[which] = combo
@@ -578,11 +647,7 @@ class SettingsScreen(QWidget):
         self._quality_group = QButtonGroup(self); self._quality_group.setExclusive(True)
         self._quality_rows = {}
         for key in VIDEO_QUALITY_ORDER:
-            q = app_settings.VIDEO_QUALITY[key]
-            rb = QRadioButton(f"{q['label']} {q['w']}×{q['h']}"
-                              + ("  (recommended)" if q.get("recommended") else "")
-                              + f" · about {app_settings.gb_per_hour(q['mbps']):.1f} GB per hour "
-                                f"per camera at 30 fps")
+            rb = QRadioButton(quality_text(key, self._settings.record_60fps))
             rb.setStyleSheet(f"QRadioButton {{ font-family: {dt.FONT_UI}; font-size: {dt.SIZE_SM}px; "
                              f"color: {dt.text_secondary()}; }}")
             self._quality_group.addButton(rb)
@@ -592,6 +657,8 @@ class SettingsScreen(QWidget):
         return w
 
     def _refresh_quality(self):
+        for key, row in self._quality_rows.items():      # sizes follow the 60 fps switch
+            row.setText(quality_text(key, self._settings.record_60fps))
         rb = self._quality_rows.get(self._settings.video_quality) or self._quality_rows["standard"]
         rb.blockSignals(True); rb.setChecked(True); rb.blockSignals(False)
 

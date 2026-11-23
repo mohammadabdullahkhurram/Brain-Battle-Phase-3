@@ -353,9 +353,10 @@ def test_cannot_record_into_missing_folder():
     os.environ["BRAIN_BATTLE_CAPTURE_DIR"] = os.path.join(blocker, "Recordings")
     try:
         import brain_battle.ui.record_flow as rf
-        shown = []
-        real = rf.QMessageBox.critical
-        rf.QMessageBox.critical = staticmethod(lambda _p, title, text, *a, **k: shown.append((title, text)))
+        import brain_battle.ui.widgets as ui
+        ui.answered_dialogs.clear()
+        ui.dialog_responder = lambda _d: 1
+        shown = ui.answered_dialogs
         flow = rf.RecordFlow()
         try:
             flow.start()
@@ -363,12 +364,12 @@ def test_cannot_record_into_missing_folder():
                   not flow._setup_step._start.isEnabled()
                   and flow._setup_step._disk.kind() == "bad", flow._setup_step._disk.text()[:70])
             flow.begin_recording()
-            check("pressing Start anyway explains instead of recording",
-                  not flow.is_recording() and shown and "recordings folder" in shown[0][0].lower(),
-                  str(shown[:1])[:120])
+            check("pressing Start anyway explains (in the app's dialog) instead of recording",
+                  not flow.is_recording() and shown
+                  and "recordings folder" in shown[0]["title"].lower(), str(shown[:1])[:120])
         finally:
             flow.shutdown()
-            rf.QMessageBox.critical = real
+            ui.dialog_responder = None
     finally:
         os.environ.pop("BRAIN_BATTLE_CAPTURE_DIR", None)
         os.environ.pop("BRAIN_BATTLE_SIMULATE", None)
