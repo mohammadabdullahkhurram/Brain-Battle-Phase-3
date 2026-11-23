@@ -130,6 +130,8 @@ dev-log numbering, kept as history — they do not track the release version.
   broken leftover camera picker, `brain_battle_main`'s `QMessageBox`
   re-export, and every unused import (app, tools and tests). `pyflakes` is
   clean on `brain_battle/` and `tools/`. Module reference updated.
+- Review's timeline: the last time label ("0:26") is no longer cut off at the right edge.
+- Doc screenshots regenerated (`tools/render_screens.py --docs`) for the new Get ready, dialogs, labels and demo data.
 
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**

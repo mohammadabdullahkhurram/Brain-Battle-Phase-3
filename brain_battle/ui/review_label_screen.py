@@ -672,8 +672,13 @@ class LaneTimeline(QWidget):
             for k in range(5):
                 t = self.duration * k / 4
                 x = self._x(t)
-                p.drawText(QRectF(x - 30, last.bottom() + 3, 60, 14),
-                           Qt.AlignmentFlag.AlignCenter, _fmt_mmss(t))
+                # the first and last labels stay inside the strip (never cut off)
+                box = (QRectF(min(x, self.width()) - 60.0, last.bottom() + 3, 60, 14) if k == 4 else
+                       QRectF(max(x - 30, 0.0), last.bottom() + 3, 60, 14))
+                align = (Qt.AlignmentFlag.AlignRight if k == 4 else
+                         Qt.AlignmentFlag.AlignLeft if k == 0 and x - 30 < 0 else
+                         Qt.AlignmentFlag.AlignHCenter) | Qt.AlignmentFlag.AlignVCenter
+                p.drawText(box, align, _fmt_mmss(t))
             x = self._x(self._t)
             p.setPen(QPen(QColor(dt.record_red()), 2))
             p.drawLine(QPointF(x, 0), QPointF(x, last.bottom()))
