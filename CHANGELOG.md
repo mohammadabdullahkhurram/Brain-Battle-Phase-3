@@ -107,6 +107,20 @@ dev-log numbering, kept as history — they do not track the release version.
   tests never open the audio device (no `QSoundEffect` when
   `BRAIN_BATTLE_MUTE` is set). `tools/run_tests.py` prints the exit code of a
   script that fails after "GREEN".
+- **Soak verdict judged against the machine's own stalls.** `tools/soak_test.py`
+  runs a bare process that only sleeps beside the app
+  (`stall_probe.MachineStallProbe`); lost frames inside one of its stalls are
+  reported as machine noise, frames lost outside are a problem
+  (`stall_probe.judge_lost_frames`), and the last line is a clear
+  `VERDICT: OK / PROBLEMS — …`. The descriptor check now compares every
+  "left the flow" with the first one (it compared with "flow opened", which
+  holds the camera processes, so it could never pass). `--diagnose` prints
+  per-thread CPU again. First result on a desk Mac: EEG complete, 74 of
+  ~25 000 frames (0.15 %) lost outside a machine stall — an open item (known
+  issues). `test_stability` prints the verdict.
+- **The timing limits documented** with their reasons (98.5 % of frame stamps
+  within 3 ms, lost frames counted within 30 %, delays within 2 ms, under 2 %
+  lost in the short soak, NOT JUDGED on slow CI computers) — testing-strategy.
 
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**

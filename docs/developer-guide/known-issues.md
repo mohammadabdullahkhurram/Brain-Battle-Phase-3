@@ -72,6 +72,20 @@ screen. The cause, the measurements and the fix are in
 - `tests/test_descriptors.py` runs four recordings in a row under a 256 limit
   and fails if the counts do not come back to the first visit's.
 
+## Camera frames lost while the computer itself was not paused (open)
+
+The soak now judges lost camera frames against a bare process that only sleeps
+(`tools/soak_test.py`, [testing strategy](testing-strategy.md#the-soak-verdict)).
+On a desk Mac (2026-11-23, a 1-minute + 45-second soak at 60 fps) most lost
+frames fell inside the computer's own pauses, but **74 of about 25 000 (0.15 %)
+did not**: gaps of 33–117 ms in one or two cameras at a time while the bare
+process ran normally — pauses of the camera processes alone. Not yet
+explained; candidates are the camera process's own threads (reader, writer,
+control, sender) holding each other up, or the operating system pausing that
+process. Recording is complete either way (the frames' times are exact and the
+gaps are in `timing_quality.csv`); EEG is complete. Next step: `--diagnose`
+inside the camera processes.
+
 ## Code-level tech debt (tracked in ROADMAP Phase 5)
 
 - **Other labellers' labels arrive by polling** (every five seconds while a

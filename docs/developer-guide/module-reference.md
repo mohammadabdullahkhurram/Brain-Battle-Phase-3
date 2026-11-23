@@ -618,7 +618,10 @@ than 20 ms late, every garbage collection's duration (`gc.callbacks`), and
 dumps every thread's stack *during* a stall through
 `faulthandler.dump_traceback_later` (a C watchdog that needs no interpreter
 lock). Used to find the cause of camera frame loss (ADR-0025).
-`wake_lateness()` measures the computer itself — how late it wakes a thread
+`MachineStallProbe` is a bare process that only sleeps: its late wake-ups are
+the computer's own stalls; `judge_lost_frames` splits lost camera frames into
+those inside such a stall (machine noise) and outside (a problem) — the soak
+verdict. `wake_lateness()` measures the computer itself — how late it wakes a thread
 sleeping to 60 Hz deadlines; `tools/wake_probe.py` prints it, and
 `test_timing` / `test_stability` use it to decide whether a computer can
 judge millisecond precision at all (`tests/_env.py` `timing_judgeable`).
@@ -746,8 +749,12 @@ The long-recording check (Part 4): a 3-round, 12-minute simulated recording at
 60 fps with 4 cameras and 2 headbands, then three short recordings, through the
 real app. Prints frames delivered / not delivered by the cameras, encoder drops,
 EEG samples missing, memory and descriptor / thread / child counts at each
-point; exits nonzero if any limit is crossed. `--minutes`, `--switch-ms`,
-`--gc-debug`. Not part of the suite (it takes ~20 min); `tests/test_stability.py`
+point. A bare process that only sleeps runs beside it
+(`stall_probe.MachineStallProbe`); lost frames are judged against the
+machine's own stalls (inside = machine noise, outside = a problem) and the
+last line is the **VERDICT**; exits nonzero on a frame lost outside a machine
+stall, a missing EEG sample, an encoder drop, a failed save or descriptors not
+back to the same numbers. `--minutes`, `--switch-ms`, `--gc-debug`. Not part of the suite (it takes ~20 min); `tests/test_stability.py`
 runs a short version.
 
 ### `tools/render_screens.py`

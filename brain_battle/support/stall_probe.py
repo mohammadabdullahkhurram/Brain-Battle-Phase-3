@@ -24,6 +24,11 @@ Three instruments, all stamped with the one capture clock
     ...
     probe.stop(); probe.stalls, probe.gcs
 
+``MachineStallProbe`` is a bare process that only sleeps: its late wake-ups are
+the computer's own stalls, and ``judge_lost_frames`` splits lost camera frames
+into those inside such a stall (machine noise) and those outside (a problem);
+``tools/soak_test.py`` always runs it.
+
 ``wake_lateness()`` measures the computer itself: how late it wakes a thread
 sleeping to 60 Hz deadlines (``tools/wake_probe.py``; the timing tests use it
 to decide whether this computer can judge millisecond precision at all).
@@ -134,4 +139,88 @@ def wake_lateness(seconds: float = 3.0, period: float = 1 / 60) -> dict:
             "lost": sum(1 for x in late if x > 2 * half)}
 
 
-__all__ = ["StallProbe", "TICK_SEC", "STALL_SEC", "wake_lateness"]
+# ── the machine's own stalls (a bare process that only sleeps) ─────────────────
+
+MACHINE_STALL_SEC = 0.010     # a wake-up this late could already cost a 60 fps frame
+
+
+def _bare_loop(stop, out_q, tick: float, threshold: float) -> None:
+    """Child process: sleep ``tick`` again and again; note every wake-up more
+    than ``threshold`` late as (start on the capture clock, seconds late). It
+    does nothing else, so its stalls are the computer's, not the app's."""
+    from brain_battle.capture import clock as _clock
+    stalls = []
+    while not stop.is_set():
+        t = time.perf_counter()
+        time.sleep(tick)
+        late = time.perf_counter() - t - tick
+        if late > threshold:
+            stalls.append((_clock.monotonic() - late - tick, late + tick))
+    out_q.put(stalls)
+
+
+class MachineStallProbe:
+    """A bare process beside the app that only sleeps and wakes (``_bare_loop``):
+    every time IT is woken late, the whole computer paused — nothing the app did.
+    ``tools/soak_test.py`` runs one for the whole soak and judges lost camera
+    frames against it: a frame lost while the computer was paused is the
+    machine's noise; one lost while it ran normally is a problem of the app.
+    Times are on the capture clock (``clock.monotonic()`` is the system-wide
+    performance counter, the same in every process), like the cameras' frame
+    times. ``stop()`` returns the list of (start, duration_s)."""
+
+    def __init__(self, tick: float = TICK_SEC, threshold: float = MACHINE_STALL_SEC):
+        import multiprocessing as mp
+        self._ctx = mp.get_context("spawn")
+        self._stop = self._ctx.Event()
+        self._q = self._ctx.Queue()
+        self._proc = self._ctx.Process(target=_bare_loop, name="machine-stall-probe",
+                                       args=(self._stop, self._q, tick, threshold), daemon=True)
+        self.stalls: list[tuple[float, float]] = []
+
+    def start(self) -> "MachineStallProbe":
+        self._proc.start()
+        return self
+
+    def stop(self, timeout: float = 10.0) -> list:
+        self._stop.set()
+        try:
+            self.stalls = list(self._q.get(timeout=timeout))
+        except Exception:
+            self.stalls = []
+        self._proc.join(timeout=timeout)
+        if self._proc.is_alive():
+            self._proc.terminate()
+        return self.stalls
+
+
+def judge_lost_frames(gaps, stalls, fps: float, margin: float | None = None) -> dict:
+    """Split lost camera frames into those inside one of the machine's own
+    stalls (noise) and those outside (a problem). ``gaps`` are (t_start,
+    duration_s, camera) intervals between two frames read more than 1.5
+    periods apart, on the capture clock; each loses round(duration·fps) − 1
+    frames. A gap counts as inside a stall when a stall overlaps it (widened by
+    ``margin``, a frame period by default: a frame due just after a pause is
+    also missed)."""
+    per = 1.0 / fps
+    margin = per if margin is None else margin
+    res = {"lost_in_stalls": 0, "lost_outside": 0, "gaps_in_stalls": 0, "gaps_outside": 0,
+           "machine_stalls": len(stalls),
+           "worst_machine_stall_ms": round(max((d for _t, d in stalls), default=0) * 1000, 1),
+           "outside_examples": []}
+    for t, d, cam in gaps:
+        lost = max(0, int(round(d / per)) - 1)
+        if lost == 0:
+            continue
+        a, b = t - margin, t + d + margin
+        inside = any(s <= b and s + sd >= a for s, sd in stalls)
+        key = "in_stalls" if inside else "outside"
+        res[f"lost_{key}"] += lost
+        res[f"gaps_{key}"] += 1
+        if not inside and len(res["outside_examples"]) < 8:
+            res["outside_examples"].append({"camera": cam, "gap_ms": round(d * 1000), "lost": lost})
+    return res
+
+
+__all__ = ["StallProbe", "TICK_SEC", "STALL_SEC", "wake_lateness", "MachineStallProbe",
+           "MACHINE_STALL_SEC", "judge_lost_frames"]

@@ -211,9 +211,14 @@ def test_short_soak():
     check("soak: both recordings ran", len(recs) == 2, r.stdout[-400:])
     # the soak's own numbers, so a CI log shows where frames went
     for ln in r.stdout.splitlines():
-        if (ln.startswith(("Machine:", "  CPU:", "  recorded", "    SIDE", "    POV", "    EEG"))
+        if (ln.startswith(("Machine:", "  CPU:", "  recorded", "    SIDE", "    POV", "    EEG",
+                           "VERDICT", "  #"))
                 or "left the flow" in ln):
             print("  soak|" + ln.strip())
+    v = rep.get("verdict") or {}
+    check("soak: prints a verdict that judges lost frames against the machine's own stalls",
+          "lost_outside_machine_stalls" in v and any(ln.startswith("VERDICT:") for ln in
+                                                     r.stdout.splitlines()), str(v))
     miss_s = sum(h.get("missing") or 0 for rec in recs for h in rec["files"]["headbands"].values())
     drops = sum(sum(rec["encoder_queue_dropped"].values()) for rec in recs)
     frames = sum(c.get("frames") or 0 for rec in recs for c in rec["files"]["cameras"].values())

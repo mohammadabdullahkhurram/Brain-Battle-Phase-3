@@ -41,14 +41,23 @@ Diagnosis (debug only — see brain_battle/support/stall_probe.py):
     --in-process        cameras as threads of the app instead of processes
                         (how capture ran before ADR-0025)
 
-Exit code 0 when nothing was dropped or missing and descriptors came back to
-baseline; 1 otherwise. Not part of tools/run_tests.py (it takes ~16 minutes);
+Lost frames are judged against the computer's own stalls: a bare process that
+only sleeps runs beside the app for the whole soak (``stall_probe.
+MachineStallProbe``). A frame lost while that process was also woken late was
+lost to the machine (reported as machine noise); a frame lost while the
+machine ran normally is a problem. The last line is the verdict:
+
+    VERDICT: OK — 0 frames lost outside the machine's own stalls (14 lost during
+    9 machine stalls, worst 120 ms: machine noise); EEG complete; …
+
+Exit code 0 when no frame was lost outside a machine stall, no EEG sample is
+missing, the encoder dropped nothing, nothing failed to save and descriptors
+came back to baseline; 1 otherwise. Not part of tools/run_tests.py (it takes ~16 minutes);
 tests/test_stability.py runs a one-minute version.
 """
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import os
 import sys
@@ -90,7 +99,6 @@ def camera_gaps(root: str, fps: float) -> list[tuple[float, float, str]]:
 def correlate(gaps, probe, t0_mono: float) -> dict:
     """How many camera gaps (and lost frames) coincide with a stall of the
     process, and with a garbage collection."""
-    per_frame = None
     res = {"gaps": len(gaps), "gaps_with_stall": 0, "gaps_with_gc": 0,
            "stalls": len(probe.stalls),
            "stalls_over_50ms": sum(1 for _t, d in probe.stalls if d > 0.05),
@@ -287,6 +295,8 @@ def main(argv=None) -> int:
 
     import psutil
     from brain_battle.support import resource_limits as rl
+    from brain_battle.support.stall_probe import MachineStallProbe, judge_lost_frames
+    machine = MachineStallProbe().start()       # the computer's own stalls, all soak long
     from brain_battle.capture.usb_camera import isolated_capture
     print(f"Machine: {psutil.cpu_count()} cores ({psutil.cpu_count(logical=False)} physical), "
           f"{sys.platform}; cameras in "
@@ -329,6 +339,7 @@ def main(argv=None) -> int:
     flow = win.record_flow
     report = {"fps": args.fps, "recordings": [], "descriptors": []}
     ok = True
+    desc_ok = True
 
     def snap(label):
         sn = rl.snapshot()
@@ -347,8 +358,7 @@ def main(argv=None) -> int:
     for n, cfg in enumerate(plans, start=1):
         print(f"\nRecording {n} of {len(plans)} …", flush=True)
         flow.start(); pump(3.0)
-        opened = snap(f"#{n} flow opened")
-        baseline = baseline or opened
+        snap(f"#{n} flow opened")
         flow.set_plan(cfg)
         flow.set_fighters("K7Q2", "M3XA", "Red", "Blue")
         rss0 = proc.memory_info().rss
@@ -389,6 +399,7 @@ def main(argv=None) -> int:
         dur = time.time() - t_start
         if probe is not None:
             _slow_report(t0_mono)
+            _thread_cpu_report(proc, thread_cpu0)
         dropped = {s.stem: s.dropped for s in flow._cams}
         pump(1.0)
         flow.wait_for_xdf(60); pump(0.5)
@@ -440,14 +451,40 @@ def main(argv=None) -> int:
                   f"{cor['worst_stall_ms']} ms); gc {cor['gc']}", flush=True)
             for ex in cor["examples"]:
                 print(f"    gap {ex}", flush=True)
-        if miss_f or miss_s or sum(dropped.values()) or rec["write_problems"]:
+        rec["_gaps"] = camera_gaps(root, float(args.fps))
+        if miss_s or sum(dropped.values()) or rec["write_problems"]:
             ok = False
+        # Each visit must leave the same as the first one left (the open flow
+        # itself holds the camera processes and their pipes).
+        baseline = baseline or after
         if abs(after["fds"] - baseline["fds"]) > 6 or after["children"] != baseline["children"]:
             ok = False
+            desc_ok = False
 
     flow.shutdown(); pump(0.5)
     if probe is not None:
         probe.stop()
+    stalls = machine.stop()
+    lost_out = lost_in = 0
+    for rec in report["recordings"]:
+        j = judge_lost_frames(rec.pop("_gaps"), stalls, float(args.fps))
+        rec["lost_frames_judged"] = j
+        lost_out += j["lost_outside"]; lost_in += j["lost_in_stalls"]
+        print(f"  #{rec['n']}: frames lost outside the machine's stalls {j['lost_outside']}"
+              f" ({j['gaps_outside']} gaps), inside {j['lost_in_stalls']} ({j['gaps_in_stalls']} "
+              f"gaps){'; e.g. ' + str(j['outside_examples'][:3]) if j['outside_examples'] else ''}",
+              flush=True)
+    if lost_out:
+        ok = False
+    eeg_missing = sum((h.get("missing") or 0) for rec in report["recordings"]
+                      for h in rec["files"]["headbands"].values())
+    drops = sum(sum(rec["encoder_queue_dropped"].values()) for rec in report["recordings"])
+    saves = sum(len(rec["write_problems"]) for rec in report["recordings"])
+    worst = round(max((d for _t, d in stalls), default=0) * 1000)
+    report["verdict"] = {"ok": ok, "lost_outside_machine_stalls": lost_out,
+                         "lost_in_machine_stalls": lost_in, "machine_stalls": len(stalls),
+                         "worst_machine_stall_ms": worst, "eeg_missing": eeg_missing,
+                         "encoder_drops": drops, "save_problems": saves}
     long = [m for m in mem if m[0] == 1]
     if len(long) >= 3:
         mins = (long[-1][1] - long[0][1]) / 60.0
@@ -459,7 +496,13 @@ def main(argv=None) -> int:
               f"{report['memory_peak_mb']} MB", flush=True)
     report["memory_samples"] = mem
     report["ok"] = ok
-    print(f"\n{'OK' if ok else 'PROBLEMS'}: see above.", flush=True)
+    noise = (f"{lost_in} lost during {len(stalls)} machine stalls, worst {worst} ms: machine noise"
+             if lost_in else f"{len(stalls)} machine stalls, worst {worst} ms")
+    print(f"\nVERDICT: {'OK' if ok else 'PROBLEMS'} — {lost_out} frame"
+          f"{'' if lost_out == 1 else 's'} lost outside the machine's own stalls ({noise}); "
+          f"EEG {'complete' if not eeg_missing else f'{eeg_missing} samples missing'}; "
+          f"encoder drops {drops}; save problems {saves}; descriptors "
+          f"{'back to baseline' if desc_ok else 'NOT back to baseline'}.", flush=True)
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=1)

@@ -47,6 +47,40 @@ Full output for every script is kept in a log folder printed at the end. A
 script that fails *after* printing "GREEN" (while shutting down) gets its exit
 code printed too.
 
+### The timing limits, and why they are where they are
+
+These limits are kept as they are (owner, 2026-11-23); this is the reason for
+each, so nobody tightens or loosens one without knowing what it stands for.
+
+| Limit | Where | Why this number |
+|---|---|---|
+| **98.5 % of camera frame stamps within 3 ms** of the camera's steady clock | `test_timing` (`FrameClock`, simulated busy reader) | With 3 % of reads stalled by up to 150 ms, about 1 % of frames are read almost a whole period late just after a pause. Such a frame cannot be told apart from the next one, so its stamp is a period off — whatever the tracker does. 98.5 % leaves room for that 1 % and nothing more; 3 ms is well inside the 10 ms goal between devices. |
+| **Lost frames counted within 30 %** (or 5 frames) | `test_timing` | The count comes from gaps in the read times. After a long pause, the frame read first may be the next one or the one after, so the count can be off by one per pause; with many short pauses that adds up to roughly a quarter of a small number. It is a report (`timing_quality.csv`), not a correction — the frames' own times are exact. |
+| **Delays recovered within 2 ms** by the buzzer test | `test_timing` (40 synthetic runs and the simulated devices end to end) | A fifth of the 10 ms goal: the calibration must not use up the budget. The simulated devices land at 0.3–1.1 ms on a desk Mac; one run at 2.13 ms was seen on 2026-11-23 (re-runs 0.3–1.1 ms). |
+| **Under 2 % of frames lost** in the short soak | `test_stability` | A desk Mac loses ~0.7 % in this soak, almost all during the computer's own pauses (see the soak verdict below); 2 % catches a real regression (a blocked encoder, a capture loop stuck behind something) without failing on a normal busy minute. |
+| **NOT JUDGED** when more than 10 % of a computer's 60 Hz wake-ups are over half a frame late | `test_timing`, `test_stability` (`tests/_env.py` `timing_judgeable`) | On such a computer (GitHub's macOS runner: ~71 %) frames are lost and stamps drift whatever the app does, so a millisecond check there measures the machine, not the app. A share, not a percentile: one stray hiccup must not switch the checks off on a good computer. |
+
+### The soak verdict
+
+`tools/soak_test.py` runs a **bare process that only sleeps** beside the app
+for the whole soak (`stall_probe.MachineStallProbe`). Every time that process
+is woken more than 10 ms late, the computer itself paused. Each camera gap is
+then judged (`stall_probe.judge_lost_frames`): frames lost while the machine
+was paused are **machine noise**; frames lost while it ran normally are a
+**problem** of the app. The last line says so, for example:
+
+    VERDICT: PROBLEMS — 74 frames lost outside the machine's own stalls (466 lost
+    during 35 machine stalls, worst 132 ms: machine noise); EEG complete; encoder
+    drops 0; save problems 0; descriptors back to baseline.
+
+That example is a real 1-minute + 45-second soak on a desk Mac (2026-11-23):
+most lost frames fell inside the machine's pauses, but 74 (about 0.15 %) did
+not — pauses of the camera processes alone, which the bare process did not
+share. They are an open item (see [known issues](known-issues.md)), not hidden
+by the verdict. The exit code is 0 only when no frame was lost outside a
+machine stall, no EEG sample is missing, nothing was dropped or failed to save
+and descriptors came back to the same numbers after every recording.
+
 `tests/test_flash_sync.py` is **slow** — it generates and verifies a 12-minute
 demo session, about five minutes on its own; everything else is quick. The
 `tests/_*_runner.py` files are helper subprocesses launched by the kill tests
