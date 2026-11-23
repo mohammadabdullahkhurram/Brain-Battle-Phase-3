@@ -82,11 +82,63 @@ def atomic_write_bytes(path, data: bytes) -> None:
         raise
 
 
+def _replace_posix_windows(src, dst) -> bool:
+    """Windows: swap ``src`` into ``dst`` with POSIX semantics
+    (``SetFileInformationByHandle`` / ``FileRenameInfoEx`` with
+    REPLACE_IF_EXISTS | POSIX_SEMANTICS, Windows 10 1607+ on NTFS). Unlike
+    ``os.replace`` (``MoveFileEx``), this goes through while another program has
+    ``dst`` open with delete-sharing (``open_shared``); that reader keeps the
+    old file. Returns False when the system does not offer it (then
+    ``os.replace`` is used)."""
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+                                wintypes.HANDLE]
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.SetFileInformationByHandle.argtypes = [wintypes.HANDLE, ctypes.c_int,
+                                               wintypes.LPVOID, wintypes.DWORD]
+    k32.SetFileInformationByHandle.restype = wintypes.BOOL
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    DELETE, SHARE_ALL, OPEN_EXISTING = 0x00010000, 0x1 | 0x2 | 0x4, 3
+    FileRenameInfoEx = 22
+    REPLACE_IF_EXISTS, POSIX_SEMANTICS = 0x1, 0x2
+    handle = k32.CreateFileW(str(src), DELETE, SHARE_ALL, None, OPEN_EXISTING, 0x80, None)
+    if handle in (None, wintypes.HANDLE(-1).value):
+        return False
+    try:
+        name = os.path.abspath(str(dst))
+        enc = name.encode("utf-16-le")
+        # FILE_RENAME_INFO: Flags (4, padded to 8) · RootDirectory (8) ·
+        # FileNameLength (4) · FileName (WCHAR[])
+        off = 8 + ctypes.sizeof(ctypes.c_void_p)
+        size = off + 4 + len(enc) + 2
+        buf = ctypes.create_string_buffer(size)
+        ctypes.memmove(buf, ctypes.byref(wintypes.DWORD(REPLACE_IF_EXISTS | POSIX_SEMANTICS)), 4)
+        ctypes.memmove(ctypes.addressof(buf) + off, ctypes.byref(wintypes.DWORD(len(enc))), 4)
+        ctypes.memmove(ctypes.addressof(buf) + off + 4, enc, len(enc))
+        if k32.SetFileInformationByHandle(handle, FileRenameInfoEx, buf, size):
+            return True
+        err = ctypes.get_last_error()
+        if err in (5, 32, 33):           # really refused: let the caller retry
+            raise PermissionError(13, "Access is denied", str(dst))
+        return False                     # not supported here: use os.replace
+    finally:
+        k32.CloseHandle(handle)
+
+
 def replace_with_retry(src, dst) -> None:
-    """``os.replace`` that waits out a brief 'file in use' refusal (Windows
-    refuses to replace a file another program has open)."""
+    """Swap ``src`` into ``dst`` in one step, waiting out a brief 'file in use'
+    refusal. On Windows the swap uses POSIX semantics, so a reader that has
+    ``dst`` open (with ``open_shared``) does not block it."""
+    posix = is_windows()
     for wait in _waits():
         try:
+            if posix:
+                if _replace_posix_windows(src, dst):
+                    return
+                posix = False            # not offered here: plain os.replace from now on
             os.replace(src, dst)
             return
         except PermissionError:

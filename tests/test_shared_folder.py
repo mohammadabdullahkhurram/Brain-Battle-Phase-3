@@ -112,7 +112,7 @@ def test_atomic_write():
     with safe_io.open_shared(path) as held:
         t0 = time.monotonic()
         try:
-            os.replace(_write_tmp(d, {"n": "new", "pad": "y" * 10}), path)
+            safe_io.replace_with_retry(_write_tmp(d, {"n": "new", "pad": "y" * 10}), path)
             replaced = True
         except OSError as e:
             replaced = repr(e)

@@ -102,8 +102,9 @@ dev-log numbering, kept as history — they do not track the release version.
   in its CSV); accuracy unchanged.
 - **The two old Windows first-attempt failures.** `test_shared_folder`: every
   read of a shared file now goes through `safe_io.open_shared` / `read_text`,
-  which on Windows opens it with delete-sharing, so a reader never stops
-  another computer's save (Python's `open` blocked the replace — the cause of
+  which on Windows opens it with delete-sharing, and on Windows the swap uses
+  POSIX semantics (`FileRenameInfoEx`), so a reader never stops another
+  computer's save (Python's `open` blocked the replace — the cause of
   the refused replacements and the one lost edit). `test_smoke`: stops the
   Sessions folder scan and lets Qt delete the window before exiting; muted
   tests never open the audio device (no `QSoundEffect` when

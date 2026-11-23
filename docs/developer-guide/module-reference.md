@@ -537,7 +537,8 @@ Writing safely in a folder several computers share
 `atomic_write_text` / `atomic_write_json` (unique temp name, fsync, swap, with
 a short retry for Windows / network "file in use"), `read_json` (tolerant),
 `open_shared` / `read_text` (every read of a shared file: on Windows opened with
-delete-sharing, so a reader never stops another computer's save),
+delete-sharing) and, on Windows, a POSIX-semantics swap in `replace_with_retry`,
+so a reader never stops another computer's save,
 `append_line`, `FolderLock` + `update_json` (an advisory lock file for
 read-change-write edits; stale locks are taken over; never hangs),
 `folder_status` / `folder_problem_text` (is the folder there and writable, and
