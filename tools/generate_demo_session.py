@@ -24,14 +24,24 @@ blinks, more movement during rounds, a sharp spike at every phase marker), and
 the timeline itself (stamped on one made-up but consistent axis rather than in
 real time).
 
+It also writes what the app writes around them: ``contact_quality.csv`` (a
+weak-sensor stretch when asked), ``timing_quality.csv``, ``moments.csv``, the
+history (as "Recording" and the demo labellers, on "LAB-PC-1" — never this
+computer's login or name), each labeller's labels file, a session log and the
+buzzer-test ``timing_calibration``. Fighters are codes and colours only.
+
 Usage:
     python3 tools/generate_demo_session.py --out /tmp/demo
     python3 tools/generate_demo_session.py --out /tmp/demo --rounds 3 --seed 7
     python3 tools/generate_demo_session.py --out /tmp/demo --interrupted
+    python3 tools/generate_demo_session.py --out /tmp/demo --stopped-early 60
     python3 tools/generate_demo_session.py --out /tmp/library --library
 
+To open a demo library in the app with simulated devices, use
+``python3 tools/demo.py``.
+
 Deterministic for a given --seed. Default config (15 s lead-in, baseline 20 s,
-2 rounds of 60 s with a 20 s break = 175 s) generates in well under a minute.
+2 rounds of 60 s with a 20 s break = 175 s) generates in about a minute.
 """
 from __future__ import annotations
 
@@ -97,12 +107,12 @@ _ILLEGAL = re.compile(r'[<>:"/\\|?*]')
 
 # ─── Phase timeline ────────────────────────────────────────────────────────────
 
-def _phase_plan(cfg: SessionConfig, interrupted: bool):
+def _phase_plan(cfg: SessionConfig, interrupted: bool, stop_at: float | None = None):
     """Walk the REAL _build_timeline() / planned_markers() output and compute,
     on one synthetic axis, every phase's (start, end) elapsed time, the system
     markers a live recording writes (RECORDING_START, BASELINE_START/END,
     ROUND_n_START/END, BREAK_n_START/END, RECORDING_END), and — for
-    --interrupted — where to cut it off.
+    --interrupted or a stopped-early recording — where it ends.
 
     Returns (phase_records, markers, total_duration) where:
       phase_records: list of dict(phase=Phase, label, round_num, start, end_or_None)
@@ -119,6 +129,20 @@ def _phase_plan(cfg: SessionConfig, interrupted: bool):
         elapsed += info.duration
     total_duration = elapsed
     markers = [(t, pid, text, rn) for t, text, pid, rn in planned_markers(cfg)]
+
+    if stop_at is not None and 0 < stop_at < total_duration:
+        # Stopped early (cleanly, Stop now): the phase in progress gets its
+        # _END and RECORDING_END at the stop instant, as the controller writes.
+        phase_records = [r for r in phase_records if r["start"] < stop_at]
+        phase_records[-1]["end"] = stop_at
+        later = [m for m in markers if m[0] > stop_at]
+        cur_end = next((m for m in later if m[2].endswith("_END") and m[2] != "RECORDING_END"), None)
+        rec_end = next(m for m in markers if m[2] == "RECORDING_END")
+        markers = [m for m in markers if m[0] <= stop_at]
+        if cur_end is not None:
+            markers.append((stop_at, cur_end[1], cur_end[2], cur_end[3]))
+        markers.append((round(stop_at + 0.001, 3), rec_end[1], rec_end[2], rec_end[3]))
+        return phase_records, markers, stop_at
 
     if not interrupted:
         return phase_records, markers, total_duration
@@ -148,16 +172,23 @@ def _flash_frame_set(marker_times, start_offset, fps, n_frames):
 
 
 def _render_frame(camera_label: str, frame_idx: int, t_session: float, flash: bool):
+    """A plain picture with one small line of text in the TOP-RIGHT corner —
+    the app draws the camera's name at top left and its state / timecode along
+    the bottom, so nothing here sits under them."""
     img = np.empty((HEIGHT, WIDTH, 3), dtype=np.uint8)
     if flash:
         img[:] = (255, 255, 255)
         color = (0, 0, 0)
     else:
         img[:] = (24, 24, 24)
-        color = (255, 255, 255)
-    cv2.putText(img, camera_label, (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 1.4, color, 3, cv2.LINE_AA)
-    cv2.putText(img, f"frame {frame_idx}", (30, 170), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2, cv2.LINE_AA)
-    cv2.putText(img, f"t_session={t_session:.3f}s", (30, 230), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2, cv2.LINE_AA)
+        color = (170, 180, 200)
+        x = int((frame_idx * 4) % (WIDTH - 40))
+        img[:, x:x + 40] = (60, 70, 160)          # a slow moving bar: playback is visible
+    text = f"{camera_label}  {t_session:.2f}s  f{frame_idx}"
+    scale = 0.5
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)
+    cv2.putText(img, text, (WIDTH - tw - 16, 16 + th), cv2.FONT_HERSHEY_SIMPLEX, scale,
+                color, 1, cv2.LINE_AA)
     return img
 
 
@@ -213,7 +244,8 @@ def _render_camera_worker(task: dict) -> dict:
 
 # ─── EEG (per boxer band) ──────────────────────────────────────────────────────
 
-def _synth_eeg_signal(rng, n_samples, sr, phase_windows, marker_times, start_offset):
+def _synth_eeg_signal(rng, n_samples, sr, phase_windows, marker_times, start_offset,
+                      weak=None):
     """Plausible fake 4-channel EEG + AUX. Not real physiology — a demo
     fixture: background noise, a bit of alpha, occasional frontal blink
     artifacts, 3x motion-artifact noise during ROUND phases, and a sharp
@@ -256,6 +288,12 @@ def _synth_eeg_signal(rng, n_samples, sr, phase_windows, marker_times, start_off
             channels["AF8"][local_idx:hi] += bump
         blink_t += rng.uniform(3.5, 6.5)
 
+    # A poorly fitting sensor: much noisier for a stretch ("Worth checking").
+    if weak is not None:
+        ch, w0, w1 = weak
+        sel = (t_session >= w0) & (t_session < w1)
+        channels[ch][sel] += rng.normal(0.0, 70.0, int(sel.sum()))
+
     # Sharp spike in BOTH bands at every phase-marker instant.
     width = int(0.08 * sr)
     for mt in marker_times:
@@ -269,7 +307,7 @@ def _synth_eeg_signal(rng, n_samples, sr, phase_windows, marker_times, start_off
 
 
 def _generate_eeg_band(muse_dir, device_name, boxer_letter, rng, t0_unix,
-                       total_duration, phase_windows, marker_times):
+                       total_duration, phase_windows, marker_times, weak=None):
     reader = _MuseDirectReader(address=f"demo-{boxer_letter}", name=device_name,
                                motion=True)
     fn = f"session_{_muse_friendly(device_name)}.csv"
@@ -280,7 +318,7 @@ def _generate_eeg_band(muse_dir, device_name, boxer_letter, rng, t0_unix,
 
     n_samples = max(0, round((total_duration - start_offset) * SR_EEG))
     channels, aux = _synth_eeg_signal(
-        rng, n_samples, SR_EEG, phase_windows, marker_times, start_offset)
+        rng, n_samples, SR_EEG, phase_windows, marker_times, start_offset, weak=weak)
 
     chunk = 12
     for start in range(0, n_samples, chunk):
@@ -323,6 +361,23 @@ def _generate_eeg_band(muse_dir, device_name, boxer_letter, rng, t0_unix,
 
 # ─── Orchestration ─────────────────────────────────────────────────────────────
 
+def _write_demo_log(layout) -> None:
+    """The recording's ``session_<date>_<time>.log``, as the app leaves one —
+    a few plain lines (no paths: nothing of this computer goes in a demo)."""
+    started = layout.started_at
+    name = f"session_{started:%Y%m%d_%H%M%S}.log"
+    lines = [f"{started:%H:%M:%S} INFO    brain_battle.demo: demo recording made by "
+             f"tools/generate_demo_session.py — simulated, no hardware",
+             f"{started:%H:%M:%S} INFO    brain_battle.demo: 4 cameras, 2 headbands "
+             f"({', '.join(app_settings._DEFAULT_HEADBANDS.values())})"]
+    with open(os.path.join(layout.root, name), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+DEMO_OPERATOR = "Maya K"          # who "ran" the demo recordings (history)
+DEMO_COMPUTER = "LAB-PC-1"         # the computer named in demo history lines
+
+
 def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: int = 60,
                           break_sec: int = 20, baseline_sec: int = 20, seed: int = 0,
                           interrupted: bool = False,
@@ -330,7 +385,10 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
                           colour_a: str = "Red", colour_b: str = "Blue",
                           legacy_names: tuple | None = None,
                           moments=None, calibration: dict | None = None,
-                          started_at=None) -> dict:
+                          started_at=None, stop_at: float | None = None,
+                          labels: dict | None = None, weak: tuple | None = None,
+                          lead_in_sec: int | None = None,
+                          operator: str = DEMO_OPERATOR) -> dict:
     """Build one complete demo session folder. Returns a summary dict
     (session root, per-camera + per-band generation parameters, markers,
     total duration, interrupted flag) — used both by main()'s printed
@@ -338,44 +396,75 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
 
     ``boxer_a`` / ``boxer_b`` are fighter codes (``None`` leaves them out);
     ``legacy_names=("Sam", "Alex")`` instead writes the manifest the way
-    recordings made before fighter codes did (``{"name", "headband"}``), so
-    the app's handling of old recordings can be checked. ``moments`` is a list
+    recordings made before fighter codes did (``{"name", "headband"}``) — only
+    for tests of old recordings; the library never does. ``moments`` is a list
     of ``(t_session_seconds, note)`` "Mark this moment" presses (note may be
     ""). ``calibration`` is ``{device: correction_ms}`` — stored as the
-    manifest's ``timing_calibration`` as if the buzzer test had been run."""
+    manifest's ``timing_calibration`` as if the buzzer test had been run.
+    ``stop_at`` stops the recording early (cleanly) at that session time.
+    ``labels`` is ``{labeller: [(label, who, t, t_end_or_None) | ("note", who,
+    t, text)]}``, written to each labeller's own file. ``weak`` is ``(boxer,
+    channel, start, end)``: that sensor is noisy and logged as poor in
+    ``contact_quality.csv`` for that stretch. ``lead_in_sec`` defaults to the
+    app's current lead-in (15 s; tests shorten it)."""
     global _qapp_ref
     _qapp_ref = QApplication.instance() or QApplication(sys.argv)
 
+    import brain_battle.capture.session_controller as _sc
+    saved_lead = _sc.LEAD_IN_SEC
+    if lead_in_sec is not None:
+        _sc.LEAD_IN_SEC = int(lead_in_sec)
+    try:
+        return _generate(out, rounds, round_sec, break_sec, baseline_sec, seed, interrupted,
+                         boxer_a, boxer_b, colour_a, colour_b, legacy_names, moments,
+                         calibration, started_at, stop_at, labels, weak, operator)
+    finally:
+        _sc.LEAD_IN_SEC = saved_lead
+
+
+def _generate(out, rounds, round_sec, break_sec, baseline_sec, seed, interrupted,
+              boxer_a, boxer_b, colour_a, colour_b, legacy_names, moments,
+              calibration, started_at, stop_at, labels, weak, operator) -> dict:
     cfg = SessionConfig(num_rounds=rounds, round_sec=round_sec,
                         break_sec=break_sec, baseline_sec=baseline_sec)
     err = cfg.validate()
     if err:
         raise ValueError(err)
 
+    import brain_battle.data.session_history as _sh
+    import brain_battle.data.session_storage as _ss
+
+    def hist(root, event, details=None, user=None):
+        _sh.log_event(root, event, details, user=user or "Recording", computer=DEMO_COMPUTER)
+
     base_dir = out or _default_capture_root()
     os.makedirs(base_dir, exist_ok=True)
-    # REAL writer: folder (named by boxers) + continuous/ + initial manifest
-    settings = app_settings.load()
-    headbands = {who: settings.headband_for(who) for who in ("A", "B")}
+    # REAL writer: folder (named by the codes) + continuous/ + initial manifest
+    headbands = dict(app_settings._DEFAULT_HEADBANDS)   # never this computer's settings
     import brain_battle.data.fighters as fighters
+    colours = fighters.load_colours(base_dir)
     if legacy_names:
         boxer_a, boxer_b = legacy_names
         entries = ({"name": legacy_names[0], "headband": headbands["A"]},
                    {"name": legacy_names[1], "headband": headbands["B"]})
     else:
         entries = tuple(
-            fighters.boxer_entry(code, colour, fighters.colour_hex(colour), headbands[w])
+            fighters.boxer_entry(code, colour, fighters.colour_hex(colour, colours), headbands[w])
             if code else {"code": None, "colour": None, "colour_hex": None,
                           "headband": headbands[w]}
             for w, code, colour in (("A", boxer_a, colour_a), ("B", boxer_b, colour_b)))
     layout = create_session(base_dir, cfg, started_at=started_at, demo=True,
                             boxer_a=entries[0], boxer_b=entries[1])
+    _write_demo_log(layout)                              # every recording has its log
 
     origin = capture_clock.session_origin()            # the REAL clock origin
     t0_monotonic, t0_unix = origin["t0_monotonic"], origin["t0_unix"]
     layout.set_capture_origin(**origin)                # REAL writer
 
-    phase_records, markers, total_duration = _phase_plan(cfg, interrupted)
+    phase_records, markers, total_duration = _phase_plan(cfg, interrupted, stop_at)
+    stopped = stop_at is not None and abs(total_duration - stop_at) < 1e-9
+    hist(layout.root, _sh.EVENT_RECORDING_STARTED,
+         {"boxer_a": boxer_a, "boxer_b": boxer_b, "rounds": rounds})
 
     for rec in phase_records:
         layout.add_phase(PhaseRecord(               # REAL writer
@@ -389,14 +478,21 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
 
     for (t_sec, phase_id, label, round_num) in markers:
         layout.append_marker(t_sec, phase_id, label, round_num)   # REAL writer
+    _ss.write_moments_csv(layout.root, [])                         # every recording has one
     for t_sec, note in (moments or []):
         if t_sec <= total_duration:
             layout.add_moment(t_sec, note=note)                    # REAL writer
+            hist(layout.root, _sh.EVENT_MOMENT_MARKED, {"t_session_seconds": t_sec})
     if calibration:
         import brain_battle.capture.timing as _timing
         beeps = [1.0 + 1.5 * i for i in range(_timing.N_BEEPS)]
         events = {dev: [b + 0.2 + c / 1000.0 for b in beeps] for dev, c in calibration.items()}
-        layout.set_timing_calibration(_timing.calibrate(beeps, events))   # REAL format
+        cal = _timing.calibrate(beeps, events)
+        layout.set_timing_calibration(cal)                         # REAL format
+        hist(layout.root, _sh.EVENT_TIMING_CALIBRATED,
+             {"largest_difference_ms": cal.get("largest_difference_ms")})
+    if stopped:
+        layout.mark_stopped_early(stop_at)                         # REAL writer
 
     marker_times = sorted({round(m[0], 6) for m in markers})   # one flash per instant
     rng = np.random.default_rng(seed)
@@ -430,6 +526,9 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     max_workers = min(4, os.cpu_count() or 4)
     with _fut.ProcessPoolExecutor(max_workers=max_workers) as pool:
         cameras = list(pool.map(_render_camera_worker, tasks))
+    layout.set_camera_fps({c["label"].replace(" ", "_"):                # REAL writer
+                           {"requested": NOMINAL_FPS, "actual": round(c["capture_fps"], 2)}
+                           for c in cameras})
 
     muse_dir = layout.continuous_dir() / "Muse data"
     muse_dir.mkdir(parents=True, exist_ok=True)
@@ -440,18 +539,30 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
     for eeg_idx, (boxer_letter, device_name) in enumerate(headbands.items(), start=1):
         if not device_name:
             continue
+        band_weak = (weak[1], weak[2], weak[3]) if weak and weak[0] == boxer_letter else None
         info = _generate_eeg_band(
             muse_dir, device_name, boxer_letter, rng, t0_unix,
-            total_duration, phase_windows, marker_times)
+            total_duration, phase_windows, marker_times, weak=band_weak)
         eeg_bands.append(info)
         if info["first_unix"] is not None:
             layout.record_source_start(f"EEG_{eeg_idx:02d}", info["first_unix"])  # REAL writer
+
+    # contact_quality.csv, once a second per boxer, with the REAL writer
+    from brain_battle.capture import contact_log as _clog
+    from brain_battle.capture.contact_quality import CHANNELS as _CH, summarise as _summary
+    cw = _clog.ContactLogWriter(_clog.path_for(layout.root))
+    for sec in range(1, int(total_duration) + 1):
+        for who in ("A", "B"):
+            st = {ch: "good" for ch in _CH}
+            if weak and weak[0] == who and weak[2] <= sec < weak[3]:
+                st[weak[1]] = "noisy"
+            cw.append(float(sec), who, _summary(st), st)
+    cw.close()
 
     # timing_quality.csv, once a second per device, with the REAL writer
     import brain_battle.capture.timing as _timing
     import brain_battle.capture.timing_log as _tlog
     tw = _tlog.TimingQualityWriter(_tlog.path_for(layout.root))
-    import brain_battle.data.session_storage as _ss
     corr = _timing.corrections(_ss._read_manifest(layout.root) or {})
     devices = [(c["label"].replace(" ", "_"), c["capture_fps"], 1.0) for c in cameras] + \
               [(f"EEG_{e['boxer']}", float(SR_EEG), 3.5) for e in eeg_bands]
@@ -462,6 +573,31 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
                       None if off is None else off * 1000.0)
     tw.close()
 
+    # Labels: each labeller's own file, through the REAL store
+    import brain_battle.data.labels_store as _ls
+    import brain_battle.data.label_vocab as _lv
+    vocab = {e["name"]: e for e in _lv.load(base_dir)}
+    for labeller, items in (labels or {}).items():
+        store = _ls.open_for_labeller(layout.root, labeller)
+        for item in items:
+            if item[0] == "note":
+                _, who, t, text = item
+                store.add(_ls.new_note(text, who, float(t), created_by=labeller))
+            else:
+                name, who, t, t_end = item
+                e = vocab.get(name, {})
+                store.add(_ls.new_label(name, who, _ls.DURATION if t_end else _ls.POINT,
+                                        float(t), t_end=t_end, color=e.get("color", "#3D4FD6"),
+                                        created_by=labeller))
+        store.save()
+        hist(layout.root, _sh.EVENT_LABELS_ADDED, {"count": len(items)}, user=labeller)
+
+    if interrupted:
+        hist(layout.root, _sh.EVENT_RECORDING_INTERRUPTED, {"how": "crash"})
+    else:
+        hist(layout.root, _sh.EVENT_RECORDING_FINISHED,
+             {"stopped_early": bool(stopped), "moments": len(moments or [])})
+
     # A crashed recording has no recording.xdf until the app finds it again and
     # rebuilds it, so the --interrupted fixture leaves it out too.
     xdf = None if interrupted else session_xdf.build_session_xdf(layout.root)   # REAL builder
@@ -471,6 +607,7 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
         "xdf": xdf,
         "total_duration_sec": total_duration,
         "interrupted": interrupted,
+        "stopped_early": bool(stopped),
         "drift_camera": DRIFT_CAMERA_LABEL,
         "cameras": cameras,
         "eeg_bands": eeg_bands,
@@ -483,78 +620,117 @@ def generate_demo_session(out: str | None = None, rounds: int = 2, round_sec: in
 
 # ─── Library (a folder of sessions covering every status) ───────────────────────
 
+CAL_GOOD = {"SIDE_01": 52, "SIDE_02": 49, "POV_01": 63, "POV_02": 57, "EEG_A": 31, "EEG_B": 36}
+LABELLER_1, LABELLER_2 = "Maya K", "Jonas R"      # demo labellers (fighters never have names)
+
+
 def generate_library(out: str | None = None, seed: int = 0) -> list[dict]:
-    """Fill `out` with ~5 short (~20 s) sessions covering every Sessions-screen
-    status: interrupted, needs-labelling, labelled, exported, plus one made
-    the old way, with boxer names instead of codes. Deterministic for a given
-    seed. Dated across recent days so
-    the list has variety."""
+    """Fill `out` with 6 short recordings that look like the current app made
+    them, covering every Sessions status and everything a tester should see:
+
+      1. K7Q2 vs M3XA — Labelled by two labellers (Compare + agreement), preset
+         labels and custom notes, moments with notes, buzzer test done, and a
+         weak right-ear signal on Boxer B for ~40 s in Round 2 ("Worth checking").
+      2. R2DT vs B9LN — Needs labels: moments, one still without a note.
+      3. Z8PC vs J4WE — Exported (labelled, then exported for analysis).
+      4. M3XA vs Z8PC — Interrupted (the app stopped mid-round).
+      5. B9LN vs K7Q2 — Stopped early, no buzzer test ("Timing not measured").
+      6. J4WE vs R2DT — Labelled by one labeller, with a custom note.
+
+    Fighters are codes and colours only. Every recording has the 15 s lead-in
+    and the automatic markers. The folder also gets the team's shared
+    ``label_list.json`` (the current default) and ``fighter_colours.json``.
+    Deterministic for a given seed; dated across recent days."""
     import datetime as _dt
     import brain_battle.data.session_storage as _ss
     import brain_battle.data.session_history as _sh
+    import brain_battle.data.label_vocab as _lv
+    import brain_battle.data.fighters as _fighters
+    from brain_battle.capture.session_controller import LEAD_IN_DEFAULT
 
     base = out or _default_capture_root()
     os.makedirs(base, exist_ok=True)
-    short = dict(rounds=1, round_sec=10, break_sec=0, baseline_sec=4)  # ~14 s
+    _lv.load(base)                                           # the team's label list
+    _fighters.save_colours(base, _fighters.load_colours(base))   # the team's colours
+    short = dict(rounds=1, round_sec=12, break_sec=0, baseline_sec=5, lead_in_sec=LEAD_IN_DEFAULT)
 
-    # Distinct recent timestamps so the list shows varied dates/times.
     now = _dt.datetime.now().replace(microsecond=0)
     def when(days_ago, hour, minute):
         return (now - _dt.timedelta(days=days_ago)).replace(hour=hour, minute=minute, second=0)
 
     results = []
+    # Lead-in 15 s + baseline: rounds start at lead_in + baseline.
+    L = LEAD_IN_DEFAULT
 
-    # 1) interrupted
-    r = generate_demo_session(out=base, seed=seed, interrupted=True,
-                              boxer_a="M3XA", boxer_b="Z8PC", colour_a="Blue", colour_b="Red",
-                              started_at=when(4, 14, 5), **short)
-    _ss.mark_session_interrupted(r["root"])
-    _sh.log_event(r["root"], _sh.EVENT_RECORDING_INTERRUPTED)
-    r["status"] = "interrupted"; results.append(r)
+    # 1) the showcase: 2 rounds, two labellers, weak signal, timing measured
+    b, rs, br = 8, 45, 10
+    r1 = L + b                      # Round 1 starts
+    r2 = r1 + rs + br               # Round 2 starts
+    r = generate_demo_session(
+        out=base, seed=seed, boxer_a="K7Q2", boxer_b="M3XA", colour_a="Red", colour_b="Blue",
+        rounds=2, round_sec=rs, break_sec=br, baseline_sec=b, lead_in_sec=L,
+        moments=[(r1 + 12.0, "B dropped the guard after a combination"),
+                 (r2 + 20.0, "A slipped on the canvas")],
+        calibration=CAL_GOOD, weak=("B", "TP10", r2 + 2.0, r2 + 42.0),
+        labels={
+            LABELLER_1: [("Punch initiated", "A", r1 + 3.0, None), ("Punch landed", "A", r1 + 3.4, None),
+                         ("Punch blocked", "B", r1 + 8.0, None), ("Clinch", "Both", r1 + 20.0, r1 + 26.0),
+                         ("Punch missed", "B", r2 + 5.0, None), ("Punch dodged", "A", r2 + 5.3, None),
+                         ("Referee break", "Both", r2 + 30.0, r2 + 33.0),
+                         ("note", "A", r2 + 12.0, "A keeps pressing forward, B backs onto the ropes")],
+            LABELLER_2: [("Punch initiated", "A", r1 + 3.2, None), ("Punch landed", "A", r1 + 3.5, None),
+                         ("Punch missed", "B", r1 + 8.1, None), ("Clinch", "Both", r1 + 20.3, r1 + 25.5),
+                         ("Punch missed", "B", r2 + 5.2, None),
+                         ("note", "Both", r2 + 31.0, "Referee separates them after a long clinch")],
+        },
+        started_at=when(5, 14, 5))
+    r["status"] = "labelled · 2 labellers · worth checking"; results.append(r)
 
-    # 2) needs labelling (clean, no labels)
-    r = generate_demo_session(out=base, seed=seed + 1, boxer_a="B9LN", boxer_b="R2DT",
-                              moments=[(8.0, "B dropped the guard after a combination"),
-                                       (12.0, "")],
-                              started_at=when(3, 9, 30), **short)
-    _sh.log_event(r["root"], _sh.EVENT_RECORDING_FINISHED)
-    r["status"] = "needs labelling"; results.append(r)
+    # 2) needs labels: one moment still without a note
+    r = generate_demo_session(out=base, seed=seed + 1, boxer_a="R2DT", boxer_b="B9LN",
+                              colour_a="Black", colour_b="Red", calibration=CAL_GOOD,
+                              moments=[(L + 8.0, "R2DT covered up after a jab"), (L + 13.0, "")],
+                              started_at=when(4, 9, 30), **short)
+    r["status"] = "needs labels · a moment without a note"; results.append(r)
 
-    # 3) labelled (labels.json with a few labels)
-    r = generate_demo_session(out=base, seed=seed + 2, boxer_a="R2DT", boxer_b="B9LN",
-                              started_at=when(2, 18, 15), **short)
-    _write_demo_labels(r["root"], [("JAB", 3.0), ("CROSS", 6.5), ("BLOCK", 9.0)])
-    _sh.log_event(r["root"], _sh.EVENT_LABELS_ADDED, {"label": "JAB"})
-    r["status"] = "labelled"; results.append(r)
-
-    # 4) exported (labelled + export_created in history)
-    r = generate_demo_session(out=base, seed=seed + 3, boxer_a="K7Q2", boxer_b="J4WE",
-                              colour_a="Black", colour_b="Red",
-                              started_at=when(1, 11, 45), **short)
-    _write_demo_labels(r["root"], [("HOOK", 4.0), ("CLINCH", 7.0)])
-    _sh.log_event(r["root"], _sh.EVENT_EXPORT_CREATED, {"name": "K7Q2_vs_J4WE.zip"})
+    # 3) exported
+    r = generate_demo_session(out=base, seed=seed + 2, boxer_a="Z8PC", boxer_b="J4WE",
+                              colour_a="Blue", colour_b="Red", calibration=CAL_GOOD,
+                              moments=[(L + 9.0, "Clean exchange")],
+                              labels={LABELLER_2: [("Punch initiated", "B", L + 7.0, None),
+                                                   ("Punch landed", "B", L + 7.3, None),
+                                                   ("Knockdown", "A", L + 14.0, None)]},
+                              started_at=when(3, 11, 45), **short)
+    _sh.log_event(r["root"], _sh.EVENT_EXPORT_CREATED,
+                  {"name": f"{os.path.basename(r['root'])}.zip"}, user=LABELLER_2,
+                  computer=DEMO_COMPUTER)
     r["status"] = "exported"; results.append(r)
 
-    # 5) an old recording, made before fighter codes (names in the manifest)
-    r = generate_demo_session(out=base, seed=seed + 4, legacy_names=("Sam", "Alex"),
-                              started_at=when(0, 16, 20), **short)
-    _sh.log_event(r["root"], _sh.EVENT_RECORDING_FINISHED)
-    r["status"] = "needs labelling (old, names)"; results.append(r)
+    # 4) interrupted (the app stopped mid-round)
+    r = generate_demo_session(out=base, seed=seed + 3, interrupted=True,
+                              boxer_a="M3XA", boxer_b="Z8PC", colour_a="Blue", colour_b="Black",
+                              calibration=CAL_GOOD, started_at=when(2, 16, 20), **short)
+    _ss.mark_session_interrupted(r["root"])          # as the app leaves it once found:
+    r["xdf"] = session_xdf.ensure_session_xdf(r["root"])   # flagged, recording.xdf rebuilt
+    r["status"] = "interrupted"; results.append(r)
 
+    # 5) stopped early, no buzzer test → "Timing not measured"
+    short2 = dict(short, rounds=2, break_sec=5)
+    r = generate_demo_session(out=base, seed=seed + 4, boxer_a="B9LN", boxer_b="K7Q2",
+                              colour_a="Red", colour_b="Blue", calibration=None,
+                              stop_at=L + 5 + 12 + 5 + 4.0, started_at=when(1, 10, 0), **short2)
+    r["status"] = "stopped early · timing not measured"; results.append(r)
+
+    # 6) labelled by one labeller, with a custom note
+    r = generate_demo_session(out=base, seed=seed + 5, boxer_a="J4WE", boxer_b="R2DT",
+                              colour_a="Black", colour_b="Blue", calibration=CAL_GOOD,
+                              moments=[(L + 10.0, "J4WE switched stance")],
+                              labels={LABELLER_1: [("Punch initiated", "A", L + 6.0, None),
+                                                   ("Punch blocked", "B", L + 6.3, None),
+                                                   ("note", "B", L + 11.0, "R2DT circles away to the left")]},
+                              started_at=when(0, 13, 15), **short)
+    r["status"] = "labelled · 1 labeller"; results.append(r)
     return results
-
-
-DEMO_LABELLER = "Demo labeller"
-
-
-def _write_demo_labels(session_root, labels, labeller: str = DEMO_LABELLER):
-    """Write a few placed labels the way the app does: in the labeller's own
-    file, ``labels/<labeller>.json`` (through the real ``labels_store``)."""
-    import brain_battle.data.labels_store as _ls
-    store = _ls.open_for_labeller(session_root, labeller)
-    for name, t in labels:
-        store.add(_ls.new_label(name, "A", _ls.POINT, float(t), created_by=labeller))
-    store.save()
 
 
 # ─── CLI ────────────────────────────────────────────────────────────────────────
@@ -579,9 +755,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         "EEG and video cut off early")
     p.add_argument("--boxer-a", default="K7Q2", help="Boxer A's 4-character code")
     p.add_argument("--boxer-b", default="M3XA", help="Boxer B's 4-character code")
+    p.add_argument("--stopped-early", type=float, default=None, metavar="SECONDS",
+                   help="stop the recording early (cleanly) at this session time")
     p.add_argument("--library", action="store_true",
-                   help="fill --out with ~5 short sessions covering every status "
-                        "(interrupted, needs labelling, labelled, exported, an old named one)")
+                   help="fill --out with 6 short recordings covering every Sessions status "
+                        "(labelled by two labellers, needs labels, exported, interrupted, "
+                        "stopped early without a buzzer test, labelled by one)")
     return p
 
 
@@ -600,6 +779,7 @@ def _refuse_real_folder(out: str, force: bool) -> str | None:
 
 
 def main(argv=None):
+    from brain_battle.capture.session_controller import LEAD_IN_DEFAULT
     args = _build_arg_parser().parse_args(argv)
 
     err = _refuse_real_folder(args.out, args.force)
@@ -609,9 +789,9 @@ def main(argv=None):
 
     if args.library:
         rows = generate_library(out=args.out, seed=args.seed)
-        print(f"Demo library created ({len(rows)} sessions):")
+        print(f"Demo library created ({len(rows)} recordings):")
         for r in rows:
-            print(f"  [{r['status']:<26}] {os.path.basename(r['root'])}")
+            print(f"  [{r['status']:<42}] {os.path.basename(r['root'])}")
         return 0
 
     try:
@@ -620,6 +800,8 @@ def main(argv=None):
             break_sec=args.break_sec, baseline_sec=args.baseline_sec,
             seed=args.seed, interrupted=args.interrupted,
             boxer_a=args.boxer_a, boxer_b=args.boxer_b,
+            stop_at=args.stopped_early, lead_in_sec=LEAD_IN_DEFAULT,
+            calibration=CAL_GOOD,
         )
     except ValueError as e:
         print(f"Invalid session config: {e}", file=sys.stderr)

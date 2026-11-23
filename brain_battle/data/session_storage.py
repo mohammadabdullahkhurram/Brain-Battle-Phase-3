@@ -359,8 +359,11 @@ def create_session(base_dir: str | os.PathLike,
     (root / "continuous").mkdir(parents=True, exist_ok=True)
     (root / "continuous" / EEG_DIR_NAME).mkdir(parents=True, exist_ok=True)
 
-    # Write an initial (empty-phases) manifest so it exists from t=0.
+    # Write an initial (empty-phases) manifest so it exists from t=0, and an
+    # empty moments.csv, so every recording has one (header only when nothing
+    # was marked).
     layout._write_manifest()
+    write_moments_csv(root, [])
     return layout
 
 

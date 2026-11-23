@@ -93,14 +93,16 @@ def history_path(session_root: str | os.PathLike) -> Path:
 
 def log_event(session_root: str | os.PathLike, event: str,
               details: Optional[dict] = None, *,
-              user: Optional[str] = None, when: Optional[str] = None) -> bool:
+              user: Optional[str] = None, when: Optional[str] = None,
+              computer: Optional[str] = None) -> bool:
     """Append one event line to the session's history.jsonl (append + flush +
     fsync; the file is never rewritten). Returns True on success. Never raises
     — history logging must not break capture/review; failures are swallowed
     (and returned as False) so callers can keep going.
 
-    `details` is any JSON-serialisable dict. `user`/`when` are injectable for
-    testing; by default the OS login and the current local time are used."""
+    `details` is any JSON-serialisable dict. `user`/`when`/`computer` are
+    injectable (tests, the demo generator); by default "Your name" (or the OS
+    login), the current local time and this computer's name are used."""
     if user is None:
         user, source = current_user()
     else:
@@ -110,7 +112,7 @@ def log_event(session_root: str | os.PathLike, event: str,
         "time":        when or _now_iso(),
         "user":        user,
         "user_source": source,
-        "computer":    computer_name(),
+        "computer":    computer or computer_name(),
         "app_version": __version__,
         "event":       event,
         "details":     details or {},

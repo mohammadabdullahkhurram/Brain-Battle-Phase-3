@@ -326,7 +326,8 @@ them matches this one, with two differences: the live set has no label streams
 
 The "Mark this moment" presses and their notes as their own file, in the
 recording folder — written by `session_storage.write_moments_csv` (rewritten
-whole, atomically, whenever a moment or its note changes). The manifest's
+whole, atomically, whenever a moment or its note changes). Every recording has
+it from the start: just the header when nothing was marked. The manifest's
 `moments` holds the same data; `recording.xdf`'s `BrainBattle_Moments` stream
 holds the same rows.
 

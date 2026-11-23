@@ -13,6 +13,20 @@ Generates a demo session into a temp dir and checks:
      computes the same per-camera seeks the generated start delays imply.
   5. --interrupted: no SESSION_END marker, manifest's last phase is open
      (end_unix/end_monotonic both None).
+  6. A stopped-early recording: the phase in progress gets its _END and
+     RECORDING_END at the stop, stopped_early in the manifest.
+  7. --library matches the current app: 6 recordings, every Sessions status;
+     fighter codes + colours only — no name in ANY demo file (nor this
+     computer's login or name); 15 s lead-in and RECORDING_START …
+     RECORDING_END; moments with and without notes; labels from the preset
+     list, custom notes, two labellers on one recording (agreement works);
+     timing_quality.csv everywhere and timing_calibration on all but one
+     ("Timing not measured"); one stopped early, one interrupted; a weak-signal
+     stretch ("Worth checking"); moments.csv, contact_quality.csv, a session
+     log and every other file a real recording has; the team's
+     label_list.json (new default) and fighter_colours.json.
+  8. tools/demo.py's guards: never the real recordings folder, --fresh deletes
+     only a folder it made, the app gets its own settings + simulated devices.
 
 Run:  python3 tests/test_demo_session.py   (nonzero exit on any failure)
 Needs: ffmpeg on PATH (video container), PyQt6 + python-vlc (stubbed if
@@ -226,6 +240,164 @@ def test_marker_label_format():
               f"new={a_new!r} old={a_old!r} want={want!r}")
 
 
+# ─── 6: stopped early ────────────────────────────────────────────────────────
+
+def test_stopped_early():
+    with tempfile.TemporaryDirectory() as tmp:
+        import brain_battle.capture.session_controller as _sc
+        lead = _sc.LEAD_IN_SEC
+        stop = lead + 3 + 6.5                      # mid Round 1
+        r = generate_demo_session(out=tmp, rounds=2, round_sec=10, break_sec=3,
+                                  baseline_sec=3, seed=5, stop_at=stop)
+        rows = open(os.path.join(r["root"], "phase_markers.csv"), encoding="utf-8").read().strip().splitlines()[1:]
+        labels = [x.split(",")[2] for x in rows]
+        check("stopped early: ROUND_1_END then RECORDING_END at the stop",
+              labels[-2:] == ["ROUND_1_END", "RECORDING_END"]
+              and abs(float(rows[-2].split(",")[0]) - stop) < 1e-3, str(labels[-3:]))
+        check("stopped early: nothing planned after the stop",
+              "ROUND_2_START" not in labels)
+        man = json.load(open(os.path.join(r["root"], "session_manifest.json"), encoding="utf-8"))
+        check("stopped early: manifest stopped_early + stopped_t_session",
+              man.get("stopped_early") is True and abs(man["stopped_t_session"] - stop) < 1e-3)
+
+
+# ─── 7: the library matches the current app ─────────────────────────────────
+
+REAL_RECORDING_FILES = {"session_manifest.json", "phase_markers.csv", "moments.csv",
+                        "history.jsonl", "contact_quality.csv", "timing_quality.csv",
+                        "recording.xdf"}
+
+
+def test_library():
+    import getpass, socket, csv as _csv
+    import brain_battle.data.session_storage as ss
+    import brain_battle.data.label_vocab as lv
+    import brain_battle.data.labels_store as ls
+    import brain_battle.data.label_agreement as la
+    import brain_battle.data.fighters as fighters
+    from brain_battle.capture.session_controller import LEAD_IN_DEFAULT
+    from brain_battle.ui.review_label_screen import recording_notes
+    from tools.generate_demo_session import generate_library
+    tmp = tempfile.mkdtemp(prefix="bb_demo_lib_")
+    rows = generate_library(tmp, seed=0)
+    infos = {i.root: i for i in ss.list_sessions(tmp)}
+    check("library: 6 recordings", len(rows) == 6 and len(infos) == 6, str(len(infos)))
+    statuses = {i.status for i in infos.values()}
+    check("library: every Sessions status",
+          {ss.STATUS_NEEDS_LABELLING, ss.STATUS_LABELLED, ss.STATUS_EXPORTED,
+           ss.STATUS_INTERRUPTED} <= statuses, str(statuses))
+    check("library: the team's label_list.json is the new default",
+          [e["name"] for e in lv.load(tmp, seed_if_missing=False)]
+          == [e["name"] for e in lv.DEFAULT_LABELS])
+    check("library: the team's fighter_colours.json is there",
+          os.path.isfile(fighters.colours_path(tmp)))
+    preset = {e["name"] for e in lv.DEFAULT_LABELS}
+    cal_missing = stopped = interrupted = 0
+    two_labellers = weak = with_note = without_note = notes_custom = False
+    missing_files = {}
+    for root, info in infos.items():
+        man = json.load(open(os.path.join(root, "session_manifest.json"), encoding="utf-8"))
+        boxers = man.get("boxers") or {}
+        check(f"{os.path.basename(root)}: codes + colours only",
+              all(fighters.code_ok(b.get("code")) and b.get("colour") and "name" not in b
+                  for b in boxers.values()), str(boxers))
+        check(f"{os.path.basename(root)}: 15 s lead-in",
+              man.get("lead_in_sec") == LEAD_IN_DEFAULT == 15)
+        labels = [r["label"] for r in _csv.DictReader(open(os.path.join(root, "phase_markers.csv"),
+                                                          encoding="utf-8"))]
+        ok_markers = labels and labels[0] == "RECORDING_START" and "BASELINE_START" in labels
+        if not man.get("interrupted"):
+            ok_markers = ok_markers and labels[-1] == "RECORDING_END"
+        check(f"{os.path.basename(root)}: automatic markers RECORDING_START … "
+              f"{'(cut off)' if man.get('interrupted') else 'RECORDING_END'}", ok_markers,
+              str(labels))
+        files = set(os.listdir(root))
+        miss = REAL_RECORDING_FILES - files
+        if not any(f.startswith("session_") and f.endswith(".log") for f in files):
+            miss.add("session_*.log")
+        if miss:
+            missing_files[os.path.basename(root)] = sorted(miss)
+        cal_missing += not man.get("timing_calibration")
+        stopped += bool(man.get("stopped_early")) and not man.get("interrupted")
+        interrupted += bool(man.get("interrupted"))
+        for m in man.get("moments") or []:
+            with_note |= bool(m.get("note")); without_note |= not m.get("note")
+        everyone = ls.read_all(root)
+        if len(everyone) >= 2:
+            two_labellers = True
+            names = list(everyone)
+            ag = la.compare(everyone[names[0]], everyone[names[1]], names[0], names[1], 0.5)
+            check("library: two labellers on one recording agree on some labels, not all",
+                  0 < len(ag.matched) < ag.total, ag.sentence(False))
+        for who, labs in everyone.items():
+            for lab in labs:
+                if lab.get("type") == "note":
+                    notes_custom = True
+                else:
+                    check(f"label from the preset list ({lab['label']})", lab["label"] in preset)
+        weak |= any(n.startswith("Worth checking") for n in
+                    recording_notes(root, man, ss.read_phase_markers(root)))
+    check("library: every recording has every file a real recording has",
+          not missing_files, str(missing_files))
+    check("library: one recording without a buzzer test ('Timing not measured')", cal_missing == 1)
+    check("library: one stopped early", stopped == 1)
+    check("library: one interrupted", interrupted == 1)
+    check("library: moments with notes and without", with_note and without_note)
+    check("library: two labellers on one recording", two_labellers)
+    check("library: custom notes", notes_custom)
+    check("library: a weak-signal stretch ('Worth checking')", weak)
+    # no name anywhere — not a fighter name, not this computer's login or name
+    user = getpass.getuser().lower()
+    host = socket.gethostname().split(".")[0].lower()
+    hits = []
+    for dp, _dn, fn in os.walk(tmp):
+        for f in fn:
+            if f.endswith((".mp4", ".xdf")):
+                continue
+            text = open(os.path.join(dp, f), encoding="utf-8", errors="ignore").read()
+            low = text.lower()
+            for word in {user, host} - {""}:
+                if len(word) >= 3 and word in low:
+                    hits.append((f, word))
+            if '"boxers"' in text:
+                for b in (json.loads(text).get("boxers") or {}).values():
+                    if "name" in b:
+                        hits.append((f, "boxer name"))
+    check("library: no name in any demo file (fighters, this computer's login or name)",
+          not hits, str(hits[:5]))
+    for root in infos:
+        man = json.load(open(os.path.join(root, "session_manifest.json"), encoding="utf-8"))
+        if not man.get("interrupted"):
+            continue
+        check("interrupted: as the app leaves it once found (recording.xdf rebuilt)",
+              os.path.isfile(os.path.join(root, "recording.xdf")))
+
+
+# ─── 8: tools/demo.py guards ────────────────────────────────────────────────
+
+def test_demo_tool_guards():
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import demo
+    check("demo: default folder is 'Brain Battle Demo' in the home folder",
+          demo.default_folder() == os.path.join(os.path.expanduser("~"), "Brain Battle Demo"))
+    real = demo.real_recordings_folder()
+    check("demo: refuses the real recordings folder", demo.main(["--out", real, "--no-app"]) == 2)
+    other = tempfile.mkdtemp(prefix="bb_not_demo_")
+    open(os.path.join(other, "precious.txt"), "w").write("x")
+    check("demo: --fresh refuses to delete a folder it did not make",
+          demo.main(["--out", other, "--fresh", "--no-app"]) == 2
+          and os.path.isfile(os.path.join(other, "precious.txt")))
+    check("demo: refuses a non-empty folder it did not make",
+          demo.main(["--out", other, "--no-app"]) == 2)
+    d = tempfile.mkdtemp(prefix="bb_demo_env_")
+    open(os.path.join(d, demo.MARKER), "w").write("x")
+    env = demo.app_env(d)
+    settings = json.load(open(env["BRAIN_BATTLE_CONFIG"], encoding="utf-8"))
+    check("demo: the app gets simulated devices and its own settings in the demo folder",
+          env["BRAIN_BATTLE_SIMULATE"] == "1" and env["BRAIN_BATTLE_CONFIG"].startswith(d)
+          and settings["capture_dir"] == d and "BRAIN_BATTLE_CAPTURE_DIR" not in env)
+
+
 def test_generator_safety():
     """The CLI must never default a demo into the real recordings folder."""
     from tools.generate_demo_session import _build_arg_parser, _refuse_real_folder
@@ -253,7 +425,10 @@ if __name__ == "__main__":
     test_review_tab_loads()
     test_interrupted_session()
     test_marker_label_format()
+    test_stopped_early()
     test_generator_safety()
+    test_demo_tool_guards()
+    test_library()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

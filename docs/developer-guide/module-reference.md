@@ -23,7 +23,7 @@ remove, or rename a module, update this page in the same commit (see
 | **`playback/`** | `pyav_player` |
 | **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `fighters` · `safe_io` · `export_module` · `app_settings` |
 | **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` · `stall_probe` · `sound` |
-| **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `measure_descriptors` · `soak_test` · `render_diagrams` · `render_screens` · `make_round_bell` |
+| **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `demo` · `measure_descriptors` · `soak_test` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its
 entry says otherwise. The modules that spawn threads or subprocesses are
@@ -712,8 +712,19 @@ Generates a realistic v3 demo session (4 camera MP4s + sidecars including one
 deliberately drifting camera, 2 EEG CSVs + movement-sensor CSVs,
 `phase_markers.csv`, a `demo:true` manifest, and `recording.xdf`) by **reusing the real writers**, so the fixture can't drift from the
 real format. `--out` is required and refuses the real recordings folder without
-`--force`. See [AGENTS.md's "Demo session"](../project/planning-documents.md) and
+`--force`. `--library` makes 6 recordings covering every Sessions status (two
+labellers, custom notes, weak signal, stopped early, interrupted, one without a
+buzzer test); fighter codes only, and no login or computer name in any file. See
+[AGENTS.md's "Demo session"](../project/planning-documents.md) and
 [simulation & demo](simulation-and-demo.md). Covered by `tests/test_demo_session.py`.
+
+### `tools/demo.py`
+One command to try the app: makes the demo library in `~/Brain Battle Demo` (or
+`--out`) the first time, then starts `python -m brain_battle` on it with
+`BRAIN_BATTLE_SIMULATE=1` and its own settings file in the demo folder, so real
+recordings and settings are never touched. `--fresh` deletes and regenerates —
+only a folder carrying its `.brain-battle-demo` marker; it refuses the real
+recordings folder. Mac and Windows. Guards covered by `tests/test_demo_session.py`.
 
 ### `tools/render_diagrams.py`
 Renders every `docs/diagrams/*.mmd` to `.svg` (GitHub) + `.png` (what Markdown

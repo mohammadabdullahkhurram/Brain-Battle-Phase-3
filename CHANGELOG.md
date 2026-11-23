@@ -56,6 +56,26 @@ dev-log numbering, kept as history — they do not track the release version.
   Referee stop — or the short-lived "Punch thrown" list) is replaced by it
   once, recorded in the file's new `history` (`default_list_replaced`, who,
   when, from, to) and the log; a list a team edited is kept.
+- **Demo data that matches the current app.** `tools/generate_demo_session.py
+  --library` makes 6 recordings covering every Sessions status: two labellers
+  on one (Compare and agreement), preset labels and custom notes, moments with
+  and without notes, a weak-signal stretch ("Worth checking"), one stopped
+  early without a buzzer test ("Timing not measured"), one interrupted, one
+  exported. Fighter codes and colours only — no name in any file, and none of
+  this computer's login or name (history says "Recording" / the demo
+  labellers on "LAB-PC-1"; `session_history.log_event(computer=…)`). Every
+  recording has the 15 s lead-in, every automatic marker, `moments.csv`,
+  `contact_quality.csv`, `timing_quality.csv`, filled `camera_fps`, a session
+  log; the folder gets the team's `label_list.json` and `fighter_colours.json`.
+  New `--stopped-early`. Video text is small, top right.
+- **`python3 tools/demo.py`** — makes that library in `~/Brain Battle Demo` (or
+  `--out`) once and starts the app on it with simulated devices and its own
+  settings file; `--fresh` deletes and regenerates (only a folder it made).
+- **Every recording has `moments.csv`** from the start (header only when
+  nothing was marked).
+- **Review & Label says what is worth knowing**: a banner with "Worth
+  checking" (a weak signal for 30 s or more) and "Timing not measured" (no
+  buzzer test), as the Saved screen does after recording.
 
 **Follow-up fixes (2026-11-19)**
 - **Camera frame loss: each camera captures in its own process**

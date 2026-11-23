@@ -192,6 +192,7 @@ _KNOWN_PHRASES = {
     "adr-0023": "Each fighter gets a 4-character code",
     "adr-0024": "Rewrite the raw files with corrected times",
     "adr-0025": "interpreter lock",
+    "adr-0026": "native alert",
     # Project (D3)
     "goals": "Community Impact Project",
     "status": "working agreement",

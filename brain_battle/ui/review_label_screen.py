@@ -241,6 +241,19 @@ def _small_combo(items, current, tip):
     return c
 
 
+def recording_notes(root, manifest: dict, phases) -> list:
+    """What the Saved screen would have said is worth knowing: weak-signal
+    stretches of 30 s or more ("Worth checking") and a missing buzzer test
+    ("Timing not measured")."""
+    from brain_battle.capture import contact_log
+    out = [f"Worth checking: {contact_log.describe_weak(p)}"
+           for p in contact_log.weak_periods(root, phases, min_sec=30)]
+    if not (manifest or {}).get("timing_calibration"):
+        out.append("Timing not measured: no buzzer test this session, so device delays are "
+                   "not corrected.")
+    return out
+
+
 class BrainActivityCard(QFrame):
     """Both boxers' EEG, drawn as a conventional EEG viewer (ui/eeg_viewer.py):
     one stacked, labelled trace per channel in µV, a shared time axis, timebase
@@ -771,6 +784,12 @@ class ReviewLabelScreen(QWidget):
         root.addWidget(self._build_topbar())
         page = QVBoxLayout(); page.setContentsMargins(24, 14, 24, 14); page.setSpacing(12)
         page.addWidget(self._build_compare_banner())
+        # What is worth knowing about this recording (the Saved screen's
+        # "Worth checking" / "Timing not measured", for anyone opening it later)
+        self._notes_banner = ui.Banner("warn")
+        self._notes_banner.add_action("Dismiss", lambda: self._notes_banner.setVisible(False))
+        self._notes_banner.setVisible(False)
+        page.addWidget(self._notes_banner)
         self._scroll = QScrollArea(); self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -1345,6 +1364,9 @@ class ReviewLabelScreen(QWidget):
         self._phases = read_phase_markers(root)
         self._duration = self._phases[-1][0] if self._phases else 0.0
         self._all_moments = session_storage.read_moments(root)
+        notes = recording_notes(root, man, self._phases)
+        self._notes_banner.set_text("\n".join(notes))
+        self._notes_banner.setVisible(bool(notes))
         self._open_labels()
         self._strip.set_session(self._duration, self._phases, self._timeline_labels())
         self._refresh_all_labels()

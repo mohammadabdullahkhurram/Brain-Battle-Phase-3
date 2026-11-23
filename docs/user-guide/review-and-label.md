@@ -45,6 +45,12 @@ each other. Use the same name on every computer.
   a while); **Notes** (custom notes); **Moments** (the moments marked while
   recording, ⚑). Click or drag anywhere to move.
 
+**Worth knowing about this recording.** A yellow note under the header says
+what the Saved screen said when it was recorded: "Worth checking: Weak contact
+on Boxer B's right ear for about 40s in Round 2." (a weak signal for 30 seconds
+or more) and "Timing not measured" when no buzzer test was run, so the devices'
+delays are not corrected. **Dismiss** hides it.
+
 ## Placing a label
 
 The panel says "Add a label at 3:27".

@@ -203,16 +203,20 @@ instead:
 python3 tools/generate_demo_session.py --out /tmp/demo              # one session (2 rounds, seed 0)
 python3 tools/generate_demo_session.py --out /tmp/demo --rounds 3 --seed 7
 python3 tools/generate_demo_session.py --out /tmp/demo --interrupted  # looks like a mid-round crash
-python3 tools/generate_demo_session.py --out /tmp/library --library   # ~5 sessions, every Sessions status
+python3 tools/generate_demo_session.py --out /tmp/library --library   # 6 recordings, every Sessions status
+python3 tools/demo.py              # that library in ~/Brain Battle Demo + the app on it (simulated devices)
 ```
 
 `--out` is **required** — a demo must never land in your real recordings
 folder by accident. The generator also **refuses** an `--out` that equals the
 configured recordings folder unless you pass `--force` (the
 `_refuse_real_folder` guard), so demo data can't be mistaken for real captures.
-`--library` fills `--out` with ~5 short sessions covering every status
-(interrupted, needs labelling, labelled, exported, an old recording with names) — handy for the
-Sessions screen.
+`--library` fills `--out` with 6 recordings covering every status — two
+labellers on one (Compare), custom notes, moments with and without notes, a
+weak-signal stretch ("Worth checking"), one stopped early without a buzzer test
+("Timing not measured"), one interrupted, one exported; fighter codes only, no
+name of any kind in any file. `tools/demo.py` makes it once and opens the app
+on it (`--fresh` regenerates); it never touches real recordings or settings.
 
 Each run writes a real v3 session folder — 4 camera MP4s + sidecars (one camera
 deliberately drifts: 30fps declared container vs. ~29.5fps true capture rate),

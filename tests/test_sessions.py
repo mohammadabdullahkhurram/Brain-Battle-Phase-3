@@ -3,7 +3,7 @@ Part 2 — Sessions screen (DESIGN §1) acceptance tests.
 
 Covers:
   • discovery on a --library demo folder (statuses classified, a damaged
-    manifest surfaces as an "unreadable" row, boxer names + dates parsed)
+    manifest surfaces as an "unreadable" row, fighter codes + dates parsed)
   • folder naming (sanitize slashes/colons/emoji/long/reserved, collisions,
     no-name)
   • search / filter / sort logic (pure helpers)
@@ -95,12 +95,12 @@ def test_discovery():
     for r in rows:
         by_status.setdefault(r.status, []).append(r)
 
-    check("discovery: 6 sessions found (5 demo + 1 damaged)", len(rows) == 6,
+    check("discovery: 7 sessions found (6 demo + 1 damaged)", len(rows) == 7,
           f"{len(rows)}")
     check("discovery: one interrupted", len(by_status.get(ss.STATUS_INTERRUPTED, [])) == 1)
     check("discovery: one exported", len(by_status.get(ss.STATUS_EXPORTED, [])) == 1)
-    check("discovery: one labelled", len(by_status.get(ss.STATUS_LABELLED, [])) == 1)
-    check("discovery: two needs-labelling (incl. the old named one)",
+    check("discovery: two labelled", len(by_status.get(ss.STATUS_LABELLED, [])) == 2)
+    check("discovery: two needs-labelling (incl. the stopped-early one)",
           len(by_status.get(ss.STATUS_NEEDS_LABELLING, [])) == 2)
     check("discovery: damaged manifest surfaces as 'unreadable' (never hidden)",
           len(by_status.get(ss.STATUS_UNREADABLE, [])) == 1)
@@ -109,16 +109,22 @@ def test_discovery():
     check("discovery: fighter codes parsed (M3XA vs Z8PC)",
           intr is not None and intr.boxer_b == "Z8PC",
           f"{intr.boxer_a if intr else None}/{intr.boxer_b if intr else None}")
-    check("discovery: fighter colours parsed (blue vs red)",
-          intr is not None and (intr.colour_a, intr.colour_b) == ("#1B45C4", "#D3241B"))
+    import brain_battle.data.fighters as _f
+    check("discovery: fighter colours parsed (blue vs black)",
+          intr is not None and (intr.colour_a, intr.colour_b) == (_f.colour_hex("Blue"),
+                                                                  _f.colour_hex("Black")))
     check("discovery: interrupted session carries a stopped time",
           intr is not None and intr.stopped_sec is not None, f"{intr.stopped_sec if intr else None}")
     exported = by_status.get(ss.STATUS_EXPORTED, [None])[0]
     check("discovery: exported session has >= 1 label", exported and exported.labels_count >= 1,
           f"{exported.labels_count if exported else None}")
-    old = next((r for r in rows if r.readable and r.boxer_a == "Sam"), None)
-    check("discovery: an old recording with names (before codes) is listed and readable",
-          old is not None and old.boxer_b == "Alex")
+    import brain_battle.data.fighters as _fighters
+    check("discovery: demo fighters are codes only (no names)",
+          all(_fighters.code_ok(r.boxer_a) and _fighters.code_ok(r.boxer_b)
+              for r in rows if r.readable))
+    stopped = [r for r in rows if r.readable and r.stopped_sec is not None
+               and r.status == ss.STATUS_NEEDS_LABELLING]
+    check("discovery: the stopped-early recording carries its stop time", len(stopped) == 1)
     check("discovery: demo sessions carry the demo flag",
           all(r.demo for r in rows if r.readable),
           f"{sum(1 for r in rows if r.readable and r.demo)}/{sum(1 for r in rows if r.readable)}")
@@ -163,14 +169,12 @@ def test_filter_sort():
     rows = ss.list_sessions(BASE_LIB)
 
     counts = st.status_counts(rows)
-    check("chips: counts (all=5, needs=2, labelled=1, exported=1, interrupted=1)",
-          counts == {"all": 5, "needs_labelling": 2, "labelled": 1,
+    check("chips: counts (all=6, needs=2, labelled=2, exported=1, interrupted=1)",
+          counts == {"all": 6, "needs_labelling": 2, "labelled": 2,
                      "exported": 1, "interrupted": 1}, str(counts))
 
-    check("search: an old recording's name 'Sam' → 1",
-          len(st.filter_sort_sessions(rows, query="sam")) == 1)
-    check("search: by fighter code 'j4we' → 1 (case-insensitive)",
-          len(st.filter_sort_sessions(rows, query="j4we")) == 1)
+    check("search: by fighter code 'j4we' → 2 (case-insensitive)",
+          len(st.filter_sort_sessions(rows, query="j4we")) == 2)
     check("search: by fighter code 'R2DT' → 2",
           len(st.filter_sort_sessions(rows, query="R2DT")) == 2)
     # dates are relative to now, so derive a real one from the library
@@ -277,6 +281,11 @@ def _overflows(win, page):
         if not w.isVisible() or w.width() <= 0 or w.height() <= 0:
             continue
         if w.visibleRegion().isEmpty():
+            continue
+        # A scroll bar (and Qt's container for it) is scroll chrome beside the
+        # viewport, not clipped content — as in tests/test_layout_fit.py.
+        if "ScrollBar" in w.__class__.__name__ or \
+                w.objectName() in ("qt_scrollarea_vcontainer", "qt_scrollarea_hcontainer"):
             continue
         tl = w.mapTo(win, QPoint(0, 0))
         R = QRect(tl, w.size())
