@@ -223,23 +223,86 @@ def test_review_screen():
     finally:
         tab.shutdown()
 
-    # no name yet: the screen asks, and will not place a label until it has one
+    # no name yet: a "Who is labelling?" dialog over the whole window; once a
+    # name is saved, the label that was clicked IS placed (no lost click)
+    from PyQt6.QtCore import QTimer, Qt
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QApplication, QLineEdit
+    import brain_battle.ui.widgets as ui
     s = app_settings.load(); s.labeller_name = ""; s.save()
     tab = rl.ReviewLabelScreen()
+    tab.resize(1200, 800); tab.show()
+    seen = {}
+
+    def _answer(text, how="enter"):
+        """While the dialog is open (modal), look at it and answer it."""
+        def run():
+            d = QApplication.activeModalWidget()
+            seen["dialog"] = d
+            if not isinstance(d, ui.NameDialog):
+                return
+            seen["title"], seen["text"] = d.title(), d.text()
+            seen["focus"] = d.focusWidget() is d.name_edit
+            seen["save_off_when_empty"] = not d.save_btn.isEnabled() if not d.name_edit.text() else None
+            seen["prefill"] = d.name_edit.text()
+            seen["buttons"] = d.button_texts()
+            seen["modal"] = d.isModal() and QApplication.activeModalWidget() is d
+            d.name_edit.selectAll()
+            if how == "cancel":
+                QTest.keyClick(d, Qt.Key.Key_Escape); return
+            QTest.keyClicks(d.name_edit, text)
+            seen["save_on"] = d.save_btn.isEnabled()
+            QTest.keyClick(d.name_edit, Qt.Key.Key_Return)
+        QTimer.singleShot(0, run)
+
     try:
         tab.load_session_folder(root); tab.wait_loaded()
+        check("the side panel has no name field any more",
+              not any(w.isVisible() for w in tab.findChildren(QLineEdit)))
         before = ls.labeller_counts(root)
+        # cancel: nothing placed, still nobody
+        _answer("", how="cancel")
         tab._place_from_vocab(tab._vocab[0])
-        check("with no name, nothing is placed and the screen asks who is labelling",
-              ls.labeller_counts(root) == before and not tab._name_ask.isHidden()
-              and len(tab._store) == 0)
+        check("with no name, labelling opens the Who is labelling? dialog",
+              isinstance(seen.get("dialog"), ui.NameDialog) and seen.get("title") == "Who is labelling?",
+              str(seen.get("dialog")))
+        check("Cancel places nothing and saves no name",
+              ls.labeller_counts(root) == before and len(tab._store) == 0
+              and app_settings.labeller_name() == "")
+        seen.clear()
         got = []
         tab.labeller_changed.connect(got.append)
-        tab._name_edit.setText("  Dana   W "); tab._confirm_name()
-        check("giving a name saves it once, tidied up, and tells the app",
-              app_settings.labeller_name() == "Dana W" and got == ["Dana W"] and tab._name_ask.isHidden())
+        _answer("  Dana   W ")
         tab._place_from_vocab(tab._vocab[0])
-        check("…and labelling then works", ls.labeller_counts(root).get("Dana W") == 1)
+        check("the dialog: one sentence on why, name field has focus, modal",
+              "saved under your name" in (seen.get("text") or "") and seen.get("focus")
+              and seen.get("modal"), str(seen))
+        check("Save is disabled until a name is typed, then enabled",
+              seen.get("save_off_when_empty") is True and seen.get("save_on") is True, str(seen))
+        check("a pending label words the button \"Save and add the label\"",
+              seen.get("buttons") == ["Cancel", "Save and add the label"], str(seen.get("buttons")))
+        check("Enter saves the name once, tidied up, and tells the app",
+              app_settings.labeller_name() == "Dana W" and got == ["Dana W"])
+        check("…and the label that was clicked is added (no lost click)",
+              ls.labeller_counts(root).get("Dana W") == 1 and len(tab._store) == 1)
+        # "Not you?" opens the same dialog, with the name filled in
+        seen.clear()
+        _answer("Noor")
+        QTest.mouseClick(tab._labeller_chip, Qt.MouseButton.LeftButton)
+        check("Not you? opens the same dialog, filled in, with a plain Save",
+              isinstance(seen.get("dialog"), ui.NameDialog) and seen.get("prefill") == "Dana W"
+              and seen.get("buttons") == ["Cancel", "Save"], str(seen))
+        check("…and switches to the new labeller",
+              app_settings.labeller_name() == "Noor" and tab.labeller() == "Noor")
+        # a custom note asked for with no name: asked first, then the note is added
+        s = app_settings.load(); s.labeller_name = ""; s.save(); tab.set_labeller("")
+        _answer("Sam")
+        tab.start_note()
+        QTest.keyClicks(tab._note_text, "clinch on the ropes")
+        tab._on_add_note_clicked()
+        check("N with no name: asked, then the note is added under that name",
+              any(l.get("text") == "clinch on the ropes" and l.get("created_by") == "Sam"
+                  for l in tab._store.labels))
     finally:
         tab.shutdown()
         _env.set_labeller()

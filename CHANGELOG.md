@@ -16,6 +16,17 @@ dev-log numbering, kept as history — they do not track the release version.
   text), shows in Activity ("added a note"; removing one now reads "removed a
   note"), survives reopening and can be undone. `test_review_tab` clicks the
   real button with the mouse, so this cannot come back unnoticed.
+- **"Who is labelling?" is a pop-up.** When you start labelling with no name
+  set, the window dims and the app's dialog (`widgets.NameDialog` /
+  `ask_name`, on `AppDialog`) asks for it: one sentence on why, a focused name
+  field, Cancel · Save (disabled until a name is typed, Enter saves, "Save and
+  add the label" when something was being added). It is modal, so nothing else
+  can be clicked. After saving, the label or note you were adding is added —
+  no lost click. "Not you?" opens the same dialog. The name card in the side
+  panel is gone. Review's keyboard shortcuts now also check the widget a key
+  press is going to, so a letter typed into a text field can never act as a
+  shortcut. Tested in `test_labellers` (the real dialog, while it is open) and
+  `test_dialogs`.
 
 **Click-through fixes, demo data, tidy-up (2026-11-23)**
 - **Tests run silently (`BRAIN_BATTLE_MUTE`).** Every sound now plays through

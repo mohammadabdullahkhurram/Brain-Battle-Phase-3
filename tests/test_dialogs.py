@@ -12,7 +12,9 @@ Covers:
   3. ``AppDialog``: frameless (not a native window frame), a white rounded card,
      title + text, buttons on the right, warn / danger borders, Esc gives the
      cancel answer, it covers the window it belongs to; ``ask`` / ``tell``
-     answer through ``widgets.dialog_responder`` in tests.
+     answer through ``widgets.dialog_responder`` in tests. ``NameDialog``
+     ("Who is labelling?"): focused name field, Save disabled until a name is
+     typed, Enter saves (not when empty), Esc cancels, the name is tidied.
   4. ``Dropdown``: light, rounded, Inter, blue focus, its own (non-native)
      popup list.
   5. Light even when the computer is in dark mode: with a dark palette handed
@@ -152,6 +154,42 @@ def test_app_dialog():
     win.close()
 
 
+def test_name_dialog():
+    from PyQt6.QtTest import QTest
+    win = QWidget(); win.resize(1000, 700); win.show()
+    d = ui.NameDialog(win)
+    check("name dialog: title + one sentence on why",
+          d.title() == "Who is labelling?" and "saved under your name" in d.text())
+    check("name dialog: it is the app's dialog (dimmed cover, modal, frameless)",
+          isinstance(d, ui.AppDialog) and d.isModal()
+          and bool(d.windowFlags() & Qt.WindowType.FramelessWindowHint))
+    d.show(); _app.processEvents()
+    check("name dialog: the name field has focus", d.focusWidget() is d.name_edit)
+    check("name dialog: Save disabled while empty", not d.save_btn.isEnabled())
+    QTest.keyClick(d.name_edit, Qt.Key.Key_Return)
+    check("name dialog: Enter with no name does not close it", d.isVisible())
+    QTest.keyClicks(d.name_edit, "   ")
+    check("name dialog: spaces alone are not a name", not d.save_btn.isEnabled())
+    QTest.keyClicks(d.name_edit, "Maya   K ")
+    check("name dialog: Save enabled once a name is typed", d.save_btn.isEnabled())
+    QTest.keyClick(d.name_edit, Qt.Key.Key_Return)
+    check("name dialog: Enter saves, name tidied", d.result() == 1 and d.name() == "Maya K"
+          and not d.isVisible(), d.name())
+    d2 = ui.NameDialog(win, "Maya K"); d2.show(); _app.processEvents()
+    QTest.keyClick(d2, Qt.Key.Key_Escape)
+    check("name dialog: Esc cancels", d2.result() == 0 and not d2.isVisible())
+    ui.dialog_responder = lambda dd: (dd.name_edit.setText(" Noor "), 1)[1]
+    try:
+        got = ui.ask_name(win, pending=True)
+        check("ask_name: the tidied name; pending words the button",
+              got == "Noor" and ui.answered_dialogs[-1]["buttons"] == ["Cancel", "Save and add the label"])
+        ui.dialog_responder = lambda dd: 0
+        check("ask_name: None when cancelled", ui.ask_name(win) is None)
+    finally:
+        ui.dialog_responder = None
+    win.close()
+
+
 # ─── 4. Dropdown ───────────────────────────────────────────────────────────────
 
 def test_dropdown():
@@ -232,6 +270,7 @@ if __name__ == "__main__":
     test_no_native_dialogs()
     test_one_dropdown()
     test_app_dialog()
+    test_name_dialog()
     test_dropdown()
     test_light_in_dark_mode()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")

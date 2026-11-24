@@ -12,9 +12,9 @@ on every screen:
   status    ``StatusLine`` (icon + text, never colour alone) · ``pill`` ·
             ``boxer_badge`` · ``boxer_chip`` · ``Dot``
   numbers   ``TimerLabel`` (hand-painted, equal-width digits that never jiggle)
-  dialogs   ``AppDialog`` · ``ask`` · ``tell`` — the ONE in-app dialog (white
-            rounded card on a dimmed cover, buttons right; ``warn`` / ``danger``
-            variants). No native alert or message box is used anywhere.
+  dialogs   ``AppDialog`` · ``ask`` · ``tell`` · ``NameDialog`` / ``ask_name`` —
+            the ONE in-app dialog (white rounded card on a dimmed cover,
+            buttons right; ``warn`` / ``danger`` variants). No native alert or message box is used anywhere.
   inputs    ``Dropdown`` — the ONE app-styled dropdown (light, rounded, Inter,
             blue focus); never a bare ``QComboBox``.
 
@@ -26,7 +26,7 @@ from PyQt6.QtCore import Qt, QSize, pyqtSignal, QRectF, QRect, QPoint, QPointF
 from PyQt6.QtGui import QIcon, QPainter, QColor, QFont, QFontMetrics, QPen
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QFrame, QHBoxLayout, QVBoxLayout, QSizePolicy,
-    QButtonGroup, QLayout, QDialog, QComboBox, QListView,
+    QButtonGroup, QLayout, QDialog, QComboBox, QListView, QLineEdit,
 )
 
 import brain_battle.ui.design_tokens as dt
@@ -720,6 +720,57 @@ def tell(parent, title: str, text: str, tone: str | None = "warn", button: str =
     d.set_cancel_result(1)
     d.add_button(button, 1, "primary", default=True)
     d.exec()
+
+
+class NameDialog(AppDialog):
+    """"Who is labelling?" (prototype ``m.type==='name'``): the app's dialog
+    with one name field, focused. Save stays disabled until a name is typed;
+    Enter saves; Esc / Cancel closes without a name. ``pending`` (a label or
+    note was being added) words the button "Save and add the label"."""
+
+    TITLE = "Who is labelling?"
+    TEXT = ("Your labels are saved under your name, so several people can label the "
+            "same session. We only ask once on this computer.")
+
+    def __init__(self, parent=None, current: str = "", pending: bool = False):
+        super().__init__(parent, self.TITLE, self.TEXT)
+        self.name_edit = QLineEdit(current or "")
+        self.name_edit.setObjectName("nameDialogEdit")
+        self.name_edit.setPlaceholderText("e.g. Maya K")
+        self.name_edit.setMinimumHeight(44)
+        self.name_edit.setStyleSheet(dt.qss_input())
+        self.body.addWidget(self.name_edit)
+        self.set_cancel_result(0)
+        self.add_button("Cancel", 0, "secondary")
+        self.save_btn = self.add_button("Save and add the label" if pending else "Save", 1,
+                                        "primary", default=True)
+        self.name_edit.textChanged.connect(self._on_text)
+        self.name_edit.returnPressed.connect(self._on_return)
+        self.name_edit.selectAll()
+        self.name_edit.setFocus()
+        self._on_text(self.name_edit.text())
+
+    def name(self) -> str:
+        """The typed name, tidied (single spaces, no ends)."""
+        return " ".join(self.name_edit.text().split())
+
+    def _on_text(self, _t):
+        self.save_btn.setEnabled(bool(self.name()))
+
+    def _on_return(self):
+        if self.name():
+            self.done(1)
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self.activateWindow()
+        self.name_edit.setFocus()
+
+
+def ask_name(parent, current: str = "", pending: bool = False) -> str | None:
+    """Ask "Who is labelling?"; the tidied name, or None when cancelled."""
+    d = NameDialog(parent, current, pending)
+    return (d.name() or None) if d.exec() else None
 
 
 # ── the one dropdown ─────────────────────────────────────────────────────────

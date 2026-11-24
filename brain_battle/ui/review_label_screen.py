@@ -942,23 +942,9 @@ class ReviewLabelScreen(QWidget):
         self._labeller_chip.setStyleSheet(f"QPushButton {{ border: 0; background: transparent; "
                                           f"color: {dt.accent()}; font-family: {dt.FONT_UI}; "
                                           f"font-size: {dt.SIZE_SM}px; font-weight: 600; }}")
-        self._labeller_chip.clicked.connect(self._show_name_ask)
+        self._labeller_chip.clicked.connect(self._change_labeller)
         idrow.addWidget(self._labeller_chip)
         nv.addLayout(idrow)
-        self._name_ask = ui.Card(tone="info", radius=dt.RADIUS_MD)
-        na = QVBoxLayout(self._name_ask); na.setContentsMargins(12, 10, 12, 12); na.setSpacing(8)
-        na.addWidget(ui.body("Who is labelling?", color=dt.text_primary(), weight=700))
-        na.addWidget(ui.muted("Your labels are saved under your name, so several people can label "
-                              "the same session. We only ask once on this computer.",
-                              size=dt.SIZE_XS))
-        self._name_edit = QLineEdit(); self._name_edit.setPlaceholderText("e.g. Maya K")
-        self._name_edit.setMinimumHeight(40); self._name_edit.setStyleSheet(dt.qss_input())
-        self._name_edit.returnPressed.connect(self._confirm_name)
-        na.addWidget(self._name_edit)
-        self._name_ok = ui.primary_button("Save")
-        self._name_ok.clicked.connect(self._confirm_name)
-        na.addWidget(self._name_ok)
-        nv.addWidget(self._name_ask)
         nv.addWidget(ui.body("1 · Who?", weight=600, size=dt.SIZE_SM))
         who_row = QHBoxLayout(); who_row.setSpacing(6)
         self._who_btns = {}
@@ -1127,8 +1113,8 @@ class ReviewLabelScreen(QWidget):
 
     def start_note(self):
         """Custom note… (N): describe something in your own words."""
-        if not self._labeller:
-            self._show_name_ask(); return
+        if not self._ensure_labeller():
+            return
         self._selected = None; self._strip.set_selection(None)
         self._note_head.setText(f"Custom note at {_fmt_mmss(self._current_t())}")
         self._note_text.clear()
@@ -1148,8 +1134,8 @@ class ReviewLabelScreen(QWidget):
         text = (self._note_text.toPlainText() if text is None else text).strip()
         if not text:
             return None
-        if not self._labeller:
-            self._show_name_ask(); return None
+        if not self._ensure_labeller():
+            return None
         lab = labels_store.new_note(text, self._who, self._current_t(), created_by=self._labeller)
         self._store.add(lab)
         self._note_text.clear()
@@ -1297,20 +1283,27 @@ class ReviewLabelScreen(QWidget):
         named = bool(self._labeller)
         self._labeller_chip.setText(f"as {self._labeller} · Not you?" if named
                                     else "you’ll be asked your name")
-        self._name_ask.setVisible(not named)
 
-    def _show_name_ask(self):
-        self._name_edit.setText(self._labeller)
-        self._name_ask.setVisible(True)
-        self._name_edit.setFocus(); self._name_edit.selectAll()
-
-    def _confirm_name(self):
-        name = " ".join(self._name_edit.text().split())
+    def _ask_name(self, pending: bool) -> bool:
+        """The "Who is labelling?" dialog (dims the window; nothing else can be
+        clicked until it is saved or cancelled). True once a name is saved."""
+        name = ui.ask_name(self, self._labeller, pending=pending)
         if not name:
-            self._name_edit.setFocus(); return
+            return False
         name = app_settings.set_labeller_name(name)
         self.set_labeller(name)
         self.labeller_changed.emit(name)
+        return True
+
+    def _ensure_labeller(self) -> bool:
+        """Before adding a label or note: True when we know who is labelling —
+        asking now if not. The caller then goes on and adds what was clicked,
+        so the click that triggered the question is not lost."""
+        return bool(self._labeller) or self._ask_name(pending=True)
+
+    def _change_labeller(self):
+        """"Not you?" — the same dialog, with the current name filled in."""
+        self._ask_name(pending=False)
 
     def set_labeller(self, name: str) -> None:
         """Label as this person from now on. An open recording switches to
@@ -1521,11 +1514,11 @@ class ReviewLabelScreen(QWidget):
 
     def _label_at_moment(self, entry):
         """A label exactly at the selected moment's time."""
-        if not self._labeller:
-            self._show_name_ask(); return
         if not (self._selected and self._selected[0] == "moment"):
             return
         t = float(self._all_moments[self._selected[1]]["t_session_seconds"])
+        if not self._ensure_labeller():
+            return
         self._commit_label(entry, t, None)
 
     def _update_who_button_labels(self):
@@ -1620,9 +1613,9 @@ class ReviewLabelScreen(QWidget):
         self._set_who(order[(order.index(self._who) + 1) % 3])
 
     def _place_from_vocab(self, entry):
-        if not self._labeller:              # nobody to save the label under yet
-            self._show_name_ask(); return
-        t = self._player.t if self._player else 0.0
+        t = self._player.t if self._player else 0.0   # where it was clicked, before any question
+        if not self._ensure_labeller():     # nobody to save the label under yet: ask, then place it
+            return
         if entry.get("kind", label_vocab.POINT) == label_vocab.DURATION:
             self._handle_duration(entry, t)
         else:
@@ -1836,13 +1829,20 @@ class ReviewLabelScreen(QWidget):
                if ag.matched else ""))
 
     # ---- keyboard ----
-    def _typing_now(self) -> bool:
+    def _typing_now(self, receiver=None) -> bool:
+        """A text field has the keyboard — the focused widget, or the widget
+        the key press is actually going to (judged by both, so a letter typed
+        into a note can never act as a shortcut)."""
         from PyQt6.QtWidgets import QTextEdit, QPlainTextEdit
+        text_kinds = (QLineEdit, QTextEdit, QPlainTextEdit)
         w = (self._focus_getter() if self._focus_getter else QApplication.focusWidget())
-        return isinstance(w, (QLineEdit, QTextEdit, QPlainTextEdit))
+        if isinstance(w, text_kinds):
+            return True
+        return isinstance(receiver, text_kinds) or (
+            isinstance(receiver, QWidget) and isinstance(receiver.parentWidget(), text_kinds))
 
-    def handle_key(self, key, modifiers) -> bool:
-        if self._typing_now():
+    def handle_key(self, key, modifiers, receiver=None) -> bool:
+        if self._typing_now(receiver):
             return False
         ctrl = bool(modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier))
         shift = bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
@@ -1875,7 +1875,7 @@ class ReviewLabelScreen(QWidget):
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.KeyPress and self.isVisible() \
                 and QApplication.activeModalWidget() is None:
-            if self.handle_key(event.key(), event.modifiers()):
+            if self.handle_key(event.key(), event.modifiers(), obj):
                 return True
         return super().eventFilter(obj, event)
 

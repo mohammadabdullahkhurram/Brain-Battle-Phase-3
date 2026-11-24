@@ -239,7 +239,11 @@ analysis**.
 - Transport: play, the time, "of 12:15 · Round 2", speeds 0.25–2×. **Lanes:**
   Rounds · System (a grey tick per automatic marker; click shows
   `ROUND_2_START · 05:15.00`) · A · K7Q2 · B · M3XA · Both · Notes · Moments.
-- Asked once: "Who is labelling?"
+- Asked once: "Who is labelling?" — the app's dialog over the dimmed window
+  (one sentence on why, a focused name field, Cancel · **Save**, disabled
+  until a name is typed; Enter saves; "Save and add the label" when a label or
+  note was being added, which is then added). "Not you?" opens the same
+  dialog. There is no name field in the side panel.
 
 - Leaving with ‹ Sessions after adding labels: "✓ Your labels are saved —
   Every label is saved the moment you add it — 4 new this time." (and how many
