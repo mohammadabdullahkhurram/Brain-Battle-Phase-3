@@ -37,15 +37,23 @@ Diagnosis (debug only — see brain_battle/support/stall_probe.py):
                         timestamp sidecars are still written)
     --minimal-source    the simulated cameras hand out a ready-made picture
                         (no drawing per frame)
+    --trace DIR         each camera process writes per-frame step timing, its
+                        garbage collections and pipe sends to DIR
     --fps 30            30 instead of 60 frames per second
     --in-process        cameras as threads of the app instead of processes
                         (how capture ran before ADR-0025)
 
-Lost frames are judged against the computer's own stalls: a bare process that
-only sleeps runs beside the app for the whole soak (``stall_probe.
-MachineStallProbe``). A frame lost while that process was also woken late was
-lost to the machine (reported as machine noise); a frame lost while the
-machine ran normally is a problem. The last line is the verdict:
+Lost frames are judged against the computer's own stalls: two small processes
+run beside the app for the whole soak (``stall_probe.MachineStallProbe``) —
+one that only sleeps (it sees the computer not running programs: CPU stalls)
+and one that also keeps 48 MB in use, writing every page about once a second
+(it sees the computer paging: memory stalls, which the first cannot see). A
+frame lost while either was held up was lost to the machine (reported as
+machine noise, split CPU / memory); a frame lost while the machine ran
+normally is a problem. On a computer that is not short of memory the second
+probe's pages stay put and it reports nothing. The header prints the RAM and
+swap in use, and each recording how much the computer swapped in. The last
+line is the verdict:
 
     VERDICT: OK — 0 frames lost outside the machine's own stalls (14 lost during
     9 machine stalls, worst 120 ms: machine noise); EEG complete; …
@@ -66,6 +74,9 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+
+
+MEMORY_PROBE_MB = 48     # the memory-stall probe's working set (see stall_probe)
 
 
 def _plan_for(minutes: float):
@@ -244,6 +255,9 @@ def _apply_variants(args) -> None:
         debug.append("no-preview")
     if args.no_encoder:
         debug.append("null-encoder")
+    if args.trace:
+        debug.append("trace")
+        os.environ["BRAIN_BATTLE_CAPTURE_TRACE_DIR"] = args.trace
     if debug:
         os.environ["BRAIN_BATTLE_CAPTURE_DEBUG"] = ",".join(debug)
     if args.minimal_source:
@@ -265,6 +279,8 @@ def main(argv=None) -> int:
     ap.add_argument("--no-preview", action="store_true")
     ap.add_argument("--no-encoder", action="store_true")
     ap.add_argument("--minimal-source", action="store_true")
+    ap.add_argument("--trace", default="", metavar="DIR",
+                    help="each camera process writes its per-frame timing to DIR (debug)")
     ap.add_argument("--in-process", action="store_true",
                     help="cameras as threads of the app (how it was before ADR-0025)")
     ap.add_argument("--no-ui-tick", action="store_true",
@@ -297,9 +313,12 @@ def main(argv=None) -> int:
     from brain_battle.support import resource_limits as rl
     from brain_battle.support.stall_probe import MachineStallProbe, judge_lost_frames
     machine = MachineStallProbe().start()       # the computer's own stalls, all soak long
+    machine_mem = MachineStallProbe(touch_mb=MEMORY_PROBE_MB).start()   # … and its paging
     from brain_battle.capture.usb_camera import isolated_capture
+    vm, sw = psutil.virtual_memory(), psutil.swap_memory()
     print(f"Machine: {psutil.cpu_count()} cores ({psutil.cpu_count(logical=False)} physical), "
-          f"{sys.platform}; cameras in "
+          f"{sys.platform}; {vm.total / 2**30:.0f} GB RAM ({vm.available / 2**30:.1f} GB available), "
+          f"swap in use {sw.used / 2**30:.1f} GB; cameras in "
           f"{'their own processes' if isolated_capture() else 'threads of the app'}", flush=True)
     _apply_variants(args)
     probe = None
@@ -343,8 +362,7 @@ def main(argv=None) -> int:
 
     def snap(label):
         sn = rl.snapshot()
-        if machine.alive():
-            sn["children"] = max(0, sn["children"] - 1)   # the bare stall probe is not the app's
+        sn["children"] = max(0, sn["children"] - machine.alive() - machine_mem.alive())  # the probes are not the app's
         import gc as _gc
         from PyQt6.QtCore import QThread as _QT
         _qts = [type(o).__name__ for o in _gc.get_objects() if isinstance(o, _QT)]
@@ -368,6 +386,7 @@ def main(argv=None) -> int:
         from brain_battle.capture import clock as _clock
         t0_mono = _clock.monotonic()
         n_stalls0 = len(probe.stalls) if probe else 0
+        swap_in0 = psutil.swap_memory().sin
         flow.begin_recording()
         if args.no_ui_tick:
             flow._tick.stop()
@@ -434,6 +453,9 @@ def main(argv=None) -> int:
         miss_f = sum((c.get("lost") or 0) for c in files["cameras"].values())
         late_f = sum((c.get("late") or 0) for c in files["cameras"].values())
         miss_s = sum((h.get("missing") or 0) for h in files["headbands"].values())
+        rec["machine_swapped_in_mb"] = round((psutil.swap_memory().sin - swap_in0) / 2**20, 1)
+        print(f"  the computer swapped in {rec['machine_swapped_in_mb']} MB during this recording",
+              flush=True)
         print(f"  recorded {files['recorded_s']} s · frames lost {miss_f} · frames late {late_f} "
               f"· encoder drops "
               f"{sum(dropped.values())} · EEG samples missing {miss_s} · queue peak "
@@ -466,15 +488,22 @@ def main(argv=None) -> int:
     flow.shutdown(); pump(0.5)
     if probe is not None:
         probe.stop()
-    stalls = machine.stop()
-    lost_out = lost_in = 0
+    cpu_stalls = machine.stop()
+    mem_stalls = machine_mem.stop()
+    stalls = sorted(cpu_stalls + mem_stalls)
+    lost_out = lost_in = lost_cpu_only_out = 0
     for rec in report["recordings"]:
-        j = judge_lost_frames(rec.pop("_gaps"), stalls, float(args.fps))
+        gaps = rec.pop("_gaps")
+        j = judge_lost_frames(gaps, stalls, float(args.fps))
+        jc = judge_lost_frames(gaps, cpu_stalls, float(args.fps))   # as judged before 2026-11-24
+        j["lost_outside_cpu_stalls_only"] = jc["lost_outside"]
         rec["lost_frames_judged"] = j
         lost_out += j["lost_outside"]; lost_in += j["lost_in_stalls"]
+        lost_cpu_only_out += jc["lost_outside"]
         print(f"  #{rec['n']}: frames lost outside the machine's stalls {j['lost_outside']}"
               f" ({j['gaps_outside']} gaps), inside {j['lost_in_stalls']} ({j['gaps_in_stalls']} "
-              f"gaps){'; e.g. ' + str(j['outside_examples'][:3]) if j['outside_examples'] else ''}",
+              f"gaps); judged by CPU stalls alone: {jc['lost_outside']} outside"
+              f"{'; e.g. ' + str(j['outside_examples'][:3]) if j['outside_examples'] else ''}",
               flush=True)
     if lost_out:
         ok = False
@@ -485,6 +514,8 @@ def main(argv=None) -> int:
     worst = round(max((d for _t, d in stalls), default=0) * 1000)
     report["verdict"] = {"ok": ok, "lost_outside_machine_stalls": lost_out,
                          "lost_in_machine_stalls": lost_in, "machine_stalls": len(stalls),
+                         "machine_cpu_stalls": len(cpu_stalls), "machine_memory_stalls": len(mem_stalls),
+                         "lost_outside_cpu_stalls_only": lost_cpu_only_out,
                          "worst_machine_stall_ms": worst, "eeg_missing": eeg_missing,
                          "encoder_drops": drops, "save_problems": saves}
     long = [m for m in mem if m[0] == 1]
@@ -498,8 +529,9 @@ def main(argv=None) -> int:
               f"{report['memory_peak_mb']} MB", flush=True)
     report["memory_samples"] = mem
     report["ok"] = ok
-    noise = (f"{lost_in} lost during {len(stalls)} machine stalls, worst {worst} ms: machine noise"
-             if lost_in else f"{len(stalls)} machine stalls, worst {worst} ms")
+    kinds = f"{len(cpu_stalls)} CPU + {len(mem_stalls)} memory"
+    noise = (f"{lost_in} lost during {kinds} machine stalls, worst {worst} ms: machine noise"
+             if lost_in else f"{kinds} machine stalls, worst {worst} ms")
     print(f"\nVERDICT: {'OK' if ok else 'PROBLEMS'} — {lost_out} frame"
           f"{'' if lost_out == 1 else 's'} lost outside the machine's own stalls ({noise}); "
           f"EEG {'complete' if not eeg_missing else f'{eeg_missing} samples missing'}; "

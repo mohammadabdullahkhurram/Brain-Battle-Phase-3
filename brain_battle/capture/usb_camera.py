@@ -94,7 +94,9 @@ ENERGY_SIZE = (64, 36)          # (kept for reference: the grid of the first ver
 ENERGY_STRIDE = 4
 ENERGY_KEEP_SEC = 40.0
 # Reusable frame buffers per camera (the encoder queue is usually a few frames
-# deep; beyond this many in flight, frames are simply allocated).
+# deep; beyond this many in flight, frames are simply allocated). The pool is
+# last-in-first-out, so the same two or three buffers are used again and again
+# and stay in memory; see camera_worker.CaptureLoop._take_buffer.
 POOL_MAX = 12
 
 
@@ -191,7 +193,13 @@ def _resolve_encoder() -> str:
     """The H.264 encoder to record with — REUSES export_module's probe
     (hardware encoder validated once, libx264 fallback). Imported lazily so
     importing usb_camera doesn't trigger the probe (keeps module import cheap,
-    which the smoke gate relies on)."""
+    which the smoke gate relies on). A camera process is told the app's answer
+    (``BRAIN_BATTLE_REC_ENCODER``) so it never imports export_module or runs
+    the probe itself — that took ~0.5 s in the reader thread at the start of
+    every recording."""
+    told = os.environ.get("BRAIN_BATTLE_REC_ENCODER")
+    if told:
+        return told
     try:
         from brain_battle.data.export_module import _HW_ENCODER
         return _HW_ENCODER
@@ -344,6 +352,8 @@ class FrameEncoder:
         return True
 
     def _drain_stderr(self) -> None:
+        from brain_battle.support import platform_utils
+        platform_utils.raise_thread_priority()      # a GIL holder: see camera_worker
         proc = self._proc
         if proc is None or proc.stderr is None:
             return
@@ -377,6 +387,7 @@ class FrameEncoder:
             proc.stdin.write(memoryview(frame).cast("B"))
         except (BrokenPipeError, OSError, ValueError):
             return False
+        self._t_after_pipe = _clock.monotonic()        # (debug trace: pipe vs sidecar time)
         self._write_sidecar_row(t_monotonic, t_arrival)   # only AFTER a successful write
         return True
 
@@ -691,6 +702,7 @@ class USBCameraThread(QThread):
         ctx = _mp_context()
         parent_end, child_end = ctx.Pipe(duplex=True)
         env = {k: v for k, v in os.environ.items() if k.startswith("BRAIN_BATTLE_")}
+        env.setdefault("BRAIN_BATTLE_REC_ENCODER", _resolve_encoder())   # probed once, here
         proc = ctx.Process(target=camera_worker.main, name=f"camera-{self._dev.index}",
                            args=(child_end, self._dev, self._want_w, self._want_h,
                                  self._want_fps, self._bitrate_mbps, env), daemon=True)

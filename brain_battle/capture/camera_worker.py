@@ -43,6 +43,7 @@ loop stops and **finalises the video** before the process exits.
 """
 from __future__ import annotations
 
+import collections
 import logging
 import queue
 import threading
@@ -87,9 +88,10 @@ class CaptureLoop:
         self._cap = None
         self.queue_peak = 0
         self.queue_capacity = uc.REC_QUEUE_MAXSIZE
-        self._pool: "queue.SimpleQueue" = queue.SimpleQueue()
+        self._pool: "collections.deque" = collections.deque()   # LIFO: see _take_buffer
         self._pool_n = 0
         self._pool_shape = None
+        self._pool_lock = threading.Lock()
         self._frames: list = []
         self._fclock = None
         from brain_battle.capture.keep_awake import LatencyActivity
@@ -97,6 +99,7 @@ class CaptureLoop:
         self._written: list = []
         self._written_lock = threading.Lock()
         self._last_flush = 0.0
+        self._trace = None                   # debug "trace": see _trace_dump
 
     # ── commands (any thread) ──
     def start_recording(self, path, clock) -> None:
@@ -116,22 +119,35 @@ class CaptureLoop:
         self.stop_flag = True
 
     # ── frame buffers ──
+    def _set_pool_shape(self, shape) -> None:
+        with self._pool_lock:
+            if shape != self._pool_shape:
+                self._pool_shape = shape
+                self._pool = collections.deque(); self._pool_n = 0
+
     def _take_buffer(self, shape):
+        """A frame buffer to read into. LAST in, first out: the buffer handed
+        back most recently is used again, so normally the same two or three
+        stay hot in memory and the rest of the pool is touched only during a
+        backlog. (First in, first out cycled through all of them; on a
+        computer short of memory the colder ones had been compressed away by
+        the time they came round again, and every reuse stalled the reader on
+        page faults — measured by the soak, 2026-11-24.)"""
         if shape != self._pool_shape:
-            self._pool_shape = shape
-            self._pool = queue.SimpleQueue(); self._pool_n = 0
+            self._set_pool_shape(shape)
         try:
-            return self._pool.get_nowait()
-        except queue.Empty:
+            return self._pool.pop()
+        except IndexError:
             pass
-        if self._pool_n < self.uc.POOL_MAX:
+        with self._pool_lock:
+            if self._pool_n >= self.uc.POOL_MAX:
+                return None
             self._pool_n += 1
-            return np.empty(shape, dtype=np.uint8)
-        return None
+        return np.empty(shape, dtype=np.uint8)
 
     def _give_buffer(self, buf) -> None:
         if buf is not None and buf.shape == self._pool_shape:
-            self._pool.put(buf)
+            self._pool.append(buf)
 
     def _energy(self, frame) -> float:
         try:
@@ -220,6 +236,7 @@ class CaptureLoop:
         return None
 
     def _watchdog(self) -> None:
+        _same_priority_as_reader()
         stall = self.uc.STALL_SEC
         flagged = forced = False
         while not self.stop_flag:
@@ -269,6 +286,9 @@ class CaptureLoop:
         last_stats = _clock.monotonic()
         last_preview = 0.0
         preview_every = 1e9 if "no-preview" in debug else uc.PREVIEW_INTERVAL_SEC
+        if "trace" in debug:
+            self._trace_start()
+        tr = self._trace
         first_shape: Optional[tuple] = None
         fail_since: Optional[float] = None
         last_queue_reset = _clock.monotonic()
@@ -291,6 +311,7 @@ class CaptureLoop:
 
                 buf = (self._take_buffer((first_shape[0], first_shape[1], 3))
                        if first_shape is not None else None)
+                t_call = _clock.monotonic() if tr is not None else 0.0
                 if buf is not None:
                     ok, frame = cap.read(buf)
                     if frame is not buf:
@@ -338,6 +359,7 @@ class CaptureLoop:
                     fail_since = None
                 self._last_frame_t = now
                 stamp = self._fclock.stamp(now)
+                t_stamped = _clock.monotonic() if tr is not None else 0.0
                 self._frames.append((now, stamp, self._energy(frame),
                                      getattr(cap, "last_delivered", None)))
                 window.append(now)
@@ -368,6 +390,7 @@ class CaptureLoop:
                             log.warning("cam idx=%s: encoder queue full — dropping frames "
                                         "(total this run: %d)", self.dev.index, self._dropped)
 
+                t_enq = _clock.monotonic() if tr is not None else 0.0
                 if now - last_preview >= preview_every:
                     last_preview = now
                     pv = frame
@@ -379,8 +402,15 @@ class CaptureLoop:
                     self.out("preview", pv)
                 if pooled and not enqueued:
                     self._give_buffer(frame)
+                t_prev = _clock.monotonic() if tr is not None else 0.0
                 self._flush(now)
+                if tr is not None:
+                    ru = _rusage()
+                    tr["frames"].append((t_call, now, t_stamped, t_enq, t_prev, _clock.monotonic(),
+                                         time.process_time(), time.thread_time(), ru[0], ru[1]))
         finally:
+            if self._trace is not None:
+                self._trace_dump(cap)
             try:
                 self._flush(_clock.monotonic(), force=True)
                 if self.recording or self._writer_thread is not None:
@@ -397,17 +427,52 @@ class CaptureLoop:
                 pass
             self.out("state", "stopped")
 
+    # ── debug trace (BRAIN_BATTLE_CAPTURE_DEBUG=trace; tools/soak_test.py --trace) ──
+    def _trace_start(self) -> None:
+        """Per-frame timing of this camera process, written to
+        ``$BRAIN_BATTLE_CAPTURE_TRACE_DIR/<camera>.trace.json`` when it stops:
+        frames (read called, read returned, stamped, queued, preview done,
+        reported, process CPU s, reader-thread CPU s, page faults: minor, major), writes (start, after the ffmpeg pipe, after the sidecar),
+        sends (start, seconds, kind) over the pipe to the app, gcs (start,
+        seconds, generation), and the simulated camera's own skips."""
+        import gc
+        self._trace = {"frames": [], "writes": [], "sends": [], "gcs": []}
+        gcs = self._trace["gcs"]
+        started = {}
+
+        def on_gc(phase, info):
+            if phase == "start":
+                started["t"] = _clock.monotonic()
+            elif "t" in started:
+                gcs.append((started["t"], _clock.monotonic() - started.pop("t"),
+                            info.get("generation")))
+        gc.callbacks.append(on_gc)
+
+    def _trace_dump(self, cap) -> None:
+        import json
+        import os
+        d = os.environ.get("BRAIN_BATTLE_CAPTURE_TRACE_DIR")
+        if not d:
+            return
+        self._trace["skips"] = list(getattr(cap, "skips", []) or [])
+        self._trace["fps"] = float(self.want_fps)
+        name = str(getattr(self.dev, "index", "cam"))
+        try:
+            with open(os.path.join(d, f"cam{name}.trace.json"), "w", encoding="utf-8") as f:
+                json.dump(self._trace, f)
+        except OSError:
+            pass
+
     # ── the encoder (writer thread) ──
     def _start_encoder(self, path, fw, fh, fps, clock) -> None:
+        """Start recording WITHOUT holding up the reader: the queue and the
+        writer thread are set up at once and frames queue from this frame on;
+        the writer thread launches ffmpeg (tens of ms — it held the reader up
+        and lost frames at the start of every recording) and then empties the
+        queue into it."""
         uc = self.uc
         enc = uc.FrameEncoder(path, fw, fh, fps, clock, bitrate_mbps=self.bitrate_mbps,
                               on_frame=self._on_written)
-        if not enc.start():
-            self.out("state", "error: could not start video encoder")
-            self.out("record_error", "Could not start recording for this camera (video "
-                                     "encoder failed to launch).")
-            self.out("rec_finalised", None)
-            return
         self._encoder = enc
         self.queue_capacity = max(uc.REC_QUEUE_MAXSIZE, int(round(2 * fps)))
         self._rec_queue = queue.Queue(maxsize=self.queue_capacity)
@@ -417,14 +482,34 @@ class CaptureLoop:
         self._writer_thread = threading.Thread(
             target=self._writer_loop, args=(enc, self._rec_queue, self._rec_stop_event),
             name="cam-enc-writer", daemon=True)
-        self._writer_thread.start()
         self.recording = True
         self.activity.begin()               # no App Nap / timer coalescing while recording
-        self.out("rec_started", None)
+        self._writer_thread.start()
+
+    def _encoder_failed_to_start(self, enc, q) -> None:
+        """(writer thread) ffmpeg did not launch: nothing is recorded."""
+        self.recording = False
+        self.activity.end()
+        if self._encoder is enc:
+            self._encoder = None
+        while True:                          # frames that queued meanwhile go back to the pool
+            try:
+                self._give_buffer(q.get_nowait()[0])
+            except queue.Empty:
+                break
+        self._writer_thread = None
+        self.out("state", "error: could not start video encoder")
+        self.out("record_error", "Could not start recording for this camera (video "
+                                 "encoder failed to launch).")
+        self.out("rec_finalised", None)
 
     def _writer_loop(self, enc, q, stop_event) -> None:
         from brain_battle.support import platform_utils
         platform_utils.raise_thread_priority()
+        if not enc.start():
+            self._encoder_failed_to_start(enc, q)
+            return
+        self.out("rec_started", None)
         died = False
         while True:
             try:
@@ -433,7 +518,11 @@ class CaptureLoop:
                 item = None
             if item is not None:
                 frame, t_stamp, t_read = item
+                tw0 = _clock.monotonic() if self._trace is not None else 0.0
                 ok_w = enc.write_frame(frame, t_stamp, t_read)
+                if self._trace is not None:
+                    self._trace["writes"].append((tw0, getattr(enc, "_t_after_pipe", tw0),
+                                                  _clock.monotonic()))
                 self._give_buffer(frame)
                 if not ok_w:
                     died = True
@@ -479,6 +568,33 @@ class CaptureLoop:
         self.out("rec_finalised", None)
 
 
+def _rusage() -> tuple:
+    """(minor, major) page faults of this process so far (debug trace)."""
+    try:
+        import resource
+        r = resource.getrusage(resource.RUSAGE_SELF)
+        return r.ru_minflt, r.ru_majflt
+    except Exception:
+        return 0, 0
+
+
+def _same_priority_as_reader() -> None:
+    """Every thread of a camera process runs at the reader's priority.
+
+    The threads share one interpreter lock (GIL). A thread left at the default
+    priority can be paused by a busy computer WHILE it holds that lock (on an
+    M1, on an efficiency core), and the GIL is a condition variable, so macOS
+    does not lend it the waiting reader's priority: the reader would wait
+    although it is itself at the highest priority. A precaution — the soak on
+    a Mac that was paging heavily could not separate its effect from the
+    machine's (2026-11-24, ADR-0025)."""
+    try:
+        from brain_battle.support import platform_utils
+        platform_utils.raise_thread_priority()
+    except Exception:
+        pass
+
+
 # ─── the process ──────────────────────────────────────────────────────────────
 
 class _PipeLogHandler(logging.Handler):
@@ -507,12 +623,17 @@ def main(conn, dev, width, height, fps, bitrate_mbps, env) -> None:
 
     def sender():
         # one thread owns the pipe's sending end
+        _same_priority_as_reader()
         while True:
             msg = outbox.get()
             if msg is None:
                 break
             try:
+                t0 = _clock.monotonic()
                 conn.send(msg)
+                dt_send = _clock.monotonic() - t0
+                if loop._trace is not None and dt_send > 0.002:
+                    loop._trace["sends"].append((t0, dt_send, msg[0]))
             except (OSError, EOFError, BrokenPipeError):
                 alive.clear()
                 loop.stop()
@@ -532,6 +653,7 @@ def main(conn, dev, width, height, fps, bitrate_mbps, env) -> None:
 
     def control():
         import brain_battle.capture.simulation as simulation
+        _same_priority_as_reader()
         while True:
             try:
                 msg = conn.recv()

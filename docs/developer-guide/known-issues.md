@@ -72,19 +72,30 @@ screen. The cause, the measurements and the fix are in
 - `tests/test_descriptors.py` runs four recordings in a row under a 256 limit
   and fails if the counts do not come back to the first visit's.
 
-## Camera frames lost while the computer itself was not paused (open)
+## Camera frames lost on a computer short of memory (explained; re-measure)
 
-The soak now judges lost camera frames against a bare process that only sleeps
-(`tools/soak_test.py`, [testing strategy](testing-strategy.md#the-soak-verdict)).
-On a desk Mac (2026-11-23, a 1-minute + 45-second soak at 60 fps) most lost
-frames fell inside the computer's own pauses, but **74 of about 25 000 (0.15 %)
-did not**: gaps of 33–117 ms in one or two cameras at a time while the bare
-process ran normally — pauses of the camera processes alone. Not yet
-explained; candidates are the camera process's own threads (reader, writer,
-control, sender) holding each other up, or the operating system pausing that
-process. Recording is complete either way (the frames' times are exact and the
-gaps are in `timing_quality.csv`); EEG is complete. Next step: `--diagnose`
-inside the camera processes.
+The "0.15 % of frames lost while the computer itself was not paused" (2026-11-23)
+is explained (2026-11-24, `tools/soak_test.py --trace`): the development Mac
+(8 GB) was **out of memory** — 15.8 GB of swap in use, ~60 MB of free pages,
+thousands of pages decompressed a second with nothing else running. During
+every lost-frame stall the camera process used ~5 % of one core: it was not
+working, it was **waiting for memory** (fresh pages, compressed pages), and so
+were ffmpeg and the app at the same instants. The bare stall probe holds
+almost no memory, so it could not see these stalls and they were counted as
+"outside the machine's stalls".
+
+What changed: the soak now runs a second probe that holds 48 MB (memory
+stalls); the camera path allocates far less at the worst moments (LIFO frame
+pool: 3–4× fewer page-faulting frames; ffmpeg launched by the writer thread
+and the encoder name passed in — the reader no longer freezes ~0.5 s at the
+start of every recording); all camera-process threads run at the reader's
+priority. Not ruled out: some remaining single-frame losses outside both
+probes' stalls (14–31 per 1-minute recording, 4 cameras). The full soak on that
+Mac was not a valid measurement — it swapped in 11.4 GB during the 12-minute
+recording (`docs/reviews/2026-11-soak.txt`). **Next:** re-run the full soak
+on a computer that is not swapping (browser closed, or the lab computer).
+Recording is complete either way (frame times are exact, gaps are in
+`timing_quality.csv`); EEG is complete.
 
 ## Code-level tech debt (tracked in ROADMAP Phase 5)
 

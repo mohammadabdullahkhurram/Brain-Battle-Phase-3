@@ -62,24 +62,37 @@ each, so nobody tightens or loosens one without knowing what it stands for.
 
 ### The soak verdict
 
-`tools/soak_test.py` runs a **bare process that only sleeps** beside the app
-for the whole soak (`stall_probe.MachineStallProbe`). Every time that process
-is woken more than 10 ms late, the computer itself paused. Each camera gap is
-then judged (`stall_probe.judge_lost_frames`): frames lost while the machine
-was paused are **machine noise**; frames lost while it ran normally are a
-**problem** of the app. The last line says so, for example:
+`tools/soak_test.py` runs two small probe processes beside the app for the
+whole soak (`stall_probe.MachineStallProbe`): a **bare process that only
+sleeps** — every time it is woken more than 10 ms late, the computer stopped
+running programs (a **CPU stall**) — and the same process **holding 48 MB**,
+writing every page about once a second, which is also held up when the
+computer is paging (a **memory stall**: compressing or swapping memory, which
+blocks any program that touches it without using any CPU — the bare process,
+with almost no memory, cannot see it). Each camera gap is then judged
+(`stall_probe.judge_lost_frames`): frames lost while the machine was stalled
+are **machine noise**; frames lost while it ran normally are a **problem** of
+the app. The header prints the computer's RAM and swap in use, each recording
+how much it swapped in, and the last line the verdict, for example:
 
-    VERDICT: PROBLEMS — 74 frames lost outside the machine's own stalls (466 lost
-    during 35 machine stalls, worst 132 ms: machine noise); EEG complete; encoder
-    drops 0; save problems 0; descriptors back to baseline.
+    VERDICT: PROBLEMS — 16 frames lost outside the machine's own stalls (370
+    lost during 58 CPU + 96 memory machine stalls, worst 103 ms: machine
+    noise); EEG complete; encoder drops 0; save problems 0; descriptors back to
+    baseline.
 
-That example is a real 1-minute + 45-second soak on a desk Mac (2026-11-23):
-most lost frames fell inside the machine's pauses, but 74 (about 0.15 %) did
-not — pauses of the camera processes alone, which the bare process did not
-share. They are an open item (see [known issues](known-issues.md)), not hidden
-by the verdict. The exit code is 0 only when no frame was lost outside a
-machine stall, no EEG sample is missing, nothing was dropped or failed to save
-and descriptors came back to the same numbers after every recording.
+Each recording's line also gives the count judged by CPU stalls alone (how the
+soak judged before the memory probe, 2026-11-24), so the two can be compared.
+On a computer that is not short of memory the memory probe's pages stay put
+and it reports nothing, so the verdict is exactly as strict as before. The
+exit code is 0 only when no frame was lost outside a machine stall, no EEG
+sample is missing, nothing was dropped or failed to save and descriptors came
+back to the same numbers after every recording.
+
+`--trace DIR` makes every camera process write its per-frame timing to DIR
+(read → stamp → queue → preview → report, the writer's ffmpeg-pipe and sidecar
+times, slow sends to the app, garbage collections, CPU time and page faults,
+and the simulated camera's own skipped frames) — how the cause in
+[known issues](known-issues.md) was found.
 
 `tests/test_flash_sync.py` is **slow** — it generates and verifies a 12-minute
 demo session, about five minutes on its own; everything else is quick. The

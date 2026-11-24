@@ -41,6 +41,23 @@ dev-log numbering, kept as history — they do not track the release version.
   native style simulated, and checks the note box, history drawer, a
   dropdown's open list, a dialog and the Documentation screen are light with
   dark text. Tooltips stay the design's own dark ink with white text.
+- **Lost camera frames: cause found — the computer was out of memory.**
+  `tools/soak_test.py --trace DIR` writes each camera process's per-frame
+  timing (read, stamp, queue, preview, report; ffmpeg pipe and sidecar;
+  pipe sends; garbage collections; CPU time; page faults). On the 8 GB
+  development Mac (15.8 GB swap in use) every lost-frame stall had the camera
+  process idle at ~5 % CPU, waiting for memory; the bare stall probe could not
+  see it. The simulator and ffmpeg were ruled out (minimal source: 49 outside;
+  encoder off: 43; as it was: 37–46). Changes: a last-in-first-out frame pool
+  (page-faulting frames 262 → 62–109 per camera per 2 min); ffmpeg is launched
+  by the writer thread and the encoder name comes from the app
+  (`BRAIN_BATTLE_REC_ENCODER`), so the reader no longer freezes ~0.5 s at the
+  start of every recording; every camera-process thread at the reader's
+  priority; the soak adds a memory-stall probe (48 MB) and prints RAM, swap and
+  swapped-in MB, and the count judged by CPU stalls alone. The full soak on
+  that Mac swapped in 11.4 GB and is not a valid measurement
+  (`docs/reviews/2026-11-soak.txt`); ADR-0025 and known issues say what was
+  found and that it must be re-run on a computer that is not swapping.
 - **Tests can no longer touch the real recordings folder.** `tests/_env.py`
   now gives every script's throwaway settings file a throwaway recordings
   folder too. (Found because a test that opens the main window seeded the label

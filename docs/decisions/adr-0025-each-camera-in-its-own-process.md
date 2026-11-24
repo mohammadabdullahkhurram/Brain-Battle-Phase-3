@@ -83,7 +83,7 @@ each soak to record how noisy the machine was at the time:
 | camera processes + frame-clock stamps, the committed run | 41 stalls, worst 369 ms | 152–173 (0.4 %), mostly one burst at 395–402 s | 0; 0–1; 1–4 |
 
 So the loss now follows the machine's own pauses rather than the app's.
-The committed run's full output is `docs/reviews/2026-11-soak.txt`; in it `stamps_off_clock` is 0 on every camera in every recording (every late read was put back on the camera's clock).
+That run's output was `docs/reviews/2026-11-soak.txt` (now replaced by the 2026-11-24 run, see below); in it `stamps_off_clock` is 0 on every camera in every recording (every late read was put back on the camera's clock).
 
 (The soak first counted every interval longer than 1.5 frame periods as lost
 frames. A frame read late and the next one on time give one long interval and
@@ -120,6 +120,49 @@ Ways to remove the rest of the losses, both needing real cameras to confirm:
   catches up without losing frames;
 - a **quieter recording computer** (no browser, no background indexing) —
   the cheapest thing to try at the first real session.
+
+## Frame loss on a computer short of memory (2026-11-24)
+
+The open item "frames lost while the computer itself was not paused" was
+traced with `tools/soak_test.py --trace` (per-frame timing inside each camera
+process). Experiments, 2-minute soaks at 60 fps, lost frames / of which outside
+the bare probe's stalls:
+
+| Variant | Lost | Outside |
+|---|---|---|
+| as it was | 190 · 89 | 46 · 37 |
+| minimal source (no drawing per frame) | 126 | 49 |
+| encoder off (null sink) | 109 | 43 |
+
+So neither the simulator nor ffmpeg was the cause. The trace showed: no gen-2
+collection in any camera process (worst collection 9–12 ms, never during a
+loss); sidecar writes ≤ 17 ms; the command pipe is a blocking read in its own
+thread. Losses came in bursts in all four processes at once, and during every
+slow iteration **the whole camera process used ~5 % of one core** (e.g. 150 ms
+wall, 5 ms CPU) — it was waiting, not working. The development Mac (M1, 8 GB)
+had 15.8 GB of swap in use and decompressed thousands of pages a second while
+idle: a process touching fresh or compressed memory waits for the kernel, and
+slow iterations carried 95 page faults — one fresh 1.5 MB frame — whenever the
+12-buffer frame pool ran dry behind a backlog to ffmpeg (262 per camera in 2
+minutes). The bare stall probe holds almost no memory and never saw these
+stalls. (Two other ideas were tested and rejected: a quadratic copy in
+`Connection.send` — a blocking socket write sends everything at once; and
+pre-filling a large pool — 80 MB per camera got compressed too and made it
+worse: 2 350 faulting frames per camera.)
+
+Changes: (1) the frame pool is last-in-first-out, so two or three buffers stay
+hot (faulting frames 262 → 62–109 per camera); (2) the writer thread launches
+ffmpeg and the app passes the probed encoder name (`BRAIN_BATTLE_REC_ENCODER`),
+so the reader no longer freezes ~0.5 s (≈ 30 frames) when a recording starts;
+(3) every thread of a camera process runs at the reader's priority (a GIL
+holder paused on an efficiency core would hold the reader up; a precaution —
+its effect could not be separated from the machine's); (4) the soak judges
+against a second probe that holds 48 MB (memory stalls) as well as the bare
+one. On that Mac, judged by both probes, 14–31 frames per 1-minute recording
+(4 cameras) were still lost outside any stall; the full soak there swapped in
+11.4 GB during the 12-minute recording and is not a valid measurement
+(`docs/reviews/2026-11-soak.txt`). It must be re-run on a computer that is not
+swapping.
 
 ## App Nap and timer coalescing (tested 2026-11-19)
 

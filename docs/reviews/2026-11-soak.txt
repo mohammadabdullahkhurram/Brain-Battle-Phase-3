@@ -1,71 +1,345 @@
-19:52:32 INFO    brain_battle.ui.fonts: registered 6 bundled font file(s) from /Users/mohammadabdullahkhurram/Developer/Projects/Brain-Battle-Phase-3/assets/fonts
-qt.multimedia.ffmpeg: Using Qt multimedia with FFmpeg version 7.1.2 LGPL version 2.1 or later
-qt.qpa.fonts: Populating font family aliases took 96 ms. Replace uses of missing font family "Sans Serif" with one that exists to avoid this cost. 
+Brain Battle — full soak, 2026-11-24/25 (develop, after the frame-loss investigation)
+=====================================================================================
+python3 tools/soak_test.py   (12-min recording + 3 × 1-min, 4 simulated cameras at 60 fps, 2 headbands)
+
+NOT A VALID MEASUREMENT OF THE APP. The development Mac (Apple M1, 8 GB RAM) had
+15.8 GB of swap in use and 1.2 GB available when it started, and swapped in
+11.4 GB during the 12-minute recording alone (it was thrashing; swap reached
+18.5 of 19.5 GB afterwards). Per camera, 12-min recording / 1-min recordings:
+
+  camera   lost (12 min)   late   stamps_off_clock   lost (1-min ×3)
+  SIDE_01  7281            1958   0                  234 / 185 / 151
+  SIDE_02  7211            1948   0                  226 / 197 / 147
+  POV_01   7305            1901   1                  239 / 194 / 156
+  POV_02   7117            1916   2                  231 / 189 / 143
+
+  judged against the machine's own stalls (CPU probe + memory probe):
+    #1 12-min:  2385 lost outside, 28704 inside   (CPU probe alone: 6230 outside)
+    #2 1-min:     14 outside,  1039 inside        (CPU alone: 75)
+    #3 1-min:     31 outside,   854 inside        (CPU alone: 113)
+    #4 1-min:     17 outside,   691 inside        (CPU alone: 59)
+  encoder drops 5146 (ffmpeg itself blocked for seconds), EEG complete,
+  save problems 0, descriptors back to baseline.
+
+VERDICT: PROBLEMS — 2447 frames lost outside the machine's own stalls (31288 lost
+during 2446 CPU + 3663 memory machine stalls, worst 438 ms: machine noise); EEG
+complete; encoder drops 5146; save problems 0; descriptors back to baseline.
+
+Cause of the frame loss on this Mac: see docs/developer-guide/known-issues.md
+and ADR-0025 "Frame loss on a computer short of memory". To be re-run on a
+computer that is not swapping (close the browser, or the lab computer).
+
+Full output follows.
+-------------------------------------------------------------------------------
+Machine: 8 cores (8 physical), darwin; 8 GB RAM (1.2 GB available), swap in use 15.8 GB; cameras in their own processes
+qt.qpa.fonts: Populating font family aliases took 134 ms. Replace uses of missing font family "Sans Serif" with one that exists to avoid this cost. 
 
 Recording 1 of 4 …
-  #1 flow opened                       fds   33  threads  14  children  4
-19:52:37 INFO    brain_battle.data.export_module: H.264 encoder: h264_videotoolbox
-19:52:37 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7538. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
-19:52:37 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7564. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
-  #1 left the flow                     fds    9  threads   8  children  0
-  CPU: machine 30.6 % of 8 cores; the app 19.8 %, camera processes 54.5 %, ffmpeg 34.0 % (100 % = one core)
-  recorded 735.0 s · frames lost 663 · frames late 579 · encoder drops 0 · EEG samples missing 0 · queue peak 32 · memory 104.9 → 229.1 MB
-    SIDE_01: {'frames': 43892, 'span_s': 734.31, 'expected': 44060, 'lost': 168, 'late': 129, 'stamps_off_clock': 0, 'max_gap_ms': 499.6, 'big_gaps_at_s': [186.6, 395.3, 398.7, 398.9, 399.2, 399.6, 399.7, 399.9]}
-    SIDE_02: {'frames': 43883, 'span_s': 734.2, 'expected': 44053, 'lost': 170, 'late': 129, 'stamps_off_clock': 0, 'max_gap_ms': 649.7, 'big_gaps_at_s': [186.6, 395.2, 398.7, 398.9, 399.1, 399.4, 399.5, 399.7]}
-    POV_01: {'frames': 43882, 'span_s': 734.23, 'expected': 44055, 'lost': 173, 'late': 168, 'stamps_off_clock': 0, 'max_gap_ms': 632.7, 'big_gaps_at_s': [395.3, 398.7, 398.9, 399.1, 399.6, 400.0, 402.4, 402.6]}
-    POV_02: {'frames': 43906, 'span_s': 734.28, 'expected': 44058, 'lost': 152, 'late': 153, 'stamps_off_clock': 0, 'max_gap_ms': 533.3, 'big_gaps_at_s': [398.7, 399.2, 399.4, 399.6, 400.0, 400.1, 402.4, 402.6]}
-    EEG A: {'samples': 188160, 'span_s': 735.0, 'expected': 188160, 'missing': 0}
-    EEG B: {'samples': 188268, 'span_s': 735.42, 'expected': 188268, 'missing': 0}
+  #1 flow opened                       fds   38  threads  10  children  4  Qt threads   7 {'SimMuseReader': 2, 'USBCameraThread': 4, '_ScanWorker': 1}
+23:45:33 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1)
+23:45:33 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1)
+23:45:33 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1)
+23:45:34 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 27)
+23:47:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 29)
+23:47:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 36)
+23:47:23 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 46)
+23:47:25 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 60)
+23:47:25 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 20)
+23:47:26 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 21)
+23:47:26 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 13)
+23:47:26 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 72)
+23:47:26 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 1)
+23:47:26 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 85)
+23:47:26 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 7)
+23:47:26 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 23)
+23:47:27 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 19)
+23:47:27 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 10)
+23:47:27 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 48)
+23:47:27 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 97)
+23:47:27 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 27)
+23:47:27 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 53)
+23:47:27 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 106)
+23:47:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 33)
+23:47:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 39)
+23:47:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 117)
+23:47:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 34)
+23:47:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 54)
+23:47:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 44)
+23:47:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 75)
+23:47:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 49)
+23:47:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 127)
+23:47:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 72)
+23:47:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 104)
+23:47:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 77)
+23:47:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 151)
+23:47:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 122)
+23:47:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 102)
+23:47:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 107)
+23:47:31 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 185)
+23:47:31 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 130)
+23:47:32 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 139)
+23:47:34 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 158)
+23:47:35 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 209)
+23:47:35 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 152)
+23:47:35 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 169)
+23:47:35 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 190)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 225)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 176)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 192)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 201)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 239)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 190)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 197)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 213)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 205)
+23:47:36 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 200)
+23:47:37 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 213)
+23:47:37 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 218)
+23:47:37 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 242)
+23:47:37 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 208)
+23:47:40 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 227)
+23:47:40 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 231)
+23:47:40 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 251)
+23:47:40 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 273)
+23:47:41 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 268)
+23:47:41 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 218)
+23:47:42 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 283)
+23:47:42 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 301)
+23:47:42 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 235)
+23:47:43 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 295)
+23:47:43 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 299)
+23:47:43 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 313)
+23:47:44 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 248)
+23:47:44 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 300)
+23:47:46 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 327)
+23:47:46 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 266)
+23:47:46 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 314)
+23:47:47 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 312)
+23:47:47 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 333)
+23:47:47 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 284)
+23:47:47 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 325)
+23:47:47 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 340)
+23:47:47 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 353)
+23:47:47 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 297)
+23:48:17 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 333)
+23:48:17 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 345)
+23:48:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 354)
+23:48:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 341)
+23:48:22 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 357)
+23:48:23 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 300)
+23:48:23 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 391)
+23:48:23 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 374)
+23:48:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 401)
+23:48:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 373)
+23:48:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 316)
+23:48:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 393)
+23:48:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 341)
+23:48:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 419)
+23:48:28 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 409)
+23:48:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 425)
+23:48:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 454)
+23:48:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 376)
+23:48:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 377)
+23:48:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 438)
+23:48:29 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 458)
+23:48:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 490)
+23:48:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 384)
+23:48:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 448)
+23:48:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 498)
+23:48:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 466)
+23:48:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 476)
+23:48:30 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 505)
+23:48:57 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 509)
+23:48:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 396)
+23:48:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 451)
+23:48:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 538)
+23:48:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 438)
+23:48:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 473)
+23:48:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 479)
+23:48:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 582)
+23:48:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 472)
+23:48:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 509)
+23:48:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 509)
+23:48:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 618)
+23:48:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 498)
+23:48:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 550)
+23:49:00 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 546)
+23:49:00 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 650)
+23:49:00 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 586)
+23:49:00 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 583)
+23:49:00 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 524)
+23:49:00 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 689)
+23:49:01 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 622)
+23:49:01 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 603)
+23:49:01 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 555)
+23:49:02 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 611)
+23:49:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 636)
+23:49:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 612)
+23:49:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 558)
+23:49:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 654)
+23:49:57 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 662)
+23:49:57 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 615)
+23:49:57 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 673)
+23:49:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 622)
+23:49:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 682)
+23:49:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 562)
+23:49:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 722)
+23:49:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 640)
+23:49:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 691)
+23:49:58 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 581)
+23:49:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 737)
+23:49:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 672)
+23:49:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 621)
+23:49:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 705)
+23:49:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 768)
+23:49:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 741)
+23:49:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 661)
+23:49:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 764)
+23:49:59 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 803)
+23:50:01 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 767)
+23:50:01 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 708)
+23:50:01 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 675)
+23:50:01 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 805)
+23:50:02 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 798)
+23:50:02 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 711)
+23:50:02 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 830)
+23:50:03 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 747)
+23:50:03 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 821)
+23:50:04 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 775)
+23:50:04 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 857)
+23:50:05 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 786)
+23:50:05 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 737)
+23:50:05 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 867)
+23:50:05 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 838)
+23:50:07 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 794)
+23:50:07 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 743)
+23:50:07 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 869)
+23:50:07 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 839)
+23:50:07 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 826)
+23:50:08 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 889)
+23:50:08 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 771)
+23:50:08 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 860)
+23:50:09 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 847)
+23:50:09 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 907)
+23:50:09 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 791)
+23:50:09 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 882)
+23:50:09 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 879)
+23:50:10 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 941)
+23:50:10 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 819)
+23:50:10 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 911)
+23:50:11 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 906)
+23:50:11 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 855)
+23:50:11 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 949)
+23:50:11 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 976)
+23:50:12 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 938)
+23:50:12 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 889)
+23:50:12 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1007)
+23:50:12 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 981)
+23:50:13 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 968)
+23:50:13 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1011)
+23:50:13 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1031)
+23:50:13 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 916)
+23:50:14 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1005)
+23:50:14 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1048)
+23:50:14 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1056)
+23:50:14 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 955)
+23:50:15 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1041)
+23:50:15 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1087)
+23:50:15 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1087)
+23:50:15 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 987)
+23:50:16 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1118)
+23:50:16 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1112)
+23:50:17 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 1003)
+23:50:17 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1079)
+23:50:17 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1154)
+23:50:17 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1150)
+23:50:17 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 1038)
+23:50:17 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1120)
+23:50:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1185)
+23:50:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1175)
+23:50:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 1064)
+23:50:18 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1135)
+23:50:19 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1222)
+23:50:19 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1211)
+23:50:19 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 1099)
+23:50:20 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1166)
+23:50:20 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1226)
+23:50:20 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1241)
+23:50:21 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 1111)
+23:50:21 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1180)
+23:50:21 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1264)
+23:50:21 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1276)
+23:50:22 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 1148)
+23:50:22 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1208)
+23:50:22 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1287)
+23:50:22 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1297)
+23:50:23 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 1166)
+23:50:23 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1231)
+23:50:23 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1308)
+23:50:24 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=201: encoder queue full — dropping frames (total this run: 1249)
+23:50:24 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=202: encoder queue full — dropping frames (total this run: 1318)
+23:50:25 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1310)
+23:50:25 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=203: encoder queue full — dropping frames (total this run: 1185)
+23:51:09 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1318)
+23:51:10 WARNING brain_battle.capture.usb_camera: [camera process] cam idx=200: encoder queue full — dropping frames (total this run: 1354)
+  #1 left the flow                     fds   14  threads   2  children  0  Qt threads   1 {'_ScanWorker': 1}
+  #1 left the flow, after gc           fds   14  threads   2  children  0  Qt threads   1 {'_ScanWorker': 1}
+  CPU: machine 63.5 % of 8 cores; the app 25.7 %, camera processes 57.3 %, ffmpeg 37.6 % (100 % = one core)
+  the computer swapped in 11377.5 MB during this recording
+  recorded 799.2 s · frames lost 28914 · frames late 7723 · encoder drops 5146 · EEG samples missing 0 · queue peak 120 · memory 133.8 → 231.3 MB
+    SIDE_01: {'frames': 40667, 'span_s': 799.12, 'expected': 47948, 'lost': 7281, 'late': 1958, 'stamps_off_clock': 0, 'max_gap_ms': 1816.5, 'big_gaps_at_s': [5.9, 6.0, 6.2, 20.7, 21.1, 21.3, 22.6, 22.8]}
+    SIDE_02: {'frames': 40737, 'span_s': 799.11, 'expected': 47948, 'lost': 7211, 'late': 1948, 'stamps_off_clock': 0, 'max_gap_ms': 1432.2, 'big_gaps_at_s': [5.7, 6.1, 20.7, 21.1, 21.4, 22.6, 22.9, 30.6]}
+    POV_01: {'frames': 40643, 'span_s': 799.12, 'expected': 47948, 'lost': 7305, 'late': 1901, 'stamps_off_clock': 1, 'max_gap_ms': 1790.3, 'big_gaps_at_s': [5.8, 6.1, 6.2, 9.2, 20.8, 21.1, 21.3, 22.5]}
+    POV_02: {'frames': 40832, 'span_s': 799.13, 'expected': 47949, 'lost': 7117, 'late': 1916, 'stamps_off_clock': 2, 'max_gap_ms': 1299.6, 'big_gaps_at_s': [5.7, 6.1, 20.6, 21.2, 22.5, 30.6, 40.1, 49.4]}
+    EEG A: {'samples': 204588, 'span_s': 799.17, 'expected': 204588, 'missing': 0}
+    EEG B: {'samples': 204732, 'span_s': 799.73, 'expected': 204732, 'missing': 0}
 
 Recording 2 of 4 …
-  #2 flow opened                       fds   33  threads  11  children  4
-20:05:02 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7538. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
-20:05:02 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7564. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
-  #2 left the flow                     fds    9  threads   7  children  0
-  CPU: machine 28.5 % of 8 cores; the app 19.6 %, camera processes 53.6 %, ffmpeg 35.1 % (100 % = one core)
-  recorded 60.3 s · frames lost 0 · frames late 3 · encoder drops 0 · EEG samples missing 0 · queue peak 24 · memory 129.0 → 134.0 MB
-    SIDE_01: {'frames': 3585, 'span_s': 59.73, 'expected': 3585, 'lost': 0, 'late': 1, 'stamps_off_clock': 0, 'max_gap_ms': 33.4, 'big_gaps_at_s': []}
-    SIDE_02: {'frames': 3585, 'span_s': 59.73, 'expected': 3585, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.8, 'big_gaps_at_s': []}
-    POV_01: {'frames': 3584, 'span_s': 59.71, 'expected': 3584, 'lost': 0, 'late': 1, 'stamps_off_clock': 0, 'max_gap_ms': 16.9, 'big_gaps_at_s': []}
-    POV_02: {'frames': 3584, 'span_s': 59.71, 'expected': 3584, 'lost': 0, 'late': 1, 'stamps_off_clock': 0, 'max_gap_ms': 33.1, 'big_gaps_at_s': []}
-    EEG A: {'samples': 15432, 'span_s': 60.28, 'expected': 15432, 'missing': 0}
-    EEG B: {'samples': 15588, 'span_s': 60.89, 'expected': 15588, 'missing': 0}
+  #2 flow opened                       fds   38  threads   8  children  4  Qt threads   7 {'SimMuseReader': 2, 'USBCameraThread': 4, '_ScanWorker': 1}
+  #2 left the flow                     fds   14  threads   2  children  0  Qt threads   1 {'_ScanWorker': 1}
+  #2 left the flow, after gc           fds   14  threads   2  children  0  Qt threads   1 {'_ScanWorker': 1}
+  CPU: machine 50.8 % of 8 cores; the app 22.1 %, camera processes 49.9 %, ffmpeg 35.8 % (100 % = one core)
+  the computer swapped in 1039.1 MB during this recording
+  recorded 60.1 s · frames lost 930 · frames late 301 · encoder drops 0 · EEG samples missing 0 · queue peak 42 · memory 127.5 → 105.5 MB
+    SIDE_01: {'frames': 3361, 'span_s': 59.91, 'expected': 3595, 'lost': 234, 'late': 71, 'stamps_off_clock': 2, 'max_gap_ms': 366.7, 'big_gaps_at_s': [2.4, 2.6, 2.7, 3.0, 3.2, 3.4, 3.5, 3.7]}
+    SIDE_02: {'frames': 3370, 'span_s': 59.92, 'expected': 3596, 'lost': 226, 'late': 83, 'stamps_off_clock': 0, 'max_gap_ms': 316.8, 'big_gaps_at_s': [2.5, 2.8, 3.1, 3.2, 3.4, 3.7, 9.1, 24.3]}
+    POV_01: {'frames': 3357, 'span_s': 59.91, 'expected': 3596, 'lost': 239, 'late': 77, 'stamps_off_clock': 0, 'max_gap_ms': 366.7, 'big_gaps_at_s': [2.4, 2.9, 3.1, 3.2, 3.3, 3.7, 24.3, 24.4]}
+    POV_02: {'frames': 3365, 'span_s': 59.92, 'expected': 3596, 'lost': 231, 'late': 70, 'stamps_off_clock': 0, 'max_gap_ms': 383.0, 'big_gaps_at_s': [2.4, 3.0, 3.3, 3.5, 3.7, 24.3, 24.4, 24.6]}
+    EEG A: {'samples': 15396, 'span_s': 60.14, 'expected': 15396, 'missing': 0}
+    EEG B: {'samples': 15492, 'span_s': 60.51, 'expected': 15492, 'missing': 0}
 
 Recording 3 of 4 …
-  #3 flow opened                       fds   33  threads  11  children  4
-20:06:11 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7538. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
-20:06:11 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7564. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
-  #3 left the flow                     fds    9  threads   7  children  0
-  CPU: machine 28.0 % of 8 cores; the app 19.5 %, camera processes 53.6 %, ffmpeg 27.3 % (100 % = one core)
-  recorded 60.0 s · frames lost 2 · frames late 1 · encoder drops 0 · EEG samples missing 0 · queue peak 19 · memory 100.0 → 130.5 MB
-    SIDE_01: {'frames': 3563, 'span_s': 59.37, 'expected': 3563, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
-    SIDE_02: {'frames': 3563, 'span_s': 59.38, 'expected': 3564, 'lost': 1, 'late': 1, 'stamps_off_clock': 0, 'max_gap_ms': 33.4, 'big_gaps_at_s': []}
-    POV_01: {'frames': 3564, 'span_s': 59.38, 'expected': 3564, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.8, 'big_gaps_at_s': []}
-    POV_02: {'frames': 3562, 'span_s': 59.36, 'expected': 3563, 'lost': 1, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.9, 'big_gaps_at_s': []}
+  #3 flow opened                       fds   38  threads   8  children  4  Qt threads   7 {'SimMuseReader': 2, 'USBCameraThread': 4, '_ScanWorker': 1}
+  #3 left the flow                     fds   14  threads   2  children  0  Qt threads   1 {'_ScanWorker': 1}
+  #3 left the flow, after gc           fds   14  threads   2  children  0  Qt threads   1 {'_ScanWorker': 1}
+  CPU: machine 50.4 % of 8 cores; the app 22.9 %, camera processes 50.8 %, ffmpeg 36.2 % (100 % = one core)
+  the computer swapped in 989.5 MB during this recording
+  recorded 60.0 s · frames lost 765 · frames late 329 · encoder drops 0 · EEG samples missing 0 · queue peak 11 · memory 128.4 → 108.2 MB
+    SIDE_01: {'frames': 3410, 'span_s': 59.9, 'expected': 3595, 'lost': 185, 'late': 81, 'stamps_off_clock': 0, 'max_gap_ms': 199.9, 'big_gaps_at_s': [5.2, 7.8, 11.7, 15.3, 21.5, 21.7, 22.2, 22.5]}
+    SIDE_02: {'frames': 3397, 'span_s': 59.88, 'expected': 3594, 'lost': 197, 'late': 76, 'stamps_off_clock': 0, 'max_gap_ms': 433.4, 'big_gaps_at_s': [11.7, 15.3, 15.5, 21.5, 22.0, 22.2, 23.3, 23.5]}
+    POV_01: {'frames': 3401, 'span_s': 59.9, 'expected': 3595, 'lost': 194, 'late': 85, 'stamps_off_clock': 0, 'max_gap_ms': 233.2, 'big_gaps_at_s': [11.7, 15.3, 21.5, 21.8, 21.9, 23.2, 23.5, 26.4]}
+    POV_02: {'frames': 3406, 'span_s': 59.89, 'expected': 3595, 'lost': 189, 'late': 87, 'stamps_off_clock': 0, 'max_gap_ms': 216.0, 'big_gaps_at_s': [21.6, 21.8, 21.9, 22.0, 22.5, 23.2, 23.5, 31.8]}
     EEG A: {'samples': 15360, 'span_s': 60.0, 'expected': 15360, 'missing': 0}
     EEG B: {'samples': 15456, 'span_s': 60.37, 'expected': 15456, 'missing': 0}
 
 Recording 4 of 4 …
-  #4 flow opened                       fds   33  threads  11  children  4
-20:07:19 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7538. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
-20:07:19 INFO    brain_battle.capture.eeg_module: EEG recording started for MuseS-7564. How late Bluetooth delivers samples is measured by the buzzer test (timing_calibration); it has not been checked on a real band yet (AGENTS.md).
-  #4 left the flow                     fds    9  threads   7  children  0
-  CPU: machine 33.2 % of 8 cores; the app 19.7 %, camera processes 52.7 %, ffmpeg 34.8 % (100 % = one core)
-  recorded 59.8 s · frames lost 10 · frames late 22 · encoder drops 0 · EEG samples missing 0 · queue peak 19 · memory 121.9 → 117.8 MB
-    SIDE_01: {'frames': 3554, 'span_s': 59.25, 'expected': 3556, 'lost': 2, 'late': 4, 'stamps_off_clock': 0, 'max_gap_ms': 50.0, 'big_gaps_at_s': []}
-    SIDE_02: {'frames': 3553, 'span_s': 59.27, 'expected': 3557, 'lost': 4, 'late': 6, 'stamps_off_clock': 0, 'max_gap_ms': 50.0, 'big_gaps_at_s': []}
-    POV_01: {'frames': 3556, 'span_s': 59.3, 'expected': 3559, 'lost': 3, 'late': 7, 'stamps_off_clock': 0, 'max_gap_ms': 50.0, 'big_gaps_at_s': []}
-    POV_02: {'frames': 3558, 'span_s': 59.3, 'expected': 3559, 'lost': 1, 'late': 5, 'stamps_off_clock': 0, 'max_gap_ms': 33.4, 'big_gaps_at_s': []}
-    EEG A: {'samples': 15312, 'span_s': 59.81, 'expected': 15312, 'missing': 0}
-    EEG B: {'samples': 15408, 'span_s': 60.18, 'expected': 15408, 'missing': 0}
+  #4 flow opened                       fds   38  threads   8  children  4  Qt threads   7 {'SimMuseReader': 2, 'USBCameraThread': 4, '_ScanWorker': 1}
+  #4 left the flow                     fds   14  threads   2  children  0  Qt threads   1 {'_ScanWorker': 1}
+  #4 left the flow, after gc           fds   14  threads   2  children  0  Qt threads   1 {'_ScanWorker': 1}
+  CPU: machine 45.6 % of 8 cores; the app 22.6 %, camera processes 50.9 %, ffmpeg 35.7 % (100 % = one core)
+  the computer swapped in 456.4 MB during this recording
+  recorded 60.3 s · frames lost 597 · frames late 269 · encoder drops 0 · EEG samples missing 0 · queue peak 16 · memory 103.6 → 90.7 MB
+    SIDE_01: {'frames': 3458, 'span_s': 60.13, 'expected': 3609, 'lost': 151, 'late': 71, 'stamps_off_clock': 0, 'max_gap_ms': 250.0, 'big_gaps_at_s': [5.3, 10.2, 20.1, 20.3, 21.1, 21.2, 22.6, 22.7]}
+    SIDE_02: {'frames': 3462, 'span_s': 60.13, 'expected': 3609, 'lost': 147, 'late': 66, 'stamps_off_clock': 0, 'max_gap_ms': 166.7, 'big_gaps_at_s': [5.4, 5.5, 9.9, 10.2, 20.3, 21.1, 21.2, 22.6]}
+    POV_01: {'frames': 3454, 'span_s': 60.15, 'expected': 3610, 'lost': 156, 'late': 70, 'stamps_off_clock': 0, 'max_gap_ms': 232.5, 'big_gaps_at_s': [20.1, 20.3, 21.3, 22.6, 34.9, 35.0, 35.2, 49.8]}
+    POV_02: {'frames': 3466, 'span_s': 60.13, 'expected': 3609, 'lost': 143, 'late': 62, 'stamps_off_clock': 0, 'max_gap_ms': 266.6, 'big_gaps_at_s': [5.4, 9.9, 10.2, 20.3, 21.2, 22.6, 35.1, 49.8]}
+    EEG A: {'samples': 15432, 'span_s': 60.28, 'expected': 15432, 'missing': 0}
+    EEG B: {'samples': 15468, 'span_s': 60.42, 'expected': 15468, 'missing': 0}
+  #1: frames lost outside the machine's stalls 2385 (1369 gaps), inside 28704 (5742 gaps); judged by CPU stalls alone: 6230 outside; e.g. [{'camera': 'SIDE_01', 'gap_ms': 33, 'lost': 1}, {'camera': 'POV_01', 'gap_ms': 33, 'lost': 1}, {'camera': 'SIDE_02', 'gap_ms': 50, 'lost': 2}]
+  #2: frames lost outside the machine's stalls 14 (11 gaps), inside 1039 (267 gaps); judged by CPU stalls alone: 75 outside; e.g. [{'camera': 'SIDE_01', 'gap_ms': 34, 'lost': 1}, {'camera': 'POV_02', 'gap_ms': 33, 'lost': 1}, {'camera': 'POV_01', 'gap_ms': 67, 'lost': 3}]
+  #3: frames lost outside the machine's stalls 31 (17 gaps), inside 854 (269 gaps); judged by CPU stalls alone: 113 outside; e.g. [{'camera': 'POV_01', 'gap_ms': 50, 'lost': 2}, {'camera': 'POV_02', 'gap_ms': 50, 'lost': 2}, {'camera': 'POV_02', 'gap_ms': 33, 'lost': 1}]
+  #4: frames lost outside the machine's stalls 17 (14 gaps), inside 691 (221 gaps); judged by CPU stalls alone: 59 outside; e.g. [{'camera': 'POV_01', 'gap_ms': 33, 'lost': 1}, {'camera': 'SIDE_01', 'gap_ms': 33, 'lost': 1}, {'camera': 'SIDE_02', 'gap_ms': 33, 'lost': 1}]
 
-Memory during the long recording: 128 → 63 MB (-5.35 MB/min), peak 128.4 MB
+Memory during the long recording: 130 → 56 MB (-5.60 MB/min), peak 130.2 MB
 
-PROBLEMS: see above.
-
-=== Added after the run (not soak output) ===
-Command: python3 tools/soak_test.py   (camera processes, frame-clock stamps, latency-critical activity; 60 fps; develop @ 7260a04)
-Machine: Apple M1 (4 performance + 4 efficiency cores), development Mac with background load.
-Machine noise during the run, from a separate bare Python process (4 threads at 60 Hz + a 5 ms probe):
-  bare (with numpy work, QoS user-interactive), 1080 s: late camera wakes 108, probe stalls 41, worst probe stall 369 ms
-"PROBLEMS" above = frames were lost (any lost frame fails the soak); descriptors, encoder drops and EEG were clean.
+VERDICT: PROBLEMS — 2447 frames lost outside the machine's own stalls (31288 lost during 2446 CPU + 3663 memory machine stalls, worst 438 ms: machine noise); EEG complete; encoder drops 5146; save problems 0; descriptors back to baseline.

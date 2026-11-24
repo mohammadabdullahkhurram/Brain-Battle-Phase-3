@@ -27,7 +27,12 @@ Three instruments, all stamped with the one capture clock
 ``MachineStallProbe`` is a bare process that only sleeps: its late wake-ups are
 the computer's own stalls, and ``judge_lost_frames`` splits lost camera frames
 into those inside such a stall (machine noise) and those outside (a problem);
-``tools/soak_test.py`` always runs it.
+``tools/soak_test.py`` always runs it. ``MachineStallProbe(touch_mb=48)`` is
+the same process holding a working set like any real program (every page of
+48 MB written about once a second): when the computer is short of memory and
+compresses or swaps those pages, IT is held up too — the bare probe, with
+almost no memory, cannot see such a stall (found 2026-11-24 on an 8 GB Mac
+with 16 GB of swap in use).
 
 ``wake_lateness()`` measures the computer itself: how late it wakes a thread
 sleeping to 60 Hz deadlines (``tools/wake_probe.py``; the timing tests use it
@@ -144,15 +149,34 @@ def wake_lateness(seconds: float = 3.0, period: float = 1 / 60) -> dict:
 MACHINE_STALL_SEC = 0.010     # a wake-up this late could already cost a 60 fps frame
 
 
-def _bare_loop(stop, out_q, tick: float, threshold: float) -> None:
+PAGE_TOUCH_PERIOD_SEC = 1.0    # the memory probe writes each of its pages this often
+
+
+def _bare_loop(stop, out_q, tick: float, threshold: float, touch_mb: float = 0.0) -> None:
     """Child process: sleep ``tick`` again and again; note every wake-up more
     than ``threshold`` late as (start on the capture clock, seconds late). It
-    does nothing else, so its stalls are the computer's, not the app's."""
+    does nothing else, so its stalls are the computer's, not the app's.
+
+    ``touch_mb`` > 0: it also holds that much memory and writes one byte in
+    each of its pages every ``PAGE_TOUCH_PERIOD_SEC`` (a few pages per tick),
+    and a tick whose sleep + page writes ran more than ``threshold`` over is a
+    stall too — what a computer that is paging does to every real program."""
     from brain_battle.capture import clock as _clock
+    import mmap
+    page = mmap.PAGESIZE
+    buf = bytearray(int(touch_mb * 1024 * 1024)) if touch_mb > 0 else None
+    n_pages = len(buf) // page if buf is not None else 0
+    per_tick = max(1, int(round(n_pages * tick / PAGE_TOUCH_PERIOD_SEC))) if n_pages else 0
+    nxt = 0
+    for i in range(n_pages):
+        buf[i * page] = 1                       # resident to start with
     stalls = []
     while not stop.is_set():
         t = time.perf_counter()
         time.sleep(tick)
+        for _ in range(per_tick):
+            buf[nxt * page] = (buf[nxt * page] + 1) & 0xFF
+            nxt = (nxt + 1) % n_pages
         late = time.perf_counter() - t - tick
         if late > threshold:
             stalls.append((_clock.monotonic() - late - tick, late + tick))
@@ -169,13 +193,16 @@ class MachineStallProbe:
     performance counter, the same in every process), like the cameras' frame
     times. ``stop()`` returns the list of (start, duration_s)."""
 
-    def __init__(self, tick: float = TICK_SEC, threshold: float = MACHINE_STALL_SEC):
+    def __init__(self, tick: float = TICK_SEC, threshold: float = MACHINE_STALL_SEC,
+                 touch_mb: float = 0.0):
         import multiprocessing as mp
         self._ctx = mp.get_context("spawn")
         self._stop = self._ctx.Event()
         self._q = self._ctx.Queue()
+        self.touch_mb = float(touch_mb)
         self._proc = self._ctx.Process(target=_bare_loop, name="machine-stall-probe",
-                                       args=(self._stop, self._q, tick, threshold), daemon=True)
+                                       args=(self._stop, self._q, tick, threshold, self.touch_mb),
+                                       daemon=True)
         self.stalls: list[tuple[float, float]] = []
 
     def start(self) -> "MachineStallProbe":
@@ -226,4 +253,4 @@ def judge_lost_frames(gaps, stalls, fps: float, margin: float | None = None) -> 
 
 
 __all__ = ["StallProbe", "TICK_SEC", "STALL_SEC", "wake_lateness", "MachineStallProbe",
-           "MACHINE_STALL_SEC", "judge_lost_frames"]
+           "MACHINE_STALL_SEC", "judge_lost_frames", "PAGE_TOUCH_PERIOD_SEC"]

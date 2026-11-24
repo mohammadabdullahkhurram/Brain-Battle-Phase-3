@@ -263,6 +263,7 @@ class SimCapture:
         self._made = time.monotonic()
         self._style = picture_style()
         self.last_delivered = None        # delay of the last frame handed out (ground truth)
+        self.skips = []                   # (t, how late the reader came, frames skipped)
         # Pre-render a static background so each read() is cheap.
         self._bg = None
         self._make_bg()
@@ -324,6 +325,7 @@ class SimCapture:
         late_by = self._clock.monotonic() - (self._t0 + self._n / self._fps + self._delay)
         if late_by > 1.0 / self._fps:
             self._n += int(late_by * self._fps)
+            self.skips.append((self._clock.monotonic(), late_by, int(late_by * self._fps)))
         shown = self._t0 + self._n / self._fps
         ready = shown + self._delay + self._rng.uniform(-self._jit, self._jit)
         if self._style == "plain":
