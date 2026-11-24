@@ -1,6 +1,8 @@
 """
 ReviewLabelScreen integration tests — labelling through the real merged screen:
-duration flow (incl. Esc cancel), undo/redo, keyboard focus rules, autosave +
+duration flow (incl. Esc cancel), undo/redo, a custom note added by clicking
+the real "Add note" button (timeline Notes row, labels file, Activity,
+reopen, Undo), keyboard focus rules, autosave +
 history events, and the seeded vocabulary file. Playback itself is covered by
 test_player.py; here we drive the label side.
 
@@ -177,6 +179,79 @@ def test_shortcuts_blocked_while_typing():
     tab.shutdown()
 
 
+def _click(button):
+    """Click a real button with the mouse; return any exception its slot
+    raised (unhandled, PyQt would abort the whole script and lose its output)."""
+    from PyQt6.QtTest import QTest
+    raised = []
+    old_hook, sys.excepthook = sys.excepthook, lambda *a: raised.append(a[1])
+    try:
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+    finally:
+        sys.excepthook = old_hook
+    return raised
+
+
+def test_custom_note_through_the_real_button():
+    """Custom note → type → click the real "Add note" button. (The button's
+    clicked(bool) once reached add_note's ``text`` argument, so clicking it
+    raised and added nothing; this drives the button, not the store.)"""
+    from PyQt6.QtTest import QTest
+    import brain_battle.data.labels_store as labels_store
+    tab = _fresh_tab()
+    tab._seek(4.0)
+    t_play = tab._current_t()
+    n0 = len(tab._store.labels)
+    tab.start_note()
+    check("Custom note mode is shown", tab._mode_stack.currentIndex() == 1)
+    check("Add note disabled while the box is empty", not tab._note_save.isEnabled())
+    QTest.keyClicks(tab._note_text, "B covers up on the ropes")
+    check("Add note enabled once text is typed", tab._note_save.isEnabled())
+    raised = _click(tab._note_save)
+    check("clicking Add note raises nothing", not raised, repr(raised[:1]))
+    notes = [l for l in tab._store.labels if labels_store.is_note(l)]
+    check("clicking Add note adds exactly one note", len(tab._store.labels) == n0 + 1
+          and len(notes) == 1, str(len(tab._store.labels) - n0))
+    note = notes[-1] if notes else {}
+    check("the note sits at the playhead time", abs(note.get("t_start", -9) - t_play) < 0.05,
+          f"{note.get('t_start')} vs {t_play}")
+    check("the panel goes back to labelling and the box is empty",
+          tab._mode_stack.currentIndex() == 0 and not tab._note_text.toPlainText())
+    # on the timeline's Notes row (painted, so it can be clicked)
+    tab._strip.resize(900, 200); tab._strip.grab()
+    check("the note is drawn on the timeline's Notes row",
+          any(kind == "note" and key == note.get("id") for _r, kind, key in tab._strip._hits))
+    # saved to this labeller's own file with type/who/time/text
+    disk = [l for l in _labels_on_disk() if l.get("id") == note.get("id")]
+    d = disk[0] if disk else {}
+    check("saved to the labeller's labels file", bool(disk))
+    check("saved with type note, who, time and text",
+          d.get("type") == "note" and d.get("who") == tab._who
+          and abs(d.get("t_start", -9) - t_play) < 0.05
+          and d.get("text") == "B covers up on the ropes"
+          and d.get("created_by") == _env.LABELLER, str(d))
+    # Activity / history
+    tab._on_panel_tab("activity")
+    check("Activity shows the note", any("added a note" in line for line in tab.activity_lines()),
+          str(tab.activity_lines()[:2]))
+    tab.shutdown()
+    # survives closing and reopening
+    tab2 = _fresh_tab()
+    again = tab2._store.by_id(note.get("id"))
+    check("the note is still there after closing and reopening",
+          again is not None and again.get("text") == "B covers up on the ropes")
+    # undoable with the real Undo button
+    tab2.start_note(); QTest.keyClicks(tab2._note_text, "second note")
+    _click(tab2._note_save)
+    n1 = len(tab2._store.labels)
+    _click(tab2._undo_btn)
+    check("Undo removes the note just added", len(tab2._store.labels) == n1 - 1
+          and not any(l.get("text") == "second note" for l in tab2._store.labels))
+    check("the undo is saved to disk",
+          not any(l.get("text") == "second note" for l in _labels_on_disk()))
+    tab2.shutdown()
+
+
 if __name__ == "__main__":
     from tools.generate_demo_session import generate_demo_session
     tmp = tempfile.mkdtemp(prefix="bb_reviewtab_")
@@ -190,6 +265,7 @@ if __name__ == "__main__":
     test_undo_redo_through_tab()
     test_tab_cycles_boxer()
     test_shortcuts_blocked_while_typing()
+    test_custom_note_through_the_real_button()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

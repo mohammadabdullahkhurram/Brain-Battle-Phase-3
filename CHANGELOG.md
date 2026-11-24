@@ -7,6 +7,16 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
+**Second click-through: notes, name pop-up, always light, lost frames, buzzer flake (2026-11-24)**
+- **Fixed: "Add note" added nothing.** The button's `clicked(bool)` signal was
+  connected straight to `add_note(text=None)`, so PyQt passed `False` as the
+  note's text and `False.strip()` raised — the click did nothing at all. It
+  now goes through a slot that takes no arguments. The note lands on the Notes
+  row at the playhead, is saved to your labels file (`type: "note"`, who, time,
+  text), shows in Activity ("added a note"; removing one now reads "removed a
+  note"), survives reopening and can be undone. `test_review_tab` clicks the
+  real button with the mouse, so this cannot come back unnoticed.
+
 **Click-through fixes, demo data, tidy-up (2026-11-23)**
 - **Tests run silently (`BRAIN_BATTLE_MUTE`).** Every sound now plays through
   `support/sound.py`; with `BRAIN_BATTLE_MUTE` set, the round bell and the

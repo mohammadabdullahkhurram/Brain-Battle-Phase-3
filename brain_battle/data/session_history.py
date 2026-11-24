@@ -201,7 +201,8 @@ def describe(event: dict) -> tuple[str, str]:
         who = d.get("who")
         return user, f"added {what}" + (f" ({who})" if who else "") + at
     if ev == EVENT_LABELS_REMOVED:
-        return user, f"removed {d.get('label') or 'a label'}{at}"
+        what = "a note" if d.get("type") == "note" else (d.get("label") or "a label")
+        return user, f"removed {what}{at}"
     if ev == EVENT_MOMENT_NOTED:
         return user, f"added a note to the moment{at}"
     if ev == EVENT_EXPORT_CREATED:

@@ -1047,7 +1047,9 @@ class ReviewLabelScreen(QWidget):
         nb = QHBoxLayout(); nb.addStretch()
         cancel = ui.secondary_button("Cancel", compact=True); cancel.clicked.connect(self.cancel_note)
         self._note_save = ui.primary_button("Add note", compact=True)
-        self._note_save.clicked.connect(self.add_note); self._note_save.setEnabled(False)
+        # a bound slot that takes no arguments: clicked(bool) must never reach
+        # add_note's ``text`` (it did — False.strip() raised and no note was added)
+        self._note_save.clicked.connect(self._on_add_note_clicked); self._note_save.setEnabled(False)
         nb.addWidget(cancel); nb.addWidget(self._note_save)
         tv.addLayout(nb); tv.addStretch()
         self._mode_stack.addWidget(note)
@@ -1137,6 +1139,9 @@ class ReviewLabelScreen(QWidget):
     def cancel_note(self):
         self._note_text.clear()
         self._mode_stack.setCurrentIndex(0)
+
+    def _on_add_note_clicked(self):
+        self.add_note()
 
     def add_note(self, text: str | None = None):
         """Add note: a label of type "note" — who, when, the text, you."""
