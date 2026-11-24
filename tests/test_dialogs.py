@@ -20,6 +20,12 @@ Covers:
   5. Light even when the computer is in dark mode: with a dark palette handed
      in, ``pin_light_palette`` + the app stylesheet give white text fields with
      dark text — including Review's Custom note box and the history drawer.
+     And the whole start-up: a dark system palette and a native (non-Fusion)
+     style simulated, then ``apply_light_style`` exactly as ``app.main()``
+     calls it, then the real main window — Fusion, every palette role light in
+     every group, and the note box, history drawer, a dropdown's open list, a
+     dialog and the Documentation screen all light with dark text; a switch
+     to dark mode while running is undone.
 
 Run:  python3 tests/test_dialogs.py
 """
@@ -266,6 +272,101 @@ def test_light_in_dark_mode():
         _app.setPalette(old_pal); _app.setStyleSheet(old_qss)
 
 
+def _shades(w, size=None):
+    """(share of light pixels, darkest pixel lightness) of a widget's picture."""
+    if size:
+        w.resize(*size)
+    img = w.grab().toImage()
+    light = total = 0
+    darkest = 255
+    step = max(1, min(img.width(), img.height()) // 60)
+    for x in range(0, img.width(), step):
+        for y in range(0, img.height(), step):
+            l = QColor(img.pixel(x, y)).lightness()
+            total += 1; light += l > 200; darkest = min(darkest, l)
+    return (light / total if total else 0.0), darkest
+
+
+def test_app_starts_light_in_dark_mode():
+    from PyQt6.QtWidgets import QStyleFactory, QAbstractItemView
+    old_pal, old_qss, old_style = _app.palette(), _app.styleSheet(), _app.style().name()
+    _app.setPalette(_dark_palette())                      # the computer is in dark mode …
+    _app.setStyle(QStyleFactory.create("Windows"))        # … and Qt picked a native style
+    try:
+        dt.apply_light_style(_app)                        # what app.main() does at start-up
+        check("start-up: Fusion style, not the native one", dt.base_style_name() == "fusion",
+              dt.base_style_name())
+        pal, R, G = _app.palette(), QPalette.ColorRole, QPalette.ColorGroup
+        bad = [f"{g.name}/{r.name}" for g in (G.Active, G.Inactive)
+               for r in (R.Window, R.Base, R.AlternateBase, R.Button, R.Light, R.Midlight)
+               if pal.color(g, r).lightness() < 200]
+        bad += [f"{g.name}/{r.name}" for g in (G.Active, G.Inactive)
+                for r in (R.Text, R.WindowText, R.ButtonText, R.HighlightedText)
+                if pal.color(g, r).lightness() > 80]
+        check("start-up: every palette role is the light one, active AND inactive", not bad, str(bad))
+        check("start-up: tooltips and highlight are the app's, not the system's",
+              pal.color(R.ToolTipBase).name().upper() == dt.text_primary().upper()
+              and pal.color(R.Highlight).name().upper() == dt.accent_ghost().upper())
+        check("start-up: disabled text is grey, not system-dark/white",
+              60 < pal.color(G.Disabled, R.Text).lightness() < 200)
+        check("start-up: the app stylesheet is on the application (parentless windows too)",
+              "QToolTip" in _app.styleSheet())
+
+        import brain_battle.app as bbm
+        win = bbm.BrainBattleApp(); win.resize(1280, 860); win.show(); _app.processEvents()
+        try:
+            note = win._review_page._note_text
+            note.setPlainText("B covers up on the ropes"); note.show(); _app.processEvents()
+            share, darkest = _shades(note, (360, 110))
+            check("dark mode start-up: Review › Custom note box is light with dark text",
+                  share > 0.7 and darkest < 110, f"light {share:.0%}, darkest {darkest}")
+            dr = win._sessions_page._drawer
+            dr.resize(440, 600); dr.show(); _app.processEvents()
+            share, darkest = _shades(dr)
+            check("dark mode start-up: the history drawer is light with dark text",
+                  share > 0.7 and darkest < 110, f"light {share:.0%}, darkest {darkest}")
+            dr.hide()
+            dd = next(iter(win.findChildren(ui.Dropdown)), None)
+            check("dark mode start-up: the window has a dropdown to open", dd is not None)
+            if dd is not None:
+                if dd.count() < 2:
+                    dd.addItems(["first choice", "second choice"])
+                dd.show(); dd.showPopup(); _app.processEvents()
+                view = dd.view()
+                share, darkest = _shades(view, (240, max(80, view.height())))
+                check("dark mode start-up: a dropdown's open list is light with dark text",
+                      isinstance(view, QAbstractItemView) and share > 0.6 and darkest < 110,
+                      f"light {share:.0%}, darkest {darkest}")
+                dd.hidePopup()
+            d = ui.NameDialog(win, "Maya K"); d.show(); _app.processEvents()
+            share, darkest = _shades(d.card)
+            check("dark mode start-up: a dialog is light with dark text",
+                  share > 0.7 and darkest < 110, f"light {share:.0%}, darkest {darkest}")
+            share, darkest = _shades(d.name_edit)
+            check("dark mode start-up: the dialog's text field is light with dark text",
+                  share > 0.7 and darkest < 110, f"light {share:.0%}, darkest {darkest}")
+            d.done(0)
+            win._shell.set_current_index(win.IDX_DOCS); _app.processEvents()
+            share, darkest = _shades(win._docs_page)
+            check("dark mode start-up: the Documentation screen is light with dark text",
+                  share > 0.7 and darkest < 110, f"light {share:.0%}, darkest {darkest}")
+            # the computer switches to dark mode while the app is open
+            # (what Qt does then: the system palette goes dark and colorSchemeChanged
+            # fires; the offscreen test platform has no colour scheme of its own)
+            _app.setPalette(_dark_palette())
+            _app.styleHints().colorSchemeChanged.emit(Qt.ColorScheme.Dark)
+            _app.processEvents()
+            check("switching the computer to dark mode while running is undone",
+                  _app.palette().color(QPalette.ColorRole.Base).lightness() > 200
+                  and _app.palette().color(QPalette.ColorRole.Text).lightness() < 80)
+        finally:
+            win._review_page.shutdown(); win._sessions_page.shutdown()
+            win.record_flow.shutdown(); win.close()
+    finally:
+        _app.setPalette(old_pal); _app.setStyleSheet(old_qss)
+        _app.setStyle(QStyleFactory.create(old_style))
+
+
 if __name__ == "__main__":
     test_no_native_dialogs()
     test_one_dropdown()
@@ -273,6 +374,7 @@ if __name__ == "__main__":
     test_name_dialog()
     test_dropdown()
     test_light_in_dark_mode()
+    test_app_starts_light_in_dark_mode()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

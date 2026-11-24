@@ -5,7 +5,10 @@ Import this FIRST in a test script (``import _env``). It points the app's
 settings file at a throwaway temp file (unless the script already chose one) so
 a test run never reads or changes the real user's settings, and gives that
 settings file a labeller name ("Test Labeller") — Review & Label saves labels
-under the name of whoever is labelling, and asks for one when there is none.
+under the name of whoever is labelling, and asks for one when there is none —
+and a throwaway recordings folder, so nothing a test opens (the main window
+seeds the team's label list there) can ever reach the real
+``~/Documents/Brain Battle Data``.
 It also selects Qt's offscreen platform when none is set, so scripts can be run
 directly on a machine (or CI runner) with no display, and shortens the 15 s
 lead-in before the baseline to 2 s so simulated recordings stay quick, and
@@ -41,7 +44,8 @@ os.environ.setdefault("BRAIN_BATTLE_LSL_TAG", f"test-{os.getpid()}-{uuid.uuid4()
 if not os.environ.get("BRAIN_BATTLE_CONFIG"):
     _cfg = os.path.join(tempfile.mkdtemp(prefix="bb_test_cfg_"), "settings.json")
     with open(_cfg, "w", encoding="utf-8") as _f:
-        json.dump({"labeller_name": LABELLER}, _f)
+        json.dump({"labeller_name": LABELLER,
+                   "capture_dir": tempfile.mkdtemp(prefix="bb_test_recordings_")}, _f)
     os.environ["BRAIN_BATTLE_CONFIG"] = _cfg
 
 

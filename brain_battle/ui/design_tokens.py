@@ -228,33 +228,95 @@ def css_text(size: int = SIZE_MD, weight: int = 400, color: str | None = None,
 
 # ═══════════════════════════════════════════════════════ STYLESHEETS
 
+def light_palette():
+    """The app's own light QPalette with EVERY colour role set, identically for
+    the active and inactive (window in the background) groups, and greyed text
+    for disabled widgets — so nothing is left for the computer's (possibly
+    dark) theme to fill in."""
+    from PyQt6.QtGui import QPalette, QColor as _C
+    p = _p()
+    pal = QPalette()
+    R, G = QPalette.ColorRole, QPalette.ColorGroup
+    roles = {
+        R.Window: p.canvas, R.WindowText: p.text_primary,
+        R.Base: p.surface, R.AlternateBase: p.surface_subtle,
+        R.Text: p.text_primary, R.PlaceholderText: "#98A2B3",
+        R.Button: p.surface, R.ButtonText: p.text_primary, R.BrightText: "#FFFFFF",
+        # tooltips are the design's own (dark ink, white text — qss_app QToolTip),
+        # set here so the system never chooses them
+        R.ToolTipBase: p.text_primary, R.ToolTipText: "#FFFFFF",
+        R.Highlight: p.accent_ghost, R.HighlightedText: p.text_primary,
+        R.Link: p.accent, R.LinkVisited: p.accent_pressed,
+        # the bevel shades Fusion draws frames, sliders and scroll bars with
+        R.Light: "#FFFFFF", R.Midlight: p.surface_subtle, R.Mid: p.border_strong,
+        R.Dark: "#B8C0CC", R.Shadow: "#8A94A6",
+    }
+    if hasattr(R, "Accent"):                                  # Qt ≥ 6.6
+        roles[R.Accent] = p.accent
+    for group in (G.Active, G.Inactive, G.Disabled):
+        for role, col in roles.items():
+            pal.setColor(group, role, _C(col))
+    for role in (R.Text, R.WindowText, R.ButtonText, R.PlaceholderText):
+        pal.setColor(G.Disabled, role, _C(p.text_tertiary if role != R.PlaceholderText else "#B8C0CC"))
+    pal.setColor(G.Disabled, R.Base, _C(p.surface_subtle))
+    pal.setColor(G.Disabled, R.Button, _C(p.surface_subtle))
+    pal.setColor(G.Disabled, R.Highlight, _C(p.border))
+    return pal
+
+
 def pin_light_palette(app) -> None:
-    """Light mode only, whatever the computer is set to. Without this a Mac (or
+    """Light mode only, whatever the computer is set to: ask Qt for the light
+    colour scheme and install ``light_palette()``. Without this a Mac (or
     Windows PC) in dark mode hands Qt a dark palette, and any widget without
     its own stylesheet (a text box, a scroll area's background, a list) turns
-    dark — dark text on a dark field. Called once from ``app.main()`` (and by
-    the screenshot tool)."""
+    dark — dark text on a dark field."""
     from PyQt6.QtCore import Qt as _Qt
-    from PyQt6.QtGui import QPalette, QColor as _C
     try:
         app.styleHints().setColorScheme(_Qt.ColorScheme.Light)
     except Exception:                                  # Qt < 6.8
         pass
-    p = _p()
-    pal = QPalette()
-    R = QPalette.ColorRole
-    for role, col in ((R.Window, p.canvas), (R.WindowText, p.text_primary),
-                      (R.Base, p.surface), (R.AlternateBase, p.surface_subtle),
-                      (R.Text, p.text_primary), (R.Button, p.surface),
-                      (R.ButtonText, p.text_primary), (R.ToolTipBase, p.text_primary),
-                      (R.ToolTipText, "#FFFFFF"), (R.PlaceholderText, "#98A2B3"),
-                      (R.Highlight, p.accent_ghost), (R.HighlightedText, p.text_primary),
-                      (R.Link, p.accent), (R.BrightText, "#FFFFFF")):
-        pal.setColor(role, _C(col))
-    pal.setColor(QPalette.ColorGroup.Disabled, R.Text, _C(p.text_tertiary))
-    pal.setColor(QPalette.ColorGroup.Disabled, R.WindowText, _C(p.text_tertiary))
-    pal.setColor(QPalette.ColorGroup.Disabled, R.ButtonText, _C(p.text_tertiary))
-    app.setPalette(pal)
+    app.setPalette(light_palette())
+
+
+_LIGHT_GUARD = None
+_BASE_STYLE = ""
+
+
+def base_style_name() -> str:
+    """The Qt style ``apply_light_style`` installed ("fusion"). ``app.style()``
+    itself reports the stylesheet wrapper once a stylesheet is set."""
+    return _BASE_STYLE
+
+
+def apply_light_style(app) -> None:
+    """Everything the app does at start-up to stay light (called from
+    ``app.main()`` before any window exists, and by the screenshot tool):
+
+    * the **Fusion** style — the native macOS / Windows 11 styles draw menus,
+      dropdown lists, frames and scroll bars from the system appearance, which
+      a palette cannot override (tests run offscreen, which is Fusion anyway,
+      so this is what made the real app differ from the tests);
+    * the full light palette (``pin_light_palette``) and the light colour scheme;
+    * the app stylesheet on the APPLICATION, so windows without a parent
+      (tooltips, a dialog opened before the main window) get it too;
+    * a guard (``colorSchemeChanged``) that puts the light palette back if
+      the computer switches to dark mode while the app is running."""
+    global _LIGHT_GUARD, _BASE_STYLE
+    from PyQt6.QtWidgets import QStyleFactory
+    style = QStyleFactory.create("Fusion")
+    if style is not None:
+        app.setStyle(style)
+        _BASE_STYLE = style.name().lower()
+    pin_light_palette(app)
+    app.setStyleSheet(qss_app())
+    if _LIGHT_GUARD is None:                  # once per app; a signal, not an event filter
+        def _repin(*_a):
+            pin_light_palette(app)            # idempotent; setColorScheme(Light) does not re-signal
+        _LIGHT_GUARD = _repin
+        try:
+            app.styleHints().colorSchemeChanged.connect(_repin)
+        except Exception:                     # Qt < 6.5
+            pass
 
 
 def qss_app() -> str:

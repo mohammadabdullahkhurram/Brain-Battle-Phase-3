@@ -256,9 +256,11 @@ def main():
     # Light mode only — no theme preference to load (DESIGN.md).
     app = QApplication(sys.argv); app.setApplicationName("Brain Battle")
     import brain_battle.ui.design_tokens as _dt
-    _dt.pin_light_palette(app)   # light even when the computer is in dark mode
     from brain_battle.ui.fonts import register_fonts
     register_fonts()   # bundled Inter; falls back to the system font if absent
+    # light even when the computer is in dark mode: Fusion + the full light
+    # palette + the app stylesheet + a guard against a theme switch
+    _dt.apply_light_style(app)
     def _excepthook(exc_type, exc_value, exc_tb):
         log.critical("UNHANDLED EXCEPTION", exc_info=(exc_type, exc_value, exc_tb))
     sys.excepthook = _excepthook

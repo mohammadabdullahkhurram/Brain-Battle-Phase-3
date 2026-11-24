@@ -29,8 +29,15 @@ the design (`docs/design/prototype.html`, light only — ADR-0007).
   Timing check and Export dialogs and the colour picker are built on it.
 - **One dropdown**, `widgets.Dropdown`: the app's colours, its own chevron and
   a light list (`combobox-popup: 0`, so not the macOS menu).
-- **Light palette pinned** at start-up (`design_tokens.pin_light_palette`), and
-  the app stylesheet styles every text field white with dark text.
+- **Always light** at start-up (`design_tokens.apply_light_style`): Qt's
+  **Fusion** style, a light palette with every colour role set for the active,
+  inactive and disabled groups (`light_palette`, `pin_light_palette`), the app
+  stylesheet on the application, and a `colorSchemeChanged` guard that puts it
+  back if the computer switches to dark mode while the app is open. *Why
+  Fusion:* the native macOS / Windows 11 styles draw menus, dropdown lists,
+  frames and scroll bars from the system appearance, which no palette can
+  override — and the tests run offscreen, which is Fusion already, so the
+  tests were light while the real app in dark mode was not (2026-11-24).
 - The only system windows left are the **folder / file pickers** — people
   expect their computer's own, with its sidebar and network drives.
 

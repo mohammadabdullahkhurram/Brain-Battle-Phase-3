@@ -27,6 +27,24 @@ dev-log numbering, kept as history — they do not track the release version.
   press is going to, so a letter typed into a text field can never act as a
   shortcut. Tested in `test_labellers` (the real dialog, while it is open) and
   `test_dialogs`.
+- **Always light, even in macOS / Windows dark mode.** Cause of the dark bits
+  that were left: the real app ran the native **macOS** style (Windows 11: the
+  `windows11` style), which draws menus, dropdown lists, frames and scroll bars
+  from the system appearance, whatever the palette says; the tests run
+  offscreen, which uses Fusion, so they never saw it. Start-up now calls
+  `design_tokens.apply_light_style`: the Fusion style, a light palette with
+  every colour role (Base, Text, Window, ToolTip, Highlight, the bevel shades…)
+  for the active, inactive and disabled groups, the app stylesheet on the
+  application (so parentless windows get it too), and a guard that re-applies
+  it if the computer switches to dark mode while the app is open.
+  `test_dialogs` starts the real main window with a dark system palette and a
+  native style simulated, and checks the note box, history drawer, a
+  dropdown's open list, a dialog and the Documentation screen are light with
+  dark text. Tooltips stay the design's own dark ink with white text.
+- **Tests can no longer touch the real recordings folder.** `tests/_env.py`
+  now gives every script's throwaway settings file a throwaway recordings
+  folder too. (Found because a test that opens the main window seeded the label
+  list in `~/Documents/Brain Battle Data`.)
 
 **Click-through fixes, demo data, tidy-up (2026-11-23)**
 - **Tests run silently (`BRAIN_BATTLE_MUTE`).** Every sound now plays through

@@ -107,8 +107,10 @@ layout for chips.
   dropdown. Used for the camera and headband choices, Compare and the EEG
   options.
 - **Text fields** are always white with dark text and a normal border, blue
-  when focused, whatever the computer's own light/dark setting
-  (`design_tokens.pin_light_palette`).
+  when focused, whatever the computer's own light/dark setting. The whole app
+  is always light: at start-up it uses Qt's Fusion style and its own light
+  palette for every colour role (`design_tokens.apply_light_style`), so no
+  field, list, menu, dropdown, drawer or dialog takes the system's dark colours.
 
 ## App structure
 

@@ -581,8 +581,10 @@ settings, don't hardcode.
 The **light-only** design system (DESIGN tokens) + QSS factories (`qss_*`), the
 palette accessors, boxer/phase colours, the icon set, and font helpers
 (`number_font` gives equal-width digits for timers), and
-`pin_light_palette(app)`, which hands Qt a light palette so a computer in dark
-mode never turns an unstyled field dark. The app stylesheet makes every text
+`apply_light_style(app)` (called once at start-up: Fusion style, the full
+light palette from `light_palette()` / `pin_light_palette(app)` for every role
+and colour group, the app stylesheet, and a guard against a dark-mode switch
+while running), so a computer in dark mode never turns anything dark. The app stylesheet makes every text
 field white with dark text. There is no dark palette and no theme switching ([ADR-0007](../decisions/adr-0007-light-only-design.md),
 guarded by `tests/test_light_theme.py`). **Called by:** every UI module.
 
