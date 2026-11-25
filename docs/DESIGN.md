@@ -111,8 +111,11 @@ layout for chips.
   focused or open, its own chevron and a light list — never the system's
   dropdown. Used for the camera and headband choices, Compare and the EEG
   options.
-- **Text fields** are always white with dark text and a normal border, blue
-  when focused, whatever the computer's own light/dark setting. The whole app
+- **Text fields** are always white with dark text and a normal border,
+  whatever the computer's own light/dark setting. Clicking one shows a dark
+  blinking caret 2 px wide and a **2 px blue focus ring** at once; a dialog
+  with a field (Who is labelling?, Moment marked, Fighter colour) opens with
+  that field focused, and Settings' "+ Add" opens its field focused. The whole app
   is always light: at start-up it uses Qt's Fusion style and its own light
   palette for every colour role (`design_tokens.apply_light_style`), so no
   field, list, menu, dropdown, drawer or dialog takes the system's dark colours.

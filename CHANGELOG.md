@@ -26,6 +26,19 @@ dev-log numbering, kept as history — they do not track the release version.
   separate "Saving…" state — a label is saved the moment it is placed — but
   the header is checked with that text too. `test_layout_fit`
   (`test_icons_on_the_text_line`) measures the drawn pixels.
+- **Text fields look alive.** Cause of the dead-looking code fields on Get
+  ready: rebuilding the check list detached rows that still had a queued
+  "show", so each became a tiny window of its own and took the keyboard — a
+  click on Boxer A / B code gave no focus and no caret. `widgets.clear_layout`
+  (and the other places that drop a widget) now hide it first. Every text
+  field also gets a 2 px caret (`design_tokens.CARET_WIDTH`, through a small
+  proxy of the Fusion style — the one thing a stylesheet cannot set) and a 2 px
+  blue focus ring (the padding gives back the pixel, so text does not move);
+  every `AppDialog` focuses its first text field when it opens (Who is
+  labelling?, Moment marked, Fighter colour). `test_dialogs`
+  (`test_text_fields_look_alive`) clicks every field and checks focus, caret
+  width, a caret colour readable on the field and the ring's pixels, and that
+  New recording opens no stray windows.
 
 **Second click-through: notes, name pop-up, always light, lost frames, buzzer flake (2026-11-24)**
 - **Fixed: "Add note" added nothing.** The button's `clicked(bool)` signal was

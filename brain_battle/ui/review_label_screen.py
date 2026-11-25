@@ -1483,7 +1483,7 @@ class ReviewLabelScreen(QWidget):
         old = self._grid
         new = VideoGrid(specs)
         parent_layout.replaceWidget(old, new)
-        old.setParent(None); old.deleteLater()
+        old.hide(); old.setParent(None); old.deleteLater()
         self._grid = new
 
     def _rebuild_label_buttons(self):

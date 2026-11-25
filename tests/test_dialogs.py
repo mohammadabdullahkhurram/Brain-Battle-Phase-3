@@ -26,10 +26,18 @@ Covers:
      every group, and the note box, history drawer, a dropdown's open list, a
      dialog and the Documentation screen all light with dark text; a switch
      to dark mode while running is undone.
+  6. Text fields look alive: clicking any field (Sessions search, Settings
+     name and lists, Documentation search, the fighter code fields, Review's
+     custom note) gives it focus, a dark caret at least 2 px wide on a white
+     field and a 2 px blue focus ring; a dialog with a field (the name dialog,
+     the moment note, the colour code) focuses it when it opens. Rebuilding a
+     list never leaves a row behind as a little window of its own (one took
+     the keyboard from the Get ready code fields).
 
 Run:  python3 tests/test_dialogs.py
 """
 import os as _os, sys as _sys
+_os.environ.setdefault("BRAIN_BATTLE_SIMULATE", "1")   # New recording opens simulated devices, never real ones
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import _env  # noqa: F401  (temp settings file + a labeller name; see tests/_env.py)
 import os
@@ -367,6 +375,115 @@ def test_app_starts_light_in_dark_mode():
         _app.setStyle(QStyleFactory.create(old_style))
 
 
+def _ring_px(field):
+    """How many pixels of the 2nd column in from the left edge (the inner half
+    of a 2 px ring) are the accent blue, over the middle third of the field."""
+    img = field.grab().toImage()
+    acc = QColor(dt.accent())
+    n = 0
+    for y in range(field.height() // 3, 2 * field.height() // 3):
+        c = img.pixelColor(1, y)
+        n += abs(c.red() - acc.red()) + abs(c.green() - acc.green()) + abs(c.blue() - acc.blue()) < 60
+    return n
+
+
+def _alive(field):
+    """(has focus, caret width, caret colour readable on the field, 2 px ring)."""
+    from PyQt6.QtWidgets import QStyle
+    width = field.style().pixelMetric(QStyle.PixelMetric.PM_TextCursorWidth, None, field)
+    pal = field.palette()
+    caret, base = pal.color(QPalette.ColorRole.Text), pal.color(QPalette.ColorRole.Base)
+    readable = caret.alpha() == 255 and base.lightness() - caret.lightness() > 120
+    return field.hasFocus(), width, readable, _ring_px(field) > 3
+
+
+def test_text_fields_look_alive():
+    from PyQt6.QtCore import QTimer
+    from PyQt6.QtTest import QTest
+    from PyQt6.QtWidgets import QStyleFactory
+    old_pal, old_qss, old_style = _app.palette(), _app.styleSheet(), _app.style().name()
+    dt.apply_light_style(_app)                    # what app.main() does at start-up
+    import brain_battle.app as bbm
+    import brain_battle.ui.record_screens as rs
+    import brain_battle.ui.settings_screen as st
+    win = bbm.BrainBattleApp(); win.resize(1280, 860); win.show(); win.activateWindow()
+    _app.processEvents()
+    try:
+        def page(idx):
+            win._shell.set_current_index(idx)
+            for _ in range(3):
+                _app.processEvents()
+        gr = win.record_flow._get_ready
+        fields = [(win.IDX_SESSIONS, "Sessions search", lambda: win._sessions_page._search),
+                  (win.IDX_SETTINGS, "Settings › Your name", lambda: win._settings_page._labeller_edit),
+                  (win.IDX_DOCS, "Documentation search", lambda: win._docs_page._search_box),
+                  (win.IDX_RECORD, "Get ready › Boxer A code", lambda: gr.card("A").code),
+                  (win.IDX_RECORD, "Get ready › Boxer B code", lambda: gr.card("B").code)]
+        for idx, name, get in fields:
+            page(idx)
+            f = get()
+            QTest.mouseClick(f, Qt.MouseButton.LeftButton); _app.processEvents()
+            focus, width, readable, ring = _alive(f)
+            check(f"{name}: a click gives it focus, a {width} px dark caret and a blue ring",
+                  focus and width >= 2 and readable and ring, str((focus, width, readable, ring)))
+        page(win.IDX_RECORD)
+        for _ in range(5):
+            _app.processEvents()
+        strays = [type(w).__name__ + ":" + w.objectName() for w in _app.topLevelWidgets()
+                  if w.isVisible() and w is not win]
+        check("New recording opens no little windows of its own (they took the keyboard)",
+              not strays and _app.activeWindow() is win, str(strays))
+        # Settings › + Add (a label, a colour): the field opens focused
+        page(win.IDX_SETTINGS)
+        sp = win._settings_page
+        for name, btn, field in (("Settings › + Add label", sp._add_label_btn, sp._new_label),
+                                 ("Settings › + Add colour", sp._add_colour_btn, sp._new_colour_name)):
+            QTest.mouseClick(btn, Qt.MouseButton.LeftButton); _app.processEvents()
+            focus, width, readable, ring = _alive(field)
+            check(f"{name}: the new field opens focused, caret visible, blue ring",
+                  focus and width >= 2 and readable and ring, str((focus, width, readable, ring)))
+            QTest.keyClick(field, Qt.Key.Key_Escape); _app.processEvents()
+        # Review › Custom note (N): focused as it opens, and on a click
+        rv = win._review_page
+        page(win.IDX_REVIEW)
+        rv._mode_stack.setCurrentIndex(1); rv._note_text.setFocus(); _app.processEvents()
+        QTest.mouseClick(rv._note_text.viewport(), Qt.MouseButton.LeftButton); _app.processEvents()
+        focus, width, readable, ring = _alive(rv._note_text)
+        check("Review › Custom note: focus, a 2 px dark caret and a blue ring",
+              focus and width >= 2 and readable and ring, str((focus, width, readable, ring)))
+        rv._mode_stack.setCurrentIndex(0)
+        page(win.IDX_SESSIONS)
+
+        # dialogs with a field: focused the moment they open
+        d = ui.NameDialog(win, ""); d.show(); _app.processEvents()
+        focus, width, readable, ring = _alive(d.name_edit)
+        check("Who is labelling?: the name field is focused on opening, caret visible, blue ring",
+              focus and width >= 2 and readable and ring, str((focus, width, readable, ring)))
+        d.done(0)
+        m = rs.MomentDialog(0, 42.0, win); m.show(); _app.processEvents()
+        focus, width, readable, ring = _alive(m.note)
+        check("Moment marked: the note is focused on opening, caret visible, blue ring",
+              focus and width >= 2 and readable and ring, str((focus, width, readable, ring)))
+        m.close()
+        seen = {}
+
+        def look():
+            dd = QApplication.activeModalWidget()
+            f = dd.first_text_field() if isinstance(dd, ui.AppDialog) else None
+            seen["alive"] = _alive(f) if f is not None else None
+            dd.done(0)
+        QTimer.singleShot(100, look)
+        st.pick_colour(win, "#2155D6")
+        a = seen.get("alive")
+        check("Fighter colour: the colour code is focused on opening, caret visible, blue ring",
+              a is not None and a[0] and a[1] >= 2 and a[2] and a[3], str(a))
+    finally:
+        win._review_page.shutdown(); win._sessions_page.shutdown()
+        win.record_flow.shutdown(); win.close()
+        _app.setPalette(old_pal); _app.setStyleSheet(old_qss)
+        _app.setStyle(QStyleFactory.create(old_style))
+
+
 if __name__ == "__main__":
     test_no_native_dialogs()
     test_one_dropdown()
@@ -375,6 +492,7 @@ if __name__ == "__main__":
     test_dropdown()
     test_light_in_dark_mode()
     test_app_starts_light_in_dark_mode()
+    test_text_fields_look_alive()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:
         print("  FAIL:", f)

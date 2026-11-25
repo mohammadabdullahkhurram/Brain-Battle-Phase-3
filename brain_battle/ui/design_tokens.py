@@ -288,6 +288,24 @@ def base_style_name() -> str:
     return _BASE_STYLE
 
 
+#: Width of the blinking text caret in every text field (Qt's default is 1 px).
+CARET_WIDTH = 2
+
+
+def _caret_style(base):
+    """``base`` (Fusion) with a ``CARET_WIDTH`` px text caret — the one thing a
+    stylesheet cannot set."""
+    from PyQt6.QtWidgets import QProxyStyle, QStyle
+
+    class _CaretStyle(QProxyStyle):
+        def pixelMetric(self, metric, option=None, widget=None):
+            if metric == QStyle.PixelMetric.PM_TextCursorWidth:
+                return CARET_WIDTH
+            return super().pixelMetric(metric, option, widget)
+
+    return _CaretStyle(base)
+
+
 def apply_light_style(app) -> None:
     """Everything the app does at start-up to stay light (called from
     ``app.main()`` before any window exists, and by the screenshot tool):
@@ -296,6 +314,8 @@ def apply_light_style(app) -> None:
       dropdown lists, frames and scroll bars from the system appearance, which
       a palette cannot override (tests run offscreen, which is Fusion anyway,
       so this is what made the real app differ from the tests);
+    * a text caret ``CARET_WIDTH`` px wide in every text field, so it is easy
+      to see (1 px nearly vanished on a scaled Windows display);
     * the full light palette (``pin_light_palette``) and the light colour scheme;
     * the app stylesheet on the APPLICATION, so windows without a parent
       (tooltips, a dialog opened before the main window) get it too;
@@ -305,8 +325,8 @@ def apply_light_style(app) -> None:
     from PyQt6.QtWidgets import QStyleFactory
     style = QStyleFactory.create("Fusion")
     if style is not None:
-        app.setStyle(style)
         _BASE_STYLE = style.name().lower()
+        app.setStyle(_caret_style(style))
     pin_light_palette(app)
     app.setStyleSheet(qss_app())
     if _LIGHT_GUARD is None:                  # once per app; a signal, not an event filter
@@ -347,7 +367,10 @@ def qss_app() -> str:
         }}
         QLineEdit {{ padding: 7px 10px; }}
         QTextEdit, QPlainTextEdit {{ padding: 6px 8px; }}
-        QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{ border: 1px solid {p.accent}; }}
+        /* focused: a 2 px blue ring (the padding gives back the extra pixel so
+           the text does not move) */
+        QLineEdit:focus {{ border: 2px solid {p.accent}; padding: 6px 9px; }}
+        QTextEdit:focus, QPlainTextEdit:focus {{ border: 2px solid {p.accent}; padding: 5px 7px; }}
         QToolTip {{
             background-color: {p.text_primary};
             color: #FFFFFF;
@@ -467,7 +490,8 @@ def qss_input() -> str:
         }}
         QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus,
         QPlainTextEdit:focus {{
-            border: 1px solid {p.accent};
+            border: 2px solid {p.accent};
+            padding: 8px 11px;
         }}
         QLineEdit:disabled {{ background: {p.card_bg_hover}; color: {p.text_tertiary}; }}
     """

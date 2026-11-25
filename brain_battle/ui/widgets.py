@@ -570,12 +570,17 @@ class FlowLayout(QLayout):
 
 def clear_layout(layout, keep_last: int = 0) -> None:
     """Remove (and delete) every widget in a layout, optionally keeping the last
-    ``keep_last`` items (e.g. a trailing stretch)."""
+    ``keep_last`` items (e.g. a trailing stretch).
+
+    Each widget is HIDDEN before it is detached: a widget added to a visible
+    layout has a queued "show" pending, and if it is detached first, that show
+    turns it into a little window of its own — which took the keyboard away
+    from the Get ready code fields (no caret) until 3.1."""
     while layout.count() > keep_last:
         item = layout.takeAt(0)
         w = item.widget()
         if w is not None:
-            w.setParent(None); w.deleteLater()
+            w.hide(); w.setParent(None); w.deleteLater()
         elif item.layout() is not None:
             clear_layout(item.layout())
 
@@ -700,6 +705,25 @@ class AppDialog(QDialog):
         self._cover_window()
         super().show()
 
+    def showEvent(self, e):
+        """Opening: the window takes the keyboard, and the first text field
+        (the name, a note, a colour code) has focus with its caret blinking —
+        type straight away, no click first."""
+        super().showEvent(e)
+        self.activateWindow()
+        field = self.first_text_field()
+        if field is not None:
+            field.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def first_text_field(self):
+        """The dialog's first text field (QLineEdit / QTextEdit), or None."""
+        from PyQt6.QtWidgets import QTextEdit, QPlainTextEdit
+        for w in self.card.findChildren(QWidget):
+            if isinstance(w, (QLineEdit, QTextEdit, QPlainTextEdit)) and w.isEnabled() \
+                    and not w.isHidden():
+                return w
+        return None
+
     def _cover_window(self):
         top = self.parentWidget().window() if self.parentWidget() is not None else None
         if top is not None and top.isVisible():
@@ -787,11 +811,6 @@ class NameDialog(AppDialog):
     def _on_return(self):
         if self.name():
             self.done(1)
-
-    def showEvent(self, e):
-        super().showEvent(e)
-        self.activateWindow()
-        self.name_edit.setFocus()
 
 
 def ask_name(parent, current: str = "", pending: bool = False) -> str | None:

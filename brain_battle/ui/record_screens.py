@@ -1178,7 +1178,7 @@ class SavedScreen(QWidget):
         if self._xdf_row is None:
             return
         idx = self._items.indexOf(self._xdf_row)
-        self._xdf_row.setParent(None); self._xdf_row.deleteLater()
+        self._xdf_row.hide(); self._xdf_row.setParent(None); self._xdf_row.deleteLater()
         self._xdf_row = self._row(ok, "Analysis file", self._XDF_OK if ok else self._XDF_FAIL)
         self._items.removeWidget(self._xdf_row)
         self._items.insertWidget(idx, self._xdf_row)

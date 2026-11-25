@@ -356,7 +356,7 @@ class SettingsScreen(QWidget):
             it = self._labels_flow.takeAt(0)
             w = it.widget() if it else None
             if w is not None and w not in (self._add_label_btn, self._new_label):
-                w.setParent(None); w.deleteLater()
+                w.hide(); w.setParent(None); w.deleteLater()
         for i, entry in enumerate(self._labels):
             chip = _Chip(entry["name"], lead=str(i + 1))
             chip.removed.connect(lambda i=i: self._confirm_remove_label(i))
@@ -469,7 +469,7 @@ class SettingsScreen(QWidget):
             it = self._colours_flow.takeAt(0)
             w = it.widget() if it else None
             if w is not None and w not in (self._add_colour_btn, self._colour_form):
-                w.setParent(None); w.deleteLater()
+                w.hide(); w.setParent(None); w.deleteLater()
         for c in self._colours:
             chip = _Chip(c["name"], dot=c["color"], removable=not fighters.is_preset(c["name"]))
             chip.removed.connect(lambda n=c["name"]: self._confirm_remove_colour(n))

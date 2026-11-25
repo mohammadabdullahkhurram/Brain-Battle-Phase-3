@@ -413,7 +413,8 @@ class SessionsScreen(QWidget):
         self._search.setClearButtonEnabled(True)
         self._search.setFixedHeight(38); self._search.setMinimumWidth(220)
         self._search.setMaximumWidth(280)
-        self._search.setStyleSheet(dt.qss_input() + " QLineEdit { padding: 5px 12px; }")
+        self._search.setStyleSheet(dt.qss_input() + " QLineEdit { padding: 5px 12px; }"
+                                   " QLineEdit:focus { padding: 4px 11px; }")
         self._search.textChanged.connect(self._on_search)
         controls.addWidget(self._search, 1)
         root.addLayout(controls)
