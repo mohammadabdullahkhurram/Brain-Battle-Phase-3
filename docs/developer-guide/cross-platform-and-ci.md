@@ -64,7 +64,7 @@ Things to know:
 - Every test script imports `tests/_env.py` first, which points the app at a
   throwaway settings file — a test run never touches a real user's settings.
 
-## The heavy checks (GitHub Actions, started by hand)
+## The heavy checks (GitHub Actions: every release candidate, or by hand)
 
 `.github/workflows/heavy-checks.yml` ("heavy-checks") runs the checks too long
 for every push — and too heavy for a laptop that is short of memory — on
@@ -74,9 +74,12 @@ ones) and the **buzzer calibration study** (`tools/buzzer_study.py --runs
 200`: the real buzzer test end to end, 200 times, each in a fresh flow). Start
 it from the repository's Actions page → heavy-checks → *Run workflow* (the
 number of calibration runs and the soak length can be changed there), or
-`gh workflow run heavy-checks.yml --ref develop`. (GitHub offers *Run
-workflow* only once the file is on `main`; until then, and whenever the file
-changes, a push to `develop` that touches it starts it.) Each job first prints how
+`gh workflow run heavy-checks.yml --ref develop`. It also runs **on every push
+to `staging`** — each release candidate gets the heavy checks — and on a push
+to `develop` that changes the workflow file. (GitHub offers *Run workflow*
+only once the file is on `main`; until then those pushes are the way to start
+it.) The ordinary test run (`tests.yml`) runs on every push to `develop`,
+`staging` and `main`. Each job first prints how
 well the runner keeps 60 Hz wake-ups (`tools/wake_probe.py`); on a runner that
 cannot (GitHub's macOS runner, usually) the soak and the study print **NOT
 JUDGED** and do not fail. Results are artifacts named

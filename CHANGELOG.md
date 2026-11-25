@@ -58,6 +58,12 @@ dev-log numbering, kept as history — they do not track the release version.
 - **Docstrings:** `app.py` has one; the package docstring describes the top
   header (not a sidebar) and what each subpackage holds; code comments cite
   DESIGN sections by name instead of the old numbers (a known issue, now gone).
+- **CI:** the test run also runs on `staging`; heavy-checks runs on every push
+  to `staging` (each release candidate), on a push to `develop` that changes
+  the workflow, and by hand once the file is on `main`.
+- **Docs:** `docs/project/status.md` brought up to date (fighter codes, the
+  timing target, camera processes, in-app dialogs), the testing strategy
+  lists the new checks, the CI page the new triggers.
 
 **Second click-through: notes, name pop-up, always light, lost frames, buzzer flake (2026-11-24)**
 - **Fixed: "Add note" added nothing.** The button's `clicked(bool)` signal was

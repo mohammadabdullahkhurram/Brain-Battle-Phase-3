@@ -11,9 +11,10 @@ two passes on top.** The first: the standard EEG workflow — live Lab Streaming
 Layer streams, one `recording.xdf` per recording, a conventional EEG viewer,
 and the headbands' movement sensors
 ([write-up](../reviews/2026-11-fable-review.md)). The second: a redesign of
-every screen, more than one labeller per recording, hiding boxer names, Mac and
-Windows support, and a recordings folder shared between computers
-([write-up](../reviews/2026-11-redesign.md)).
+every screen (design F, a top header), more than one labeller per recording,
+fighters as codes and colours, Mac and Windows support, a recordings folder
+shared between computers, the timing check and buzzer calibration, and each
+camera in a process of its own ([write-up](../reviews/2026-11-redesign.md)).
 `main` is the reviewed `3.0.0-beta.2`; `develop` awaits the owner's review
 before it moves to `staging` for testing and then to `main`. The hardware is broken, so everything is built and tested
 against a generated demo session and simulated devices.
@@ -32,8 +33,18 @@ against a generated demo session and simulated devices.
 - **Several labellers per recording** — each person's labels in their own file,
   comparison with plain-language agreement, automatic migration of older
   recordings ([ADR-0019](../decisions/adr-0019-one-labels-file-per-labeller.md)).
-- **Boxer names kept, with options to hide them** in an export and on screen
-  ([ADR-0021](../decisions/adr-0021-boxer-names-and-hiding.md)).
+- **Fighters are 4-character codes and colours, never names** — in the
+  manifest, folder name, `recording.xdf` and exports; older recordings with
+  names still open ([ADR-0023](../decisions/adr-0023-fighter-codes-and-colours.md),
+  superseding ADR-0021).
+- **Timing under 10 ms between devices after correction** — 60 fps cameras,
+  de-jittered headband timestamps, a `timing_quality.csv` per recording, and
+  the buzzer test on Get ready that measures each device's delay and stores
+  corrections ([ADR-0024](../decisions/adr-0024-timing-check-and-buzzer-calibration.md));
+  verified with simulated devices only. Each camera captures in a process of
+  its own ([ADR-0025](../decisions/adr-0025-each-camera-in-its-own-process.md)).
+- **The app's own dialogs and dropdowns** — no native alert anywhere, always
+  light even in dark mode ([ADR-0026](../decisions/adr-0026-in-app-dialogs-and-dropdowns.md)).
 - **Mac and Windows**, with the test suite run automatically on both, and **a
   recordings folder shared between computers**
   ([ADR-0020](../decisions/adr-0020-shared-folder-safety.md),
@@ -82,7 +93,8 @@ Brain Battle is developed under an explicit agreement that governs every change:
 
 - **The owner approves each `ROADMAP.md` phase before it starts.** A session never
   starts the next phase on its own initiative, even if the current one is finished.
-- **Commit locally per logical change. Never push unless explicitly told to.**
+- **Commit locally per logical change.** Never push to `staging` or `main`
+  unless the owner asks for it.
 - **Run everything in `tests/` before and after every change, and report
   pass/fail** — not just "I ran the tests".
 - **`DESIGN.md` is the source of truth for all UI work.** If code and DESIGN.md
@@ -101,9 +113,11 @@ or real Muse-S bands right now. Two consequences a newcomer must internalise:
 1. **Nobody has inspected raw Muse-S EEG from a real sparring round** — the noise
    floor, motion artifact during actual boxing, and whether the channels are even
    readable are all unknown. Don't assume the EEG is clean.
-2. **The synchrony analysis method is undecided and has no owner yet** — so the
-   app targets tens-of-ms alignment and does not invest in tighter precision until
-   someone confirms it matters.
+2. **The synchrony analysis method is undecided** — the timing target is the
+   professor's requirement of under 10 ms between all devices after correction
+   ([ADR-0024](../decisions/adr-0024-timing-check-and-buzzer-calibration.md)),
+   met so far only with simulated devices; the first real session must confirm
+   it.
 
 Everything therefore builds and tests against the
 [demo session and simulation mode](../developer-guide/simulation-and-demo.md). The

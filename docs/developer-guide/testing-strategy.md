@@ -108,7 +108,7 @@ demo session, about five minutes on its own; everything else is quick. The
 | `test_player.py` | PyAV player: frame-for-t, pacing, scrub coalescing | fast |
 | `test_review_tab.py` | Review & Label labels side: fast open, duration, undo/redo | fast |
 | `test_labels_v2.py` | Label entry schema + v1 migration | fast |
-| `test_labellers.py` | One file per labeller, migration + claiming, merge-on-save, agreement, Compare | moderate |
+| `test_labellers.py` | One file per labeller, migration + claiming, merge-on-save, agreement, Compare; "Who is labelling?" asked the moment a recording opens with no name (Cancel → Sessions) | moderate |
 | `test_fighters.py` | Codes + colours validated; the shared colour list; manifest / folder / XDF carry codes; old recordings with names still open | moderate |
 | `test_platform.py` | Mac/Windows differences; forbids `%-d` and hard-coded "Finder" (gate) | fast |
 | `test_shared_folder.py` | Atomic writes, the lock, several processes at once, a folder that disappears | moderate |
@@ -134,8 +134,8 @@ demo session, about five minutes on its own; everything else is quick. The
 | `test_crash_recovery.py` | Interrupted detection + disk branches | moderate |
 | `test_history_log.py` | Append-only history log + hooks | moderate |
 | `test_light_theme.py` | Light-only guard (gate) | fast |
-| `test_dialogs.py` | No native alert / message box / colour dialog / system dropdown; the app's `AppDialog` and `Dropdown`; text fields, the custom note box and the history drawer light even when the computer is in dark mode (gate) | fast |
-| `test_layout_fit.py` | Nothing clipped at three sizes, including squeezed wrapped text, the Sessions rows (and with the history drawer open), the simulated camera text kept out of the label area, neutral Settings badges (gate) | moderate |
+| `test_dialogs.py` | No native alert / message box / colour dialog / system dropdown; the app's `AppDialog` and `Dropdown`; text fields, the custom note box and the history drawer light even when the computer is in dark mode; every text field takes focus on a click with a 2 px dark caret and a blue ring, dialogs focus their field, no stray windows (gate) | fast |
+| `test_layout_fit.py` | Nothing clipped at three sizes, including squeezed wrapped text, the Sessions rows (and with the history drawer open), the simulated camera text kept out of the label area, neutral Settings badges, icons level with their text (gate) | moderate |
 | `test_record_flow.py` | The guided flow end to end (simulated), including the in-app questions (stop, leave, low disk) and choosing the camera / headband for each slot (swap, remembered) | moderate |
 | `test_app_settings.py` | Settings store + `BOXER_LABELS` removal | fast |
 | `test_settings_screen.py` | Real Settings screen, computed bitrate, end-to-end | moderate |
