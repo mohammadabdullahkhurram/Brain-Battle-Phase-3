@@ -26,7 +26,7 @@ Covers:
      validation, __version__ surfaced in the window title.
 
 Run:  python3 tests/test_smoke.py   (nonzero exit on any failure)
-Needs: PyQt6 etc. installed; stubs python-vlc only if libVLC is absent.
+Needs: PyQt6 etc. installed.
 """
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
@@ -48,70 +48,11 @@ def check(name, cond, detail=""):
     print(f"{'PASS' if ok else 'FAIL'}  {name}  {detail}")
 
 
-# ── vlc stub, in-process (only if libVLC is absent on this machine) ─────────
-def _install_vlc_stub_if_needed():
-    try:
-        import vlc  # noqa: F401
-        return False
-    except Exception:
-        import types
-
-        v = types.ModuleType("vlc")
-
-        class State:
-            (NothingSpecial, Opening, Buffering, Playing,
-             Paused, Stopped, Ended, Error) = range(8)
-
-        class EventType:
-            MediaPlayerTimeChanged = "t"; MediaPlayerLengthChanged = "l"
-
-        class _CBDec:
-            VideoLockCb = staticmethod(lambda f: f)
-            VideoUnlockCb = staticmethod(lambda f: f)
-            VideoDisplayCb = staticmethod(lambda f: f)
-
-        class Media:
-            def __init__(self, *a, **k): pass
-
-        class _EM:
-            def event_attach(self, *a, **k): pass
-
-        class _Player:
-            def __init__(self): self._t = 0; self._s = State.NothingSpecial
-            def video_set_callbacks(self, *a): pass
-            def video_set_format(self, *a): pass
-            def set_media(self, m): pass
-            def set_hwnd(self, h): pass
-            def event_manager(self): return _EM()
-            def play(self): self._s = State.Playing
-            def pause(self): self._s = State.Paused
-            def stop(self): self._s = State.Stopped
-            def get_state(self): return self._s
-            def set_time(self, ms): self._t = int(ms)
-            def get_time(self): return self._t
-            def get_length(self): return 0
-
-        class Instance:
-            def __init__(self, *a, **k): pass
-            def media_player_new(self): return _Player()
-            def media_new(self, uri): return Media()
-
-        v.State, v.EventType, v.CallbackDecorators = State, EventType, _CBDec
-        v.Media, v.Instance = Media, Instance
-        sys.modules["vlc"] = v
-        return True
-
-
-# Bootstrap prepended to every fresh-process import (bare stub is enough for
-# import time — only brain_battle_main imports vlc at module level).
+# Bootstrap prepended to every fresh-process import.
 _SUBPROC_BOOTSTRAP = (
-    "import sys, os, types\n"
+    "import sys, os\n"
     f"sys.path.insert(0, {ROOT!r})\n"
     "os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')\n"
-    "try:\n"
-    "    import vlc\n"
-    "except Exception:\n"
-    "    sys.modules['vlc'] = types.ModuleType('vlc')\n"
 )
 
 
@@ -236,9 +177,6 @@ def part3_pure_logic(win):
 if __name__ == "__main__":
     part1_fresh_process_imports()
 
-    stubbed = _install_vlc_stub_if_needed()
-    if stubbed:
-        print("  (libVLC absent — construct checks use the vlc stub)")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     # Constructing SettingsScreen/BrainBattleApp touches the recordings folder
     # (free-space read, label_list.json seed) — point it at a throwaway temp

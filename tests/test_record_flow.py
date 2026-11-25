@@ -38,11 +38,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-try:
-    import vlc  # noqa: F401
-except Exception:
-    import types
-    sys.modules["vlc"] = types.ModuleType("vlc")
 
 from PyQt6.QtWidgets import QApplication, QWidget, QMainWindow, QAbstractScrollArea
 from PyQt6.QtCore import QPoint, QRect
@@ -367,7 +362,6 @@ def test_headband_drop_reconnect():
         check("Reconnect brings Boxer B back", flow._bands["B"].connected and not flow._bands["B"].lost)
         pump(1.0)
         flow.stop_and_save(); pump(0.6)
-        root = flow._saved_root
         bpath = flow._band_rec_paths.get("B")
         check("Boxer B EEG CSV exists and has rows after the drop+reconnect",
               bpath and os.path.isfile(bpath) and sum(1 for _ in open(bpath)) > 1)
@@ -650,7 +644,7 @@ def test_every_step_fits():
     try:
         flow.start(); pump(1.8)
         _setup_short(flow)
-        flow._cfg = flow._setup_step.config()
+        flow._cfg = flow._get_ready.config()
         flow._recording_step.reset_for_recording()
         flow._saved_step.populate(long_info)
         for W, H in [(1440, 900), (1280, 800), (1180, 720)]:

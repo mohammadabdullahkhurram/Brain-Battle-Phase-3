@@ -109,11 +109,6 @@ Recording is complete either way (frame times are exact, gaps are in
 - **A labeller is only a typed name.** A misspelling makes a second labeller,
   and nothing stops someone typing another person's name. Real accounts are
   Phase 7.
-- **`record_flow.py` keeps the names `ConnectStep` / `SetupStep` and the
-  aliases `STEP_CONNECT` / `STEP_SETUP`** for the two halves of the one "Get
-  ready" screen. Harmless, but the names describe the old four-step flow.
-- **Code comments still cite the old DESIGN section numbers** in places
-  (Review & Label was §6 and is now §5).
 
 - **The optional combined 2×2 export video still aligns cameras by their first
   frame only.** Playback (`pyav_player`) and `recording.xdf` both use every

@@ -28,11 +28,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-try:
-    import vlc  # noqa: F401
-except Exception:
-    import types
-    sys.modules["vlc"] = types.ModuleType("vlc")
 
 from PyQt6.QtWidgets import QApplication
 _app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841

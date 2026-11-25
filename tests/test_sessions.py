@@ -1,5 +1,5 @@
 """
-Part 2 — Sessions screen (DESIGN §1) acceptance tests.
+Part 2 — Sessions screen (DESIGN “Sessions”) acceptance tests.
 
 Covers:
   • discovery on a --library demo folder (statuses classified, a damaged
@@ -36,11 +36,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-try:
-    import vlc  # noqa: F401
-except Exception:
-    import types
-    sys.modules["vlc"] = types.ModuleType("vlc")
 
 from PyQt6.QtCore import QPoint, QRect
 from PyQt6.QtWidgets import (

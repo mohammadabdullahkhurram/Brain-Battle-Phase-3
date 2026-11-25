@@ -23,7 +23,6 @@ Public surface used by the app shell:
   • SettingsScreen(parent)
   • .capture_dir_changed (signal, str) — a new recordings folder was chosen.
   • .labeller_changed (signal, str) — "Your name" was edited.
-  • .focus_labeller_name() — focus the "Your name" field.
 """
 from __future__ import annotations
 
@@ -189,7 +188,6 @@ class SettingsScreen(QWidget):
     def header_extra(self) -> QWidget:
         l = QLabel("Changes save automatically")
         l.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.success_color()))
-        self._saved_note = l
         return l
 
     # ── construction ──
@@ -272,10 +270,6 @@ class SettingsScreen(QWidget):
         self._labeller_edit.setText(name)
         self._flash_saved()
         self.labeller_changed.emit(name)
-
-    def focus_labeller_name(self):
-        self._scroll.ensureWidgetVisible(self._labeller_edit)
-        self._labeller_edit.setFocus(); self._labeller_edit.selectAll()
 
     def _refresh_folder_card(self):
         env = os.environ.get("BRAIN_BATTLE_CAPTURE_DIR")

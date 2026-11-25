@@ -84,7 +84,7 @@ def test_fast_open_labels_first():
     t0 = _t.perf_counter()
     tab.load_session_folder(DEMO_ROOT)
     elapsed = _t.perf_counter() - t0
-    check(f"Open returns fast (<0.5s), labels don't wait on media", elapsed < 0.5,
+    check("Open returns fast (<0.5s), labels don't wait on media", elapsed < 0.5,
           f"{elapsed*1000:.0f}ms")
     check("labels present immediately after Open",
           len(tab._store.labels) >= 3, str(len(tab._store.labels)))

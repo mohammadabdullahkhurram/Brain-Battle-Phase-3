@@ -116,7 +116,7 @@ def timing_judgeable(seconds: float = 3.0):
     A share, not a percentile: one stray hiccup must not switch the checks off
     on a good computer (GitHub's macOS runner: ~71 %; a desk Mac or the Windows
     runner: ~0 %). Returns ``(judgeable, description)``; printed either way."""
-    from brain_battle.support.stall_probe import wake_lateness
+    from tools.stall_probe import wake_lateness
     w = wake_lateness(seconds)
     text = (f"this computer wakes a 60 Hz thread {w['median']:.1f} ms late "
             f"(p99 {w['p99']:.1f} ms, worst {w['worst']:.0f} ms; "

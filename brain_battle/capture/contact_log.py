@@ -2,7 +2,7 @@
 contact_log.py
 ──────────────
 A tiny per-sensor contact-quality log written into the recording folder during
-capture (DESIGN §4: "Keep a per-sensor contact-quality log during recording …
+capture (DESIGN “Recording”: "Keep a per-sensor contact-quality log during recording …
 so the Saved screen and Review can report weak periods").
 
 File: ``<recording>/contact_quality.csv``

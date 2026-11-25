@@ -124,10 +124,6 @@ def test_reader_writes_t_session_column():
     # Exercise the REAL streaming write path: feed chunks through _on_eeg (the
     # BLE callback entry point) and let the writer thread stream them to disk.
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    try:
-        import vlc  # noqa: F401
-    except Exception:
-        import types; sys.modules["vlc"] = types.ModuleType("vlc")
     from PyQt6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841
     from brain_battle.capture.eeg_module import _MuseDirectReader

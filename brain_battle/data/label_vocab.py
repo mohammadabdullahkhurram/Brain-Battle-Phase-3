@@ -2,7 +2,7 @@
 label_vocab.py
 ──────────────
 The shared label list for the whole team, stored as `label_list.json` in the
-recordings folder (so a shared folder shares one vocabulary, per DESIGN §7).
+recordings folder (so a shared folder shares one vocabulary, per DESIGN “Settings”).
 Seeded from the DESIGN.md default list on first use. A list a team edited is
 never overwritten; a list that is still exactly an OLD default (``OLD_DEFAULTS``)
 is replaced by the current default once, and that is written into the file's
@@ -77,7 +77,7 @@ def next_color(existing: list[dict] | list[str]) -> str:
 
 def renumber(labels: list[dict]) -> list[dict]:
     """Reassign `key` = position + 1 (1-9) to match display order — the
-    order IS the number-key mapping (DESIGN §6 "press 1-9 to place")."""
+    order IS the number-key mapping (DESIGN “Review & Label” "press 1-9 to place")."""
     for i, item in enumerate(labels):
         item["key"] = i + 1
     return labels

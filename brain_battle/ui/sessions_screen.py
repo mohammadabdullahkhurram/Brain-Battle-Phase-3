@@ -390,7 +390,6 @@ class SessionsScreen(QWidget):
         self._folder_banner.setVisible(False)
         root.addWidget(self._folder_banner)
         self._banner = ui.Banner("warn")
-        self._banner_text = self._banner._text
         self._banner.add_action("Open it", self._on_banner_open, primary=True)
         self._banner.add_action("Dismiss", self._on_banner_dismiss)
         self._banner.setVisible(False)
@@ -430,7 +429,6 @@ class SessionsScreen(QWidget):
         self._rows_layout.setContentsMargins(0, 0, 0, 0); self._rows_layout.setSpacing(8)
         self._rows_layout.addStretch()
         self._scroll.setWidget(self._rows_host)
-        self._list_card = self._scroll                 # (name kept for older callers)
         root.addWidget(self._scroll, 1)
 
         self._empty = self._build_empty()
@@ -606,7 +604,6 @@ class SessionsScreen(QWidget):
             btn.setMinimumWidth(130)
             btn.clicked.connect(lambda _c=False, r=info.root: self.open_session.emit(r))
             h.addWidget(btn)
-            row.action_text = text
             row.clicked.connect(lambda r=info.root: self.open_session.emit(r))
         row.context.connect(lambda pos, i=info: self._row_menu(i, pos))
         row.info = info

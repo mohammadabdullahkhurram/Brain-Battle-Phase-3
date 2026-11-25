@@ -40,6 +40,25 @@ dev-log numbering, kept as history — they do not track the release version.
   width, a caret colour readable on the field and the ring's pixels, and that
   New recording opens no stray windows.
 
+**Tidy-up before staging (2026-11-25)** — no change in behaviour.
+- **Dead code removed:** the `QTabWidget` compatibility shim and
+  `show_welcome` in `app.py`; the `STEP_CONNECT` / `STEP_SETUP` aliases and
+  the `_connect_step` / `_ready_page` / `_setup_step` names for the one Get
+  ready screen (now `_get_ready` everywhere); `TimelineStrip` (the old name of
+  `LaneTimeline`), the name-hiding leftovers and unused helpers in
+  `review_label_screen`; unused methods in `header_shell`, `widgets`,
+  `settings_screen` (`focus_labeller_name`), `usb_camera`
+  (`seconds_since_frame`, `ENERGY_SIZE`) and `stall_probe`; unused attributes
+  in Sessions; the python-vlc stubs left in eleven test scripts from before
+  PyAV playback; a few unused test variables.
+- **`stall_probe` moved from `support/` to `tools/`** — a debug instrument the
+  app never imports (used by `tools/soak_test.py`, `tools/wake_probe.py` and
+  `tests/_env.timing_judgeable`). Module reference updated; `wake_probe` and
+  `buzzer_study` now have entries too.
+- **Docstrings:** `app.py` has one; the package docstring describes the top
+  header (not a sidebar) and what each subpackage holds; code comments cite
+  DESIGN sections by name instead of the old numbers (a known issue, now gone).
+
 **Second click-through: notes, name pop-up, always light, lost frames, buzzer flake (2026-11-24)**
 - **Fixed: "Add note" added nothing.** The button's `clicked(bool)` signal was
   connected straight to `add_note(text=None)`, so PyQt passed `False` as the

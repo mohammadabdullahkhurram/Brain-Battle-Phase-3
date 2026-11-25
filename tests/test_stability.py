@@ -93,7 +93,6 @@ def test_camera_stall_watchdog():
         pump(1.0)
         root = flow._saved_root
         kinds = [k for _t, k, _s in slot.stall_events]
-        stall_t = next((t for t, k, _s in slot.stall_events if k == "stalled"), None)
         rec = next((s for t, k, s in slot.stall_events if k == "recovered"), None)
         check("watchdog noticed the stall (stalled, then recovered)",
               "stalled" in kinds and "recovered" in kinds, str(slot.stall_events))

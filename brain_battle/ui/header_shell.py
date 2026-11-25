@@ -117,26 +117,18 @@ class HeaderShell(QWidget):
     def set_current_index(self, idx: int) -> None:
         if not 0 <= idx < len(self._pages):
             return
-        changed = idx != self._stack.currentIndex()
         self._stack.setCurrentIndex(idx)
         self._header.setVisible(not self._pages[idx][2])
         for i, w in self._extras.items():
             w.setVisible(i == idx)
         self._restyle_nav()
-        if changed or True:
-            self.page_changed.emit(idx)
+        self.page_changed.emit(idx)
 
     def current_index(self) -> int:
         return self._stack.currentIndex()
 
     def page_widget(self, idx: int) -> QWidget:
         return self._stack.widget(idx)
-
-    def header_visible(self) -> bool:
-        return not self._header.isHidden()
-
-    def nav_button(self, key: str) -> QPushButton:
-        return self._nav[key]
 
     def _restyle_nav(self) -> None:
         cur = self._stack.currentIndex()

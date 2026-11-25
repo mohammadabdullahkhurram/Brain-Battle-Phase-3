@@ -52,11 +52,6 @@ def _fixture_sessions(base):
 
 
 _fixture_sessions(os.environ["BRAIN_BATTLE_CAPTURE_DIR"])
-try:
-    import vlc  # noqa: F401
-except Exception:
-    import types
-    sys.modules["vlc"] = types.ModuleType("vlc")
 
 from PyQt6.QtCore import QPoint, QRect
 from PyQt6.QtWidgets import QApplication, QWidget, QAbstractScrollArea, QLabel
@@ -71,7 +66,7 @@ _failures = []
 SIZES = [(1440, 900), (1280, 800), bbm.MIN_WINDOW]
 TOL = 2   # px tolerance for rounding / sub-pixel borders
 
-# Every page must now fit — the merged Review & Label screen (DESIGN §6) has no
+# Every page must now fit — the merged Review & Label screen (DESIGN “Review & Label”) has no
 # exemption; the old Review/Labelling overflows went away with those screens.
 KNOWN_OVERFLOW = set()
 
@@ -107,7 +102,7 @@ def _overflows(win, page):
         # gutter CONTAINER for the bar (object name qt_scrollarea_vcontainer/
         # hcontainer) is a plain QWidget, not something named "*ScrollBar*",
         # so it needs its own exclusion — only shows up once a page actually
-        # needs to scroll (Settings is the first: DESIGN §7 is a long page).
+        # needs to scroll (Settings is the first: DESIGN “Settings” is a long page).
         if "ScrollBar" in w.__class__.__name__ or \
                 w.objectName() in ("qt_scrollarea_vcontainer", "qt_scrollarea_hcontainer"):
             continue

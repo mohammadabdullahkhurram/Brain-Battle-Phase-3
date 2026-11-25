@@ -36,11 +36,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("BRAIN_BATTLE_SIMULATE", "1")
 import tempfile
 os.environ.setdefault("BRAIN_BATTLE_CAPTURE_DIR", tempfile.mkdtemp(prefix="bb_docs_test_cap_"))
-try:
-    import vlc  # noqa: F401
-except Exception:
-    import types
-    sys.modules["vlc"] = types.ModuleType("vlc")
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt

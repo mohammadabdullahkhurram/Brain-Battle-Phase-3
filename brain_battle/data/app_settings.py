@@ -33,7 +33,7 @@ from brain_battle.capture.session_controller import SessionConfig
 
 SCHEMA_VERSION = 1
 
-# Record video-quality presets (DESIGN §7): (width, height, fps, target H.264
+# Record video-quality presets (DESIGN “Settings”): (width, height, fps, target H.264
 # bitrate in Mbps). "standard" is today's default (960x540@30, 5 Mbps — see
 # usb_camera.py's REC_BITRATE rationale). The Settings screen's "about X GB
 # per hour per camera" copy and the disk-space estimate are both COMPUTED
@@ -131,7 +131,7 @@ class AppSettings:
     # ---- derived accessors ----
     def capture_dir_resolved(self) -> str:
         """BRAIN_BATTLE_CAPTURE_DIR, if set, always wins — it's "set outside
-        the app" (Settings §7), so it overrides even a folder the user
+        the app" (DESIGN “Settings”), so it overrides even a folder the user
         previously picked from Settings. Otherwise the user's saved choice,
         else the default 'Brain Battle Data' folder in Documents."""
         env = os.environ.get("BRAIN_BATTLE_CAPTURE_DIR")

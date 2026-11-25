@@ -28,7 +28,7 @@ and reports, per recording:
     python3 tools/soak_test.py --minutes 2 --then 2    # a quick version
     python3 tools/soak_test.py --json soak.json
 
-Diagnosis (debug only — see brain_battle/support/stall_probe.py):
+Diagnosis (debug only — see tools/stall_probe.py):
 
     --diagnose          stall detector + GC timing + thread stacks during stalls;
                         every camera gap is lined up with them
@@ -316,10 +316,10 @@ def main(argv=None) -> int:
 
     import psutil
     from brain_battle.support import resource_limits as rl
-    from brain_battle.support.stall_probe import MachineStallProbe, judge_lost_frames
+    from tools.stall_probe import MachineStallProbe, judge_lost_frames
     judgeable, wake_text = True, ""
     if args.wake_check:
-        from brain_battle.support.stall_probe import wake_lateness
+        from tools.stall_probe import wake_lateness
         w = wake_lateness(5.0)
         judgeable = w["over_half"] <= 0.10          # the rule of tests/_env.timing_judgeable
         wake_text = (f"this computer wakes a 60 Hz thread {w['median']:.1f} ms late (p99 "
@@ -336,7 +336,7 @@ def main(argv=None) -> int:
     _apply_variants(args)
     probe = None
     if args.diagnose:
-        from brain_battle.support.stall_probe import StallProbe
+        from tools.stall_probe import StallProbe
         probe = StallProbe(stack_file=args.stack_file or None)
         probe.start()
         import brain_battle.ui.record_flow as _rf
@@ -412,7 +412,7 @@ def main(argv=None) -> int:
         while flow.is_recording():
             pump(0.5)
             for slot in flow._cams:
-                peak, capq = slot.queue_use
+                peak, _cap = slot.queue_use
                 queue_peak[slot.stem] = max(queue_peak.get(slot.stem, 0), peak)
             if time.time() - last_mem >= 10:
                 last_mem = time.time()

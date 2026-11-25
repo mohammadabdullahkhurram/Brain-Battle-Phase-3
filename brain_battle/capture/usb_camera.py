@@ -90,7 +90,6 @@ REC_QUEUE_MAXSIZE = 60      # at least this many frames; really 2 s at the camer
 STALL_SEC = 2.0
 # Frame-difference energy for the buzzer test: every frame, sampled on a grid
 # of about this size, is compared with the previous one (cheap: ~2 k pixels).
-ENERGY_SIZE = (64, 36)          # (kept for reference: the grid of the first version)
 ENERGY_STRIDE = 4
 ENERGY_KEEP_SEC = 40.0
 # Reusable frame buffers per camera (the encoder queue is usually a few frames
@@ -584,12 +583,6 @@ class USBCameraThread(QThread):
         """Frames dropped this recording because the encoder couldn't keep up
         (bounded-queue overflow). 0 is the healthy case."""
         return self._dropped_frames
-
-    @property
-    def seconds_since_frame(self) -> Optional[float]:
-        if self._last_frame_t is None:
-            return None
-        return _clock.monotonic() - self._last_frame_t
 
     def energy_since(self, t0: float) -> tuple[np.ndarray, np.ndarray]:
         """(frame times, frame-difference energy) for frames after ``t0``."""

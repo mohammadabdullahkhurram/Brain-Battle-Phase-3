@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def describe(seconds: float) -> str:
-    from brain_battle.support.stall_probe import wake_lateness
+    from tools.stall_probe import wake_lateness
     w = wake_lateness(seconds)
     return (f"{w['n']} wake-ups: median {w['median']:.2f} ms late, p99 {w['p99']:.2f} ms, "
             f"worst {w['worst']:.1f} ms; over half a frame late {100 * w['over_half']:.1f} %, "

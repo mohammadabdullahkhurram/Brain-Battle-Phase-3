@@ -29,8 +29,8 @@ Generates a demo session into a temp dir and checks:
      only a folder it made, the app gets its own settings + simulated devices.
 
 Run:  python3 tests/test_demo_session.py   (nonzero exit on any failure)
-Needs: ffmpeg on PATH (video container), PyQt6 + python-vlc (stubbed if
-libVLC is absent), same as the other tests/ scripts.
+Needs: ffmpeg on PATH (video container) and PyQt6, same as the other tests/
+scripts.
 """
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))

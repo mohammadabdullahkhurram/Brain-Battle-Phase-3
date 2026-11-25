@@ -22,8 +22,8 @@ remove, or rename a module, update this page in the same commit (see
 | **`capture/`** | `clock` · `usb_camera` · `camera_worker` · `camera_source` · `headband_source` · `eeg_module` · `lsl_outlets` · `session_controller` · `timing` · `timing_log` · `buzzer_test` · `simulation` · `contact_quality` · `contact_log` · `keep_awake` · `round_bell` |
 | **`playback/`** | `pyav_player` |
 | **`data/`** | `signals` · `session_storage` · `session_xdf` · `xdf_writer` · `session_history` · `labels_store` · `label_agreement` · `label_vocab` · `fighters` · `safe_io` · `export_module` · `app_settings` |
-| **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` · `stall_probe` · `sound` |
-| **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `demo` · `measure_descriptors` · `soak_test` · `render_diagrams` · `render_screens` · `make_round_bell` |
+| **`support/`** | `log_setup` · `docs_nav` · `platform_utils` · `resource_limits` · `sound` |
+| **Tools** (`tools/`, not shipped) | `run_tests` · `generate_demo_session` · `demo` · `measure_descriptors` · `soak_test` · `stall_probe` · `wake_probe` · `buzzer_study` · `render_diagrams` · `render_screens` · `make_round_bell` |
 
 Threads at a glance: everything runs on the **UI (main) thread** unless its
 entry says otherwise. The modules that spawn threads or subprocesses are
@@ -621,23 +621,6 @@ to the app's log, and the video finalised if the app goes away. **Why a
 process:** [ADR-0025](../decisions/adr-0025-each-camera-in-its-own-process.md).
 **Thread:** its own process.
 
-### `stall_probe.py`
-`brain_battle/support/stall_probe.py` — debug only (`tools/soak_test.py
---diagnose`). `StallProbe` records every time a 5 ms sleeper thread woke more
-than 20 ms late, every garbage collection's duration (`gc.callbacks`), and
-dumps every thread's stack *during* a stall through
-`faulthandler.dump_traceback_later` (a C watchdog that needs no interpreter
-lock). Used to find the cause of camera frame loss (ADR-0025).
-`MachineStallProbe` is a bare process that only sleeps: its late wake-ups are
-the computer's own stalls; `judge_lost_frames` splits lost camera frames into
-those inside such a stall (machine noise) and outside (a problem) — the soak
-verdict. `wake_lateness()` measures the computer itself — how late it wakes a thread
-sleeping to 60 Hz deadlines; `tools/wake_probe.py` prints it (and
-`tools/buzzer_study.py` runs the real buzzer test many times and reports the
-distribution of its recovery error — the heavy-checks workflow), and
-`test_timing` / `test_stability` use it to decide whether a computer can
-judge millisecond precision at all (`tests/_env.py` `timing_judgeable`).
-
 ### `sound.py`
 `brain_battle/support/sound.py` — the one place the app makes a sound.
 `play(effect, what)` plays a `QSoundEffect` (the round bell, the buzzer-test
@@ -768,6 +751,35 @@ last line is the **VERDICT**; exits nonzero on a frame lost outside a machine
 stall, a missing EEG sample, an encoder drop, a failed save or descriptors not
 back to the same numbers. `--minutes`, `--switch-ms`, `--gc-debug`. Not part of the suite (it takes ~20 min); `tests/test_stability.py`
 runs a short version.
+
+### `tools/stall_probe.py`
+Debug only, never imported by the app (`tools/soak_test.py --diagnose`;
+moved here from `support/` in 3.1). `StallProbe` records every time a 5 ms sleeper thread woke more
+than 20 ms late, every garbage collection's duration (`gc.callbacks`), and
+dumps every thread's stack *during* a stall through
+`faulthandler.dump_traceback_later` (a C watchdog that needs no interpreter
+lock). Used to find the cause of camera frame loss (ADR-0025).
+`MachineStallProbe` is a bare process that only sleeps: its late wake-ups are
+the computer's own stalls; `judge_lost_frames` splits lost camera frames into
+those inside such a stall (machine noise) and outside (a problem) — the soak
+verdict. `wake_lateness()` measures the computer itself — how late it wakes a thread
+sleeping to 60 Hz deadlines; `tools/wake_probe.py` prints it (and
+`tools/buzzer_study.py` runs the real buzzer test many times and reports the
+distribution of its recovery error — the heavy-checks workflow), and
+`test_timing` / `test_stability` use it to decide whether a computer can
+judge millisecond precision at all (`tests/_env.py` `timing_judgeable`).
+
+### `tools/wake_probe.py`
+How late this computer wakes a thread sleeping to 60 Hz deadlines, in this
+process and in a freshly spawned child (how camera processes start), for 20 s
+(`python3 tools/wake_probe.py [seconds]`). The heavy-checks workflow prints it
+first, so a slow runner is visible before the soak.
+
+### `tools/buzzer_study.py`
+Runs the real buzzer test many times with simulated devices of known delay and
+reports the distribution of its recovery error (`runs.jsonl`, `summary.json`;
+exit 1 when judged and any run reaches the 2 ms limit). Not in
+`tools/run_tests.py` (200 runs take ~70 min); the heavy-checks workflow runs it.
 
 ### `tools/render_screens.py`
 Drives the app under `BRAIN_BATTLE_SIMULATE=1` to produce screenshots: a review

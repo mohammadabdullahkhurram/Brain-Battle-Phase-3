@@ -1,7 +1,7 @@
 """
 keep_awake.py
 ─────────────
-Prevent the computer from sleeping while a recording is in progress (DESIGN §4
+Prevent the computer from sleeping while a recording is in progress (DESIGN “Recording”
 safety). Best-effort and cross-platform:
   • macOS   — a `caffeinate -dimsu` subprocess for the recording's lifetime.
   • Windows — SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED |

@@ -384,8 +384,8 @@ def test_cannot_record_into_missing_folder():
         try:
             flow.start()
             check("Get ready says the folder can't be used and Start is off",
-                  not flow._setup_step._start.isEnabled()
-                  and flow._setup_step._disk.kind() == "bad", flow._setup_step._disk.text()[:70])
+                  not flow._get_ready._start.isEnabled()
+                  and flow._get_ready._disk.kind() == "bad", flow._get_ready._disk.text()[:70])
             flow.begin_recording()
             check("pressing Start anyway explains (in the app's dialog) instead of recording",
                   not flow.is_recording() and shown

@@ -105,10 +105,8 @@ class RecordFlow(QWidget):
     help_requested = pyqtSignal(str)     # the CURRENT step's doc anchor
     _xdf_done      = pyqtSignal(str, bool)   # (session root, built OK) — from the build thread
 
-    # Step 1 "Get ready" holds both the devices (ConnectStep) and the plan
-    # (SetupStep), so STEP_CONNECT and STEP_SETUP are the same screen.
+    # Step 1 "Get ready" holds both the devices and the plan.
     STEP_READY, STEP_RECORD, STEP_SAVED = 0, 1, 2
-    STEP_CONNECT = STEP_SETUP = STEP_READY
     _STEP_ANCHORS = {
         STEP_READY: "step-1-get-ready",
         STEP_RECORD: "step-2-recording",
@@ -177,8 +175,6 @@ class RecordFlow(QWidget):
         root.addWidget(self.header)
         self._stack = QStackedWidget()
         self._get_ready = GetReadyScreen(self)
-        # older names for the one Get ready screen (devices + plan)
-        self._setup_step = self._connect_step = self._ready_page = self._get_ready
         self._recording_step = RecordingScreen(self)
         self._saved_step = SavedScreen(self)
         for w in (self._get_ready, self._recording_step, self._saved_step):
@@ -203,7 +199,7 @@ class RecordFlow(QWidget):
         for band in self._bands.values():
             band.publisher = self._lsl
         self._names = {"A": "", "B": ""}
-        self._setup_step.populate_from_settings()
+        self._get_ready.populate_from_settings()
         self._set_step(self.STEP_READY)
         self._scan_and_assign()
         self._tick.start()
@@ -211,12 +207,12 @@ class RecordFlow(QWidget):
     # ── programmatic set-up (Get ready's widgets, tools, tests) ──
     def set_plan(self, cfg: SessionConfig) -> None:
         """Rounds, round / break / baseline length for the next recording."""
-        self._setup_step.set_plan(cfg)
+        self._get_ready.set_plan(cfg)
 
     def set_fighters(self, code_a: str, code_b: str, colour_a: str = "Red",
                      colour_b: str = "Blue") -> None:
         """Both fighters' codes and colours for the next recording."""
-        self._setup_step.set_fighters(code_a, code_b, colour_a, colour_b)
+        self._get_ready.set_fighters(code_a, code_b, colour_a, colour_b)
 
     def goto_setup(self):
         """Show "Get ready" (devices + plan are one screen now; kept so callers
@@ -395,10 +391,10 @@ class RecordFlow(QWidget):
     def begin_recording(self):
         if self._controller.is_running:
             return
-        self._cfg = self._setup_step.config()
-        a, b = self._setup_step.names()
+        self._cfg = self._get_ready.config()
+        a, b = self._get_ready.names()
         self._names = {"A": a, "B": b}
-        self._bell = self._setup_step.bell()
+        self._bell = self._get_ready.bell()
         err = self._cfg.validate()
         if err:
             ui.tell(self, "This session plan can’t be used", err); return
@@ -416,11 +412,11 @@ class RecordFlow(QWidget):
             return
 
         import brain_battle.data.fighters as fighters
-        problem = fighters.codes_problem(a, b) or fighters.colours_problem(*self._setup_step.colours())
+        problem = fighters.codes_problem(a, b) or fighters.colours_problem(*self._get_ready.colours())
         if problem:
             ui.tell(self, "Fighter codes and colours", problem + "."); return
         colours = fighters.load_colours(base)
-        ca, cb = self._setup_step.colours()
+        ca, cb = self._get_ready.colours()
         boxer_a = fighters.boxer_entry(a, ca, fighters.colour_hex(ca, colours),
                                        self._settings.headband_for("A"))
         boxer_b = fighters.boxer_entry(b, cb, fighters.colour_hex(cb, colours),

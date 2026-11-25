@@ -1,3 +1,16 @@
+"""
+app.py — the main window and the start-up
+─────────────────────────────────────────
+``BrainBattleApp`` is the one window: a top header (``ui/header_shell``) over
+Sessions, New recording, Review & Label, Documentation, Settings and the
+first-run Welcome screen, and the wiring between them (opening a recording in
+Review — asking "Who is labelling?" first when no name is set — the labeller
+name, the recordings folder, Help). ``main()`` is the entry point for
+``python3 -m brain_battle``, the ``brain-battle`` console script and the
+``brain_battle_main.py`` shim: it raises the open-file limit, applies the
+always-light style, starts the window and stops every device and worker
+thread on quit.
+"""
 import os
 os.environ["QT_MEDIA_BACKEND"] = "ffmpeg"
 os.environ["QT_FFMPEG_DISABLE_HW_DECODING"] = "1"
@@ -67,7 +80,7 @@ class BrainBattleApp(QMainWindow):
             self.resize(1440, 900)
 
     def closeEvent(self, event):
-        # Confirm before quitting mid-recording (DESIGN §4 safety).
+        # Confirm before quitting mid-recording (DESIGN “Recording” safety).
         try:
             if getattr(self, "record_flow", None) is not None and self.record_flow.is_recording():
                 from brain_battle.ui.record_flow import ask_leave_recording
@@ -139,13 +152,6 @@ class BrainBattleApp(QMainWindow):
                                                  own_header=True)
         self._shell.set_extra(self.IDX_SETTINGS, self._settings_page.header_extra())
 
-        # Compat shim for any code that walked up to a QTabWidget.
-        class _ShellTabShim:
-            def __init__(self, shell): self._shell = shell
-            def setCurrentIndex(self, idx: int): self._shell.set_current_index(idx)
-            def currentIndex(self): return self._shell.current_index()
-        self.tabs = _ShellTabShim(self._shell)
-
         self._shell.page_changed.connect(self._on_page_changed)
         self._review_page.labeller_changed.connect(self._on_labeller_changed)
 
@@ -173,10 +179,6 @@ class BrainBattleApp(QMainWindow):
         self._on_capture_dir_changed(path)
         self._settings_page.refresh()
         self._go_to_sessions()
-
-    def show_welcome(self):
-        """Settings › Change (or the first launch): pick the team's folder."""
-        self._shell.set_current_index(self.IDX_WELCOME)
 
     # ── who is labelling ──
     def _on_labeller_changed(self, name):

@@ -10,7 +10,7 @@ capture-time clock (per-frame and per-EEG-sample timestamps on one
 `t_session_seconds` axis), and in-app cameras record no audio track at all, so
 there is nothing on the audio for anything to "lock onto". Whether the bell
 sounds is a plain on/off preference in Settings (the "Ring a bell when each
-round starts" option, DESIGN §7), wired through the record flow.
+round starts" option, DESIGN “Settings”), wired through the record flow.
 
 (The module was once `sync_beep.py` / `SyncBeep`, named for an audio
 cross-correlation sync engine that has since been removed; it was renamed to

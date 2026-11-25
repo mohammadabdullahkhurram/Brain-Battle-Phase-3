@@ -221,7 +221,6 @@ class HeadIcon(QWidget):
     """A head seen from above, the four skin sensors as dots: green = signal
     looks good, orange = signal looks poor (our heuristic — the band does not
     report how well it fits)."""
-    ORDER = ("AF7", "AF8", "TP9", "TP10")   # left forehead, right forehead, left ear, right ear
 
     def __init__(self, size: int = 56, parent=None):
         super().__init__(parent)
@@ -721,14 +720,6 @@ class GetReadyScreen(QWidget):
     def card(self, which) -> BoxerCard:
         return self._cards[which]
 
-    @property
-    def _name_a(self):            # (kept for older callers: the code fields)
-        return self._cards["A"].code
-
-    @property
-    def _name_b(self):
-        return self._cards["B"].code
-
     def config(self):
         from brain_battle.capture.session_controller import SessionConfig
         return SessionConfig(num_rounds=self._st_rounds.value(), round_sec=self._st_round.value(),
@@ -1007,7 +998,6 @@ class RecordingScreen(QWidget):
         cap.setStyleSheet(dt.css_text(dt.SIZE_SM, 400, dt.text_tertiary(), f"font-family: {dt.FONT_MONO};"))
         right.addWidget(cap)
         root.addLayout(right, 2)
-        self._confirm = None
 
     def show_write_problem(self, text: str):
         self._write_banner.set_text(text)

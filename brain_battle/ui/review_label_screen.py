@@ -1,7 +1,7 @@
 """
 review_label_screen.py
 ───────────────────
-The one merged Review & Label screen (DESIGN §6) — where labellers spend hours.
+The one merged Review & Label screen (DESIGN “Review & Label”) — where labellers spend hours.
 Everything runs off a single playhead on the t_session_seconds axis via
 pyav_player: the video tiles, both brain-activity displays, the timeline cursor
 and label placement are the same number by construction.
@@ -30,7 +30,8 @@ Public surface used by the app shell:
   • .load_session_folder(root) — open a recording (returns fast).
   • .wait_loaded(timeout) — block until the background media load finishes
     (tests only; the live UI just lets the loading states resolve).
-  • .set_labeller(name) / .set_names_hidden(bool)
+  • .set_labeller(name) / .require_labeller() — ask "Who is labelling?" on
+    opening when no name is set
   • .back_to_sessions / .labeller_changed (signals)
   • .shutdown() — stop the decode worker/timer before teardown.
 """
@@ -403,10 +404,6 @@ class BrainActivityCard(QFrame):
             vw.empty_text = "Loading brain activity…"
             vw.set_data(None, {})
 
-    def set_names(self, names):
-        for lbl, name in zip(self._names, names):
-            lbl.setText(name)
-
     def load(self, dfs, names):
         self._dfs = dfs
         for i, (df, name) in enumerate(zip(dfs, names)):
@@ -519,9 +516,6 @@ class LaneTimeline(QWidget):
         self.selection = sel; self.update()
 
     # geometry
-    def _plot_x0(self):
-        return float(self.LABEL_W)
-
     def _x(self, t):
         w = self.width() - self.LABEL_W - 4
         return self.LABEL_W + max(0.0, min(1.0, t / self.duration)) * w
@@ -686,9 +680,6 @@ class LaneTimeline(QWidget):
             p.end()
 
 
-TimelineStrip = LaneTimeline      # the older name
-
-
 class _MediaLoadWorker(QThread):
     """Off the UI thread: open the camera decoders (reads every sidecar) and
     parse the EEG CSVs — the two slow parts of opening a recording."""
@@ -745,7 +736,6 @@ class ReviewLabelScreen(QWidget):
         register_fonts()        # the bundled fonts, however this screen is made
         self._root = None
         self._labeller = app_settings.labeller_name()
-        self._hide_names = False
         self._store = labels_store.LabelsStore(labeller=self._labeller)
         self._others = {}            # {labeller name: [labels]} — everyone but me
         self._compare_with = None
@@ -893,30 +883,19 @@ class ReviewLabelScreen(QWidget):
         self._speed = ui.Segmented([(lbl, s) for s, lbl in _SPEEDS], current=1.0, height=32)
         self._speed.setToolTip("Playback speed")
         self._speed.changed.connect(self._set_speed)
-        self._speed_group = self._speed
         h.addWidget(self._speed)
         v.addLayout(h)
         self._strip = LaneTimeline()
         self._strip.seek_requested.connect(self._on_timeline_seek)
         self._strip.selected.connect(self._on_timeline_select)
         v.addWidget(self._strip)
-        self._timeline_card = dock
         self._set_play_icon(False)
         return dock
-
-    def _tbtn(self, icon, tip, slot):
-        b = ui.icon_button(icon, tip, size=40)
-        b.clicked.connect(slot)
-        return b
 
     def _set_play_icon(self, playing):
         self._play_btn.setIcon(QIcon(dt.icon_pixmap("pause" if playing else "play",
                                                     color="#FFFFFF", size=16)))
         self._play_btn.setIconSize(QSize(16, 16))
-
-    def _label_grid_widget(self, for_moment=False):
-        grid = QGridLayout(); grid.setSpacing(6)
-        return grid
 
     def _build_labels_panel(self):
         panel = QFrame(); panel.setObjectName("labelPanel"); panel.setFixedWidth(self.PANEL_WIDTH)
@@ -1322,12 +1301,6 @@ class ReviewLabelScreen(QWidget):
         if changed and self._root:
             self._open_labels()
             self._refresh_all_labels()
-
-    def _shown(self, which):
-        return self._names.get(which) or f"Boxer {which}"
-
-    def _has_name(self, which):
-        return bool(self._names.get(which)) and not self._hide_names
 
     def _brain_names(self):
         return [f"Boxer {w} · {self._names[w]}" if self._names.get(w) else f"Boxer {w}"

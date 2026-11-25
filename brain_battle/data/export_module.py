@@ -401,7 +401,7 @@ def build_coregistered_eeg(eeg_dfs, phase_markers, sr: int = 256):
 
 
 # =====================================================================
-#  v2 "Export for analysis" (merged Review & Label screen, DESIGN §6)
+#  v2 "Export for analysis" (merged Review & Label screen, DESIGN “Review & Label”)
 # =====================================================================
 #
 # One button → a small dialog → a zip with the analysis-ready bundle:

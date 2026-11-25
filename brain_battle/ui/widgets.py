@@ -462,14 +462,6 @@ class TimerLabel(QWidget):
     def text(self) -> str:
         return self._text
 
-    def set_color(self, color: str) -> None:
-        if color != self._color:
-            self._color = color; self.update()
-
-    def set_pixel_size(self, px: int) -> None:
-        if px != self._px:
-            self._px = px; self._apply_size(); self.update()
-
     def paintEvent(self, _e):
         p = QPainter(self)
         try:
@@ -494,9 +486,6 @@ class Dot(QWidget):
         super().__init__(parent)
         self._color = color
         self.setFixedSize(size, size)
-
-    def set_color(self, color: str) -> None:
-        self._color = color; self.update()
 
     def paintEvent(self, _e):
         p = QPainter(self)

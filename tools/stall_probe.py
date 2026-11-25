@@ -1,8 +1,9 @@
 """
 stall_probe.py — debug-only: find out when (and why) the whole process stalls
 ─────────────────────────────────────────────────────────────────────────────
-Not used by the app in normal running. ``tools/soak_test.py --diagnose`` (or
-``BRAIN_BATTLE_STALL_PROBE=1``) starts it.
+Never imported by the app: ``tools/soak_test.py --diagnose`` starts it, and
+``tools/wake_probe.py`` / ``tests/_env.timing_judgeable`` use
+``wake_lateness``.
 
 Three instruments, all stamped with the one capture clock
 (``clock.monotonic()``) so they line up with the cameras' frame times:
@@ -107,9 +108,6 @@ class StallProbe:
             self._stack_f = None
 
     # ── summaries ──
-    def stalls_between(self, t0: float, t1: float) -> list[tuple[float, float]]:
-        return [s for s in self.stalls if t0 <= s[0] <= t1]
-
     def gc_summary(self) -> dict:
         out = {}
         for _t, d, g, _c in self.gcs:
