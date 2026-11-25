@@ -11,12 +11,13 @@ once; the videos and brain activity follow a moment later.
 
 ## Who is labelling
 
-The first time you add a label or a note, the screen dims and a small window
-asks **"Who is labelling?"**. Type your name and press **Save** (or Enter) —
-the label or note you were adding is then added straight away. Nothing else can
-be clicked until you save or cancel. You are asked only once on this computer,
-and you can change it in [Settings](settings.md) (or **Not you?** in the panel,
-which opens the same window). Only labellers have
+The first time you open a recording for labelling, the screen dims and a
+small window asks **"Who is labelling?"**. Type your name and press **Save**
+(or Enter); the panel then shows **as *your name* · Not you?**. Nothing else
+can be clicked until you save or cancel, and **Cancel** takes you back to
+Sessions — labels are always saved under a name. You are asked only once on
+this computer, and you can change it in [Settings](settings.md) (or **Not
+you?** in the panel, which opens the same window). Only labellers have
 names — fighters are always their codes.
 
 **Every labeller's labels are kept separately**, in your own file inside the

@@ -225,14 +225,20 @@ class BrainBattleApp(QMainWindow):
         self._welcome_page.set_capture_dir(path)
 
     def _open_session_in_review(self, session_root):
+        """Every way into Review & Label (Sessions' Start / Continue labelling,
+        Add my labels, Open, and Saved's "Start labelling →")."""
         self._review_page.load_session_folder(session_root)
         self._shell.set_current_index(self.IDX_REVIEW)
+        # No "Your name" yet: ask now, over the screen — not at the first label.
+        # Cancel: back to Sessions (nobody labels without a name).
+        if not self._review_page.require_labeller():
+            self._review_page.shutdown()
+            self._go_to_sessions()
 
     def _on_session_saved(self, session_root):
-        self._review_page.load_session_folder(session_root)
-        self._shell.set_current_index(self.IDX_REVIEW)
         # Keep the library current for the next time Sessions is shown.
         self._sessions_page.refresh()
+        self._open_session_in_review(session_root)
 
     def _restyle_app(self):
         """Apply the light global stylesheet once."""

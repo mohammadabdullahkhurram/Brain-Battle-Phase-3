@@ -7,6 +7,17 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
+**Owner's test: asked for your name on opening, icons on their line, text fields alive (2026-11-25)**
+- **"Who is labelling?" is asked as soon as it is needed.** Opening a
+  recording for labelling with no name set — Start / Continue labelling, Add
+  my labels, Open, or Saved's "Start labelling →" — now shows the dialog at
+  once, over the dimmed Review screen, instead of at the first label click
+  (`ReviewLabelScreen.require_labeller`, called from
+  `app._open_session_in_review`, the one way into Review). **Cancel goes back
+  to Sessions.** After saving, the panel shows "as *name* · Not you?". The
+  "you'll be asked your name" line is gone from the panel. Tested on the whole
+  window in `test_labellers` (`test_asked_on_open`).
+
 **Second click-through: notes, name pop-up, always light, lost frames, buzzer flake (2026-11-24)**
 - **Fixed: "Add note" added nothing.** The button's `clicked(bool)` signal was
   connected straight to `add_note(text=None)`, so PyQt passed `False` as the

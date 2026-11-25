@@ -241,11 +241,16 @@ analysis**.
 - Transport: play, the time, "of 12:15 · Round 2", speeds 0.25–2×. **Lanes:**
   Rounds · System (a grey tick per automatic marker; click shows
   `ROUND_2_START · 05:15.00`) · A · K7Q2 · B · M3XA · Both · Notes · Moments.
-- Asked once: "Who is labelling?" — the app's dialog over the dimmed window
-  (one sentence on why, a focused name field, Cancel · **Save**, disabled
-  until a name is typed; Enter saves; "Save and add the label" when a label or
-  note was being added, which is then added). "Not you?" opens the same
-  dialog. There is no name field in the side panel.
+- Asked once: "Who is labelling?" — the app's dialog over the dimmed window,
+  the moment a recording is opened for labelling with no name set (Start /
+  Continue labelling, Add my labels, Open, Saved's "Start labelling →"): one
+  sentence on why, a focused name field, Cancel · **Save**, disabled until a
+  name is typed; Enter saves. **Cancel goes back to Sessions** — nobody labels
+  without a name. Saved: the panel shows "as Maya K · Not you?"; "Not you?"
+  opens the same dialog. (If the name is cleared while labelling, the dialog
+  comes back at the next label, worded "Save and add the label", and that
+  label is then added.) There is no name field in the side panel and no
+  "you'll be asked your name" line.
 
 - Leaving with ‹ Sessions after adding labels: "✓ Your labels are saved —
   Every label is saved the moment you add it — 4 new this time." (and how many

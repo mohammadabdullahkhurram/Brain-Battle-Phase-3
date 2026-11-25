@@ -1281,8 +1281,8 @@ class ReviewLabelScreen(QWidget):
 
     def _refresh_identity(self):
         named = bool(self._labeller)
-        self._labeller_chip.setText(f"as {self._labeller} · Not you?" if named
-                                    else "you’ll be asked your name")
+        self._labeller_chip.setText(f"as {self._labeller} · Not you?" if named else "")
+        self._labeller_chip.setVisible(named)
 
     def _ask_name(self, pending: bool) -> bool:
         """The "Who is labelling?" dialog (dims the window; nothing else can be
@@ -1294,6 +1294,13 @@ class ReviewLabelScreen(QWidget):
         self.set_labeller(name)
         self.labeller_changed.emit(name)
         return True
+
+    def require_labeller(self) -> bool:
+        """A recording was just opened here: with no "Your name" yet, ask
+        "Who is labelling?" straight away (over the dimmed screen). True when
+        there is a labeller; False when the dialog was cancelled — the app
+        then goes back to Sessions, because nobody labels without a name."""
+        return bool(self._labeller) or self._ask_name(pending=False)
 
     def _ensure_labeller(self) -> bool:
         """Before adding a label or note: True when we know who is labelling —

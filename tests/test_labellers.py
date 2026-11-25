@@ -12,7 +12,8 @@ More than one person labels the same recording.
   4. Agreement: matching events within a tolerance, in plain language.
   5. Review & Label: you label as yourself; another labeller's labels are shown
      for comparison and never editable; the screen asks for a name when there
-     is none and refuses to place a label until it has one.
+     is none and refuses to place a label until it has one. Opening a recording
+     with no name asks at once (Cancel goes back to Sessions).
   6. Marked moments stay in the recording so every labeller can name them.
   7. Sessions counts labels per labeller; history records who did what.
 
@@ -308,6 +309,68 @@ def test_review_screen():
         _env.set_labeller()
 
 
+def test_asked_on_open():
+    """Opening a recording for labelling with no "Your name" asks at once —
+    from Sessions and from Saved's "Start labelling →" — not at the first
+    label. Cancel goes back to Sessions; Save shows "as <name> · Not you?"."""
+    from PyQt6.QtCore import QTimer, Qt
+    from PyQt6.QtTest import QTest
+    import brain_battle.app as bbm
+    import brain_battle.ui.widgets as ui
+    s = app_settings.load(); s.labeller_name = ""; s.save()
+    win = bbm.BrainBattleApp(); win.resize(1280, 860); win.show(); _app.processEvents()
+    seen = []
+
+    def _answer(text=None):
+        def run():
+            d = QApplication.activeModalWidget()
+            seen.append({"dialog": d, "page": win._shell.current_index(),
+                         "focus": isinstance(d, ui.NameDialog) and d.focusWidget() is d.name_edit,
+                         "buttons": d.button_texts() if isinstance(d, ui.NameDialog) else None})
+            if not isinstance(d, ui.NameDialog):
+                return
+            if text is None:
+                QTest.keyClick(d, Qt.Key.Key_Escape); return
+            QTest.keyClicks(d.name_edit, text)
+            QTest.keyClick(d.name_edit, Qt.Key.Key_Return)
+        QTimer.singleShot(0, run)
+
+    try:
+        review = win._review_page
+        _answer(None)
+        win._sessions_page.open_session.emit(DEMO_ROOT)
+        _app.processEvents()
+        check("opening a recording with no name asks Who is labelling? at once, over Review",
+              len(seen) == 1 and isinstance(seen[0]["dialog"], ui.NameDialog)
+              and seen[0]["page"] == win.IDX_REVIEW and seen[0]["focus"], str(seen))
+        check("…a plain Save (nothing was being added)",
+              seen and seen[0]["buttons"] == ["Cancel", "Save"], str(seen))
+        check("Cancel goes back to Sessions and saves no name",
+              win._shell.current_index() == win.IDX_SESSIONS and app_settings.labeller_name() == "")
+        check("the panel never says you'll be asked your name",
+              not review._labeller_chip.isVisible() and "asked" not in review._labeller_chip.text())
+        seen.clear()
+        _answer("Rosa T")
+        win.record_flow.session_saved.emit(DEMO_ROOT)   # Saved → "Start labelling →"
+        _app.processEvents()
+        check("Saved's Start labelling asks too; Save stays in Review",
+              len(seen) == 1 and isinstance(seen[0]["dialog"], ui.NameDialog)
+              and win._shell.current_index() == win.IDX_REVIEW, str(seen))
+        check("…the name is saved and the panel shows \"as Rosa T · Not you?\"",
+              app_settings.labeller_name() == "Rosa T"
+              and review._labeller_chip.text() == "as Rosa T · Not you?"
+              and review._labeller_chip.isVisible())
+        seen.clear()
+        win._go_to_sessions(); _app.processEvents()
+        win._sessions_page.open_session.emit(DEMO_ROOT); _app.processEvents()
+        check("with a name, opening a recording asks nothing",
+              not seen and win._shell.current_index() == win.IDX_REVIEW, str(seen))
+    finally:
+        win._review_page.shutdown(); win.record_flow.shutdown(); win._sessions_page.shutdown()
+        win.close()
+        _env.set_labeller()
+
+
 def test_moments_for_every_labeller():
     """A marked moment belongs to the recording: its note is shared by every
     labeller (and can be written in Review); a label can be put at the moment's
@@ -364,6 +427,7 @@ if __name__ == "__main__":
     test_merge_on_save()
     test_agreement()
     test_review_screen()
+    test_asked_on_open()
     test_moments_for_every_labeller()
     test_sessions_counts()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
