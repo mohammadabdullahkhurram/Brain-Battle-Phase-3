@@ -35,6 +35,11 @@ compresses or swaps those pages, IT is held up too — the bare probe, with
 almost no memory, cannot see such a stall (found 2026-11-24 on an 8 GB Mac
 with 16 GB of swap in use).
 
+``MachineStallProbe.fine()`` sleeps 1 ms and notes every wake-up 2 ms late:
+the short pauses the default probe cannot see (``tools/soak_test.py`` uses it
+to explain each lost frame). ``NOISY_STALLS_PER_MIN``: a computer that stalls
+more often than this is too noisy to judge (the heavy checks say NOT JUDGED).
+
 ``wake_lateness()`` measures the computer itself: how late it wakes a thread
 sleeping to 60 Hz deadlines (``tools/wake_probe.py``; the timing tests use it
 to decide whether this computer can judge millisecond precision at all).
@@ -145,6 +150,9 @@ def wake_lateness(seconds: float = 3.0, period: float = 1 / 60) -> dict:
 # ── the machine's own stalls (a bare process that only sleeps) ─────────────────
 
 MACHINE_STALL_SEC = 0.010     # a wake-up this late could already cost a 60 fps frame
+FINE_TICK_SEC = 0.001         # the fine probe: sleeps 1 ms …
+FINE_STALL_SEC = 0.002        # … and notes every wake-up 2 ms late (MachineStallProbe.fine())
+NOISY_STALLS_PER_MIN = 20.0   # more machine stalls than this per minute: too noisy to judge
 
 
 PAGE_TOUCH_PERIOD_SEC = 1.0    # the memory probe writes each of its pages this often
@@ -203,6 +211,13 @@ class MachineStallProbe:
                                        daemon=True)
         self.stalls: list[tuple[float, float]] = []
 
+    @classmethod
+    def fine(cls) -> "MachineStallProbe":
+        """The fine probe: 1 ms sleeps, every wake-up 2 ms late noted — it sees
+        the short pauses the default probe (5 ms sleeps, 10 ms threshold) cannot.
+        Used to explain a lost frame, not to excuse one on its own."""
+        return cls(tick=FINE_TICK_SEC, threshold=FINE_STALL_SEC)
+
     def start(self) -> "MachineStallProbe":
         self._proc.start()
         return self
@@ -220,6 +235,16 @@ class MachineStallProbe:
         if self._proc.is_alive():
             self._proc.terminate()
         return self.stalls
+
+
+def overlapping(stalls, a: float, b: float) -> list:
+    """The stalls (start, duration_s) that overlap the interval [a, b]."""
+    return [(s, d) for s, d in stalls if s <= b and s + d >= a]
+
+
+def stalls_per_minute(stalls, seconds: float) -> float:
+    """How many machine stalls per minute over ``seconds`` of watching."""
+    return len(stalls) / max(seconds / 60.0, 1e-9)
 
 
 def judge_lost_frames(gaps, stalls, fps: float, margin: float | None = None) -> dict:
@@ -251,4 +276,5 @@ def judge_lost_frames(gaps, stalls, fps: float, margin: float | None = None) -> 
 
 
 __all__ = ["StallProbe", "TICK_SEC", "STALL_SEC", "wake_lateness", "MachineStallProbe",
-           "MACHINE_STALL_SEC", "judge_lost_frames", "PAGE_TOUCH_PERIOD_SEC"]
+           "MACHINE_STALL_SEC", "FINE_TICK_SEC", "FINE_STALL_SEC", "NOISY_STALLS_PER_MIN",
+           "judge_lost_frames", "overlapping", "stalls_per_minute", "PAGE_TOUCH_PERIOD_SEC"]

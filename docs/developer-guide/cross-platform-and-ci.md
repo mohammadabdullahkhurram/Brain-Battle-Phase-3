@@ -80,13 +80,40 @@ to `develop` whose last commit message contains `[heavy-checks]`. (GitHub offers
 only once the file is on `main`; until then those pushes are the way to start
 it.) The ordinary test run (`tests.yml`) runs on every push to `develop`,
 `staging` and `main`. Each job first prints how
-well the runner keeps 60 Hz wake-ups (`tools/wake_probe.py`); on a runner that
-cannot (GitHub's macOS runner, usually) the soak and the study print **NOT
-JUDGED** and do not fail. Results are artifacts named
-`heavy-<soak|calibration>-<system>`: the soak's text output and JSON, the
-study's `runs.jsonl`, `summary.json` (median, 95th / 99th percentile, worst,
-the 10 worst runs with each device's error and per-tap residuals) and text
-output.
+well the runner keeps 60 Hz wake-ups (`tools/wake_probe.py`).
+
+**Both checks judge the app, not the runner.** A shared runner pauses now
+and then (other virtual machines on the same host); a frame lost or a tap
+mis-timed during such a pause says nothing about the app.
+
+- **Calibration study:** the machine-stall probes of the soak run beside it.
+  A run during which the computer stalled (10 ms or more) inside one of its
+  tap windows (0–0.9 s after each beep, ± 0.1 s) is printed as **machine
+  noise** and not judged; the output says how many runs were excluded and
+  which stall excluded each. Every other run must stay under **2 ms** — the
+  limit is never loosened.
+- **Soak:** frames lost during a machine stall are machine noise. Every frame
+  lost *outside* one is explained from the camera process's own per-frame
+  trace (`--trace`): which step of that iteration was slow, and whether the
+  camera's reader thread, its other threads (encoder writer, pipe sender) or
+  nobody used the CPU meanwhile. If the camera process was busy, the frame is
+  **app-caused**; if it was not run and a third, **fine probe** (1 ms sleeps,
+  every 2 ms late wake-up noted) saw the computer paused for at least half
+  the delay, it is a **short machine stall** the coarse probes cannot see;
+  otherwise it is **unexplained**.
+- **NOT JUDGED**, with the reason: a runner that cannot keep 60 Hz wake-ups
+  (GitHub's macOS runner, usually), a soak whose machine stalled more than 20
+  times a minute, or a study with more than a quarter of its runs excluded.
+  Never when the app itself caused a failure — a judged calibration run over
+  2 ms, or in the soak a frame lost to the camera process's own work, missing
+  EEG, an encoder drop, a failed save or descriptors not back: those fail on
+  any runner.
+
+Results are artifacts named `heavy-<soak|calibration>-<system>`: the soak's
+text output, JSON and the camera traces (`trace/rec<n>-<camera>.trace.json`),
+the study's `runs.jsonl`, `summary.json` (median, 95th / 99th percentile,
+worst, the 10 worst runs with each device's error and per-tap residuals, the
+excluded runs and their stalls, the judged runs' worst) and text output.
 
 ## Fixed on 2026-11-17: CI green on both systems
 

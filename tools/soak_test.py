@@ -41,6 +41,8 @@ Diagnosis (debug only — see tools/stall_probe.py):
                         computer that cannot keep them (the CI heavy checks)
     --trace DIR         each camera process writes per-frame step timing, its
                         garbage collections and pipe sends to DIR
+                        (rec<n>-<camera>.trace.json), and every frame lost
+                        outside a machine stall is explained from it
     --fps 30            30 instead of 60 frames per second
     --in-process        cameras as threads of the app instead of processes
                         (how capture ran before ADR-0025)
@@ -52,7 +54,10 @@ and one that also keeps 48 MB in use, writing every page about once a second
 (it sees the computer paging: memory stalls, which the first cannot see). A
 frame lost while either was held up was lost to the machine (reported as
 machine noise, split CPU / memory); a frame lost while the machine ran
-normally is a problem. On a computer that is not short of memory the second
+normally is a problem — unless a third, fine probe (1 ms sleeps, every
+2 ms late wake-up noted) saw the computer paused for at least half of the
+camera's extra delay while the camera process itself was not busy (``--trace``
+explains each such frame: ``explain_lost``). On a computer that is not short of memory the second
 probe's pages stay put and it reports nothing. The header prints the RAM and
 swap in use, and each recording how much the computer swapped in. The last
 line is the verdict:
@@ -62,7 +67,12 @@ line is the verdict:
 
 Exit code 0 when no frame was lost outside a machine stall, no EEG sample is
 missing, the encoder dropped nothing, nothing failed to save and descriptors
-came back to baseline; 1 otherwise. Not part of tools/run_tests.py (it takes ~16 minutes);
+came back to baseline; 1 otherwise. NOT JUDGED (exit 0) instead when the
+computer cannot keep 60 Hz wake-ups (``--wake-check``) or stalled more than
+``NOISY_STALLS_PER_MIN`` times a minute — but never when there is an
+app-caused failure: a frame lost to the camera process's own work, missing
+EEG, an encoder drop, a failed save or descriptors not back (exit 1 on any
+machine). Not part of tools/run_tests.py (it takes ~16 minutes);
 tests/test_stability.py runs a one-minute version.
 """
 from __future__ import annotations
@@ -129,6 +139,102 @@ def correlate(gaps, probe, t0_mono: float) -> dict:
                 "stall_ms": round(max((s[1] for s in st), default=0) * 1000),
                 "gc": [f"gen{g[2]} {g[1] * 1000:.0f} ms" for g in gcs]})
     return res
+
+
+def explain_lost(gap, trace: dict, fine_stalls, fps: float) -> dict:
+    """Why one camera lost a frame, from that camera process's own trace
+    (``--trace``; camera_worker ``_trace_start``) and the fine machine probe.
+
+    ``gap`` is (t, duration_s, camera) on the frame stamps. The simulated
+    camera notes every read that came too late (``skips``). The iteration
+    before it — the read (which sleeps until the frame is due) and the steps
+    after it: stamp, queue (to the encoder), preview (to the screen), report
+    (frames to the app), loop (back to the next read) — is compared with the
+    camera's normal iteration: how much longer it took (``extra_delay_ms``)
+    and who used CPU meanwhile — the reader thread, or the process's other
+    threads (encoder writer, pipe sender). ``cause`` is one of:
+
+      app: garbage collection — a collection of 5 ms or more in that window;
+      app: slow <step> — the reader itself used at least half the extra time;
+      app: other threads of the camera process — they used at least half the
+          extra time (they held the GIL the reader needed);
+      machine: short stall — the camera process was not run, and the fine
+          probe saw the computer paused for at least half the extra time
+          (machine noise);
+      unexplained — the camera process was not run but no probe saw the
+          computer pause (counted as a problem when the run is judged)."""
+    t, d, _cam = gap
+    per = 1.0 / fps
+    F = trace.get("frames") or []
+    if len(F) < 3 or len(F[0]) < 13:
+        return {"cause": "unexplained", "why": "no trace for this camera"}
+
+    def med(xs):
+        xs = sorted(xs)
+        return xs[len(xs) // 2] if xs else 0.0
+    deliv = med([f[12] for f in F if f[12] is not None])
+    want = t + d + deliv
+    skips = [k for k in trace.get("skips") or [] if t - per <= k[0] <= t + d + 0.3]
+    if not skips:
+        return {"cause": "unexplained", "why": "the camera noted no late read here"}
+    sk = min(skips, key=lambda k: abs(k[0] - want))
+    j = max((i for i, f in enumerate(F) if f[0] <= sk[0] + 1e-6), default=None)
+    if j is None or j < 2:
+        return {"cause": "unexplained", "why": "late read at the very start"}
+    prev, cur, before = F[j - 1], F[j], F[j - 2]
+    steps = {"read": prev[1] - prev[0], "stamp": prev[2] - prev[1], "queue": prev[3] - prev[2],
+             "preview": prev[4] - prev[3], "report": prev[5] - prev[4], "loop": cur[0] - prev[5]}
+    win_a, win_b = before[5], cur[0]                # the whole slow iteration
+    reader = prev[7] - before[7]
+    others = (prev[6] - before[6]) - reader
+    # the camera's normal iteration: work after the read, CPU of each kind
+    norm_work = med([F[i][0] - F[i - 1][1] for i in range(1, len(F))])
+    norm_reader = med([F[i][7] - F[i - 1][7] for i in range(1, len(F))])
+    norm_others = med([(F[i][6] - F[i - 1][6]) - (F[i][7] - F[i - 1][7]) for i in range(1, len(F))])
+    extra = max(sk[1] - (norm_work - per), 1e-6)
+    gcs = [g for g in trace.get("gcs") or [] if g[0] <= win_b and g[0] + g[1] >= win_a]
+    from tools.stall_probe import overlapping
+    fine = overlapping(fine_stalls, win_a - per, win_b)
+    covered = sum(min(s0 + sd, win_b) - max(s0, win_a - per) for s0, sd in fine)
+    out = {"late_read_ms": round(sk[1] * 1000, 1), "extra_delay_ms": round(extra * 1000, 1),
+           "steps_ms": {k: round(v * 1000, 1) for k, v in steps.items()},
+           "cpu_ms": {"reader": round(reader * 1000, 1), "reader_normal": round(norm_reader * 1000, 1),
+                      "others": round(others * 1000, 1), "others_normal": round(norm_others * 1000, 1)},
+           "gc_ms": [round(g[1] * 1000, 1) for g in gcs],
+           "machine_paused_ms": round(covered * 1000, 1)}
+    work_steps = {k: v for k, v in steps.items() if k != "read"}
+    if any(g[1] >= 0.005 for g in gcs):
+        out["cause"] = "app: garbage collection"
+    elif reader - norm_reader >= 0.5 * extra:
+        slow = max(work_steps, key=work_steps.get)
+        out["cause"] = f"app: slow {slow if work_steps[slow] > norm_work + per / 2 else 'read'}"
+    elif others - norm_others >= 0.5 * extra:
+        out["cause"] = "app: other threads of the camera process"
+    elif covered >= 0.5 * extra:
+        out["cause"] = "machine: short stall"
+    else:
+        out["cause"] = "unexplained"
+    return out
+
+
+def _collect_traces(trace_dir: str, stems: dict, n: int) -> dict:
+    """After recording ``n`` the camera processes have stopped and written
+    ``cam<index>.trace.json`` (``--trace``): keep each as
+    ``rec<n>-<camera>.trace.json`` and return {camera: trace}."""
+    out = {}
+    deadline = time.time() + 10
+    for idx, stem in stems.items():
+        src = os.path.join(trace_dir, f"cam{idx}.trace.json")
+        while not os.path.exists(src) and time.time() < deadline:
+            time.sleep(0.2)
+        try:
+            dst = os.path.join(trace_dir, f"rec{n}-{stem}.trace.json")
+            os.replace(src, dst)
+            with open(dst, encoding="utf-8") as f:
+                out[stem] = json.load(f)
+        except (OSError, ValueError):
+            pass
+    return out
 
 
 def analyse_recording(root: str, fps: float) -> dict:
@@ -259,6 +365,7 @@ def _apply_variants(args) -> None:
         debug.append("null-encoder")
     if args.trace:
         debug.append("trace")
+        os.makedirs(args.trace, exist_ok=True)
         os.environ["BRAIN_BATTLE_CAPTURE_TRACE_DIR"] = args.trace
     if debug:
         os.environ["BRAIN_BATTLE_CAPTURE_DEBUG"] = ",".join(debug)
@@ -316,7 +423,8 @@ def main(argv=None) -> int:
 
     import psutil
     from brain_battle.support import resource_limits as rl
-    from tools.stall_probe import MachineStallProbe, judge_lost_frames
+    from tools.stall_probe import (MachineStallProbe, judge_lost_frames, overlapping,
+                                   stalls_per_minute, NOISY_STALLS_PER_MIN)
     judgeable, wake_text = True, ""
     if args.wake_check:
         from tools.stall_probe import wake_lateness
@@ -327,6 +435,8 @@ def main(argv=None) -> int:
         print(f"MACHINE: {wake_text} — {'judged' if judgeable else 'NOT JUDGED'}", flush=True)
     machine = MachineStallProbe().start()       # the computer's own stalls, all soak long
     machine_mem = MachineStallProbe(touch_mb=MEMORY_PROBE_MB).start()   # … and its paging
+    machine_fine = MachineStallProbe.fine().start()   # … and its short pauses (explains lost frames)
+    t_watch0 = time.time()
     from brain_battle.capture.usb_camera import isolated_capture
     vm, sw = psutil.virtual_memory(), psutil.swap_memory()
     print(f"Machine: {psutil.cpu_count()} cores ({psutil.cpu_count(logical=False)} physical), "
@@ -375,7 +485,8 @@ def main(argv=None) -> int:
 
     def snap(label):
         sn = rl.snapshot()
-        sn["children"] = max(0, sn["children"] - machine.alive() - machine_mem.alive())  # the probes are not the app's
+        sn["children"] = max(0, sn["children"] - machine.alive() - machine_mem.alive()
+                             - machine_fine.alive())  # the probes are not the app's
         import gc as _gc
         from PyQt6.QtCore import QThread as _QT
         _qts = [type(o).__name__ for o in _gc.get_objects() if isinstance(o, _QT)]
@@ -440,7 +551,9 @@ def main(argv=None) -> int:
         root = flow._saved_root
         files = analyse_recording(root, float(args.fps))
         rss1 = proc.memory_info().rss
+        stems = {str(sl.device.index): sl.stem for sl in flow._cams if sl.device is not None}
         flow._leave_to_sessions(); pump(2.0)
+        traces = _collect_traces(args.trace, stems, n) if args.trace else {}
         after = snap(f"#{n} left the flow")
         import gc as _gc
         _gc.collect(); pump(3.0)
@@ -489,6 +602,7 @@ def main(argv=None) -> int:
             for ex in cor["examples"]:
                 print(f"    gap {ex}", flush=True)
         rec["_gaps"] = camera_gaps(root, float(args.fps))
+        rec["_traces"] = traces
         if miss_s or sum(dropped.values()) or rec["write_problems"]:
             ok = False
         # Each visit must leave the same as the first one left (the open flow
@@ -501,25 +615,49 @@ def main(argv=None) -> int:
     flow.shutdown(); pump(0.5)
     if probe is not None:
         probe.stop()
+    watched_s = time.time() - t_watch0
     cpu_stalls = machine.stop()
     mem_stalls = machine_mem.stop()
+    fine_stalls = machine_fine.stop()
     stalls = sorted(cpu_stalls + mem_stalls)
-    lost_out = lost_in = lost_cpu_only_out = 0
+    lost_out = lost_in = lost_cpu_only_out = lost_short = 0
+    causes: dict = {}
+    per = 1.0 / args.fps
     for rec in report["recordings"]:
         gaps = rec.pop("_gaps")
+        traces = rec.pop("_traces")
         j = judge_lost_frames(gaps, stalls, float(args.fps))
         jc = judge_lost_frames(gaps, cpu_stalls, float(args.fps))   # as judged before 2026-11-24
         j["lost_outside_cpu_stalls_only"] = jc["lost_outside"]
+        # every frame lost outside the (coarse) machine stalls, explained from
+        # the camera's own trace and the fine probe (--trace)
+        expl = []
+        for g in gaps:
+            lost = max(0, int(round(g[1] / per)) - 1)
+            if lost == 0 or overlapping(stalls, g[0] - per, g[0] + g[1] + per):
+                continue
+            e = (explain_lost(g, traces[g[2]], fine_stalls, float(args.fps)) if g[2] in traces
+                 else {"cause": "unexplained", "why": "no trace (run with --trace)"})
+            e.update({"camera": g[2], "gap_ms": round(g[1] * 1000), "lost": lost})
+            expl.append(e)
+            causes[e["cause"]] = causes.get(e["cause"], 0) + lost
+            if e["cause"].startswith("machine"):
+                j["lost_outside"] -= lost; j["lost_in_short_stalls"] = j.get("lost_in_short_stalls", 0) + lost
+                lost_short += lost
+        j["outside_explained"] = expl
         rec["lost_frames_judged"] = j
         lost_out += j["lost_outside"]; lost_in += j["lost_in_stalls"]
         lost_cpu_only_out += jc["lost_outside"]
         print(f"  #{rec['n']}: frames lost outside the machine's stalls {j['lost_outside']}"
               f" ({j['gaps_outside']} gaps), inside {j['lost_in_stalls']} ({j['gaps_in_stalls']} "
-              f"gaps); judged by CPU stalls alone: {jc['lost_outside']} outside"
-              f"{'; e.g. ' + str(j['outside_examples'][:3]) if j['outside_examples'] else ''}",
-              flush=True)
+              f"gaps), in short stalls only the fine probe saw {j.get('lost_in_short_stalls', 0)}; "
+              f"judged by CPU stalls alone: {jc['lost_outside']} outside", flush=True)
+        for e in expl:
+            print(f"    lost frame: {e}", flush=True)
     if lost_out:
         ok = False
+    spm = stalls_per_minute(stalls, watched_s)
+    noisy = spm > NOISY_STALLS_PER_MIN
     eeg_missing = sum((h.get("missing") or 0) for rec in report["recordings"]
                       for h in rec["files"]["headbands"].values())
     drops = sum(sum(rec["encoder_queue_dropped"].values()) for rec in report["recordings"])
@@ -529,6 +667,9 @@ def main(argv=None) -> int:
                          "lost_in_machine_stalls": lost_in, "machine_stalls": len(stalls),
                          "machine_cpu_stalls": len(cpu_stalls), "machine_memory_stalls": len(mem_stalls),
                          "lost_outside_cpu_stalls_only": lost_cpu_only_out,
+                         "lost_in_short_stalls": lost_short, "outside_causes": causes,
+                         "machine_stalls_per_min": round(spm, 1),
+                         "fine_stalls": len(fine_stalls),
                          "worst_machine_stall_ms": worst, "eeg_missing": eeg_missing,
                          "encoder_drops": drops, "save_problems": saves}
     long = [m for m in mem if m[0] == 1]
@@ -545,17 +686,40 @@ def main(argv=None) -> int:
     kinds = f"{len(cpu_stalls)} CPU + {len(mem_stalls)} memory"
     noise = (f"{lost_in} lost during {kinds} machine stalls, worst {worst} ms: machine noise"
              if lost_in else f"{kinds} machine stalls, worst {worst} ms")
+    # app-caused: a lost frame the camera process itself caused (garbage
+    # collection, a blocked pipe, a slow step), EEG missing, encoder drops,
+    # a failed save, descriptors not back. Always judged, on any machine.
+    app_lost = sum(v for k, v in causes.items() if k.startswith("app"))
+    unexplained = lost_out - app_lost
+    app_caused = app_lost + eeg_missing + drops + saves + (0 if desc_ok else 1)
+    if lost_short:
+        noise += f"; {lost_short} lost in short stalls only the fine probe saw"
     print(f"\nVERDICT: {'OK' if ok else 'PROBLEMS'} — {lost_out} frame"
-          f"{'' if lost_out == 1 else 's'} lost outside the machine's own stalls ({noise}); "
+          f"{'' if lost_out == 1 else 's'} lost outside the machine's own stalls"
+          f" ({app_lost} caused by the app, {unexplained} unexplained) ({noise}); "
           f"EEG {'complete' if not eeg_missing else f'{eeg_missing} samples missing'}; "
           f"encoder drops {drops}; save problems {saves}; descriptors "
           f"{'back to baseline' if desc_ok else 'NOT back to baseline'}.", flush=True)
-    report["judged"] = judgeable
+    reasons = []
+    if not judgeable:
+        reasons.append(f"{wake_text}: frames are lost here whatever the app does")
+    if noisy:
+        reasons.append(f"the machine stalled {spm:.0f} times a minute (over "
+                       f"{NOISY_STALLS_PER_MIN:.0f}): too noisy to tell the app's lost frames "
+                       f"from the machine's")
+    report["judged"] = not reasons
+    report["not_judged_because"] = reasons
+    report["app_caused_failures"] = app_caused
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=1)
-    if not judgeable:
-        print(f"NOT JUDGED — {wake_text}: frames are lost here whatever the app does", flush=True)
+    if app_caused:
+        if reasons:
+            print(f"NOT JUDGED for lost frames ({'; '.join(reasons)}) — but {app_caused} "
+                  f"app-caused failure{'s' if app_caused != 1 else ''}: PROBLEMS", flush=True)
+        return 1
+    if reasons:
+        print(f"NOT JUDGED — {'; '.join(reasons)} (0 app-caused failures)", flush=True)
         return 0
     return 0 if ok else 1
 

@@ -72,8 +72,16 @@ blocks any program that touches it without using any CPU — the bare process,
 with almost no memory, cannot see it). Each camera gap is then judged
 (`stall_probe.judge_lost_frames`): frames lost while the machine was stalled
 are **machine noise**; frames lost while it ran normally are a **problem** of
-the app. The header prints the computer's RAM and swap in use, each recording
-how much it swapped in, and the last line the verdict, for example:
+the app — unless a third, **fine probe** (1 ms sleeps, every 2 ms late wake-up
+noted) saw the computer paused for at least half of that frame's extra delay
+while the camera process itself was not busy. With `--trace` (the heavy
+checks) every frame lost outside a stall is explained from the camera
+process's own trace (`soak_test.explain_lost`: the slow step, and who used
+the CPU — app-caused, a short machine stall, or unexplained). A machine that
+stalls more than 20 times a minute is too noisy to judge (**NOT JUDGED**),
+but an app-caused failure fails on any machine. The header prints the
+computer's RAM and swap in use, each recording how much it swapped in, and
+the last line the verdict, for example:
 
     VERDICT: PROBLEMS — 16 frames lost outside the machine's own stalls (370
     lost during 58 CPU + 96 memory machine stalls, worst 103 ms: machine

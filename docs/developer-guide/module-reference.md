@@ -749,7 +749,12 @@ point. A bare process that only sleeps runs beside it
 machine's own stalls (inside = machine noise, outside = a problem) and the
 last line is the **VERDICT**; exits nonzero on a frame lost outside a machine
 stall, a missing EEG sample, an encoder drop, a failed save or descriptors not
-back to the same numbers. `--minutes`, `--switch-ms`, `--gc-debug`. Not part of the suite (it takes ~20 min); `tests/test_stability.py`
+back to the same numbers. With `--trace DIR` each camera process writes its
+per-frame step timing and `explain_lost` says why each frame lost outside a
+stall was lost (app-caused, a short stall only the fine probe saw, or
+unexplained); NOT JUDGED on a machine that stalls more than
+`NOISY_STALLS_PER_MIN` times a minute, unless the app caused a failure.
+`--minutes`, `--switch-ms`, `--gc-debug`. Not part of the suite (it takes ~20 min); `tests/test_stability.py`
 runs a short version.
 
 ### `tools/stall_probe.py`
@@ -762,7 +767,10 @@ lock). Used to find the cause of camera frame loss (ADR-0025).
 `MachineStallProbe` is a bare process that only sleeps: its late wake-ups are
 the computer's own stalls; `judge_lost_frames` splits lost camera frames into
 those inside such a stall (machine noise) and outside (a problem) — the soak
-verdict. `wake_lateness()` measures the computer itself — how late it wakes a thread
+verdict. `MachineStallProbe.fine()` (1 ms sleeps, 2 ms threshold) sees the short
+pauses the default probe cannot; `overlapping` / `stalls_per_minute` and
+`NOISY_STALLS_PER_MIN` are shared by the soak and the buzzer study.
+`wake_lateness()` measures the computer itself — how late it wakes a thread
 sleeping to 60 Hz deadlines; `tools/wake_probe.py` prints it (and
 `tools/buzzer_study.py` runs the real buzzer test many times and reports the
 distribution of its recovery error — the heavy-checks workflow), and
@@ -777,8 +785,11 @@ first, so a slow runner is visible before the soak.
 
 ### `tools/buzzer_study.py`
 Runs the real buzzer test many times with simulated devices of known delay and
-reports the distribution of its recovery error (`runs.jsonl`, `summary.json`;
-exit 1 when judged and any run reaches the 2 ms limit). Not in
+reports the distribution of its recovery error (`runs.jsonl`, `summary.json`).
+The machine-stall probes run beside it: a run with a machine stall in a tap
+window is machine noise and not judged (the output lists them); exit 1 when
+any judged run reaches the 2 ms limit; NOT JUDGED when over a quarter of the
+runs were excluded or the computer cannot keep 60 Hz wake-ups. Not in
 `tools/run_tests.py` (200 runs take ~70 min); the heavy-checks workflow runs it.
 
 ### `tools/render_screens.py`

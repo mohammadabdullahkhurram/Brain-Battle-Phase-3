@@ -351,6 +351,7 @@ class CaptureLoop:
 
                 total += 1
                 now = _clock.monotonic()
+                cpu_now = (time.process_time(), time.thread_time()) if tr is not None else None
                 if fail_since is not None or (self._last_frame_t is not None
                                               and now - self._last_frame_t >= uc.STALL_SEC):
                     gap = now - (self._last_frame_t or now)
@@ -409,7 +410,9 @@ class CaptureLoop:
                 if tr is not None:
                     ru = _rusage()
                     tr["frames"].append((t_call, now, t_stamped, t_enq, t_prev, _clock.monotonic(),
-                                         time.process_time(), time.thread_time(), ru[0], ru[1]))
+                                         time.process_time(), time.thread_time(), ru[0], ru[1],
+                                         cpu_now[0], cpu_now[1],
+                                         getattr(cap, "last_delivered", None)))
         finally:
             if self._trace is not None:
                 self._trace_dump(cap)
@@ -434,7 +437,9 @@ class CaptureLoop:
         """Per-frame timing of this camera process, written to
         ``$BRAIN_BATTLE_CAPTURE_TRACE_DIR/<camera>.trace.json`` when it stops:
         frames (read called, read returned, stamped, queued, preview done,
-        reported, process CPU s, reader-thread CPU s, page faults: minor, major), writes (start, after the ffmpeg pipe, after the sidecar),
+        reported, process CPU s, reader-thread CPU s, page faults: minor, major,
+        process CPU s and reader-thread CPU s when the read returned, the frame's
+        delivery delay s), writes (start, after the ffmpeg pipe, after the sidecar),
         sends (start, seconds, kind) over the pipe to the app, gcs (start,
         seconds, generation), and the simulated camera's own skips."""
         import gc

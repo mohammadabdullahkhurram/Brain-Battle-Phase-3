@@ -40,6 +40,34 @@ dev-log numbering, kept as history — they do not track the release version.
   width, a caret colour readable on the field and the ring's pixels, and that
   New recording opens no stray windows.
 
+**Heavy checks judge the app, not the runner (2026-11-25)** — tools and CI
+only; no change in the app.
+- **Why:** the heavy checks on `914ec96` failed on Windows (soak: 4 frames lost
+  outside the machine's stalls; calibration: 3 of 200 runs at 2.1–2.3 ms) on a
+  runner that stalled 7× more often than the run that passed (510 against 70
+  CPU stalls) and needed ~1.7× the CPU for the same work.
+- **Calibration study** (`tools/buzzer_study.py`): the machine-stall probes run
+  beside it; a run with a machine stall (10 ms or more) inside a tap window
+  (`timing.TAP_WINDOW` after each beep, ± `TAP_MARGIN_SEC`) is machine noise
+  and not judged — the output prints how many runs were excluded and which
+  stall excluded each. Every other run must stay under 2 ms (not loosened).
+  NOT JUDGED when over a quarter of the runs were excluded.
+- **Soak** (`tools/soak_test.py`): with `--trace` (the heavy checks) every
+  frame lost outside a machine stall is explained from the camera process's
+  own trace (`explain_lost`): the slow step, and whether the reader thread,
+  the process's other threads or nobody used the CPU. Busy camera process →
+  app-caused; not run, with the new **fine probe**
+  (`MachineStallProbe.fine()`: 1 ms sleeps, 2 ms threshold) seeing the
+  computer paused for at least half the delay → a short machine stall;
+  otherwise unexplained. The camera trace now also records the CPU times when
+  each read returned and each frame's delivery delay.
+- **NOT JUDGED with a reason** when the soak's machine stalled more than
+  `NOISY_STALLS_PER_MIN` (20) times a minute — never when the app itself
+  caused a failure (a frame lost to the camera's own work, missing EEG, an
+  encoder drop, a failed save, descriptors not back), which now fails on any
+  runner, the macOS one included.
+- Docs: the CI page, testing strategy and module reference.
+
 **Tidy-up before staging (2026-11-25)** — no change in behaviour.
 - **Dead code removed:** the `QTabWidget` compatibility shim and
   `show_welcome` in `app.py`; the `STEP_CONNECT` / `STEP_SETUP` aliases and
