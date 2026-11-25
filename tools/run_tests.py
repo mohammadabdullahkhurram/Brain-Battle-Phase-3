@@ -20,7 +20,9 @@ Everything else shares the remaining
 workers. Each script's full output is kept in a log file whose folder is
 printed at the end; failing scripts have their FAIL lines echoed. Because some
 scripts measure real time, a script that fails while others are running is run
-once more on its own, and only counts as failed if it fails again.
+once more on its own, and only counts as failed if it fails again; the failed
+first attempt's log is kept beside it as ``<name>.first-attempt.log``, so a
+flake that passes on the second go can still be read.
 
 A script that has not finished after 15 minutes is stopped and counts as
 failed (its log says so).
@@ -32,6 +34,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures as futures
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -171,6 +174,10 @@ def main(argv=None) -> int:
                 print(f"FAIL  {r[0]:<26} (stopped after {TIMEOUT_SEC // 60} minutes; not re-run)")
                 results.append(r)
                 continue
+            try:                         # keep the failed attempt: the re-run overwrites the log
+                shutil.copyfile(r[3], os.path.join(log_dir, r[0] + ".first-attempt.log"))
+            except OSError:
+                pass
             report(_run(by_name[r[0]], log_dir))
     failed = sorted(r[0] for r in results if r[1] != 0)
     print(f"\n{len(results) - len(failed)} of {len(results)} scripts passed "

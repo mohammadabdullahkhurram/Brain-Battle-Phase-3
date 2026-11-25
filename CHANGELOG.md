@@ -70,6 +70,10 @@ dev-log numbering, kept as history — they do not track the release version.
   rising one. Detector alone at the simulator's noise: bias −0.42 → +0.07 ms,
   99th percentile |error| 1.73 → 0.68 ms (better at 2–40 µV too); synthetic
   study (40 runs): worst 1.74 → 0.74 ms. The 2 ms limit is unchanged.
+- **`tools/run_tests.py` keeps a failed first attempt's log** as
+  `<name>.first-attempt.log` (the re-run used to overwrite it — a local
+  `test_timing` first attempt at 4.48 ms on the swapping development Mac could
+  not be read afterwards).
 - **Heavy checks moved off the laptop: the "heavy-checks" workflow.** A manual
   GitHub Actions workflow (`.github/workflows/heavy-checks.yml`) runs the full
   soak and a 200-run buzzer calibration study (`tools/buzzer_study.py`, new)
