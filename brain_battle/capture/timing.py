@@ -456,7 +456,8 @@ def detect_eeg_tap(t, data, t_from: float, t_to: float,
     on the skin channels; its onset is where the summed absolute deviation
     from the pre-tap level first crosses ``k`` robust standard deviations,
     refined to sub-sample precision by back-extrapolating the rising edge
-    (the samples between 15 % and 85 % of its peak) to the baseline. A tap
+    (the samples before the peak above 10 % of it, on the signed sum of the
+    channels) to the baseline. A tap
     moves the electrodes for several milliseconds, so the edge spans more
     than one 3.9 ms sample. With ``acc`` given
     (N×3 accelerometer), the tap must also show as a jolt within ±0.15 s."""
@@ -483,25 +484,58 @@ def detect_eeg_tap(t, data, t_from: float, t_to: float,
     # rising edge: from the crossing to the local peak just after it
     j_end = min(len(env), i + 8)
     pk = i + int(np.argmax(env[i:j_end]))
+    # The onset is fitted on the SIGNED sum of the channels (each channel's
+    # deviation times the sign of its artifact at the peak), not on the summed
+    # absolute deviations used to find the tap: rectifying put the noise floor
+    # under the low end of the edge, which read the onset 0.5 ms early on
+    # average and up to 2 ms early depending on where the tap fell between two
+    # samples (found with tools/buzzer_study.py, 2026-11-25). Signed, the noise
+    # averages out and the edge is the artifact's own.
+    sign = np.sign(x[win][pk] - base)
+    sign[sign == 0] = 1.0
+    # the top of the rise: the FIRST local maximum after the crossing (on the
+    # signed sum) — the largest of the next 8 samples can be a noisy sample far
+    # down the slow decay, and walking back from it would fit the decay too
+    sig = ((x[win] - base) * sign).sum(axis=1)
+    pk = i
+    while pk + 1 < j_end and sig[pk + 1] > sig[pk]:
+        pk += 1
+    env = sig
+    signed_pre = ((x[pre] - base) * sign).sum(axis=1)
+    level = float(np.median(signed_pre))
     peak = env[pk] - level
+    floor = max(0.10 * peak, 3.0 * _robust_noise(signed_pre))   # clear of the noise
     if peak <= 0:
         return None
+    # the rising edge: every sample before the peak sample that is above 10 %
+    # of the peak and 3 noise SDs (all on the rise: the peak is the first maximum after the
+    # crossing; the peak sample itself may already be on the decay, so it is
+    # used only when it is the second point of a very short rise)
     seg_t, seg_v = [], []
-    for j in range(max(0, i - 3), pk + 1):
-        frac = (env[j] - level) / peak
-        if 0.15 <= frac <= 0.85:
-            seg_t.append(tw[j]); seg_v.append(env[j] - level)
+    j = pk - 1                     # walk back from the peak: one unbroken rise,
+    while j >= max(0, i - 3) and env[j] - level >= floor:   # never a stray noise sample
+        seg_t.insert(0, tw[j]); seg_v.insert(0, env[j] - level)
+        j -= 1
+    base_j = j                     # the last sample still at the baseline
+    if len(seg_t) == 1:
+        seg_t.append(tw[pk]); seg_v.append(peak)
     if len(seg_t) >= 2:
         b, a = np.polyfit(seg_t, seg_v, 1)
         onset = -a / b if b > 0 else tw[i]
     else:
-        # linear interpolation of the threshold crossing, then step back by
-        # the fraction of the rise the threshold sits at
-        j = max(1, i)
+        # the 15 % crossing, interpolated, then stepped back along the rise
+        # (a straight rise from the onset to the peak)
+        q = 0.15
+        j = next((k for k in range(max(1, i - 3), pk + 1) if env[k] - level >= q * peak), pk)
+        j = max(1, j)
         v0, v1 = env[j - 1] - level, env[j] - level
-        f = (thr - level - v0) / (v1 - v0) if v1 != v0 else 0.0
-        onset = tw[j - 1] + f * (tw[j] - tw[j - 1]) - (thr - level) / peak * (tw[pk] - tw[j - 1])
-    onset = float(min(max(onset, tw[max(0, i - 3)]), tw[pk]))
+        f = (q * peak - v0) / (v1 - v0) if v1 != v0 else 0.0
+        t_q = tw[j - 1] + min(max(f, 0.0), 1.0) * (tw[j] - tw[j - 1])
+        onset = t_q - q / (1 - q) * (tw[pk] - t_q)
+    # the onset lies between the last sample still at the baseline (the one
+    # the walk back stopped at) and the first sample of the rise: a noisy
+    # two-point fit cannot throw it further than that
+    onset = float(min(max(onset, tw[max(0, base_j)]), tw[min(base_j + 1, pk)]))
     if acc is not None and acc_t is not None and len(acc_t):
         at = np.asarray(acc_t, dtype=float)
         a = np.asarray(acc, dtype=float)

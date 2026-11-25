@@ -58,6 +58,18 @@ dev-log numbering, kept as history — they do not track the release version.
   that Mac swapped in 11.4 GB and is not a valid measurement
   (`docs/reviews/2026-11-soak.txt`); ADR-0025 and known issues say what was
   found and that it must be re-run on a computer that is not swapping.
+- **Buzzer-calibration flake: the headband tap detector was biased.** 200 runs
+  of the real buzzer test on the Windows runner (`heavy-checks`): median
+  0.77 ms, 99th percentile 1.66 ms, worst 1.70 ms — and a headband was the
+  worst device in 165 of 200 runs, both reading ~0.5 ms early. The EEG onset
+  was fitted on the rectified (absolute) sum of the channels, which pushed the
+  low end of the edge and read the onset early by an amount that depended on
+  where the tap fell between two samples (up to 2.9 ms). `detect_eeg_tap` now
+  fits the signed sum through the unbroken rise before the first local
+  maximum and keeps the onset between the last baseline sample and the first
+  rising one. Detector alone at the simulator's noise: bias −0.42 → +0.07 ms,
+  99th percentile |error| 1.73 → 0.68 ms (better at 2–40 µV too); synthetic
+  study (40 runs): worst 1.74 → 0.74 ms. The 2 ms limit is unchanged.
 - **Heavy checks moved off the laptop: the "heavy-checks" workflow.** A manual
   GitHub Actions workflow (`.github/workflows/heavy-checks.yml`) runs the full
   soak and a 200-run buzzer calibration study (`tools/buzzer_study.py`, new)

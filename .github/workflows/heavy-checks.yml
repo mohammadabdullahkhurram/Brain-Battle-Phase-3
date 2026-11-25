@@ -21,6 +21,9 @@ on:
       soak_minutes:
         description: "Length of the long soak recording (minutes)"
         default: "12"
+      checks:
+        description: "Which checks: both, soak or calibration"
+        default: "both"
 
 jobs:
   heavy:
@@ -63,7 +66,7 @@ jobs:
         run: python tools/wake_probe.py 10
 
       - name: Full soak
-        if: matrix.check == 'soak'
+        if: matrix.check == 'soak' && (inputs.checks == '' || inputs.checks == 'both' || inputs.checks == 'soak')
         shell: bash
         run: |
           mkdir -p heavy-out
@@ -72,7 +75,7 @@ jobs:
           exit ${PIPESTATUS[0]}
 
       - name: Buzzer calibration study
-        if: matrix.check == 'calibration'
+        if: matrix.check == 'calibration' && (inputs.checks == '' || inputs.checks == 'both' || inputs.checks == 'calibration')
         shell: bash
         run: |
           mkdir -p heavy-out

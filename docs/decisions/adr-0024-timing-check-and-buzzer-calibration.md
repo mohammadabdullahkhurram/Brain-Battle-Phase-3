@@ -54,7 +54,16 @@ both boxers tap their headband once, in view of the cameras.
 
 - Each **headband**: the tap is a sharp artifact on the skin channels at
   256 Hz; its onset is the rising edge back-extrapolated to the baseline
-  (sub-sample), and the accelerometer must show a jolt within ±0.15 s.
+  (sub-sample), and the accelerometer must show a jolt within ±0.15 s. The tap
+  is *found* on the summed absolute deviation of the channels, but its onset
+  is *fitted* on their signed sum (each channel times the sign of its
+  artifact), through the unbroken rise before the first local maximum, and
+  kept between the last sample at the baseline and the first on the rise.
+  (2026-11-25: fitting the rectified sum read the onset 0.4–0.9 ms early on
+  average and up to 2.9 ms early depending on where the tap fell between two
+  samples — the cause of an occasional end-to-end error over 2 ms. Detector
+  alone, simulator noise level: bias −0.42 → +0.07 ms, 99th percentile
+  |error| 1.73 → 0.68 ms.)
 - Each **camera**: frame-difference energy of every frame (a 64×36 grey copy).
   A camera integrates light over the frame, so the frame in which the tap
   starts shows only part of the change; the split of the change between that

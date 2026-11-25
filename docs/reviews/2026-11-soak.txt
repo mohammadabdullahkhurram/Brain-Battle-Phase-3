@@ -1,8 +1,33 @@
-Brain Battle — full soak, 2026-11-24/25 (develop, after the frame-loss investigation)
-=====================================================================================
-python3 tools/soak_test.py   (12-min recording + 3 × 1-min, 4 simulated cameras at 60 fps, 2 headbands)
+Brain Battle — full soak, 2026-11-25 (develop f93722f/2681b50)
+==============================================================
+python3 tools/soak_test.py --wake-check   (12-min recording + 3 × 1-min, 4 simulated
+cameras at 60 fps, 2 headbands). Two runs below:
 
-NOT A VALID MEASUREMENT OF THE APP. The development Mac (Apple M1, 8 GB RAM) had
+A. GitHub Actions "heavy-checks", windows-latest — THE VALID RUN
+   (4 cores, 16 GB RAM, no swap; wakes a 60 Hz thread 0.3 ms late, judged)
+
+  camera   lost (12 min)   late   stamps_off_clock   lost (1-min ×3)
+  SIDE_01  27              24     0                  0 / 0 / 0
+  SIDE_02  22              27     0                  0 / 0 / 0
+  POV_01   12              22     0                  0 / 0 / 0
+  POV_02   27              35     0                  0 / 0 / 0
+
+  judged against the machine's stalls (CPU probe + memory probe):
+    #1 12-min: 1 lost outside (one frame, POV_02), 146 inside   (CPU probe alone: 5 outside)
+    #2–#4 1-min: 0 lost at all
+  encoder drops 0, EEG complete, save problems 0, descriptors back to baseline.
+  (On Windows the memory probe's 231 stalls track the 222 CPU stalls — no swap was used.)
+
+  VERDICT: PROBLEMS — 1 frame lost outside the machine's own stalls (146 lost during
+  222 CPU + 231 memory machine stalls, worst 202 ms: machine noise); EEG complete;
+  encoder drops 0; save problems 0; descriptors back to baseline.
+
+   (macos-latest in the same workflow: NOT JUDGED — the runner wakes a 60 Hz
+   thread 15 ms late, 71 % over half a frame; 6.3 % of frames lost, all inside
+   its stalls.)
+
+B. The development Mac, 2026-11-24 — NOT A VALID MEASUREMENT (out of memory)
+   NOT A VALID MEASUREMENT OF THE APP. The development Mac (Apple M1, 8 GB RAM) had
 15.8 GB of swap in use and 1.2 GB available when it started, and swapped in
 11.4 GB during the 12-minute recording alone (it was thrashing; swap reached
 18.5 of 19.5 GB afterwards). Per camera, 12-min recording / 1-min recordings:
@@ -343,3 +368,75 @@ Recording 4 of 4 …
 Memory during the long recording: 130 → 56 MB (-5.60 MB/min), peak 130.2 MB
 
 VERDICT: PROBLEMS — 2447 frames lost outside the machine's own stalls (31288 lost during 2446 CPU + 3663 memory machine stalls, worst 438 ms: machine noise); EEG complete; encoder drops 5146; save problems 0; descriptors back to baseline.
+
+-------------------------------------------------------------------------------
+A. Full output, windows-latest:
+MACHINE: this computer wakes a 60 Hz thread 0.3 ms late (p99 0.8 ms; 0 % over half a frame) — judged
+Machine: 4 cores (2 physical), win32; 16 GB RAM (13.2 GB available), swap in use 0.0 GB; cameras in their own processes
+
+Recording 1 of 4 …
+  #1 flow opened                       fds  581  threads  13  children  4  Qt threads   7 {'SimMuseReader': 2, 'USBCameraThread': 4, '_ScanWorker': 1}
+00:05:33 WARNING brain_battle.data.export_module: h264_nvenc is listed by ffmpeg but failed a test encode (no usable hardware?) — falling back
+00:05:33 WARNING brain_battle.data.export_module: h264_amf is listed by ffmpeg but failed a test encode (no usable hardware?) — falling back
+00:05:33 WARNING brain_battle.data.export_module: h264_qsv is listed by ffmpeg but failed a test encode (no usable hardware?) — falling back
+  #1 left the flow                     fds  785  threads   6  children  0  Qt threads   1 {'_ScanWorker': 1}
+  #1 left the flow, after gc           fds  785  threads   6  children  0  Qt threads   1 {'_ScanWorker': 1}
+  CPU: machine 56.9 % of 4 cores; the app 22.0 %, camera processes 43.5 %, ffmpeg 130.9 % (100 % = one core)
+  the computer swapped in 0.0 MB during this recording
+  recorded 735.5 s · frames lost 88 · frames late 108 · encoder drops 0 · EEG samples missing 0 · queue peak 12 · memory 117.0 → 107.6 MB
+    SIDE_01: {'frames': 44098, 'span_s': 735.4, 'expected': 44125, 'lost': 27, 'late': 24, 'stamps_off_clock': 0, 'max_gap_ms': 100.1, 'big_gaps_at_s': [422.9, 634.6]}
+    SIDE_02: {'frames': 44102, 'span_s': 735.38, 'expected': 44124, 'lost': 22, 'late': 27, 'stamps_off_clock': 0, 'max_gap_ms': 183.4, 'big_gaps_at_s': [632.8]}
+    POV_01: {'frames': 44115, 'span_s': 735.43, 'expected': 44127, 'lost': 12, 'late': 22, 'stamps_off_clock': 0, 'max_gap_ms': 83.4, 'big_gaps_at_s': [634.6]}
+    POV_02: {'frames': 44097, 'span_s': 735.38, 'expected': 44124, 'lost': 27, 'late': 35, 'stamps_off_clock': 0, 'max_gap_ms': 183.4, 'big_gaps_at_s': [632.8, 634.7]}
+    EEG A: {'samples': 188268, 'span_s': 735.42, 'expected': 188268, 'missing': 0}
+    EEG B: {'samples': 188364, 'span_s': 735.79, 'expected': 188364, 'missing': 0}
+
+Recording 2 of 4 …
+  #2 flow opened                       fds  838  threads  12  children  4  Qt threads   7 {'SimMuseReader': 2, 'USBCameraThread': 4, '_ScanWorker': 1}
+  #2 left the flow                     fds  785  threads   4  children  0  Qt threads   1 {'_ScanWorker': 1}
+  #2 left the flow, after gc           fds  785  threads   4  children  0  Qt threads   1 {'_ScanWorker': 1}
+  CPU: machine 52.6 % of 4 cores; the app 21.1 %, camera processes 43.0 %, ffmpeg 124.8 % (100 % = one core)
+  the computer swapped in 0.0 MB during this recording
+  recorded 60.1 s · frames lost 0 · frames late 0 · encoder drops 0 · EEG samples missing 0 · queue peak 3 · memory 110.3 → 113.5 MB
+    SIDE_01: {'frames': 3602, 'span_s': 60.02, 'expected': 3602, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
+    SIDE_02: {'frames': 3602, 'span_s': 60.02, 'expected': 3602, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
+    POV_01: {'frames': 3603, 'span_s': 60.02, 'expected': 3602, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
+    POV_02: {'frames': 3602, 'span_s': 60.02, 'expected': 3602, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
+    EEG A: {'samples': 15384, 'span_s': 60.09, 'expected': 15384, 'missing': 0}
+    EEG B: {'samples': 15468, 'span_s': 60.42, 'expected': 15468, 'missing': 0}
+
+Recording 3 of 4 …
+  #3 flow opened                       fds  837  threads  10  children  4  Qt threads   7 {'SimMuseReader': 2, 'USBCameraThread': 4, '_ScanWorker': 1}
+  #3 left the flow                     fds  785  threads   4  children  0  Qt threads   1 {'_ScanWorker': 1}
+  #3 left the flow, after gc           fds  785  threads   4  children  0  Qt threads   1 {'_ScanWorker': 1}
+  CPU: machine 53.2 % of 4 cores; the app 21.3 %, camera processes 43.7 %, ffmpeg 126.5 % (100 % = one core)
+  the computer swapped in 0.0 MB during this recording
+  recorded 60.1 s · frames lost 0 · frames late 0 · encoder drops 0 · EEG samples missing 0 · queue peak 5 · memory 113.6 → 114.9 MB
+    SIDE_01: {'frames': 3604, 'span_s': 60.03, 'expected': 3603, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.8, 'big_gaps_at_s': []}
+    SIDE_02: {'frames': 3605, 'span_s': 60.05, 'expected': 3604, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
+    POV_01: {'frames': 3602, 'span_s': 60.02, 'expected': 3602, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
+    POV_02: {'frames': 3603, 'span_s': 60.03, 'expected': 3603, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.8, 'big_gaps_at_s': []}
+    EEG A: {'samples': 15384, 'span_s': 60.09, 'expected': 15384, 'missing': 0}
+    EEG B: {'samples': 15480, 'span_s': 60.46, 'expected': 15480, 'missing': 0}
+
+Recording 4 of 4 …
+  #4 flow opened                       fds  838  threads  10  children  4  Qt threads   7 {'SimMuseReader': 2, 'USBCameraThread': 4, '_ScanWorker': 1}
+  #4 left the flow                     fds  785  threads   4  children  0  Qt threads   1 {'_ScanWorker': 1}
+  #4 left the flow, after gc           fds  785  threads   4  children  0  Qt threads   1 {'_ScanWorker': 1}
+  CPU: machine 54.6 % of 4 cores; the app 23.0 %, camera processes 45.5 %, ffmpeg 130.0 % (100 % = one core)
+  the computer swapped in 0.0 MB during this recording
+  recorded 60.1 s · frames lost 0 · frames late 0 · encoder drops 0 · EEG samples missing 0 · queue peak 5 · memory 113.9 → 109.0 MB
+    SIDE_01: {'frames': 3606, 'span_s': 60.07, 'expected': 3605, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
+    SIDE_02: {'frames': 3603, 'span_s': 60.02, 'expected': 3602, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.8, 'big_gaps_at_s': []}
+    POV_01: {'frames': 3606, 'span_s': 60.08, 'expected': 3606, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
+    POV_02: {'frames': 3607, 'span_s': 60.08, 'expected': 3606, 'lost': 0, 'late': 0, 'stamps_off_clock': 0, 'max_gap_ms': 16.7, 'big_gaps_at_s': []}
+    EEG A: {'samples': 15396, 'span_s': 60.14, 'expected': 15396, 'missing': 0}
+    EEG B: {'samples': 15540, 'span_s': 60.7, 'expected': 15540, 'missing': 0}
+  #1: frames lost outside the machine's stalls 1 (1 gaps), inside 146 (90 gaps); judged by CPU stalls alone: 5 outside; e.g. [{'camera': 'POV_02', 'gap_ms': 33, 'lost': 1}]
+  #2: frames lost outside the machine's stalls 0 (0 gaps), inside 0 (0 gaps); judged by CPU stalls alone: 0 outside
+  #3: frames lost outside the machine's stalls 0 (0 gaps), inside 0 (0 gaps); judged by CPU stalls alone: 0 outside
+  #4: frames lost outside the machine's stalls 0 (0 gaps), inside 0 (0 gaps); judged by CPU stalls alone: 0 outside
+
+Memory during the long recording: 123 → 35 MB (-7.24 MB/min), peak 129.9 MB
+
+VERDICT: PROBLEMS — 1 frame lost outside the machine's own stalls (146 lost during 222 CPU + 231 memory machine stalls, worst 202 ms: machine noise); EEG complete; encoder drops 0; save problems 0; descriptors back to baseline.

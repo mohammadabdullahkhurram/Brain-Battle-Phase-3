@@ -161,8 +161,13 @@ against a second probe that holds 48 MB (memory stalls) as well as the bare
 one. On that Mac, judged by both probes, 14–31 frames per 1-minute recording
 (4 cameras) were still lost outside any stall; the full soak there swapped in
 11.4 GB during the 12-minute recording and is not a valid measurement
-(`docs/reviews/2026-11-soak.txt`). It must be re-run on a computer that is not
-swapping.
+(`docs/reviews/2026-11-soak.txt`, run B). Re-run on a computer that is not
+swapping — the GitHub Windows runner (16 GB, no swap, keeps 60 Hz), through
+the `heavy-checks` workflow, 2026-11-25 (run A): **12-minute recording 12–27
+frames lost per camera (0.05 %), one of them outside the machine's stalls;
+the three 1-minute recordings 0 lost on every camera**; `stamps_off_clock` 0,
+encoder drops 0, EEG complete. (The macOS runner cannot keep 60 Hz and is NOT
+JUDGED.) The one frame outside a stall is the open end of this.
 
 ## App Nap and timer coalescing (tested 2026-11-19)
 

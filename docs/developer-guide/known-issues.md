@@ -92,8 +92,12 @@ start of every recording); all camera-process threads run at the reader's
 priority. Not ruled out: some remaining single-frame losses outside both
 probes' stalls (14–31 per 1-minute recording, 4 cameras). The full soak on that
 Mac was not a valid measurement — it swapped in 11.4 GB during the 12-minute
-recording (`docs/reviews/2026-11-soak.txt`). **Next:** re-run the full soak
-on a computer that is not swapping (browser closed, or the lab computer).
+recording (`docs/reviews/2026-11-soak.txt`, run B). On the GitHub Windows
+runner (not swapping, `heavy-checks` workflow, 2026-11-25) the full soak lost
+12–27 frames per camera in the 12-minute recording (0.05 %) — one frame outside
+the machine's stalls — and none in the three 1-minute recordings. **Open:**
+that one frame; and a local run on the development Mac after a reboot, with
+the browser closed.
 Recording is complete either way (frame times are exact, gaps are in
 `timing_quality.csv`); EEG is complete.
 
