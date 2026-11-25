@@ -93,6 +93,11 @@ colour), the fighter name (colour dot + code in bold mono), cards, banners,
 status lines, the head icon with four sensor dots, segmented controls, the flow
 layout for chips.
 
+- **An icon and its text sit on one line** ("✓ All labels saved" in the
+  Review header, status lines, banners, the check rows on Get ready and
+  Saved): vertically centred when the text is one line; when it wraps, the
+  icon is level with the first line (`widgets.align_icon_with_text`).
+
 - **The dialog** (`AppDialog`, `ask`, `tell`): a white card with 20 px corners
   on a dimmed cover over the window (a light cover on Recording, so the
   recording stays visible); a title, the text, buttons on the right. Variants:

@@ -849,7 +849,7 @@ class GetReadyScreen(QWidget):
             ic.setObjectName("ci")
             ic.setStyleSheet(f"#ci {{ border-radius: 11px; color: #FFFFFF; font-weight: 700; "
                              f"background: {dt.success_color() if ok else dt.warning_color()}; }}")
-            h.addWidget(ic, 0, Qt.AlignmentFlag.AlignTop)
+            h.addWidget(ic, 0, Qt.AlignmentFlag.AlignVCenter)
             txt = QLabel(f"<b style='font-weight:600'>{title}</b><br><span style='color:"
                          f"{dt.text_tertiary() if ok else dt.warning_color()};font-size:13px'>{note}</span>")
             txt.setTextFormat(Qt.TextFormat.RichText); txt.setWordWrap(True)
@@ -1124,7 +1124,7 @@ class SavedScreen(QWidget):
         ic.setAlignment(Qt.AlignmentFlag.AlignCenter); ic.setObjectName("ci")
         ic.setStyleSheet(f"#ci {{ border-radius: 14px; color: #FFFFFF; font-weight: 700; "
                          f"background: {dt.success_color() if ok else dt.warning_color()}; }}")
-        h.addWidget(ic, 0, Qt.AlignmentFlag.AlignTop)
+        h.addWidget(ic, 0, Qt.AlignmentFlag.AlignVCenter)
         t = QLabel(f"<b style='font-weight:600'>{title}</b><br><span style='color:"
                    f"{dt.text_tertiary()};font-size:13px'>{detail}</span>")
         t.setTextFormat(Qt.TextFormat.RichText); t.setWordWrap(True)

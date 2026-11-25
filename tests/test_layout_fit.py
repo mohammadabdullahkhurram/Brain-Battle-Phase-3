@@ -223,8 +223,75 @@ def test_owner_screenshot_details():
           len(badges) == 2 and not any(c in b.styleSheet().lower() for b in badges for c in old))
 
 
+def _ink_rows(img, rect):
+    """Top and bottom row (in ``img``) of anything drawn inside ``rect`` —
+    pixels that differ clearly from the rect's corner (the background)."""
+    bg = img.pixelColor(rect.left(), rect.top())
+    rows = []
+    for y in range(max(0, rect.top()), min(img.height(), rect.bottom() + 1)):
+        for x in range(max(0, rect.left()), min(img.width(), rect.right() + 1)):
+            c = img.pixelColor(x, y)
+            if abs(c.red() - bg.red()) + abs(c.green() - bg.green()) + abs(c.blue() - bg.blue()) > 120:
+                rows.append(y); break
+    return (rows[0], rows[-1]) if rows else None
+
+
+def test_icons_on_the_text_line():
+    """An icon and its text sit on one line ("✓ All labels saved" had its tick
+    above the words): the icon's middle within 3 px of the middle of the first
+    line of text — in the Review header (Saved / Saving…), and in a status
+    line or banner whose text wraps."""
+    from PyQt6.QtWidgets import QWidget, QHBoxLayout
+    import brain_battle.ui.widgets as ui
+    import brain_battle.ui.design_tokens as dt
+
+    def first_line_mid(w):
+        """(icon middle, first text line middle) in ``w``'s own pixels."""
+        img = w.grab().toImage()
+        ic, tx = w._icon, w._text
+        ir = QRect(ic.mapTo(w, QPoint(0, 0)), ic.size())
+        tr = QRect(tx.mapTo(w, QPoint(0, 0)), tx.size())
+        i, t = _ink_rows(img, ir), _ink_rows(img, tr)
+        if i is None or t is None:
+            return None
+        line = tx.fontMetrics().height()
+        t_bottom = min(t[1], t[0] + int(line * 0.8))        # first line only
+        return (i[0] + i[1]) / 2, (t[0] + t_bottom) / 2
+
+    win = bbm.BrainBattleApp(); win.resize(1280, 800); win.show()
+    win._shell.set_current_index(win.IDX_REVIEW)
+    for _ in range(4):
+        _app.processEvents()
+    try:
+        sl = win._review_page._autosave
+        for text, kind in (("All labels saved", "ok"), ("Saving…", "info")):
+            sl.set(text, kind); _app.processEvents()
+            m = first_line_mid(sl)
+            check(f"Review header: \"{text}\" icon and text on one line",
+                  m is not None and abs(m[0] - m[1]) <= 3, str(m))
+        host = QWidget(); host.resize(420, 120)
+        hv = QHBoxLayout(host)
+        long = ("The recordings folder can't be reached — check the network drive is "
+                "connected, then try again.")
+        widgets = [ui.StatusLine(long, "bad", size=dt.SIZE_SM),
+                   ui.StatusLine("Short", "ok"), ui.Banner("warn")]
+        widgets[2].set_text(long)
+        for w in widgets:
+            hv.addWidget(w)
+        host.show(); _app.processEvents()
+        for w in widgets:
+            m = first_line_mid(w)
+            check(f"{type(w).__name__} \"{w.text()[:20]}…\": the icon is level with the first line",
+                  m is not None and abs(m[0] - m[1]) <= 3, str(m))
+        host.close()
+    finally:
+        win.record_flow.shutdown(); win._review_page.shutdown(); win._sessions_page.shutdown()
+        win.close()
+
+
 if __name__ == "__main__":
     test_pages_fit()
+    test_icons_on_the_text_line()
     test_owner_screenshot_details()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")
     for f in _failures:

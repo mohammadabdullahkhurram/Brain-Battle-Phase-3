@@ -226,6 +226,31 @@ _STATUS_ICON = {"ok": "check-circle", "warn": "alert", "bad": "x-circle",
                 "info": "help-circle", "idle": "circle"}
 
 
+def align_icon_with_text(row: QHBoxLayout, icon: QWidget, text: QLabel, size: int,
+                         weight: int = 400, one_line: bool = False) -> None:
+    """Put an icon and its text on one line. ``one_line``: both vertically
+    centred in the row (a header status like "✓ All labels saved"). Otherwise
+    the text may wrap: both sit at the top, and whichever is shorter is nudged
+    down so the icon's middle lines up with the middle of the FIRST text line
+    (never an icon floating above the words)."""
+    if one_line:
+        row.setAlignment(icon, Qt.AlignmentFlag.AlignVCenter)
+        row.setAlignment(text, Qt.AlignmentFlag.AlignVCenter)
+        text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        return
+    f = QFont(dt.FONT_UI); f.setPixelSize(size); f.setWeight(QFont.Weight(min(900, max(100, weight))))
+    line = QFontMetrics(f).height()
+    ih = icon.maximumHeight() if icon.maximumHeight() < 10_000 else icon.sizeHint().height()
+    row.setAlignment(icon, Qt.AlignmentFlag.AlignTop)
+    text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+    if line > ih:
+        icon.setFixedHeight(line)            # the pixmap centres in a first-line-tall box
+        if isinstance(icon, QLabel):
+            icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    elif ih > line:
+        text.setContentsMargins(0, (ih - line) // 2, 0, 0)
+
+
 class StatusLine(QWidget):
     """Icon + text for a state (ok / warn / bad / info / idle). Each state has
     its own icon SHAPE (tick in a circle, warning triangle, cross in a circle),
@@ -238,8 +263,9 @@ class StatusLine(QWidget):
         self._icon = QLabel(); self._icon.setFixedSize(18, 18)
         self._text = QLabel(); self._text.setWordWrap(wrap)
         self._size, self._weight = size, weight
-        h.addWidget(self._icon, 0, Qt.AlignmentFlag.AlignTop)
+        h.addWidget(self._icon)
         h.addWidget(self._text, 1)
+        align_icon_with_text(h, self._icon, self._text, size, weight, one_line=not wrap)
         self._kind = None
         self.set(text, kind)
 
@@ -366,9 +392,10 @@ class Banner(Card):
         self._tone = tone
         h = QHBoxLayout(self); h.setContentsMargins(16, 12, 12, 12); h.setSpacing(12)
         self._icon = QLabel(); self._icon.setFixedSize(20, 20)
-        h.addWidget(self._icon, 0, Qt.AlignmentFlag.AlignTop)
+        h.addWidget(self._icon)
         self._text = QLabel(""); self._text.setWordWrap(True)
         h.addWidget(self._text, 1)
+        align_icon_with_text(h, self._icon, self._text, dt.SIZE_SM, 500)
         self._actions = QHBoxLayout(); self._actions.setSpacing(8)
         h.addLayout(self._actions)
         self.set_tone_and_text(tone, "")
@@ -853,4 +880,5 @@ __all__ = ["title", "heading", "body", "muted", "caption", "Card", "hline",
            "icon_button", "help_button", "Segmented", "StatusLine", "pill", "boxer_badge",
            "boxer_chip", "FlowLayout", "fighter_badge", "fighter_html", "versus_html", "status_chip",
            "STATUS_CHIP", "Banner", "TimerLabel", "Dot", "clear_layout", "MIN_TARGET",
-           "AppDialog", "ask", "tell", "Dropdown", "qss_dropdown", "neutral_badge", "WrapLabel"]
+           "AppDialog", "ask", "tell", "align_icon_with_text", "Dropdown", "qss_dropdown",
+           "neutral_badge", "WrapLabel"]

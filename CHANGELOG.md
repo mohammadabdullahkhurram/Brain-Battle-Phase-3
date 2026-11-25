@@ -17,6 +17,15 @@ dev-log numbering, kept as history — they do not track the release version.
   to Sessions.** After saving, the panel shows "as *name* · Not you?". The
   "you'll be asked your name" line is gone from the panel. Tested on the whole
   window in `test_labellers` (`test_asked_on_open`).
+- **Icons sit on the same line as their text.** "✓ All labels saved" in the
+  Review header had its tick above the words: the status line pinned the icon
+  to the top while the text was centred. `widgets.align_icon_with_text` now
+  lines them up for every status line and banner (centred for one line; level
+  with the first line when the text wraps), and the check rows on Get ready
+  and Saved centre their ✓ / ! against the two lines beside them. There is no
+  separate "Saving…" state — a label is saved the moment it is placed — but
+  the header is checked with that text too. `test_layout_fit`
+  (`test_icons_on_the_text_line`) measures the drawn pixels.
 
 **Second click-through: notes, name pop-up, always light, lost frames, buzzer flake (2026-11-24)**
 - **Fixed: "Add note" added nothing.** The button's `clicked(bool)` signal was
