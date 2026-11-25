@@ -76,7 +76,7 @@ it from the repository's Actions page → heavy-checks → *Run workflow* (the
 number of calibration runs and the soak length can be changed there), or
 `gh workflow run heavy-checks.yml --ref develop`. It also runs **on every push
 to `staging`** — each release candidate gets the heavy checks — and on a push
-to `develop` that changes the workflow file. (GitHub offers *Run workflow*
+to `develop` whose last commit message contains `[heavy-checks]`. (GitHub offers *Run workflow*
 only once the file is on `main`; until then those pushes are the way to start
 it.) The ordinary test run (`tests.yml`) runs on every push to `develop`,
 `staging` and `main`. Each job first prints how

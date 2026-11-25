@@ -59,8 +59,9 @@ dev-log numbering, kept as history — they do not track the release version.
   header (not a sidebar) and what each subpackage holds; code comments cite
   DESIGN sections by name instead of the old numbers (a known issue, now gone).
 - **CI:** the test run also runs on `staging`; heavy-checks runs on every push
-  to `staging` (each release candidate), on a push to `develop` that changes
-  the workflow, and by hand once the file is on `main`.
+  to `staging` (each release candidate), on a push to `develop` whose last
+  commit message contains `[heavy-checks]`, and by hand once the file is on
+  `main`.
 - **Docs:** `docs/project/status.md` brought up to date (fighter codes, the
   timing target, camera processes, in-app dialogs), the testing strategy
   lists the new checks, the CI page the new triggers.

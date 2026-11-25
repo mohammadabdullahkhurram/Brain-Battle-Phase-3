@@ -2,7 +2,8 @@
 # the full soak (12-min recording + 3 × 1-min, 4 simulated cameras at 60 fps,
 # 2 headbands) and the 200-run buzzer calibration study, on Windows and macOS.
 # Runs on every push to staging (each release candidate), on a push to develop
-# that changes this file, and by hand: Actions → heavy-checks → Run workflow
+# whose last commit message contains "[heavy-checks]", and by hand:
+# Actions → heavy-checks → Run workflow
 # (GitHub offers that only once this file is on the default branch, main). A
 # runner that cannot keep 60 Hz wake-ups (GitHub's macOS runner, usually) reports NOT JUDGED
 # instead of failing. Outputs are uploaded as artifacts.
@@ -11,7 +12,7 @@ name: heavy-checks
 
 on:
   push:
-    branches: [develop, staging]   # develop: only when this file changes (see `if:` below)
+    branches: [develop, staging]   # develop: only with "[heavy-checks]" (see `if:` below)
   workflow_dispatch:
     inputs:
       calibration_runs:
@@ -29,7 +30,7 @@ jobs:
     name: ${{ matrix.check }} · ${{ matrix.os }}
     if: >-
       github.event_name != 'push' || github.ref_name == 'staging' ||
-      contains(toJSON(github.event.commits.*.modified), '.github/workflows/heavy-checks.yml')
+      contains(github.event.head_commit.message, '[heavy-checks]')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     strategy:
