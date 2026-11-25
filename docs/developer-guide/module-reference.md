@@ -632,7 +632,9 @@ lock). Used to find the cause of camera frame loss (ADR-0025).
 the computer's own stalls; `judge_lost_frames` splits lost camera frames into
 those inside such a stall (machine noise) and outside (a problem) — the soak
 verdict. `wake_lateness()` measures the computer itself — how late it wakes a thread
-sleeping to 60 Hz deadlines; `tools/wake_probe.py` prints it, and
+sleeping to 60 Hz deadlines; `tools/wake_probe.py` prints it (and
+`tools/buzzer_study.py` runs the real buzzer test many times and reports the
+distribution of its recovery error — the heavy-checks workflow), and
 `test_timing` / `test_stability` use it to decide whether a computer can
 judge millisecond precision at all (`tests/_env.py` `timing_judgeable`).
 

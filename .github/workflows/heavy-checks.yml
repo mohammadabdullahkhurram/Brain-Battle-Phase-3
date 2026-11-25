@@ -1,0 +1,84 @@
+# The long checks that are too heavy for every push (and for a busy laptop):
+# the full soak (12-min recording + 3 × 1-min, 4 simulated cameras at 60 fps,
+# 2 headbands) and the 200-run buzzer calibration study, on Windows and macOS.
+# Started by hand: Actions → heavy-checks → Run workflow. A runner that cannot
+# keep 60 Hz wake-ups (GitHub's macOS runner, usually) reports NOT JUDGED
+# instead of failing. Outputs are uploaded as artifacts.
+# See docs/developer-guide/cross-platform-and-ci.md.
+name: heavy-checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      calibration_runs:
+        description: "Buzzer calibration runs"
+        default: "200"
+      soak_minutes:
+        description: "Length of the long soak recording (minutes)"
+        default: "12"
+
+jobs:
+  heavy:
+    name: ${{ matrix.check }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        check: [soak, calibration]
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      BRAIN_BATTLE_MUTE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ffmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Install the app
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e .
+
+      - name: How well this runner keeps 60 Hz
+        run: python tools/wake_probe.py 10
+
+      - name: Full soak
+        if: matrix.check == 'soak'
+        shell: bash
+        run: |
+          mkdir -p heavy-out
+          python tools/soak_test.py --wake-check --minutes ${{ inputs.soak_minutes }} \
+            --json heavy-out/soak.json 2>&1 | tee heavy-out/soak.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Buzzer calibration study
+        if: matrix.check == 'calibration'
+        shell: bash
+        run: |
+          mkdir -p heavy-out
+          python tools/buzzer_study.py --runs ${{ inputs.calibration_runs }} \
+            --out heavy-out 2>&1 | tee heavy-out/calibration.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavy-${{ matrix.check }}-${{ matrix.os }}
+          path: heavy-out/
+          if-no-files-found: warn

@@ -64,6 +64,25 @@ Things to know:
 - Every test script imports `tests/_env.py` first, which points the app at a
   throwaway settings file — a test run never touches a real user's settings.
 
+## The heavy checks (GitHub Actions, started by hand)
+
+`.github/workflows/heavy-checks.yml` ("heavy-checks") runs the checks too long
+for every push — and too heavy for a laptop that is short of memory — on
+**Windows and macOS**, four jobs side by side: the **full soak**
+(`tools/soak_test.py --wake-check`: a 12-minute recording + three 1-minute
+ones) and the **buzzer calibration study** (`tools/buzzer_study.py --runs
+200`: the real buzzer test end to end, 200 times, each in a fresh flow). Start
+it from the repository's Actions page → heavy-checks → *Run workflow* (the
+number of calibration runs and the soak length can be changed there), or
+`gh workflow run heavy-checks.yml --ref develop`. Each job first prints how
+well the runner keeps 60 Hz wake-ups (`tools/wake_probe.py`); on a runner that
+cannot (GitHub's macOS runner, usually) the soak and the study print **NOT
+JUDGED** and do not fail. Results are artifacts named
+`heavy-<soak|calibration>-<system>`: the soak's text output and JSON, the
+study's `runs.jsonl`, `summary.json` (median, 95th / 99th percentile, worst,
+the 10 worst runs with each device's error and per-tap residuals) and text
+output.
+
 ## Fixed on 2026-11-17: CI green on both systems
 
 Read from the Windows and macOS logs of the runs on `be4202f` and `339f941`,

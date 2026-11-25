@@ -194,12 +194,9 @@ def _resolve_encoder() -> str:
     (hardware encoder validated once, libx264 fallback). Imported lazily so
     importing usb_camera doesn't trigger the probe (keeps module import cheap,
     which the smoke gate relies on). A camera process is told the app's answer
-    (``BRAIN_BATTLE_REC_ENCODER``) so it never imports export_module or runs
-    the probe itself — that took ~0.5 s in the reader thread at the start of
-    every recording."""
-    told = os.environ.get("BRAIN_BATTLE_REC_ENCODER")
-    if told:
-        return told
+    with ``start_recording`` so it never imports export_module or runs the
+    probe itself — that took ~0.5 s in the reader thread at the start of every
+    recording."""
     try:
         from brain_battle.data.export_module import _HW_ENCODER
         return _HW_ENCODER
@@ -556,7 +553,10 @@ class USBCameraThread(QThread):
         """Start recording into ``path`` (picked up on the next frame).
         ``clock`` = the shared capture-time origin (t0_monotonic, t0_unix)."""
         self._rec_pending = True
-        self._cmds.put(("start_recording", (str(path), clock)))
+        # the app's probed encoder (pre-flight has already run the probe, so
+        # this is free here): the camera process never probes it itself
+        encoder = _resolve_encoder() if self._isolated else None
+        self._cmds.put(("start_recording", (str(path), clock, encoder)))
 
     def stop_recording(self) -> None:
         if not (self._recording or self._rec_pending):
@@ -702,7 +702,6 @@ class USBCameraThread(QThread):
         ctx = _mp_context()
         parent_end, child_end = ctx.Pipe(duplex=True)
         env = {k: v for k, v in os.environ.items() if k.startswith("BRAIN_BATTLE_")}
-        env.setdefault("BRAIN_BATTLE_REC_ENCODER", _resolve_encoder())   # probed once, here
         proc = ctx.Process(target=camera_worker.main, name=f"camera-{self._dev.index}",
                            args=(child_end, self._dev, self._want_w, self._want_h,
                                  self._want_fps, self._bitrate_mbps, env), daemon=True)

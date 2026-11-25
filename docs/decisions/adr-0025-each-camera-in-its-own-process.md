@@ -152,7 +152,7 @@ worse: 2 350 faulting frames per camera.)
 
 Changes: (1) the frame pool is last-in-first-out, so two or three buffers stay
 hot (faulting frames 262 → 62–109 per camera); (2) the writer thread launches
-ffmpeg and the app passes the probed encoder name (`BRAIN_BATTLE_REC_ENCODER`),
+ffmpeg and the app sends the probed encoder name with `start_recording`,
 so the reader no longer freezes ~0.5 s (≈ 30 frames) when a recording starts;
 (3) every thread of a camera process runs at the reader's priority (a GIL
 holder paused on an efficiency core would hold the reader up; a precaution —

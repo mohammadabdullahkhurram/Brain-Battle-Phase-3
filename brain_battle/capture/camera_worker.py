@@ -74,6 +74,7 @@ class CaptureLoop:
         self.preview_w = 0
         self.stop_flag = False
         self._rec_req: Optional[tuple] = None        # (path, clock)
+        self._rec_encoder: Optional[str] = None      # told by the app with start_recording
         self._rec_stop_req = False
         self.recording = False
         self._encoder = None
@@ -102,7 +103,8 @@ class CaptureLoop:
         self._trace = None                   # debug "trace": see _trace_dump
 
     # ── commands (any thread) ──
-    def start_recording(self, path, clock) -> None:
+    def start_recording(self, path, clock, encoder: Optional[str] = None) -> None:
+        self._rec_encoder = encoder or None
         self._rec_req = (Path(path), clock)
 
     def stop_recording(self) -> None:
@@ -471,8 +473,8 @@ class CaptureLoop:
         and lost frames at the start of every recording) and then empties the
         queue into it."""
         uc = self.uc
-        enc = uc.FrameEncoder(path, fw, fh, fps, clock, bitrate_mbps=self.bitrate_mbps,
-                              on_frame=self._on_written)
+        enc = uc.FrameEncoder(path, fw, fh, fps, clock, encoder=self._rec_encoder,
+                              bitrate_mbps=self.bitrate_mbps, on_frame=self._on_written)
         self._encoder = enc
         self.queue_capacity = max(uc.REC_QUEUE_MAXSIZE, int(round(2 * fps)))
         self._rec_queue = queue.Queue(maxsize=self.queue_capacity)

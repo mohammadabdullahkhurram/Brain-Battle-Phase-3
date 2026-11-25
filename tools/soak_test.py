@@ -37,6 +37,8 @@ Diagnosis (debug only — see brain_battle/support/stall_probe.py):
                         timestamp sidecars are still written)
     --minimal-source    the simulated cameras hand out a ready-made picture
                         (no drawing per frame)
+    --wake-check        measure 60 Hz wake-ups first; NOT JUDGED (exit 0) on a
+                        computer that cannot keep them (the CI heavy checks)
     --trace DIR         each camera process writes per-frame step timing, its
                         garbage collections and pipe sends to DIR
     --fps 30            30 instead of 60 frames per second
@@ -279,6 +281,9 @@ def main(argv=None) -> int:
     ap.add_argument("--no-preview", action="store_true")
     ap.add_argument("--no-encoder", action="store_true")
     ap.add_argument("--minimal-source", action="store_true")
+    ap.add_argument("--wake-check", action="store_true",
+                    help="measure 60 Hz wake-ups first; on a computer that cannot keep them, "
+                         "print NOT JUDGED and exit 0 (CI runners)")
     ap.add_argument("--trace", default="", metavar="DIR",
                     help="each camera process writes its per-frame timing to DIR (debug)")
     ap.add_argument("--in-process", action="store_true",
@@ -312,6 +317,14 @@ def main(argv=None) -> int:
     import psutil
     from brain_battle.support import resource_limits as rl
     from brain_battle.support.stall_probe import MachineStallProbe, judge_lost_frames
+    judgeable, wake_text = True, ""
+    if args.wake_check:
+        from brain_battle.support.stall_probe import wake_lateness
+        w = wake_lateness(5.0)
+        judgeable = w["over_half"] <= 0.10          # the rule of tests/_env.timing_judgeable
+        wake_text = (f"this computer wakes a 60 Hz thread {w['median']:.1f} ms late (p99 "
+                     f"{w['p99']:.1f} ms; {100 * w['over_half']:.0f} % over half a frame)")
+        print(f"MACHINE: {wake_text} — {'judged' if judgeable else 'NOT JUDGED'}", flush=True)
     machine = MachineStallProbe().start()       # the computer's own stalls, all soak long
     machine_mem = MachineStallProbe(touch_mb=MEMORY_PROBE_MB).start()   # … and its paging
     from brain_battle.capture.usb_camera import isolated_capture
@@ -537,9 +550,13 @@ def main(argv=None) -> int:
           f"EEG {'complete' if not eeg_missing else f'{eeg_missing} samples missing'}; "
           f"encoder drops {drops}; save problems {saves}; descriptors "
           f"{'back to baseline' if desc_ok else 'NOT back to baseline'}.", flush=True)
+    report["judged"] = judgeable
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=1)
+    if not judgeable:
+        print(f"NOT JUDGED — {wake_text}: frames are lost here whatever the app does", flush=True)
+        return 0
     return 0 if ok else 1
 
 
