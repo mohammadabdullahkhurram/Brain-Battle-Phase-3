@@ -74,7 +74,9 @@ ones) and the **buzzer calibration study** (`tools/buzzer_study.py --runs
 200`: the real buzzer test end to end, 200 times, each in a fresh flow). Start
 it from the repository's Actions page → heavy-checks → *Run workflow* (the
 number of calibration runs and the soak length can be changed there), or
-`gh workflow run heavy-checks.yml --ref develop`. Each job first prints how
+`gh workflow run heavy-checks.yml --ref develop`. (GitHub offers *Run
+workflow* only once the file is on `main`; until then, and whenever the file
+changes, a push to `develop` that touches it starts it.) Each job first prints how
 well the runner keeps 60 Hz wake-ups (`tools/wake_probe.py`); on a runner that
 cannot (GitHub's macOS runner, usually) the soak and the study print **NOT
 JUDGED** and do not fail. Results are artifacts named
