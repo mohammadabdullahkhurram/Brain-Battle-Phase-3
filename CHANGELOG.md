@@ -69,7 +69,10 @@ dev-log numbering, kept as history — they do not track the release version.
   maximum and keeps the onset between the last baseline sample and the first
   rising one. Detector alone at the simulator's noise: bias −0.42 → +0.07 ms,
   99th percentile |error| 1.73 → 0.68 ms (better at 2–40 µV too); synthetic
-  study (40 runs): worst 1.74 → 0.74 ms. The 2 ms limit is unchanged.
+  study (40 runs): worst 1.74 → 0.74 ms. **200 runs end to end on the Windows
+  runner, before → after: median 0.77 → 0.33 ms, 95th 1.44 → 0.71, 99th
+  1.66 → 1.25, worst 1.70 → 1.36 ms** (headband bias −0.5 → −0.1 ms). The 2 ms
+  limit is unchanged. (The macOS runner cannot keep 60 Hz: NOT JUDGED.)
 - **Fixed: a camera run as a thread could stall at the start of a recording.**
   With ffmpeg launched by the writer thread, a camera without an encoder name
   from the app (run as a thread — tests) resolved it there, importing

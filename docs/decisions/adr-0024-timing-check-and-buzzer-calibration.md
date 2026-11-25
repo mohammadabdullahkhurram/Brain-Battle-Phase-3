@@ -63,7 +63,9 @@ both boxers tap their headband once, in view of the cameras.
   average and up to 2.9 ms early depending on where the tap fell between two
   samples — the cause of an occasional end-to-end error over 2 ms. Detector
   alone, simulator noise level: bias −0.42 → +0.07 ms, 99th percentile
-  |error| 1.73 → 0.68 ms.)
+  |error| 1.73 → 0.68 ms. The real buzzer test end to end, 200 runs on the
+  GitHub Windows runner (`tools/buzzer_study.py`, heavy-checks): median 0.77 →
+  0.33 ms, 99th percentile 1.66 → 1.25 ms, worst 1.70 → 1.36 ms.)
 - Each **camera**: frame-difference energy of every frame (a 64×36 grey copy).
   A camera integrates light over the frame, so the frame in which the tap
   starts shows only part of the change; the split of the change between that
