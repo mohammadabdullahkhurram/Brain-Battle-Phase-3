@@ -473,7 +473,13 @@ class CaptureLoop:
         and lost frames at the start of every recording) and then empties the
         queue into it."""
         uc = self.uc
-        enc = uc.FrameEncoder(path, fw, fh, fps, clock, encoder=self._rec_encoder,
+        # The encoder's NAME is settled here, before the writer starts: the app
+        # sends it with start_recording; without it (a camera run as a thread,
+        # in tests) resolving it imports export_module and runs its probe, and
+        # doing that in the writer thread starved the reader of the GIL for
+        # seconds (Windows CI, test_video_recording, 2026-11-25).
+        encoder = self._rec_encoder or uc._resolve_encoder()
+        enc = uc.FrameEncoder(path, fw, fh, fps, clock, encoder=encoder,
                               bitrate_mbps=self.bitrate_mbps, on_frame=self._on_written)
         self._encoder = enc
         self.queue_capacity = max(uc.REC_QUEUE_MAXSIZE, int(round(2 * fps)))

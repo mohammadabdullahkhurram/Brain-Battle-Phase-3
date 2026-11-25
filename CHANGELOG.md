@@ -70,6 +70,14 @@ dev-log numbering, kept as history — they do not track the release version.
   rising one. Detector alone at the simulator's noise: bias −0.42 → +0.07 ms,
   99th percentile |error| 1.73 → 0.68 ms (better at 2–40 µV too); synthetic
   study (40 runs): worst 1.74 → 0.74 ms. The 2 ms limit is unchanged.
+- **Fixed: a camera run as a thread could stall at the start of a recording.**
+  With ffmpeg launched by the writer thread, a camera without an encoder name
+  from the app (run as a thread — tests) resolved it there, importing
+  `export_module` and running its probe while holding the interpreter lock;
+  on the Windows runner the reader then got almost no time for seconds
+  (`test_video_recording`, first attempt). The name is now settled before the
+  writer starts. Camera processes in the app always get it with
+  `start_recording`.
 - **`tools/run_tests.py` keeps a failed first attempt's log** as
   `<name>.first-attempt.log` (the re-run used to overwrite it — a local
   `test_timing` first attempt at 4.48 ms on the swapping development Mac could
