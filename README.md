@@ -208,14 +208,14 @@ Dates are the date of the tagged commit. Newest first.
 
 ### Main checkpoints
 
-**`v3.1.0-dev.3`** — 2026-11-16 — `339f941` — *current `develop`*
-The 3.1 work on top of 3.0: live Lab Streaming Layer streams, one
-`recording.xdf` per recording, a standard EEG viewer, a redesign of every
-screen, several labellers per recording, hiding boxer names, Windows support,
-a shared recordings folder, and the "Too many open files" fix. Known limits:
-the Windows automatic tests were not green yet, and on Windows its timestamps
-were rounded to 15.6 ms (both fixed after this tag, on `develop`). Go back to
-it to compare with the version before the November 17 fixes.
+**`v3.1.0-rc.1`** — 2026-11-26 — `fef30f4` — *current `staging`*
+The first release candidate of 3.1, for the owner and a teammate to test: live
+LSL streams and one `recording.xdf` per recording, the redesigned screens,
+fighter codes and colours, several labellers, the buzzer test for timing, Mac
+and Windows. Tested only with simulated devices: the full suite green on macOS
+and Windows in CI, and the heavy checks with no app-caused failure (Windows
+buzzer study 196 judged runs, worst 1.6 ms). Go back to it to compare with
+later release candidates.
 
 **`v3.0.0-beta.2`** — 2026-11-11 — `67e1676` — *current `main`*
 The reviewed, approved version: the four screens (Sessions, New recording,
@@ -240,6 +240,15 @@ to it to open recordings made before 3.0, or to see the original design.
 ---
 
 ### Older tags
+
+**`v3.1.0-dev.3`** — 2026-11-16 — `339f941`
+The 3.1 work on top of 3.0: live Lab Streaming Layer streams, one
+`recording.xdf` per recording, a standard EEG viewer, a redesign of every
+screen, several labellers per recording, hiding boxer names, Windows support,
+a shared recordings folder, and the "Too many open files" fix. Known limits:
+the Windows automatic tests were not green yet, and on Windows its timestamps
+were rounded to 15.6 ms (both fixed after this tag, on `develop`). Go back to
+it to compare with the version before the November 17 fixes.
 
 **`v3.1.0-dev.2`** — 2026-11-14 — `efe6adf`
 The redesign of every screen, several labellers per recording, hiding boxer
