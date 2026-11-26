@@ -102,9 +102,17 @@ def _plan_for(minutes: float):
                          baseline_sec=max(5, total - 2 * rnd - max(5, int(total * 0.1))))
 
 
-def camera_gaps(root: str, fps: float) -> list[tuple[float, float, str]]:
+def camera_gaps(root: str, fps: float, stamped_late: list | None = None
+                ) -> list[tuple[float, float, str]]:
     """Every gap of more than 1.5 frame periods in any camera's frame times:
-    (t_monotonic of the frame before, gap seconds, camera)."""
+    (t_monotonic of the frame before, gap seconds, camera).
+
+    A gap followed at once by an interval under a quarter period is not a
+    lost frame: a frame read almost a period late (the camera process held up
+    11–17 ms) was stamped a period late by ``timing.FrameClock``, which then
+    caught up on the next frame (its "0 steps" rule) — every frame is in the
+    file. Those go to ``stamped_late`` instead (a known limit of stamping on
+    the fly; docs/research-and-data/known-issues.md)."""
     import numpy as np
     import brain_battle.data.session_storage as ss
     out = []
@@ -115,6 +123,10 @@ def camera_gaps(root: str, fps: float) -> list[tuple[float, float, str]]:
             continue
         d = np.diff(t)
         for i in np.nonzero(d > 1.5 / fps)[0]:
+            if i + 1 < len(d) and d[i + 1] < 0.25 / fps:
+                if stamped_late is not None:
+                    stamped_late.append((float(t[i]), float(d[i]), stem))
+                continue
             out.append((float(t[i]), float(d[i]), stem))
     return sorted(out)
 
@@ -601,7 +613,12 @@ def main(argv=None) -> int:
                   f"{cor['worst_stall_ms']} ms); gc {cor['gc']}", flush=True)
             for ex in cor["examples"]:
                 print(f"    gap {ex}", flush=True)
-        rec["_gaps"] = camera_gaps(root, float(args.fps))
+        late_stamps: list = []
+        rec["_gaps"] = camera_gaps(root, float(args.fps), late_stamps)
+        rec["stamped_late_not_lost"] = len(late_stamps)
+        if late_stamps:
+            print(f"  frames stamped a period late after a late read (frame clock; not lost): "
+                  f"{len(late_stamps)}", flush=True)
         rec["_traces"] = traces
         if miss_s or sum(dropped.values()) or rec["write_problems"]:
             ok = False
@@ -668,6 +685,8 @@ def main(argv=None) -> int:
                          "machine_cpu_stalls": len(cpu_stalls), "machine_memory_stalls": len(mem_stalls),
                          "lost_outside_cpu_stalls_only": lost_cpu_only_out,
                          "lost_in_short_stalls": lost_short, "outside_causes": causes,
+                         "stamped_late_not_lost": sum(r.get("stamped_late_not_lost", 0)
+                                                      for r in report["recordings"]),
                          "machine_stalls_per_min": round(spm, 1),
                          "fine_stalls": len(fine_stalls),
                          "worst_machine_stall_ms": worst, "eeg_missing": eeg_missing,
@@ -694,6 +713,9 @@ def main(argv=None) -> int:
     app_caused = app_lost + eeg_missing + drops + saves + (0 if desc_ok else 1)
     if lost_short:
         noise += f"; {lost_short} lost in short stalls only the fine probe saw"
+    if report["verdict"]["stamped_late_not_lost"]:
+        noise += (f"; {report['verdict']['stamped_late_not_lost']} frames stamped a period late "
+                  f"after a late read, not lost")
     print(f"\nVERDICT: {'OK' if ok else 'PROBLEMS'} — {lost_out} frame"
           f"{'' if lost_out == 1 else 's'} lost outside the machine's own stalls"
           f" ({app_lost} caused by the app, {unexplained} unexplained) ({noise}); "

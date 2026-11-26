@@ -40,6 +40,21 @@ dev-log numbering, kept as history — they do not track the release version.
   width, a caret colour readable on the field and the ring's pixels, and that
   New recording opens no stray windows.
 
+**The soak's last "lost" frame was not lost; simulated camera fixed (2026-11-25)**
+- **Found from the camera traces** of the heavy checks: the one frame lost
+  "outside the machine's stalls" (unexplained — the camera noted no late
+  read) was a frame read almost a period late and **stamped a period late** by
+  `timing.FrameClock`, which caught up on the next frame. Every frame was in
+  the file. The soak now counts these separately ("stamped a period late after
+  a late read, not lost": a stamp gap followed at once by a near-zero
+  interval). The stamping limit itself (0.1–0.3 % of frames off by a period on
+  a noisy runner) is a known issue with two possible fixes for the owner to
+  decide — not changed here.
+- **Fixed: the simulated camera** handed out the frame it had started waiting
+  for even when its sleep woke several periods late (up to 84 ms), which no
+  real camera with a 1-frame buffer does; it now hands out the newest frame
+  (`simulation.py`, `_picture`).
+
 **Heavy checks judge the app, not the runner (2026-11-25)** — tools and CI
 only; no change in the app.
 - **Why:** the heavy checks on `914ec96` failed on Windows (soak: 4 frames lost

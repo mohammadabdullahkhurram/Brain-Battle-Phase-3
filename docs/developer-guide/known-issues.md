@@ -95,11 +95,37 @@ Mac was not a valid measurement — it swapped in 11.4 GB during the 12-minute
 recording (`docs/reviews/2026-11-soak.txt`, run B). On the GitHub Windows
 runner (not swapping, `heavy-checks` workflow, 2026-11-25) the full soak lost
 12–27 frames per camera in the 12-minute recording (0.05 %) — one frame outside
-the machine's stalls — and none in the three 1-minute recordings. **Open:**
-that one frame; and a local run on the development Mac after a reboot, with
-the browser closed.
+the machine's stalls — and none in the three 1-minute recordings. That one
+frame (and the single frame on the two runs that followed) was **not lost**
+(2026-11-25, camera traces): it was read almost a period late and stamped a
+period late (see the next item); the soak now counts such frames separately
+("stamped a period late after a late read, not lost"). **Open:** a local run on
+the development Mac after a reboot, with the browser closed.
 Recording is complete either way (frame times are exact, gaps are in
 `timing_quality.csv`); EEG is complete.
+
+## A frame read almost a period late is stamped a period late (known limit)
+
+`timing.FrameClock` stamps each frame **as it is read**, on the camera's own
+frame clock (ADR-0025). A frame read between about ¾ and 1 period late — the
+camera process held up 11–17 ms, e.g. a busy computer — cannot be told apart
+from the *next* frame read on time, so it is counted as one step too many and
+stamped **one period (16.7 ms at 60 fps) late**; the next frame proves it (it
+needs "0 steps") and the clock catches up from there. Occasionally a short run
+of frames read late in a row stays a period behind until an on-time read.
+Measured on the GitHub Windows runner's camera traces (2026-11-25, a noisy
+runner: ~90 machine stalls a minute): 0.1–0.3 % of frames more than 8 ms off,
+99 % within 0.63 ms. `test_frame_clock` documents the same (~1 % with 3 % of
+reads stalled). Every frame is still in the file and its read time is in the
+sidecar (`t_arrival_monotonic`). **Possible fix, for the owner to decide (an
+ADR):** stamp with hindsight — hold one sidecar row back and correct it when
+the next frame shows it was over-counted (removes ~40 % of these), or re-stamp
+each camera after the recording from all its read times (both directions).
+
+Found at the same time and fixed: the **simulated camera** handed out the frame
+it had started waiting for even when its sleep woke several periods late —
+up to 84 ms late, something no real camera with a 1-frame buffer does. It now
+hands out the newest frame, like a real driver (`simulation.py`).
 
 ## Code-level tech debt (tracked in ROADMAP Phase 5)
 

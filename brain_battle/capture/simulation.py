@@ -328,21 +328,39 @@ class SimCapture:
             self.skips.append((self._clock.monotonic(), late_by, int(late_by * self._fps)))
         shown = self._t0 + self._n / self._fps
         ready = shown + self._delay + self._rng.uniform(-self._jit, self._jit)
-        if self._style == "plain":
-            frame = image if image is not None and image.shape == self._bg.shape else self._bg
-        else:
-            frame = (self._render_neutral(self._n, image) if self._style == "neutral"
-                     else self._render(self._n, image))
-            self._draw_tap(frame, shown)
+        frame = self._picture(shown, image)
         wait = ready - self._clock.monotonic()
         if wait > 0:
             time.sleep(min(wait, 0.2))
         now = self._clock.monotonic()
+        # Woken more than a period after the frame was due (a busy computer):
+        # the driver's 1-frame buffer has been overwritten by then, so the
+        # NEWEST frame is handed over, not the one this read started waiting
+        # for (until 2026-11-25 it handed over the old frame, up to several
+        # periods late, which no real camera does).
+        late_by = now - (shown + self._delay)
+        if late_by > 1.0 / self._fps:
+            k = int(late_by * self._fps)
+            self._n += k
+            self.skips.append((now, late_by, k))
+            shown = self._t0 + self._n / self._fps
+            frame = self._picture(shown, image)
+            now = self._clock.monotonic()
         # the app's camera code reports this with the frame (note_delivered),
         # wherever this camera runs
         self.last_delivered = now - shown
         self._n += 1
         return True, frame
+
+    def _picture(self, shown: float, image=None):
+        """Frame ``self._n`` (showing the instant ``shown``), drawn into
+        ``image`` when given."""
+        if self._style == "plain":
+            return image if image is not None and image.shape == self._bg.shape else self._bg
+        frame = (self._render_neutral(self._n, image) if self._style == "neutral"
+                 else self._render(self._n, image))
+        self._draw_tap(frame, shown)
+        return frame
 
     def release(self):  # noqa: N802
         self._open = False

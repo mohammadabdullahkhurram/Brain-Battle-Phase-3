@@ -78,8 +78,11 @@ while the camera process itself was not busy. With `--trace` (the heavy
 checks) every frame lost outside a stall is explained from the camera
 process's own trace (`soak_test.explain_lost`: the slow step, and who used
 the CPU — app-caused, a short machine stall, or unexplained). A machine that
-stalls more than 20 times a minute is too noisy to judge (**NOT JUDGED**),
-but an app-caused failure fails on any machine. The header prints the
+stalls more than 20 times a minute is too noisy to judge (**NOT JUDGED**).
+A stamp gap followed at once by a near-zero interval is not a lost frame but
+a frame read almost a period late and stamped a period late (the frame
+clock catching up); it is counted separately ("stamped a period late, not
+lost"). An app-caused failure fails on any machine. The header prints the
 computer's RAM and swap in use, each recording how much it swapped in, and
 the last line the verdict, for example:
 

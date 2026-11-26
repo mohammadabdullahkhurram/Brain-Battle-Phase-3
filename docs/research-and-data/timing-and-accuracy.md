@@ -95,7 +95,7 @@ between all devices after correction**
 | What | Number | Source |
 |---|---|---|
 | Calibration recovers simulated delays (6 devices, jitter ±2 ms cameras / ±4 ms headbands) | within **2 ms** (measured 0.3–1.8 ms) | `tests/test_timing.py` |
-| Camera frame stamps vs the camera's true frame clock, reader stalled at random (simulated) | **≥ 98.5 %** of frames within 3 ms (p99 0.5–2.7 ms when ≤ 1 % of reads stall; read times: up to a frame period) | `tests/test_timing.py` (`test_frame_clock`) |
+| Camera frame stamps vs the camera's true frame clock, reader stalled at random (simulated) | **≥ 98.5 %** of frames within 3 ms (p99 0.5–2.7 ms when ≤ 1 % of reads stall; read times: up to a frame period). A frame read almost a period late is stamped a period late (0.1–0.3 % of frames on a noisy CI runner; a known limit) | `tests/test_timing.py` (`test_frame_clock`) |
 | Same on synthetic data, 40 random runs | 95 % within **2 ms** | `tests/test_timing.py` |
 | Camera-to-camera frame alignment without a buzzer test | within **one frame period** (~17 ms at 60 fps, ~34 ms at 30 fps) | By design — each camera captures on its own phase |
 | Flash spread across the four cameras (30 fps demo) | worst **17.2 ms** measured, bound **≤ 34 ms** | `tests/test_flash_sync.py` |
