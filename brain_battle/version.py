@@ -21,5 +21,9 @@ the handover/cleanup release (tool-neutral AGENTS.md, package tidy-ups).
 Streaming Layer workflow: live LSL streams, one recording.xdf per recording, a
 conventional EEG viewer, and one capture clock. Recordings made with 3.0 still
 open; they simply have no `capture_clock.t0_lsl`.
+
+"3.1.0-rc.1" is the first release candidate of 3.1: the version on `staging`
+(tag v3.1.0-rc.1) for the owner and a teammate to test before it goes to
+`main` as 3.1.0.
 """
-__version__ = "3.1.0-dev"
+__version__ = "3.1.0-rc.1"

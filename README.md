@@ -10,9 +10,9 @@ for analysis. Fighters are stored only as **4-character codes and colours**
 on Mac and Windows, and has a **demo mode** that needs no cameras or headbands —
 that is what you use to try it out.
 
-> **Which version to test:** there is no `staging` branch yet, so testers use
-> **`develop`** (the commands below fetch it). Once the owner has approved
-> `develop`, a `staging` branch will be made for testing.
+> **Which version to test:** testers use the **`staging`** branch — the
+> release candidate **v3.1.0-rc.1** (the commands below fetch it). `develop` is
+> where work goes on; `main` holds approved versions only.
 
 > **Tested only in simulation so far.** Everything works with *simulated*
 > cameras and headbands, and the automatic tests pass on Mac and Windows. Real
@@ -45,12 +45,13 @@ that is what you use to try it out.
    - **With git** (run `xcode-select --install` once if `git` is missing):
      ```bash
      cd ~
-     git clone --branch develop https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3.git
+     git clone https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3.git
      cd Brain-Battle-Phase-3
+     git switch staging
      ```
    - **Without git:** open the
      [GitHub page](https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3),
-     switch the branch menu from `main` to **`develop`**, click
+     switch the branch menu from `main` to **`staging`**, click
      **Code → Download ZIP**, unzip it into your home folder, and in Terminal
      `cd` into the unzipped folder.
 4. **Install the app** (takes a few minutes the first time):
@@ -77,12 +78,13 @@ that is what you use to try it out.
      default options):
      ```powershell
      cd $HOME
-     git clone --branch develop https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3.git
+     git clone https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3.git
      cd Brain-Battle-Phase-3
+     git switch staging
      ```
    - **Without git:** open the
      [GitHub page](https://github.com/mohammadabdullahkhurram/Brain-Battle-Phase-3),
-     switch the branch menu from `main` to **`develop`**, click
+     switch the branch menu from `main` to **`staging`**, click
      **Code → Download ZIP**, unzip it into your user folder, and in
      PowerShell `cd` into the unzipped folder.
 4. **Install the app** (takes a few minutes the first time):
@@ -96,8 +98,8 @@ that is what you use to try it out.
 
 ## Run the app
 
-Three ways, from inside the `Brain-Battle-Phase-3` folder. (When the
-`staging` branch exists, testers use exactly these steps on it.)
+Three ways, from inside the `Brain-Battle-Phase-3` folder, on the `staging`
+branch (`git switch staging`). Testers: **a)** is the one to start with.
 
 ### a) With demo data — for testing
 
@@ -176,7 +178,7 @@ Send a message (or open an issue on GitHub) with:
      `session_<date>_<time>.log` inside that recording's folder (Sessions →
      right-click the recording → *Show in Finder* / *Show in Explorer*).
 5. **Your computer** — Mac or Windows, and the version shown in the window
-   title (e.g. `3.1.0-dev`).
+   title (e.g. `3.1.0-rc.1`).
 
 ## Documentation (for developers)
 
@@ -199,7 +201,7 @@ look at one (read-only), inside the code folder run, for example:
 
 ```bash
 git checkout v3.0.0-beta.2      # go to that version
-git checkout develop            # come back to the version under test
+git checkout staging            # come back to the version under test
 ```
 
 Dates are the date of the tagged commit. Newest first.

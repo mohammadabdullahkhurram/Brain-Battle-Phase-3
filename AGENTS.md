@@ -1,4 +1,4 @@
-# Brain Battle — v3.1.0-dev (develop) · v3.0.0-beta.2 (main)
+# Brain Battle — v3.1.0-rc.1 (develop, staging) · v3.0.0-beta.2 (main)
 
 > **Agent instructions.** This file is the shared, tool-neutral instructions
 > file for AI coding agents (read automatically by OpenAI Codex, and by Claude
@@ -261,8 +261,9 @@ gate for deletions/refactors; `test_no_placeholders.py`, `test_light_theme.py`,
 
 ## Project status
 
-**`develop` = `3.1.0-dev` (last tag `v3.1.0-dev.3`); `main` = the reviewed
-`3.0.0-beta.2`.** `develop` has the four DESIGN screens (Sessions, New
+**`develop` and `staging` = `3.1.0-rc.1` (tag `v3.1.0-rc.1`, the first
+release candidate, on `staging` for the owner and a teammate to test); `main` =
+the reviewed `3.0.0-beta.2`.** `develop` has the four DESIGN screens (Sessions, New
 recording, Review & Label, Settings) plus the 3.1 work: live LSL streams and
 one `recording.xdf` per recording, a standard EEG viewer, one capture clock
 (`clock.monotonic()` = `time.perf_counter()`), several labellers per recording,
@@ -278,10 +279,10 @@ everything runs against **simulated** devices (`capture/simulation.py`,
 Review & Label build. Pass-by-pass history: `CHANGELOG.md` and
 `docs/project/status.md`; long-form history: **`docs/archive/history.md`**.
 
-**What's next:** the owner reviews `develop` (start with
-`docs/reviews/2026-11-redesign.md`); if happy, it is merged to `staging` (tag
-`v3.1.0-rc.1`) for the owner and a teammate to test, then from `staging` to
-`main` (tag `v3.1.0`). The most valuable next step is not code: **one real
+**What's next:** the owner and a teammate test `staging` (`v3.1.0-rc.1`;
+background in `docs/reviews/2026-11-redesign.md`); bugs they find are fixed on
+`develop` and go to `staging` as `v3.1.0-rc.2`, …; on approval `staging` is
+merged to `main` (tag `v3.1.0`). The most valuable next step is not code: **one real
 recording** with the buzzer/tap check. Then the rest of **Phase 5** in
 `docs/ROADMAP.md`. **Phases 6 (shipping) and 7 (team & cloud) start only on
 the owner's explicit go-ahead.** Nothing starts on its own initiative.

@@ -6,7 +6,7 @@ hardware situation that shapes all of it.
 
 ## In one line
 
-**Phase 3 and the documentation are complete, and `develop` (`3.1.0-dev`) adds
+**Phase 3 and the documentation are complete, and `develop` / `staging` (`3.1.0-rc.1`, the first release candidate) add
 two passes on top.** The first: the standard EEG workflow — live Lab Streaming
 Layer streams, one `recording.xdf` per recording, a conventional EEG viewer,
 and the headbands' movement sensors

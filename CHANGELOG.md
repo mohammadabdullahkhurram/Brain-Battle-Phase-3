@@ -1,9 +1,48 @@
 # Brain Battle — Changelog
 
-**Current version on `develop`: v3.1.0-dev** (authoritative source:
-`brain_battle/version.py` `__version__`; tag `v3.1.0-dev.3`). `main` is the
-reviewed `3.0.0-beta.2`. The "Phase 2.N" headings further down are historical
+**Current version on `develop` and `staging`: v3.1.0-rc.1** (authoritative
+source: `brain_battle/version.py` `__version__`; tag `v3.1.0-rc.1`). `main` is
+the reviewed `3.0.0-beta.2`. The "Phase 2.N" headings further down are historical
 dev-log numbering, kept as history — they do not track the release version.
+
+## 3.1.0-rc.1 · First release candidate of 3.1 (tag `v3.1.0-rc.1`, 2026-11-26)
+
+The first version on `staging`, for the owner and a teammate to test. Since
+`3.0.0-beta.2` (on `main`):
+
+- **The standard EEG research workflow:** optional live Lab Streaming Layer
+  streams (off by default) and one `recording.xdf` per recording — EEG,
+  movement sensors, markers, labels and every video frame's time on one clock,
+  for EEGLAB / MNE / pyxdf; a conventional EEG viewer (electrode names,
+  microvolts, a time axis); one capture clock for everything.
+- **A redesign of every screen (design F):** a light top header, Sessions
+  (the home library), New recording (Get ready → Recording → Saved), one
+  merged Review & Label screen, Settings, an in-app Documentation screen, and
+  the app's own dialogs. Light mode only.
+- **Fighters are 4-character codes and colours, never names** — in the
+  folder name, manifest, `recording.xdf` and exports.
+- **Several labellers per recording** (one labels file each, Compare), moments
+  with notes, custom notes, "Who is labelling?" asked as soon as a recording
+  is opened for labelling.
+- **Recording:** a 15 s lead-in before the baseline, automatic system markers,
+  the bell at both ends of a round, every camera in a process of its own, a
+  camera watchdog, and steadier capture (60 fps MJPG, a 1-frame buffer, frames
+  stamped on each camera's own clock).
+- **Timing:** a timing check on Get ready and a **buzzer test** that measures
+  each device's delay and stores corrections the XDF, exports and Review apply
+  (target: under 10 ms between all devices). Verified with simulated devices
+  only (recovered within ~1 ms; the 200-run study under 2 ms).
+- **Mac and Windows,** a shared recordings folder (atomic, locked writes), the
+  "Too many open files" fix, and a 6-recording demo library
+  (`tools/demo.py`).
+- **Checks:** the full test suite on macOS and Windows in GitHub Actions, and
+  heavy checks (a 12-minute soak, the 200-run buzzer study) on every release
+  candidate, judging the app rather than the machine they run on.
+
+**Known limits:** never tried with real cameras, real Muse headbands, a real
+Windows PC or a network drive; nobody has seen raw EEG from a real sparring
+round; a frame read almost a period late is stamped a period late (0.1–0.3 %
+of frames on a busy machine). The sections below are the step-by-step record.
 
 ## 3.1.0-dev · Design F, fighter codes, timing check, steadier recording (no new tag)
 
