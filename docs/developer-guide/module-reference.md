@@ -786,8 +786,10 @@ first, so a slow runner is visible before the soak.
 ### `tools/buzzer_study.py`
 Runs the real buzzer test many times with simulated devices of known delay and
 reports the distribution of its recovery error (`runs.jsonl`, `summary.json`).
-The machine-stall probes run beside it: a run with a machine stall in a tap
-window is machine noise and not judged (the output lists them); exit 1 when
+The machine-stall probes run beside it: a run with a machine stall (10 ms+) in
+a tap window, or a short stall (2 ms+, the fine probe) while a tap was being
+delivered, is machine noise and not judged (the output counts each reason and
+lists the runs); exit 1 when
 any judged run reaches the 2 ms limit; NOT JUDGED when over a quarter of the
 runs were excluded or the computer cannot keep 60 Hz wake-ups. Not in
 `tools/run_tests.py` (200 runs take ~70 min); the heavy-checks workflow runs it.

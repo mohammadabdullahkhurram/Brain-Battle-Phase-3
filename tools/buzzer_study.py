@@ -21,11 +21,18 @@ distribution.
 
 The study judges the app, not the computer it runs on: the machine-stall
 probes of ``tools/soak_test.py`` run beside it all along
-(``stall_probe.MachineStallProbe``: a process that only sleeps, and one that
-also keeps 48 MB in use). A run during which the computer itself stalled
-(10 ms or more) inside one of its tap windows — ``timing.TAP_WINDOW`` after
-each beep, widened by ``TAP_MARGIN_SEC`` — is reported as "machine noise" and
-not judged; the summary prints how many runs were excluded and the stalls
+(``stall_probe.MachineStallProbe``: a process that only sleeps, one that also
+keeps 48 MB in use, and the fine probe — 1 ms sleeps, every wake-up 2 ms late
+noted). A run is reported as "machine noise" and not judged when
+
+  • the computer stalled (10 ms or more) inside one of its tap windows —
+    ``timing.TAP_WINDOW`` after each beep, widened by ``TAP_MARGIN_SEC``; or
+  • the fine probe saw a short stall (2 ms or more) while a tap was being
+    delivered — from one frame before the tap until the slowest device has
+    handed over the frames / samples that show it (``DELIVERY_WINDOW_SEC``).
+    A short pause anywhere else in the tap window does not touch the tap.
+
+The summary prints how many runs were excluded for each reason and the stalls
 that excluded them. Every other run must stay under the 2 ms limit (the limit
 is never loosened). NOT JUDGED (exit 0) when more than a quarter of the runs
 were excluded (too noisy to judge), or, like the test, on a computer that
@@ -52,6 +59,10 @@ sys.path.insert(0, os.path.join(ROOT, "tests"))
 
 LIMIT_MS = 2.0
 TAP_MARGIN_SEC = 0.1      # a stall this close to a tap window still counts as in it
+# The fine probe's short stalls count only while a tap is being delivered: one
+# 60 fps frame before the tap until the slowest device (63 ms + jitter) has
+# handed over the two frames that show it.
+DELIVERY_WINDOW_SEC = (-1 / 60, 0.063 + 0.004 + 3 / 60)
 MAX_EXCLUDED_SHARE = 0.25 # more runs than this excluded: too noisy to judge
 MEMORY_PROBE_MB = 48      # as tools/soak_test.py
 DELAYS_MS = {"SIDE_01": 52, "SIDE_02": 49, "POV_01": 63, "POV_02": 57, "EEG_A": 31, "EEG_B": 36}
@@ -77,9 +88,10 @@ def main(argv=None) -> int:
     print(f"MACHINE: {machine} — {'judged' if judgeable else 'NOT JUDGED (over half a frame late)'}",
           flush=True)
 
-    from tools.stall_probe import MachineStallProbe, overlapping
+    from tools.stall_probe import MachineStallProbe, overlapping, FINE_STALL_SEC
     probe_cpu = MachineStallProbe().start()
     probe_mem = MachineStallProbe(touch_mb=MEMORY_PROBE_MB).start()
+    probe_fine = MachineStallProbe.fine().start()
 
     from PyQt6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication(sys.argv)
@@ -151,7 +163,8 @@ def main(argv=None) -> int:
                "per_device_err_ms": per_dev, "per_tap_residual_ms": resid,
                "taps_found": {d: v.get("taps_found") for d, v in cal.get("devices", {}).items()},
                "truth_ms": {k: (None if v is None else round(v * 1000, 2)) for k, v in truth.items()},
-               "beep_times": list(cal.get("beep_times") or [])}
+               "beep_times": list(cal.get("beep_times") or []),
+               "tap_times": [round(x, 5) for x in taus]}
         f.write(json.dumps(rec) + "\n"); f.flush()
         errs.append(err); recs.append(rec)
         worst_dev = max(per_dev, key=lambda d: abs(per_dev[d])) if per_dev else "-"
@@ -160,9 +173,13 @@ def main(argv=None) -> int:
         flow.shutdown()
     f.close()
     cpu_stalls, mem_stalls = probe_cpu.stop(), probe_mem.stop()
+    fine_stalls = probe_fine.stop()
 
     # machine noise: the computer stalled inside one of the run's tap windows
+    # (CPU / memory probe), or paused briefly while a tap was being delivered
+    # (fine probe)
     lo, hi = timing.TAP_WINDOW
+    dlo, dhi = DELIVERY_WINDOW_SEC
     excluded = []
     for rec in recs:
         hits = []
@@ -171,9 +188,17 @@ def main(argv=None) -> int:
             for kind, st in (("CPU", cpu_stalls), ("memory", mem_stalls)):
                 hits += [{"beep": k + 1, "kind": kind, "ms": round(d * 1000, 1),
                           "at_s_after_beep": round(s0 - b0, 3)} for s0, d in overlapping(st, a0, a1)]
+        for k, tau in enumerate(rec["tap_times"]):
+            b0 = rec["beep_times"][k] if k < len(rec["beep_times"]) else tau
+            hits += [{"beep": k + 1, "kind": "short", "ms": round(d * 1000, 1),
+                      "at_s_after_beep": round(s0 - b0, 3),
+                      "at_ms_after_tap": round((s0 - tau) * 1000, 1)}
+                     for s0, d in overlapping(fine_stalls, tau + dlo, tau + dhi)]
         rec["machine_noise"] = hits
         if hits:
             excluded.append(rec)
+    by_coarse = [r for r in excluded if any(h["kind"] != "short" for h in r["machine_noise"])]
+    by_fine_only = [r for r in excluded if r not in by_coarse]
     judged_recs = [r for r in recs if not r["machine_noise"]]
 
     a = np.array([e for e in errs], dtype=float)
@@ -187,8 +212,14 @@ def main(argv=None) -> int:
         "p99_ms": round(float(np.percentile(finite, 99)), 3) if len(finite) else None,
         "worst_ms": round(float(np.max(a)), 3) if len(a) else None,
         "over_limit": int(np.sum(a >= LIMIT_MS)), "limit_ms": LIMIT_MS,
-        "machine_stalls": {"cpu": len(cpu_stalls), "memory": len(mem_stalls)},
+        "machine_stalls": {"cpu": len(cpu_stalls), "memory": len(mem_stalls),
+                           "short": len(fine_stalls)},
+        "short_stall_ms": FINE_STALL_SEC * 1000,
         "excluded_machine_noise": len(excluded),
+        "excluded_by": {"stall_in_tap_window": len(by_coarse),
+                        "short_stall_during_delivery_only": len(by_fine_only)},
+        "excluded_over_limit": sum(1 for r in excluded
+                                   if r["err_ms"] is None or r["err_ms"] >= LIMIT_MS),
         "excluded": [{"seed": r["seed"], "err_ms": r["err_ms"], "stalls": r["machine_noise"][:4]}
                      for r in excluded],
         "judged_runs": len(judged_recs),
@@ -202,12 +233,19 @@ def main(argv=None) -> int:
     print(f"\nBUZZER STUDY: {summary['runs']} runs — median {summary['median_ms']} ms, "
           f"95th {summary['p95_ms']} ms, 99th {summary['p99_ms']} ms, worst {summary['worst_ms']} ms; "
           f"{summary['over_limit']} at or over {LIMIT_MS} ms; {summary['failed_runs']} incomplete", flush=True)
-    print(f"MACHINE NOISE: {len(cpu_stalls)} CPU + {len(mem_stalls)} memory stalls of the computer "
-          f"during the study; {len(excluded)} of {len(recs)} runs excluded because the computer "
-          f"stalled inside a tap window (not judged)", flush=True)
+    print(f"MACHINE NOISE: {len(cpu_stalls)} CPU + {len(mem_stalls)} memory stalls (10 ms+) and "
+          f"{len(fine_stalls)} short stalls ({FINE_STALL_SEC * 1000:.0f} ms+, fine probe) of the "
+          f"computer during the study; {len(excluded)} of {len(recs)} runs excluded (not judged): "
+          f"{len(by_coarse)} with a stall in a tap window, {len(by_fine_only)} with only a short "
+          f"stall while a tap was being delivered; {summary['excluded_over_limit']} of the "
+          f"excluded runs were at or over {LIMIT_MS} ms", flush=True)
     for r in excluded:
+        hs = r["machine_noise"]
+        hs = [h for h in hs if h["kind"] != "short"][:3] or hs[:3]
         st = ", ".join(f"beep {h['beep']}: {h['kind']} stall {h['ms']} ms at "
-                       f"{h['at_s_after_beep']:+.2f} s" for h in r["machine_noise"][:3])
+                       + (f"{h['at_ms_after_tap']:+.0f} ms from the tap" if h["kind"] == "short"
+                          else f"{h['at_s_after_beep']:+.2f} s")
+                       for h in hs)
         print(f"  excluded run {r['seed']:3d} (error {r['err_ms']} ms): {st}", flush=True)
     print(f"JUDGED: {len(judged_recs)} runs — 99th {summary['judged_p99_ms']} ms, worst "
           f"{summary['judged_worst_ms']} ms; {summary['judged_over_limit']} at or over {LIMIT_MS} ms",
@@ -217,8 +255,8 @@ def main(argv=None) -> int:
     if not judgeable:
         reasons.append(machine)
     if len(excluded) > MAX_EXCLUDED_SHARE * max(1, len(recs)):
-        reasons.append(f"{len(excluded)} of {len(recs)} runs had the computer stall in a tap "
-                       f"window (over {MAX_EXCLUDED_SHARE:.0%}): too noisy to judge")
+        reasons.append(f"{len(excluded)} of {len(recs)} runs had the computer stall at a tap "
+                       f"(over {MAX_EXCLUDED_SHARE:.0%}): too noisy to judge")
     summary["judged"] = not reasons
     summary["not_judged_because"] = reasons
     with open(os.path.join(args.out, "summary.json"), "w", encoding="utf-8") as g:

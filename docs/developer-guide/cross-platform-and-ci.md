@@ -86,11 +86,15 @@ well the runner keeps 60 Hz wake-ups (`tools/wake_probe.py`).
 and then (other virtual machines on the same host); a frame lost or a tap
 mis-timed during such a pause says nothing about the app.
 
-- **Calibration study:** the machine-stall probes of the soak run beside it.
-  A run during which the computer stalled (10 ms or more) inside one of its
-  tap windows (0–0.9 s after each beep, ± 0.1 s) is printed as **machine
-  noise** and not judged; the output says how many runs were excluded and
-  which stall excluded each. Every other run must stay under **2 ms** — the
+- **Calibration study:** the machine-stall probes of the soak run beside it,
+  including the **fine probe** (1 ms sleeps, every 2 ms late wake-up noted).
+  A run is printed as **machine noise** and not judged when the computer
+  stalled (10 ms or more) inside one of its tap windows (0–0.9 s after each
+  beep, ± 0.1 s), or when the fine probe saw a short stall while a tap was
+  being delivered (one frame before the tap until the slowest device has
+  handed over the frames that show it, ~130 ms). The output says how many runs
+  were excluded for each reason, how many of them were over the limit anyway,
+  and which stall excluded each. Every other run must stay under **2 ms** — the
   limit is never loosened.
 - **Soak:** frames lost during a machine stall are machine noise. Every frame
   lost *outside* one is explained from the camera process's own per-frame

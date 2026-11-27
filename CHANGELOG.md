@@ -5,6 +5,18 @@ source: `brain_battle/version.py` `__version__`; tag `v3.1.0-rc.1`). `main` is
 the reviewed `3.0.0-beta.2`. The "Phase 2.N" headings further down are historical
 dev-log numbering, kept as history — they do not track the release version.
 
+## After 3.1.0-rc.1 · on `develop` only (not yet on `staging`; no new tag)
+
+**Buzzer study: short machine stalls count as machine noise (2026-11-27)** —
+tools and CI only. `tools/buzzer_study.py` now also runs the fine stall probe
+(1 ms sleeps, every wake-up 2 ms late noted). A run is excluded as machine
+noise when the computer stalled (10 ms+) in a tap window, as before, **or**
+when the fine probe saw a short stall while a tap was being delivered (one
+frame before the tap until the slowest device handed over the frames that
+show it). The 2 ms limit is unchanged. The output and `summary.json` count the
+excluded runs per reason (`excluded_by`), say how many of them were over the
+limit anyway (`excluded_over_limit`), and list the stall that excluded each.
+
 ## 3.1.0-rc.1 · First release candidate of 3.1 (tag `v3.1.0-rc.1`, 2026-11-26)
 
 The first version on `staging`, for the owner and a teammate to test. Since
