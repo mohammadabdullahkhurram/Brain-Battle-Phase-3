@@ -50,6 +50,7 @@ file is missing from this index or from `nav.yml`.
 | [ADR-0024](adr-0024-timing-check-and-buzzer-calibration.md) | Timing goal under 10 ms: live timing check and buzzer calibration | 2026-11-17 | Accepted |
 | [ADR-0025](adr-0025-each-camera-in-its-own-process.md) | Each camera captures in a process of its own | 2026-11-19 | Accepted |
 | [ADR-0026](adr-0026-in-app-dialogs-and-dropdowns.md) | One in-app dialog and one dropdown, no native ones | 2026-11-23 | Accepted |
+| [ADR-0027](adr-0027-frame-stamped-a-period-late.md) | A camera frame read almost a period late: keep, the camera's own timestamps, or re-stamp | 2026-11-27 | Proposed — decide after the first real-camera test |
 
 The sources behind these decisions are the planning documents
 ([DESIGN.md, ROADMAP.md, playback-proposal.md, architecture-and-evaluation.md,

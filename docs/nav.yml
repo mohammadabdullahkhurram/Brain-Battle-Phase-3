@@ -184,6 +184,9 @@ sections:
       - id: adr-0026
         title: ADR-0026 In-app dialogs and dropdowns
         file: decisions/adr-0026-in-app-dialogs-and-dropdowns.md
+      - id: adr-0027
+        title: ADR-0027 A frame read almost a period late (proposed)
+        file: decisions/adr-0027-frame-stamped-a-period-late.md
 
   - title: Project
     pages:

@@ -7,6 +7,15 @@ dev-log numbering, kept as history — they do not track the release version.
 
 ## After 3.1.0-rc.1 · on `develop` only (not yet on `staging`; no new tag)
 
+**ADR-0027 (proposed): a camera frame read almost a period late (2026-11-27)**
+— docs only. A draft decision for the owner on the frame clock's known limit
+(a frame read ¾–1 period late is stamped a whole period, 16.7 ms, late):
+what happens, how often (≈ 0.02 % of frames on the Windows runner, ≈ 4 % on
+the macOS runner that cannot keep 60 Hz), and the options — keep it, the
+camera's own timestamps (`CAP_PROP_POS_MSEC`), stamp with hindsight, or
+re-stamp after the recording. Recommendation: decide after the first
+real-camera test. Nothing in the app changes.
+
 **Buzzer study: short machine stalls count as machine noise (2026-11-27)** —
 tools and CI only. `tools/buzzer_study.py` now also runs the fine stall probe
 (1 ms sleeps, every wake-up 2 ms late noted). A run is excluded as machine

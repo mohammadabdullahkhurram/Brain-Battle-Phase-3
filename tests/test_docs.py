@@ -188,6 +188,7 @@ _KNOWN_PHRASES = {
     "adr-0024": "Rewrite the raw files with corrected times",
     "adr-0025": "interpreter lock",
     "adr-0026": "native alert",
+    "adr-0027": "Stamp with hindsight",
     # Project (D3)
     "goals": "Community Impact Project",
     "status": "working agreement",

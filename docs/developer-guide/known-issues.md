@@ -117,8 +117,10 @@ Measured on the GitHub Windows runner's camera traces (2026-11-25, a noisy
 runner: ~90 machine stalls a minute): 0.1–0.3 % of frames more than 8 ms off,
 99 % within 0.63 ms. `test_frame_clock` documents the same (~1 % with 3 % of
 reads stalled). Every frame is still in the file and its read time is in the
-sidecar (`t_arrival_monotonic`). **Possible fix, for the owner to decide (an
-ADR):** stamp with hindsight — hold one sidecar row back and correct it when
+sidecar (`t_arrival_monotonic`). **Possible fixes, for the owner to decide
+([ADR-0027](../decisions/adr-0027-frame-stamped-a-period-late.md), proposed —
+decide after the first real-camera test):** the camera's own timestamps
+(`CAP_PROP_POS_MSEC`), stamp with hindsight — hold one sidecar row back and correct it when
 the next frame shows it was over-counted (removes ~40 % of these), or re-stamp
 each camera after the recording from all its read times (both directions).
 
