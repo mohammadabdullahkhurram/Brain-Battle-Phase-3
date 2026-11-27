@@ -69,7 +69,13 @@ both boxers tap their headband once, in view of the cameras.
 - Each **camera**: frame-difference energy of every frame (a 64×36 grey copy).
   A camera integrates light over the frame, so the frame in which the tap
   starts shows only part of the change; the split of the change between that
-  frame and the next gives a sub-frame onset. The frame stamps around the tap
+  frame and the next gives a sub-frame onset. It is taken as the centre of the
+  change over the first frame above the threshold and the frames either side
+  of it (minus one period), because a tap that starts just before a frame ends
+  leaves too little in that frame to pass the threshold. (Using only the first
+  frame above the threshold and the next put such taps up to ~20 % of a
+  period late — the 2–3 ms of the 2026-11-26 staging study; fixed 2026-11-27.)
+  The frame stamps around the tap
   are first replaced by the camera's steady frame clock (each stamp locked to
   the lattice φ + n·T, fitted robustly), because delivery jitter is not
   capture jitter.

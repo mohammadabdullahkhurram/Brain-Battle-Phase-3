@@ -581,13 +581,25 @@ def detect_camera_tap(frame_t, energy, t_from: float, t_to: float,
     if not hits:
         return None
     k0 = hits[0]
-    if k0 < 1 or k0 + 1 >= len(e):
+    if k0 < 2 or k0 + 1 >= len(e):
         return float(t[k0])
-    d0 = max(0.0, e[k0] - level)
-    d1 = max(0.0, e[k0 + 1] - level)
-    f = d0 / (d0 + d1) if (d0 + d1) > 0 else 1.0
-    period = t[k0] - t[k0 - 1]
-    return float(t[k0] - f * period)
+    # The change is spread over two frames, but the first of them may hold
+    # so little of it (a tap starting just before a frame ends) that it stays
+    # under the threshold — then k0 is the SECOND frame. So take the frame
+    # before the first hit too: over k0−1 … k0+1 the change (energy above the
+    # noise level, signed so noise does not bias it) is centred one frame
+    # period after the onset, wherever in the frame the tap started. (Using
+    # only k0 and k0+1 put such taps up to ~20 % of a period late — 2–3 ms at
+    # 60 fps, found 2026-11-27 in the buzzer study.)
+    win = np.arange(k0 - 1, k0 + 2)
+    d = e[win] - level
+    total = float(d.sum())
+    if total <= 0:
+        return float(t[k0])
+    period = float(np.median(np.diff(t[k0 - 2:k0 + 2])))
+    centre = float(np.dot(t[win], d) / total)
+    # never outside the frames that saw it (noise on a tiny change)
+    return float(min(max(centre - period, t[k0 - 2]), t[k0]))
 
 
 def calibrate(beep_times, events: dict, min_taps: int = 3) -> dict:

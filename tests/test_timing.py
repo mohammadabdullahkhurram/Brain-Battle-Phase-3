@@ -11,7 +11,9 @@ Timing check and buzzer calibration (capture/timing.py, ADR-0024).
      a packet that really went missing still shows as exactly its 12 samples.
   3. Detectors + calibrate() on synthetic data with known delays, jitter and
      a reaction time that varies per tap: every device recovered within 2 ms
-     (40 random runs).
+     (40 random runs). The camera detector has no bias (mean within 0.3 ms)
+     wherever in a frame the tap starts — also just before a frame ends, when
+     the first frame holds too little of the change to pass the threshold.
   4. End to end with the SIMULATED devices through the real capture paths
      (USBCameraThread at 60 fps, the real headband reader): the simulation
      injects known per-device delays + jitter; RecordFlow.run_buzzer_test()
@@ -241,6 +243,35 @@ def test_frame_clock():
                   abs(counted - lost) <= max(5, 0.3 * lost), f"{counted} vs {lost}")
 
 
+def test_camera_tap_any_phase():
+    """A tap that starts just before a frame ends shows only a sliver in that
+    frame — under the threshold — and the rest in the next. The onset must not
+    be read from the next frame alone (that put such taps up to ~20 % of a
+    period late: the 2–3 ms of the 2026-11-26 buzzer study)."""
+    per = 1 / 60
+    rng = np.random.default_rng(3)
+    bias, worst = (0.0, 0.0), 0.0
+    for phase in np.arange(0.0, 1.0, 0.05):
+        errs = []
+        for _ in range(20):
+            tk = 50.0 + np.arange(4 * 60) * per
+            tau = tk[120] + phase * per
+            v = np.clip((tk - tau) / per, 0, 1) - np.clip((tk - tau - 0.25) / per, 0, 1)
+            # noise like the simulated camera's: the threshold is ~10 % of the change
+            e = 1.0 + np.abs(np.diff(v, prepend=v[0])) * 24 + rng.normal(0, 0.3, len(v))
+            got = T.detect_camera_tap(tk, e, tau - 0.18, tau + 0.7)
+            errs.append((got - tau) * 1000 if got is not None else float("inf"))
+        m = float(np.mean(errs))
+        worst = max(worst, float(np.max(np.abs(errs))))
+        if abs(m) > abs(bias[0]):
+            bias = (m, phase)
+    print(f"CAMERA TAP ONSET over 20 phases × 20 taps: largest mean error {bias[0]:+.2f} ms "
+          f"(tap at {bias[1]:.2f} of a frame), worst single tap {worst:.2f} ms")
+    check("camera tap: no bias wherever in the frame the tap starts (mean within 0.3 ms)",
+          abs(bias[0]) < 0.3, f"{bias[0]:+.2f} ms at phase {bias[1]:.2f}")
+    check("camera tap: every tap within 1.5 ms", worst < 1.5, f"{worst:.2f} ms")
+
+
 def test_synthetic_calibration():
     errs, cal0 = [], None
     for seed in range(40):
@@ -337,6 +368,7 @@ if __name__ == "__main__":
     test_packet_timer()
     test_eeg_never_looks_lost()
     test_frame_clock()
+    test_camera_tap_any_phase()
     test_synthetic_calibration()
     test_simulated_devices_end_to_end()
     print(f"\n{'RED' if _failures else 'GREEN'}: {len(_failures)} failure(s)")

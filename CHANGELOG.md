@@ -16,6 +16,23 @@ camera's own timestamps (`CAP_PROP_POS_MSEC`), stamp with hindsight, or
 re-stamp after the recording. Recommendation: decide after the first
 real-camera test. Nothing in the app changes.
 
+**Buzzer test: camera taps no longer read up to 3 ms late (2026-11-27)**
+- **Found** in the staging heavy checks (Windows, 200 runs): the one run over
+  2 ms (2.18 ms) and most of the 10 worst had two cameras 2–3 ms late *on the
+  same taps*. Cause: a tap that starts just before a frame ends leaves only a
+  sliver of the change in that frame — under the detection threshold — so the
+  onset was read from the next frame and its successor alone, up to ~20 % of a
+  period late. Cameras whose frame clocks had a similar phase missed the same
+  taps. Reproduced offline: taps in the last fifth of a frame came out
+  +1.5 ms late on average (worst +2.7 ms).
+- **Fixed:** `timing.detect_camera_tap` takes the onset as the centre of the
+  change over the first frame above the threshold and the frames either side
+  of it (signed, so noise does not bias it), minus one period. Offline: no
+  bias at any phase (worst mean +0.05 ms), 95th percentile 1.86 → 0.41 ms,
+  worst tap 2.70 → 1.06 ms. New check in `tests/test_timing.py`
+  (`test_camera_tap_any_phase`: mean within 0.3 ms at every phase; the old
+  detector fails it with +1.11 ms).
+
 **Buzzer study: short machine stalls count as machine noise (2026-11-27)** —
 tools and CI only. `tools/buzzer_study.py` now also runs the fine stall probe
 (1 ms sleeps, every wake-up 2 ms late noted). A run is excluded as machine

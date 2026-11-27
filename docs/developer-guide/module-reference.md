@@ -349,7 +349,8 @@ at most `MAX_SLEW` = 1 ms against the last, spacing within `MAX_RATE_ERROR`), `F
 steady frame clock instead of its read time — frame numbers counted locally,
 an asymmetric tracker of the on-time edge; ADR-0025), `detect_eeg_tap` (sub-sample tap onset, accelerometer check),
 `detect_camera_tap` (sub-frame onset from frame-difference energy on the
-camera's steady frame clock), `calibrate` (per-tap consensus → per-device
+camera's steady frame clock: the centre of the change over the first frame
+above the threshold and the frames either side), `calibrate` (per-tap consensus → per-device
 corrections → the manifest's `timing_calibration`), `corrections` (what the
 XDF / export / Review subtract), `summary_text`. Pure logic + numpy, no Qt.
 **Called by:** `eeg_module`, `usb_camera`, `camera_source`, `headband_source`,
